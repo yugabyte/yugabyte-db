@@ -791,7 +791,52 @@ node-agent node preflight-check --add_node
 
 ### Reconfigure a node agent
 
-If you need to reconfigure a node agent, you can use the following procedure:
+If you want to use a node that has already been provisioned in a different provider, you can reconfigure the node agent.
+
+To reconfigure a node for use in a different provider, do the following:
+
+1. Remove the node instance from the provider using the following command:
+
+    ```sh
+    node-agent node delete-instance
+    ```
+
+1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
+
+    ```sh
+    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    ```
+
+    For example, if you run the following:
+
+    ```sh
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    ```
+
+    ```output
+    * The current value of Node Name is set to node1; Enter new value or enter to skip:
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip:
+    * Select your Onprem Manually Provisioned Provider.
+    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
+    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
+        Enter new option number or enter to skip:
+    * Select your Instance Type.
+    1. Instance Code: c5.large
+    * The current value is Instance Code: c5.large.
+        Enter new option number or enter to skip:
+    * Select your Region.
+    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
+    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
+        Enter new option number or enter to skip:
+    * Select your Zone.
+    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
+    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
+        Enter new option number or enter to skip:
+    • Completed Node Agent Configuration
+    • Node Agent Registration Successful
+    ```
+
+If you are running v2.18.5 or earlier, the node must be unregistered first.Use the following procedure:
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 
@@ -849,35 +894,6 @@ If you need to reconfigure a node agent, you can use the following procedure:
 
     ```sh
     node-agent node configure -t <api_token> -u https://<yba_address>:9000
-    ```
-
-    For example, if you run the following:
-
-    ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
-    ```
-
-    ```output
-    * The current value of Node Name is set to node1; Enter new value or enter to skip:
-    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip:
-    * Select your Onprem Provider.
-    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
-    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
-        Enter new option number or enter to skip:
-    * Select your Instance Type.
-    1. Instance Code: c5.large
-    * The current value is Instance Code: c5.large.
-        Enter new option number or enter to skip:
-    * Select your Region.
-    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
-    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
-        Enter new option number or enter to skip:
-    * Select your Zone.
-    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
-    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
-        Enter new option number or enter to skip:
-    • Completed Node Agent Configuration
-    • Node Agent Registration Successful
     ```
 
 1. Start the Systemd service as a sudo user.

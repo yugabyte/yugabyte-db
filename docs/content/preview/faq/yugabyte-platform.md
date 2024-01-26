@@ -159,41 +159,34 @@ For manually provisioned on-premises providers, node agent is installed on each 
 
 ### Why does YBA prompt for SSH details if the node agent is installed manually and can replace SSH?
 
-When creating an on-premises provider, you are prompted to provide SSH credentials. After you have provisioned and added the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during provisioning of non-manually provisioned providers. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
-If you are manually provisioning nodes, these credentials aren't needed and you can provide a fictitious non-working SSH key.
+If you are manually provisioning nodes, these credentials aren't needed to provision nodes.
+
+However, SSH keys are still required to connect to the node for debugging purposes (by navigating to **universe > Nodes > Actions > Connect** for example).
+
+If you don't want to provide YBA with an SSH key for a manually provisioned on-premises provider (because you can log in to the nodes over SSH for debugging outside of YBA), then you can provide a dummy SSH key in the provider configuration.
 
 ### What is registration and unregistration of node agent?
 
-Node agent is a secure service that authenticates every remote call from YBA. This requires the following:
+Node agent is a secure service that authenticates every remote call from YBA. Registration is the process of:
 
-- Making YBA aware of the node agent service.
-- Establishing trust between the node agent and YBA.
+- making YBA aware of the node agent service; and
+- establishing trust between the node agent and YBA.
 
-This process of establishing a secure connection is called registration. Note that registration has nothing to do with a provider.
+No provider-level details are needed for registration.
 
-Unregistration is the process of removing the node agent entry from YBA such that there is no further communication.
+Unregistration is the process of removing the node agent entry from YBA such that there is no further communication. In effect, unregistration makes YBA and the node forget each other.
 
 ### Why does node agent installation ask for provider and other details during on-prem manual node agent setup?
 
-Node agent registration internally does not need configuration values such as region, availability zone, and so on, but it still requests the details because of the additional preflight check capability that it provides. It stores the configuration details in a config file called `$NODE_AGENT_HOME/config/config.yml`, and the values are used when the preflight check is run, or the node is added to the node instance of the provider. This is convenient when you run the command as you don't have to provide the input values again.
+Node agent is used to run pre-flight checks on the node during various day-0 and day-2 operations. These checks need information like the non-root user's home directory, expected port number for Node exporter, the NTP servers, and so on. These are attributes configured with a provider. As a result, to run these pre-flight checks the node agent needs to be configured to a provider in YBA, and these details are needed to make the node agent aware of the YBA provider which the node will become a part of.
 
 ### How do I move a node provisioned for one provider to a different provider?
 
 In v2.18.6 and later, moving a node from one provider to another does not require unregistering the node agent, as node agents aren't linked to providers.
 
-To change the provider of a node in YBA v2.18.5 or earlier:
-
-1. Remove the node instance from the provider.
-1. Unregister the existing node agent using the command `node-agent node unregister`.
-1. Stop the `systemd` service.
-1. Run the command `node-agent node configure`. (You could also re-install the node agent).
-1. Start the `systemd` service.
-
-To change the provider of a node in YBA v2.18.6 or 2.20.2, do the following:
-
-1. Remove the node instance from the provider using the command `node-agent node delete-instance`.
-1. Run the command `node-agent node configure`.
+To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#reconfigure-a-node-agent)
 
 As long as the IP does not change, the node agent does not try to register again.
 
