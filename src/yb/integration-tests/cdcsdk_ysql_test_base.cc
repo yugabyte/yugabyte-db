@@ -30,22 +30,22 @@
 
 namespace yb {
 namespace cdc {
-  Result<string> CDCSDKYsqlTest::GetUniverseId(Cluster* cluster) {
-    yb::master::GetMasterClusterConfigRequestPB req;
-    yb::master::GetMasterClusterConfigResponsePB resp;
+Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
+  yb::master::GetMasterClusterConfigRequestPB req;
+  yb::master::GetMasterClusterConfigResponsePB resp;
 
-    master::MasterClusterProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+  master::MasterClusterProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
 
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Error getting cluster config");
-    }
-    return resp.cluster_config().cluster_uuid();
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return STATUS(IllegalState, "Error getting cluster config");
   }
+  return resp.cluster_config().cluster_uuid();
+}
 
   void CDCSDKYsqlTest::VerifyCdcStateMatches(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -67,8 +67,8 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::WriteRowsToTwoTables(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, const char* const first_table_name,
-      const char* const second_table_name, uint32_t num_cols) {
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      const char* const first_table_name, const char* const second_table_name, uint32_t num_cols) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -179,7 +179,7 @@ namespace cdc {
         "The cdc_sdk_min_checkpoint_op_id doesn't match with expected op_id."));
   }
 
-  Status CDCSDKYsqlTest::DropDB(Cluster* cluster) {
+  Status CDCSDKYsqlTest::DropDB(PostgresMiniCluster* cluster) {
     const std::string db_name = "testdatabase";
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, db_name, true));
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(db_name));
@@ -187,14 +187,15 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::TruncateTable(Cluster* cluster, const std::vector<string>& table_ids) {
+  Status CDCSDKYsqlTest::TruncateTable(
+      PostgresMiniCluster* cluster, const std::vector<string>& table_ids) {
     RETURN_NOT_OK(cluster->client_->TruncateTables(table_ids));
     return Status::OK();
   }
 
   // The range is exclusive of end i.e. [start, end)
   Status CDCSDKYsqlTest::WriteRows(
-      uint32_t start, uint32_t end, Cluster* cluster,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s)";
@@ -223,8 +224,8 @@ namespace cdc {
   }
 
   // The range is exclusive of end i.e. [start, end)
-  Status CDCSDKYsqlTest::WriteRows(uint32_t start, uint32_t end, Cluster* cluster,
-    uint32_t num_cols) {
+  Status CDCSDKYsqlTest::WriteRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s)";
 
@@ -243,13 +244,13 @@ namespace cdc {
     return Status::OK();
   }
 
-  void CDCSDKYsqlTest::DropTable(Cluster* cluster, const char* table_name) {
+  void CDCSDKYsqlTest::DropTable(PostgresMiniCluster* cluster, const char* table_name) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
     ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
   }
 
   Status CDCSDKYsqlTest::WriteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t num_cols,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols,
       const char* const table_name,  const vector<string>& optional_cols_name,
       const bool transaction_enabled) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
@@ -298,14 +299,14 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::CreateTableWithoutPK(Cluster* cluster) {
+  Status CDCSDKYsqlTest::CreateTableWithoutPK(PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1_no_pk(id1 int, id2 int)"));
     return Status::OK();
   }
 
   Status CDCSDKYsqlTest::WriteAndUpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
       const std::multimap<uint32_t, uint32_t>& col_val_map, const std::string& table_id) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
@@ -339,7 +340,7 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::CreateColocatedObjects(Cluster* cluster) {
+  Status CDCSDKYsqlTest::CreateColocatedObjects(PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) TABLEGROUP tg1;"));
@@ -348,15 +349,16 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::AddColocatedTable(
-      Cluster* cluster, const TableName& table_name, const std::string& table_group_name) {
+      PostgresMiniCluster* cluster, const TableName& table_name,
+      const std::string& table_group_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0(id2 text primary key) TABLEGROUP $1;", table_name, table_group_name));
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::PopulateColocatedData(Cluster* cluster, int insert_count,
-    bool transaction) {
+  Status CDCSDKYsqlTest::PopulateColocatedData(
+      PostgresMiniCluster* cluster, int insert_count, bool transaction) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     if (transaction) {
       RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -373,9 +375,8 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::WriteEnumsRows(
-      uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix,
-      string database_name, string table_name,
-      string schema_name) {
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix,
+      string database_name, string table_name, string schema_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(database_name));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -391,7 +392,7 @@ namespace cdc {
   }
 
   Result<YBTableName> CDCSDKYsqlTest::CreateCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
+      PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
 
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -404,7 +405,8 @@ namespace cdc {
     return GetTable(cluster, kNamespaceName, "emp");
   }
 
-  Status CDCSDKYsqlTest::WriteCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+  Status CDCSDKYsqlTest::WriteCompositeRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -418,7 +420,7 @@ namespace cdc {
   }
 
   Result<YBTableName> CDCSDKYsqlTest::CreateNestedCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
+      PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
 
     RETURN_NOT_OK(
@@ -434,7 +436,8 @@ namespace cdc {
     return GetTable(cluster, kNamespaceName, "emp_nested");
   }
 
-  Status CDCSDKYsqlTest::WriteNestedCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+  Status CDCSDKYsqlTest::WriteNestedCompositeRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -448,7 +451,7 @@ namespace cdc {
   }
 
   Result<YBTableName> CDCSDKYsqlTest::CreateArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
+      PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
 
     RETURN_NOT_OK(
@@ -461,7 +464,8 @@ namespace cdc {
     return GetTable(cluster, kNamespaceName, "emp_array");
   }
 
-  Status CDCSDKYsqlTest::WriteArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+  Status CDCSDKYsqlTest::WriteArrayCompositeRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -477,7 +481,7 @@ namespace cdc {
   }
 
   Result<YBTableName> CDCSDKYsqlTest::CreateRangeCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
+      PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
 
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -490,7 +494,8 @@ namespace cdc {
     return GetTable(cluster, kNamespaceName, "range_composite_table");
   }
 
-  Status CDCSDKYsqlTest::WriteRangeCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+  Status CDCSDKYsqlTest::WriteRangeCompositeRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -505,7 +510,7 @@ namespace cdc {
   }
 
   Result<YBTableName> CDCSDKYsqlTest::CreateRangeArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
+      PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
 
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -519,8 +524,8 @@ namespace cdc {
     return GetTable(cluster, kNamespaceName, "range_array_composite_table");
   }
 
-  Status CDCSDKYsqlTest::WriteRangeArrayCompositeRows(uint32_t start, uint32_t end,
-    Cluster* cluster) {
+  Status CDCSDKYsqlTest::WriteRangeArrayCompositeRows(
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -535,7 +540,7 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::UpdateRows(uint32_t key, uint32_t value, Cluster* cluster) {
+  Status CDCSDKYsqlTest::UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Updating row for key " << key << " with value " << value;
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -544,7 +549,8 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::UpdatePrimaryKey(uint32_t key, uint32_t value, Cluster* cluster) {
+  Status CDCSDKYsqlTest::UpdatePrimaryKey(
+      uint32_t key, uint32_t value, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Updating primary key " << key << " with value " << value;
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -554,7 +560,8 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::UpdateRows(
-      uint32_t key, const std::map<std::string, uint32_t>& col_val_map, Cluster* cluster) {
+      uint32_t key, const std::map<std::string, uint32_t>& col_val_map,
+      PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     std::stringstream log_buff;
     log_buff << "Updating row for key " << key << " with";
@@ -578,7 +585,7 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::UpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map1,
       const std::map<std::string, uint32_t>& col_val_map2, uint32_t num_cols) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
@@ -643,7 +650,7 @@ namespace cdc {
   }
 
   Status CDCSDKYsqlTest::UpdateDeleteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     std::stringstream log_buff1, log_buff2;
@@ -703,7 +710,7 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::DeleteRows(uint32_t key, Cluster* cluster) {
+  Status CDCSDKYsqlTest::DeleteRows(uint32_t key, PostgresMiniCluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Deleting row for key " << key;
     RETURN_NOT_OK(
@@ -711,7 +718,7 @@ namespace cdc {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, Cluster* cluster) {
+  Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster) {
     yb::master::SplitTabletRequestPB req;
     req.set_tablet_id(tablet_id);
     yb::master::SplitTabletResponsePB resp;

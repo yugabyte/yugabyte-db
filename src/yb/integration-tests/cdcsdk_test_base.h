@@ -18,6 +18,7 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/postgres-minicluster.h"
 
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -146,11 +147,10 @@ class CDCSDKTestBase : public YBTest {
   }
 
   Status CreateDatabase(
-      Cluster* cluster,
-      const std::string& namespace_name = kNamespaceName,
+      PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,
       bool colocated = false);
 
-  Status InitPostgres(Cluster* cluster);
+  Status InitPostgres(PostgresMiniCluster* cluster);
 
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
@@ -160,58 +160,39 @@ class CDCSDKTestBase : public YBTest {
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
 
   Result<YBTableName> GetTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, bool verify_table_name = true,
       bool exclude_system_tables = true);
 
   Result<YBTableName> CreateTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      const uint32_t num_tablets = 1,
-      const bool add_primary_key = true,
-      bool colocated = false,
-      const int table_oid = 0,
-      bool enum_value = false,
-      const std::string& enum_suffix = "",
-      const std::string& schema_name = "public",
-      uint32_t num_cols = 2,
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, const uint32_t num_tablets = 1,
+      const bool add_primary_key = true, bool colocated = false, const int table_oid = 0,
+      bool enum_value = false, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public", uint32_t num_cols = 2,
       const std::vector<std::string>& optional_cols_name = {});
 
   Status AddColumn(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      const std::string& add_column_name,
-      const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, const std::string& add_column_name,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Status DropColumn(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      const std::string& column_name,
-      const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, const std::string& column_name,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Status RenameColumn(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      const std::string& old_column_name,
-      const std::string& new_column_name,
-      const std::string& enum_suffix = "",
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, const std::string& old_column_name,
+      const std::string& new_column_name, const std::string& enum_suffix = "",
       const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 
   Result<std::string> GetTableId(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      const std::string& table_name, bool verify_table_name = true,
       bool exclude_system_tables = true);
 
   void InitCreateStreamRequest(
@@ -248,7 +229,7 @@ class CDCSDKTestBase : public YBTest {
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
 
-  Cluster test_cluster_;
+  PostgresMiniCluster test_cluster_;
 };
 } // namespace cdc
 } // namespace yb
