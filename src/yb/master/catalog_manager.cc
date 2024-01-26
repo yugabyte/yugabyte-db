@@ -12931,8 +12931,11 @@ Status CatalogManager::CollectTable(
       }
     }
   }
-  all_tables->push_back(table_description);
-
+  // Avoid adding colocation parent tables (tablegroups and colocated database) twice.
+  if (!IsColocationParentTableId(table_description.table_info->id()) ||
+      parent_colocated_table_ids->insert(table_description.table_info->id()).second) {
+    all_tables->push_back(table_description);
+  }
   if (flags.Test(CollectFlag::kAddIndexes)) {
     TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
 
@@ -12978,6 +12981,7 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     for (const auto& table_id_pb : table_identifiers) {
       if (table_id_pb.table_name().empty() && table_id_pb.table_id().empty() &&
           table_id_pb.has_namespace_()) {
+        // Collect all tables belonging to a namespace. Happens when only the namespace is specified
         auto namespace_info = FindNamespaceUnlocked(table_id_pb.namespace_());
         if (!namespace_info.ok()) {
           VLOG_WITH_PREFIX_AND_FUNC(1)
