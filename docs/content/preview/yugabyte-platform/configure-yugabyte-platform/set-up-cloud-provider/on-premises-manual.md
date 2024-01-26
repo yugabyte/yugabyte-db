@@ -836,7 +836,7 @@ To reconfigure a node for use in a different provider, do the following:
     • Node Agent Registration Successful
     ```
 
-If you are running v2.18.5 or earlier, the node must be unregistered first.Use the following procedure:
+If you are running v2.18.5 or earlier, the node must be unregistered first. Use the following procedure:
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 

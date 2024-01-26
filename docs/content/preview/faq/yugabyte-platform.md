@@ -40,16 +40,15 @@ rightNav:
 
 - [What is a node agent?](#what-is-a-node-agent)
 - [How is node agent installed on a YugabyteDB node?](#how-is-node-agent-installed-on-a-yugabytedb-node)
-- [Why does YBA UI ask for SSH if the node agent is installed manually and can replace SSH?](#why-does-yba-ui-ask-for-ssh-if-the-node-agent-is-installed-manually-and-can-replace-ssh)
-- [What is registration and unregistration in node agent?](#what-is-registration-and-unregistration-in-node-agent)
+- [Why does YBA prompt for SSH details if the node agent is installed manually and can replace SSH?](#why-does-yba-prompt-for-ssh-details-if-the-node-agent-is-installed-manually-and-can-replace-ssh)
+- [What is registration and unregistration of node agent?](#what-is-registration-and-unregistration-of-node-agent)
 - [Why does node agent installation ask for provider and other details during on-prem manual node agent setup?](#why-does-node-agent-installation-ask-for-provider-and-other-details-during-on-prem-manual-node-agent-setup)
-- [What happens if I want to change the provider settings of a node agent, or move it to another provider?](#what-happens-if-i-want-to-change-the-provider-settings-of-a-node-agent-or-move-it-to-another-provider)
+- [How do I move a node provisioned for one provider to a different provider?](#how-do-i-move-a-node-provisioned-for-one-provider-to-a-different-provider)
 - [How does a node agent perform preflight checks?](#how-does-a-node-agent-perform-preflight-checks)
-- [How to disable a node agent?](#how-to-disable-a-node-agent)
-- [How to change the node agent default port of 9070?](#how-to-change-the-node-agent-default-port-of-9070)
-- [Is it ok to manually edit the configuration file for node agent?](#is-it-okay-to-manually-edit-the-configuration-file-for-node-agent)
+- [How do I disable a node agent?](#how-do-i-disable-a-node-agent)
+- [How do I change the node agent default port of 9070?](#how-do-i-change-the-node-agent-default-port-of-9070)
 - [How does YBA determine that a node instance record maps to a node agent entry if they are not related?](#how-does-yba-determine-that-a-node-instance-record-maps-to-a-node-agent-entry-if-they-are-not-related)
-- [How does YBA clean up node agents for on-prem non-manual nodes?](#how-does-yba-clean-up-node-agents-for-on-prem-non-manual-nodes)
+- [How does YBA clean up node agents?](#how-does-yba-clean-up-node-agents)
 
 ## YugabyteDB Anywhere
 
