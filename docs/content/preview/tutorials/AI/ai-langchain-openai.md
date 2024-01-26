@@ -124,6 +124,68 @@ The `pg_trgm` PostgreSQL extension is installed to execute similarity searches o
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/generated_data.sql'
     ```
 
+## Start the application
+
+The Flask server for this application exposes a REST endpoint which returns values from the database.
+
+1. Start the server.
+
+    ```sh
+    python3 app.py
+    ```
+
+    ```output
+    * Running on http://127.0.0.1:8080
+    ```
+
+1. Send a POST request to the `/queries` endpoint with a relevant prompt. For instance:
+
+    ```sh
+    # What purchases have been made by user1?
+
+    # What colors do the Intelligent Racer come in?
+
+    # How many narrow shoes come in pink?
+
+    # Find me shoes that are in stock and available in size 15.
+
+    curl -X POST http://localhost:8080/your_endpoint -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
+    ```
+
+    ```output.json
+    [
+      {
+        "color": [
+          "yellow",
+          "blue"
+        ],
+        "description": null,
+        "name": "Efficient Jogger 1",
+        "price": "110.08",
+        "quantity": 22,
+        "width": [
+          "narrow",
+          "wide"
+        ]
+      },
+      {
+        "color": [
+          "blue",
+          "yellow"
+        ],
+        "description": null,
+        "name": "Efficient Jogger 8",
+        "price": "143.63",
+        "quantity": 85,
+        "width": [
+          "wide",
+          "narrow"
+        ]
+      },
+      ...
+    ]
+    ```
+
 ## Review the application
 
 The Python application relies on a custom prompt to provide additional context to the LLM, in order to generate more relevant responses. For instance, sample queries are provided to help suggest SQL syntax to OpenAI:
@@ -200,68 +262,6 @@ SQLResult: [(4,), (5,)]
 Answer:{"query": "SELECT COUNT(*) FROM product_inventory WHERE color = 'pink' AND width = 'narrow' UNION ALL SELECT COUNT(*) FROM product_inventory WHERE color = 'blue' AND width = 'narrow'", "query_response": [{"count": 4}, {"count": 5}]}
 > Finished chain.
 ```
-
-## Start the Flask server
-
-The Flask server for this application exposes a REST endpoint which returns values from the database.
-
-1. Start the server.
-
-    ```sh
-    python3 app.py
-    ```
-
-    ```output
-    * Running on http://127.0.0.1:8080
-    ```
-
-1. Send a POST request to the `/queries` endpoint with a relevant prompt. For instance:
-
-    ```sh
-    # What purchases have been made by user1?
-
-    # What colors do the Intelligent Racer come in?
-
-    # How many narrow shoes come in pink?
-
-    # Find me shoes that are in stock and available in size 15.
-
-    curl -X POST http://localhost:8080/your_endpoint -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
-    ```
-
-    ```output.json
-    [
-      {
-        "color": [
-          "yellow",
-          "blue"
-        ],
-        "description": null,
-        "name": "Efficient Jogger 1",
-        "price": "110.08",
-        "quantity": 22,
-        "width": [
-          "narrow",
-          "wide"
-        ]
-      },
-      {
-        "color": [
-          "blue",
-          "yellow"
-        ],
-        "description": null,
-        "name": "Efficient Jogger 8",
-        "price": "143.63",
-        "quantity": 85,
-        "width": [
-          "wide",
-          "narrow"
-        ]
-      },
-      ...
-    ]
-    ```
 
 ## Wrap-up
 
