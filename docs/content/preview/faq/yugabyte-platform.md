@@ -147,7 +147,7 @@ Node agent is an RPC service running on a YugabyteDB node, and is used to manage
 
 - Invoke shell commands directly on the remote host, similar to running commands over SSH. Like SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Invoke procedures or methods on the node agent.
-- Additionally, for on premises (manually provisioned nodes) deployments, node agent also functions as a utility to run preflight checks, and add node instances.
+- Additionally, for on-premises (manually provisioned nodes) deployments, node agent also functions as a utility to run preflight checks, and add node instances.
 
 ### How is node agent installed on a YugabyteDB node?
 
