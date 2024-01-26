@@ -190,7 +190,7 @@ To change the provider of a node, follow the procedure in [Reconfigure a node ag
 
 As long as the IP does not change, the node agent does not try to register again.
 
-Note that the first step (remove the node instance) is very important because after the provider configuration information changes in the config file as part of the second step, the node agent can't find the node to delete it as the scope is always with the provider and availability zone.
+Note that first removing the node instance from the provider is very important, because after the provider configuration information changes in the configuration file as part of running the `config` command, the node agent will no longer be able to find the node to delete it, as the scope is always with the current provider and availability zone.
 
 ### How does a node agent perform preflight checks?
 
@@ -200,15 +200,15 @@ A node agent does the following when the preflight-check command is run:
 
 1. Runs the [preflight_check](https://github.com/yugabyte/yugabyte-db/blob/master/managed/node-agent/resources/preflight_check.sh) script.
 1. Collects the output and converts it to a well-formatted JSON payload.
-1. Sends the payload to YBA for validation. YBA has preflight check threshold values defined in the [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the config key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
+1. Sends the payload to YBA for validation. YBA has preflight check threshold values defined in the [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) of the provider. The prefix path for the configuration key name is `yb.node_agent.preflight_checks`. The values can be changed if needed.
 
 ### How do I disable a node agent?
 
 You can disable node agents of a provider any time by setting the `yb.node_agent.client.enabled` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) for the provider to false.
 
-This disables all node agents for the provider, which falls back to SSH using credentials provided during provider creation.
+This disables all node agents for the provider, which falls back to SSH, using credentials provided during provider creation.
 
-### How to change the node agent default port of 9070?
+### How do I change the node agent default port of 9070?
 
 Use the `yb.node_agent.server.port` [Provider Configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
