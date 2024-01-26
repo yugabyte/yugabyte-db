@@ -187,14 +187,14 @@ export const ProviderList = (props: ProviderListProps) => {
       return { ...provider, linkedUniverses: linkedUniverses };
     });
 
+  const providerLabel =
+    providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+      ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+      : ProviderLabel[providerCode];
   return (
     <>
-      <Box display="flex" marginBottom="35px">
-        <Typography variant="h4">{`${
-          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
-            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
-            : ProviderLabel[providerCode]
-        } Configs`}</Typography>
+      <Box display="flex" marginBottom="35px" justifyContent="space-between">
+        <Typography variant="h4">{`${providerLabel} Configs`}</Typography>
         {filteredProviderList.length > 0 && (
           <YBButton
             style={{ marginLeft: 'auto', width: '200px' }}
@@ -209,8 +209,8 @@ export const ProviderList = (props: ProviderListProps) => {
       </Box>
       {filteredProviderList.length === 0 ? (
         <EmptyListPlaceholder
-          actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
-          descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
+          actionButtonText={`Create ${providerLabel} Config`}
+          descriptionText={`No ${providerLabel} config to show`}
           onActionButtonClick={handleCreateProviderAction}
           dataTestIdPrefix="ProviderEmptyList"
         />
