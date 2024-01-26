@@ -914,6 +914,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   ::yb::master::SysNamespaceEntryPB_State state() const;
 
+  ::yb::master::SysNamespaceEntryPB_YsqlNextMajorVersionState ysql_next_major_version_state() const;
+
   std::string ToString() const override;
 
  private:

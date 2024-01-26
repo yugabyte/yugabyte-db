@@ -43,7 +43,6 @@ popd
 
 # Upgrade to PG15 by first starting the masters in a mode that runs initdb in a mode that's aware of
 # the PG11 to PG15 upgrade process, and then doing the actual upgrade flow (dump+restore).
-# TODO: Do the actual upgrade flow.
 
 # Restart the masters as PG15 masters
 for i in {1..3}; do
@@ -68,22 +67,102 @@ diff $data_dir/pg11_dbs.txt <(build/latest/bin/yb-admin \
 # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
 yb_ctl restart_node 2 --tserver_flags="TEST_pg_binary_upgrade=true"
 
-# At this point, all of the masters are upgraded to PG15, and tserver node 2 is upgraded to PG15
-# also. The tservers for nodes 1 and 3 remain on PG11. Test that PG11 still completely works,
-# i.e., that you can select the entire table. Note that by default ysqlsh connects to node 1.
-ysqlsh <<EOT
-SHOW server_version;
-SELECT * FROM yb_servers();
-SELECT * FROM pg_am;
-SELECT * FROM t;
+# To simulate a core piece of pg_upgrade, we run ysql_dump and pg_restore. Together these utilities
+# with these options migrate the metadata for database 'yugabyte'.
+build/latest/postgres/bin/ysql_dump -h "$PGHOST" --schema-only --quote-all-identifiers \
+    --binary-upgrade --format=custom --file="$data_dir"/yugabyte-db.custom \
+    --include-yb-metadata dbname=yugabyte
+build/latest/postgres/bin/pg_restore -h "$pghost2" --clean --create --exit-on-error --verbose \
+    --dbname template1 "$data_dir"/yugabyte-db.custom
+
+# The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
+yb_ctl restart_node 2
+
+# Demonstrate simultaneous access for DMLs before the upgrade has been finalized. (DDLs are not
+# allowed, and rollback to PG11 is still possible.)
+# YB_TODO: Test that DDLs are prohibited when the functionality is implemented.
+
+# Insert from PG15
+diff <(ysqlsh 2 <<EOT
+SHOW server_version_num;
+INSERT INTO t VALUES (15, 'fifteen', cosh(0), '15', '{"num" : 15}', '{15}');
+SELECT * FROM t ORDER BY h,r;
+EOT
+) - <<EOT
+ server_version_num 
+--------------------
+ 150002
+(1 row)
+
+INSERT 0 1
+ h  |    r    |     v1      | v2  |     v3      |    v4     
+----+---------+-------------+-----+-------------+-----------
+  1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
+  1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
+  2 | a       |  5000000000 | ghi | {"c": 30}   | {1,4,9}
+ 15 | fifteen |           1 | 15  | {"num": 15} | {15}
+(4 rows)
+
+EOT
+# Insert from PG11, and note the PG15 insertion is visible
+diff <(ysqlsh <<EOT
+SHOW server_version_num;
+INSERT INTO t VALUES (11, 'eleven', 11, '11', '{"num": 11}', '{11}');
+SELECT * FROM t ORDER BY h,r;
+EOT
+) - <<EOT
+ server_version_num 
+--------------------
+ 110002
+(1 row)
+
+INSERT 0 1
+ h  |    r    |     v1      | v2  |     v3      |    v4     
+----+---------+-------------+-----+-------------+-----------
+  1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
+  1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
+  2 | a       |  5000000000 | ghi | {"c": 30}   | {1,4,9}
+ 11 | eleven  |          11 | 11  | {"num": 11} | {11}
+ 15 | fifteen |           1 | 15  | {"num": 15} | {15}
+(5 rows)
+
 EOT
 
-# Initdb has been run, but not pg_restore. Therefore, there are no user tables available in PG15
-# yet. However the database should work.
-ysqlsh 2 <<EOT
-SHOW server_version;
-SELECT * FROM yb_servers();
-SELECT * FROM pg_am;
--- This statement wouldn't find the table.
--- SELECT * FROM t;
+# Upgrade is complete. After the restart, demonstrate that DDLs work.
+yb_ctl restart
+diff <(ysqlsh <<EOT
+SHOW server_version_num;
+SELECT * FROM t ORDER BY h,r;
+CREATE INDEX ON t (v1);
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM t WHERE v1 = 11;
+SELECT COUNT(*) FROM t WHERE v1 = 11;
+EOT
+) - <<EOT
+ server_version_num 
+--------------------
+ 150002
+(1 row)
+
+ h  |    r    |     v1      | v2  |     v3      |    v4     
+----+---------+-------------+-----+-------------+-----------
+  1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
+  1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
+  2 | a       |  5000000000 | ghi | {"c": 30}   | {1,4,9}
+ 11 | eleven  |          11 | 11  | {"num": 11} | {11}
+ 15 | fifteen |           1 | 15  | {"num": 15} | {15}
+(5 rows)
+
+CREATE INDEX
+                QUERY PLAN                 
+-------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t_v1_idx on t
+         Index Cond: (v1 = 11)
+(3 rows)
+
+ count 
+-------
+     1
+(1 row)
+
 EOT

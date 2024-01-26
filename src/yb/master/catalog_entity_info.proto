@@ -330,6 +330,26 @@ message SysNamespaceEntryPB {
   optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
+
+  // During a YSQL major version upgrade, for example from PG11 to PG15, we use the existing
+  // namespace entry for both the old and new versions' namespace. However, PG's upgrade process is
+  // normally run on a clean unused system, and it does DROP DATABASE and CREATE DATABASE there in
+  // order to fully restore the properties of the database. In YB, we simulate PG's environment, by
+  // using a separate state for the new major version.
+  // NEXT_VER_RUNNING is the initial state.
+  // NEXT_VER_RUNNING -> NEXT_VER_DELETING  - deletion requested.
+  // NEXT_VER_DELETING -> NEXT_VER_DELETED  - happy path of deletion.
+  // NEXT_VER_DELETING -> NEXT_VER_FAILED   - unhappy path of deletion.
+  // NEXT_VER_DELETED -> NEXT_VER_RUNNING   - re-populated.
+  enum YsqlNextMajorVersionState {
+    NEXT_VER_UNKNOWN = 0;
+    NEXT_VER_FAILED = 1;
+    NEXT_VER_RUNNING = 2;
+    NEXT_VER_DELETING = 3;
+    NEXT_VER_DELETED = 4;
+  }
+  optional YsqlNextMajorVersionState ysql_next_major_version_state = 7
+      [ default = NEXT_VER_RUNNING ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.

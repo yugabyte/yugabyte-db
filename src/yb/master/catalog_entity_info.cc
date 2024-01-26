@@ -1181,6 +1181,11 @@ bool NamespaceInfo::colocated() const {
   return LockForRead()->pb.state();
 }
 
+::yb::master::SysNamespaceEntryPB_YsqlNextMajorVersionState
+    NamespaceInfo::ysql_next_major_version_state() const {
+  return LockForRead()->pb.ysql_next_major_version_state();
+}
+
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }

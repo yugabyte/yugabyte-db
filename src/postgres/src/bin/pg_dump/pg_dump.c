@@ -14761,6 +14761,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 	if (dopt->binary_upgrade && privtype == 'e' &&
 		initprivs && *initprivs != '\0')
 	{
+#ifdef YB_TODO
+		/* Investigate this when extensions are working. */
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands(name, subname, nspname, type,
 							  initprivs, acldefault, owner,
@@ -14768,6 +14770,7 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 			pg_fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 					 initprivs, acldefault, name, type);
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
+#endif
 	}
 
 	/*
@@ -16168,6 +16171,15 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			(tbinfo->relkind == RELKIND_RELATION ||
 			 tbinfo->relkind == RELKIND_MATVIEW))
 		{
+#if YB_TODO
+			/*
+			 * Not relevant to Yugabyte binary upgrade. Note that though it's
+			 * unnecessary, it fails with error
+			 *   relation "public.t" does not exist
+			 * which has shown up in one other valid scenario beyond the basic
+			 * end-to-end upgrade flow. Consider adding this code back when that
+			 * error is fixed.
+			 */
 			appendPQExpBufferStr(q, "\n-- For binary upgrade, set heap's relfrozenxid and relminmxid\n");
 			appendPQExpBuffer(q, "UPDATE pg_catalog.pg_class\n"
 							  "SET relfrozenxid = '%u', relminmxid = '%u'\n"
@@ -16189,6 +16201,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  tbinfo->toast_frozenxid,
 								  tbinfo->toast_minmxid, tbinfo->toast_oid);
 			}
+#endif
 		}
 
 		/*

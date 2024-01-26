@@ -3690,6 +3690,33 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     LOG(INFO) << "CreateTable from " << RequestorString(rpc) << ": " << orig_req->name();
   }
 
+  // Look up the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  auto ns = VERIFY_RESULT(FindNamespace(orig_req->namespace_()));
+
+  // If we're doing a ysql major version upgrade, then for a user table, we expect it to already
+  // exist. We will wire the PG15 catalog to it. For a PG catalog table, we expect it to be creating
+  // the new version's PG catalog, and so the table must not already exist.
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    LockGuard lock(mutex_);
+    auto ns_lock = ns->LockForRead();
+    TRACE("Acquired catalog manager lock");
+
+    RSTATUS_DCHECK_EQ(orig_req->table_type(), PGSQL_TABLE_TYPE, IllegalState,
+                      "Creating non-PGSQL table during a ysql major version upgrade");
+    scoped_refptr<TableInfo> table = tables_->FindTableOrNull(orig_req->table_id());
+    if (table != nullptr && !table->is_deleted()) {
+      RSTATUS_DCHECK(!is_pg_catalog_table, IllegalState,
+                     "Detected a pre-existing catalog table in CreateTable during a ysql major "
+                     "version upgrade.");
+      LOG(INFO) << "Table already exists with id " << table->id() << ": Returning";
+      resp->set_table_id(table->id());
+      return Status::OK();
+    }
+    RSTATUS_DCHECK(is_pg_catalog_table, IllegalState,
+                   "Trying to create a new user table during a ysql major version upgrade");
+  }
+
   const bool is_transactional = orig_req->schema().table_properties().is_transactional();
   // If this is a transactional table, we need to create the transaction status table (if it does
   // not exist already).
@@ -3720,10 +3747,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
-
-  // Lookup the namespace and verify if it exists.
-  TRACE("Looking up namespace");
-  auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
@@ -8564,20 +8587,20 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                                 bool by_id) -> Status {
       Status return_status;
       if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
-        // During the online PG11 -> PG15 upgrade, each system namespace (template1, template0,
+        // During a ysql major version upgrade, each system namespace (template1, template0,
         // postgres, yugabyte, and system_platform) is "created" twice: once by initdb, and then
         // once again after a DROP DATABASE that's part of upstream Postgres's dump and restore
         // process. In both cases, the PG11 version of the namespace must already exist, and we re-
         // use it. Therefore it's an error if ns is nullptr.
         //
-        // The first time through this process, upgrade_state is RUNNING. The second time (yet to be
-        // implemented), it will be DELETED.
+        // The first time through this process, ysql_next_major_version_state is NEXT_VER_RUNNING.
+        // The second time, it's NEXT_VER_DELETED, as a means to work around the fact we're only
+        // effectively "dropping" and "recreating" the not-yet-in-use PG15 namespace.
         //
         // User-created namespaces are expected to be "created" once by pg_restore. In this case,
         // the PG11 version of the namespace must already exist, and we will re-use it. However,
         // this case has not yet been tested.
         //
-        // TODO(20710): Implement functionality required to run pg_restore.
         // TODO(20710): Verify upgrade behavior with user-created databases.
         // TODO(20710): Add a preflight check that the user has all 5 system databases and has not
         // dropped any of them.
@@ -8866,7 +8889,11 @@ void CatalogManager::ProcessPendingNamespace(
     if (status.ok()) return;
     TRACE("Handling failed keyspace creation");
     // Do not set on-disk state here. The loader treats the PREPARING state as FAILED.
-    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_FAILED);
+    } else {
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+    }
     ns_write_lock.Commit();
     LOG(WARNING) << status.ToString();
     LockGuard lock(mutex_);
@@ -8882,6 +8909,7 @@ void CatalogManager::ProcessPendingNamespace(
   }
 
   metadata.set_state(SysNamespaceEntryPB::RUNNING);
+  metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_RUNNING);
   status = sys_catalog_->Upsert(term, ns);
   if (!status.ok()) {
     status = status.CloneAndPrepend(Format(
@@ -9086,7 +9114,28 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   {
     // Don't allow deletion if the namespace is in a transient state.
     auto cur_state = ns->state();
-    if (cur_state != SysNamespaceEntryPB::RUNNING && cur_state != SysNamespaceEntryPB::FAILED) {
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      // Note that during a ysql major version upgrade, deleting a namespace is only done by the
+      // upgrade process, and only "deletes" the new major version's namespace. In Yugabyte, we
+      // track the deleted state, and delete the new major version's catalog tables, without
+      // deleting the namespace itself, or touching the old major version's catalog tables or any
+      // user tables.
+      SCHECK_FORMAT(cur_state == SysNamespaceEntryPB::RUNNING, IllegalState,
+                    "Deleting the namespace for the new YSQL version isn't allowed if the primary "
+                    "state of the namespace isn't RUNNING. Current state is $0",
+                    SysNamespaceEntryPB::State_Name(cur_state));
+      // Note that if the ysql next major version state enters state FAILED, we would expect the
+      // user to roll back (deleting all signs of the new ysql major version) before trying
+      // another ysql major version upgrade.
+      auto cur_ysql_next_major_version_state = ns->ysql_next_major_version_state();
+      SCHECK_FORMAT(cur_ysql_next_major_version_state == SysNamespaceEntryPB::NEXT_VER_RUNNING,
+                    IllegalState,
+                    "Deleting the namespace for the new YSQL version isn't allowed if the upgrade "
+                    "state isn't RUNNING. Current upgrade state is $0",
+                    SysNamespaceEntryPB::YsqlNextMajorVersionState_Name(
+                        cur_ysql_next_major_version_state));
+    } else if (cur_state != SysNamespaceEntryPB::RUNNING &&
+               cur_state != SysNamespaceEntryPB::FAILED) {
       if (cur_state == SysNamespaceEntryPB::DELETED) {
         return STATUS(NotFound, "Keyspace already deleted", ns->name(),
                       MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
@@ -9226,7 +9275,19 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   TRACE("Locking database");
   auto l = database->LockForWrite();
   SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
-  if (metadata.state() != SysNamespaceEntryPB::RUNNING &&
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::INTERNAL_ERROR),
+                              "Keyspace ($0) has invalid state ($1), aborting delete",
+                              database->name(), metadata.state());
+    }
+    if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::INTERNAL_ERROR),
+                              "Keyspace ($0) has invalid ysql next major version state ($1), "
+                              "aborting delete",
+                              database->name(), metadata.ysql_next_major_version_state());
+    }
+  } else if (metadata.state() != SysNamespaceEntryPB::RUNNING &&
       metadata.state() != SysNamespaceEntryPB::FAILED) {
     return SetupError(
         resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
@@ -9234,7 +9295,15 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
             IllegalState, "Keyspace ($0) has invalid state ($1), aborting delete", database->name(),
             metadata.state()));
   }
-  metadata.set_state(SysNamespaceEntryPB::DELETING);
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    // During a ysql major version upgrade, the upstream Postgres mechanism drops and re-creates
+    // system namespaces. Therefore, we keep a separate state machine for the status of the new
+    // major version's namespace. It starts at RUNNING when called from initdb, and then is later
+    // "deleted" and then "re-created" by the upgrade process.
+    metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_DELETING);
+  } else {
+    metadata.set_state(SysNamespaceEntryPB::DELETING);
+  }
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), database));
   TRACE("Marked keyspace for deletion in sys-catalog");
   l.Commit();
@@ -9261,34 +9330,67 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     }
   }
 
-  if (metadata.state() != SysNamespaceEntryPB::DELETING) {
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    if (metadata.state() != SysNamespaceEntryPB::RUNNING) {
+      LOG(DFATAL) << "Namespace (" << database->name() << ") has invalid state "
+                  << SysNamespaceEntryPB::State_Name(metadata.state());
+      return;
+    }
+    if (metadata.ysql_next_major_version_state() != SysNamespaceEntryPB::NEXT_VER_DELETING) {
+      LOG(DFATAL) << "Namespace (" << database->name()
+                  << ") has invalid ysql next major version state "
+                  << SysNamespaceEntryPB::YsqlNextMajorVersionState_Name(
+                         metadata.ysql_next_major_version_state());
+      return;
+    }
+  } else if (metadata.state() != SysNamespaceEntryPB::DELETING) {
     LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state (" << metadata.state()
                  << "), aborting delete";
     return;
   }
 
-  // Delete all tables in the database.
+  // Delete all tables in the database. If we're in a ysql major version upgrade, this will delete
+  // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
   Status s = DeleteYsqlDBTables(database, epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
   if (!s.ok()) {
-    // Move to FAILED so DeleteNamespace can be reissued by the user.
-    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_FAILED);
+    } else {
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+    }
     l.Commit();
     return;
   }
 
   // Once all user-facing data has been offlined, move the Namespace to DELETED state.
-  metadata.set_state(SysNamespaceEntryPB::DELETED);
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_DELETED);
+  } else {
+    metadata.set_state(SysNamespaceEntryPB::DELETED);
+  }
   s = sys_catalog_->Upsert(leader_ready_term(), database);
   WARN_NOT_OK(s, "SysCatalog Update for Namespace");
   if (!s.ok()) {
     // Move to FAILED so DeleteNamespace can be reissued by the user.
-    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_FAILED);
+    } else {
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+    }
     l.Commit();
     return;
   }
   TRACE("Marked keyspace as deleted in sys-catalog");
+
+  // During an upgrade, we skip the actual namespace deletion.
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    LOG(INFO) << "We're in a ysql major version upgrade, skipping actual namespace deletion";
+    l.Commit();
+    return;
+  }
 
   // Remove namespace from CatalogManager name mapping.
   {
@@ -9334,6 +9436,11 @@ Status CatalogManager::DeleteYsqlDBTables(
 
     // Populate tables and sys_table_ids.
     for (const auto& table : tables_->GetAllTables()) {
+      // In ysql major version upgrade mode, the only tables we delete are PG15 catalog tables, when
+      // a namespace is "deleted" during pg_restore.
+      if (FLAGS_TEST_online_pg11_to_pg15_upgrade && !IsPg15CatalogId(table->id())) {
+        continue;
+      }
       if (table->namespace_id() != database->id()) {
         continue;
       }
@@ -9363,6 +9470,9 @@ Status CatalogManager::DeleteYsqlDBTables(
       }
     }
 
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      DCHECK(colocation_parents.empty());
+    }
     tables.insert(tables.end(),
                   std::make_move_iterator(colocation_parents.begin()),
                   std::make_move_iterator(colocation_parents.end()));
@@ -9453,6 +9563,17 @@ Status CatalogManager::IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestP
   TRACE("Locking keyspace");
   auto l = (**ns).LockForRead();
   auto& metadata = l->pb;
+
+  // First, check if this is a major ysql version upgrade.
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    if (metadata.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_DELETED) {
+      resp->set_done(true);
+      return Status::OK();
+    } else if (metadata.ysql_next_major_version_state() == SysNamespaceEntryPB::NEXT_VER_DELETING) {
+      resp->set_done(false);
+      return Status::OK();
+    }
+  }
 
   if (metadata.state() == SysNamespaceEntryPB::DELETED) {
     resp->set_done(true);

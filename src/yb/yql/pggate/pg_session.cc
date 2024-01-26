@@ -100,8 +100,10 @@ bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowe
   return op.need_transaction() || (op.is_write() && non_ddl_txn_for_sys_tables_allowed);
 }
 
-Result<bool> ShouldHandleTransactionally(
-  const PgTxnManager& txn_manager, const PgTableDesc& table, const PgsqlOp& op) {
+Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
+                                         const PgTableDesc& table,
+                                         const PgsqlOp& op,
+                                         bool non_ddl_txn_for_sys_tables_allowed) {
   if (!table.schema().table_properties().is_transactional() ||
       !IsNeedTransaction(op, yb_non_ddl_txn_for_sys_tables_allowed) ||
       YBCIsInitDbModeEnvVarSet()) {
@@ -112,11 +114,7 @@ Result<bool> ShouldHandleTransactionally(
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
-  // read restart error because subsequent cache refresh used an outdated txn to read from the
-  // system catalog,
-  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
-  if (txn_manager.IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
+  if (txn_manager.IsDdlMode() || (non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
     return true;
   }
   if (op.is_write()) {
@@ -128,9 +126,12 @@ Result<bool> ShouldHandleTransactionally(
   return false;
 }
 
-Result<SessionType> GetRequiredSessionType(
-  const PgTxnManager& txn_manager, const PgTableDesc& table, const PgsqlOp& op) {
-  if (VERIFY_RESULT(ShouldHandleTransactionally(txn_manager, table, op))) {
+Result<SessionType> GetRequiredSessionType(const PgTxnManager& txn_manager,
+                                           const PgTableDesc& table,
+                                           const PgsqlOp& op,
+                                           bool non_ddl_txn_for_sys_tables_allowed) {
+  if (VERIFY_RESULT(ShouldHandleTransactionally(txn_manager, table, op,
+                                                non_ddl_txn_for_sys_tables_allowed))) {
     return SessionType::kTransactional;
   }
 
@@ -387,7 +388,7 @@ PgSession::PgSession(
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state,
-    bool is_binary_upgrade)
+    bool is_pg_binary_upgrade)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -397,7 +398,7 @@ PgSession::PgSession(
           buffering_settings_,
           &metrics_),
       pg_callbacks_(pg_callbacks),
-      upgrade_mode_(is_binary_upgrade) {
+      is_major_pg_version_upgrade_(is_pg_binary_upgrade) {
   Update(&buffering_settings_);
 }
 
@@ -925,15 +926,25 @@ Result<PerformFuture> PgSession::DoRunAsync(
   SCHECK(!table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
   const auto* op = table_op.operation;
+  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
+  // read restart error because subsequent cache refresh used an outdated txn to read from the
+  // system catalog.
+  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
+  //
+  // If we're in major PG version upgrade mode, then it's safe to use a non-DDL transaction for
+  // access to the PG catalog because it will be the next-version catalog which is only being
+  // accessed by the one process that's currently doing the writes.
+  const auto non_ddl_txn_for_sys_tables_allowed =
+      yb_non_ddl_txn_for_sys_tables_allowed || is_major_pg_version_upgrade_;
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
-      *pg_txn_manager_, *table, **op));
+      *pg_txn_manager_, *table, **op, non_ddl_txn_for_sys_tables_allowed));
   RunHelper runner(this, group_session_type, in_txn_limit);
   const auto ddl_mode = pg_txn_manager_->IsDdlMode();
   for (; !table_op.IsEmpty(); table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
     const auto op_session_type = VERIFY_RESULT(GetRequiredSessionType(
-        *pg_txn_manager_, *table, **op));
+        *pg_txn_manager_, *table, **op, non_ddl_txn_for_sys_tables_allowed));
     SCHECK_EQ(
         op_session_type, group_session_type,
         IllegalState, "Operations on different sessions can't be mixed");
