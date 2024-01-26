@@ -13,107 +13,64 @@ menu:
 type: indexpage
 ---
 
-{{< note title="Note" >}}
+YugabyteDB ships with a variety of tools to interact with, manage and configure your cluster. Each tool has been designed for a specific purpose. The following illustration shows which tools operate on which parts of the cluster.
 
+![Tools and their purpose](/images/admin/tools_functionalities.png)
+
+{{<note title="Note">}}
 For information about configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+{{</note>}}
 
-{{< /note >}}
+## List of tools
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysqlsh/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">ysqlsh</div>
-      </div>
-      <div class="body">
-        CLI shell for interacting with YugabyteDB using YSQL.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ycqlsh/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
-        <div class="title">ycqlsh</div>
-      </div>
-      <div class="body">
-        CLI shell for interacting with YugabyteDB using YCQL.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="ysqlsh"
+    body="CLI tool to interact with YugabyteDB such as querying data, creating and modifying database objects (like tables and views), and executing SQL commands and scripts using SQL"
+    href="ysqlsh/"
+    icon="fa-solid fa-terminal">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-admin/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">yb-admin</div>
-      </div>
-      <div class="body">
-        CLI for administering YugabyteDB clusters.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="ycqlsh"
+    body="CLI tool to interact with YugabyteDB such as querying data, creating and modifying database objects (like tables and views), and executing CQL commands and scripts using YCQL"
+    href="ycqlsh/"
+    icon="fa-solid fa-terminal">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-ts-cli/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">yb-ts-cli</div>
-      </div>
-      <div class="body">
-        Command line tool for advanced operations on tablet servers.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="yb-admin"
+    body="CLI tool for administering YugabyteDB cluster configuration and features"
+    href="yb-admin/"
+    icon="fa-solid fa-screwdriver-wrench">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-dump/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">ysql_dump</div>
-      </div>
-      <div class="body">
-        Extract a YugabyteDB database into a SQL script file.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="yb-ctl"
+    body="CLI tool to create and manage local clusters on macOS or Linux."
+    href="yb-ctl/"
+    icon="fa-solid fa-toolbox">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ysql-dumpall/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">ysql_dumpall</div>
-      </div>
-      <div class="body">
-        Extract all YugabyteDB databases into a SQL script file.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="ysql_dump"
+    body="Extract a single YugabyteDB database into a SQL script file"
+    href="ysql_dump/"
+    icon="fa-solid fa-file-export">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-ctl/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-ctl.png" aria-hidden="true" />
-        <div class="title">yb-ctl</div>
-      </div>
-      <div class="body">
-        Command line utility to create and manage local clusters on macOS or Linux.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="ysql_dumpall"
+    body="Extract all YugabyteDB databases into a SQL script file"
+    href="ysql_dumpall/"
+    icon="fa-regular fa-copy">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-docker-ctl/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-docker-ctl.png" aria-hidden="true" />
-        <div class="title">yb-docker-ctl</div>
-      </div>
-      <div class="body">
-        Command line utility to create and manage Docker-based local clusters.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="yb-ts-cli"
+    body="CLI tool for advanced operations on tablet servers"
+    href="yb-ts-cli/"
+    icon="fa-solid fa-toolbox">}}
 
-</div>
+  {{<index/item
+    title="yb-docker-ctl"
+    body="Command line utility to create and manage Docker-based local clusters"
+    href="yb-docker-ctl/"
+    icon="fa-brands fa-docker">}}
+
+{{</index/block>}}
