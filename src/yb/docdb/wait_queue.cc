@@ -311,16 +311,16 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   Status InvokeCallback(
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
-    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << waiter_status;
     ADOPT_WAIT_STATE(wait_state);
     SET_WAIT_STATUS(OnCpu_Passive);
     SCOPED_WAIT_STATUS(OnCpu_Active);
     auto& status = waiter_status;
     std::optional<UnlockedBatch> unlocked_copy = AtomicConsumeUnlockedBatch();
     if (!unlocked_copy) {
-      LOG_WITH_PREFIX_AND_FUNC(INFO)
-          << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
-          << "be rare.";
+      // This branch may be hit somewhat commonly as WaitQueue::Poll and SignalCommitted may
+      // concurrently detect that a blocker is resolved. Whichever one is second will hit this path.
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Skipping InvokeCallback for waiter whose callback was already invoked.";
       return Status::OK();
     }
 
@@ -351,6 +351,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         status = kShuttingDownError;
       }
     }
+    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
     callback(status, resume_ht);
     return Status::OK();
   }
@@ -1753,9 +1754,10 @@ class WaitQueue::Impl {
       }
     }
 
-    LOG_IF(WARNING, !found_waiter)
+    VLOG_IF_WITH_PREFIX(1, !found_waiter)
       << "Tried to invoke callback on waiter which has already been removed. "
-      << "This should be rare but is not an error otherwise.";
+      << "This can happen any time a waiter has multiple blockers which resolve at similar times, "
+      << "or if a blocker is detected as resolved by both Poll and SignalCommitted concurrently.";
 
     // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
     // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
