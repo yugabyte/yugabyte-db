@@ -37,7 +37,7 @@ Being able to scale seamlessly is as important as being able to scale. Scaling n
 
 ## Ways to scale
 
-There are 2 common ways of scaling, namely **vertical** and **horizontal**. YugabyteDB supports both vertical and horizontal scaling. Because YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
+There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. Because YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
 | Scaling&nbsp;Method | Description |
 | :--- | :--- |
@@ -70,15 +70,15 @@ To learn more about the different types of sharding, see [Hash & Range sharding]
 
 ### Rebalancing
 
-As your data grows, tablets are split and moved across the different nodes in the cluster to maintain a equal distribution of data across the nodes. This process is known as **Rebalancing**. Data is moved automatically, without any interruption in service.
+As your data grows, tablets are split and moved across the different nodes in the cluster to maintain an equal distribution of data across the nodes. This process is known as _Rebalancing_. Data is moved automatically, without any interruption in service.
 
 {{<tip>}}
 For an illustration of how tablets are split, see [Tablet splitting](../linear-scalability/sharding-rebalancing#tablet-splitting)
 {{</tip>}}
 
-### Node Addition
+### Adding nodes
 
-When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Now, the entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes, and the entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
 {{<tip>}}
 For an illustration of what happens when nodes are added to a cluster, see [Adding nodes](node-addition/).
