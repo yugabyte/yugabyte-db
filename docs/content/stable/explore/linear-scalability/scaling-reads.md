@@ -3,7 +3,7 @@ title: Scaling reads
 headerTitle: Scaling reads
 linkTitle: Scaling reads
 description: Scaling reads in YugabyteDB.
-headcontent: Read performance when scaling horizonatally
+headcontent: Read performance when scaling horizontally
 menu:
   stable:
     identifier: scaling-reads
