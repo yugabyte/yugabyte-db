@@ -20,7 +20,7 @@ Let's go over how writes work and see how well they scale in YugabyteDB.
 
 When an application connected to a node sends a write request for a key, say `UPDATE T SET V=2 WHERE K=5`, YugabyteDB first identifies the location of the tablet leader containing the row with the key specified (`K=5`). After the location of the tablet leader is identified, the request is internally re-directed to the node containing the tablet leader for the requested key.
 
-The leader replicates the write to the followers, updates any indexes if needed and then acknowledges the write, back to the application. The replication to followers adds additional latency to the request.
+The leader replicates the write to the followers, updates any indexes if needed, and then acknowledges the write back to the application. The replication to followers adds additional latency to the request.
 
 A basic write involves a maximum of just 2 nodes.
 

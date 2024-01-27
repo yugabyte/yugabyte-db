@@ -14,7 +14,7 @@ rightNav:
 type: docs
 ---
 
-Seamless node addition is the foundation of scalability. In YugabyteDB, you can scale your cluster horizontally on demand by adding new nodes, as and when needed without any interruption to your applications. Let's go over what happens when a node is added to an existing cluster with a simple illustration.
+Seamless node addition is the foundation of scalability. In YugabyteDB, you can scale your cluster horizontally on demand by adding new nodes, as and when needed, without any interruption to your applications. Let's go over what happens when a node is added to an existing cluster with a basic illustration.
 
 ### Cluster setup
 
@@ -23,14 +23,14 @@ Suppose you have a 3-node cluster with 4 tablets and a replication factor (RF) o
 ![Initial setup](/images/explore/scalability/node-addition-cluster-setup.png)
 
 {{<tip>}}
-To understand how tablets are formed and split, see [Sharding & Rebalancing](../sharding-rebalancing/).
+To understand how tablets are formed and split, see [Data distribution](../data-distribution/).
 {{</tip>}}
 
 ## New follower creation
 
-When a node is added, the tablets are automatically [rebalanced](../sharding-rebalancing/#rebalancing). The process starts by adding a replica for a tablet in the new node, and the new tablet bootstraps its data from the tablet leader. During this process, throughput is not affected as the data bootstrapping is asynchronous.
+When a node is added, the tablets are automatically [rebalanced](../data-distribution/#rebalancing). The process starts by adding a replica for a tablet in the new node, and the new tablet bootstraps its data from the tablet leader. During this process, throughput is not affected as the data bootstrapping is asynchronous.
 
-In the illustration you can see that a new follower for tablet `T4` is added on the newly added node, `NODE-4` and that follower starts bootstrapping from the leader in `NODE-3`.
+In the illustration you can see that a new follower for tablet `T4` is added on the newly added node `NODE-4`, and that follower starts bootstrapping from the leader in `NODE-3`.
 
 ![Add a new replica](/images/explore/scalability/node-addition-replication.png)
 
@@ -38,7 +38,7 @@ In the illustration you can see that a new follower for tablet `T4` is added on 
 
 After the new replica has been fully bootstrapped, leader election is triggered for the tablet, with a hint to make the replica in the newly added node the leader. This is done to ensure that the leaders are evenly distributed across the various nodes in the cluster. This leader switch is very fast.
 
-In the illustration, you can see that the follower in `NODE-4` has been made the leader. Now each node has `1` tablet leader. Now that node 4 has a tablet leader, it can actively take on load, thereby reducing the load on other nodes.
+In the illustration, you can see that the follower in `NODE-4` has been made the leader. Now each node has one tablet leader. Now that node 4 has a tablet leader, it can actively take on load, thereby reducing the load on other nodes.
 
 ![New leader](/images/explore/scalability/node-addition-new-leader.png)
 
@@ -46,15 +46,15 @@ In the illustration, you can see that the follower in `NODE-4` has been made the
 
 As new followers are created, some tablets could be over-replicated. The system automatically removes one extra copy of data.
 
-In the illustration, a new replica of tablet `T4` was created. Now `T4` has 4 copies, although the cluster is RF3. This over-replication is fixed by dropping one of the other replicas.
+In the illustration, a new replica of tablet `T4` was created. Now `T4` has 4 copies, although the cluster is RF-3. This over-replication is fixed by dropping one of the other replicas.
 
 ![Drop replicas](/images/explore/scalability/node-addition-dropping-replicas.png)
 
 ## Rebalance followers
 
-Now that the leaders have moved to the new node and the over-replication has been fixed, followers are also re-distributed evenly across the cluster. This is to ensure that the load on all nodes would reasonably be the same.
+Now that the leaders have moved to the new node and the over-replication has been fixed, followers are also re-distributed evenly across the cluster. This is to ensure that the load on all nodes would be reasonably the same.
 
-In the illustration, you can see that followers of `T1` and `T2` have been moved to the newly added `NODE-4`. After the rebalancing is done, you should see a reasonable distribution of leaders and followers across your cluster. as follows:
+In the illustration, you can see that followers of `T1` and `T2` have been moved to the newly added `NODE-4`. After the rebalancing is done, you should see a reasonable distribution of leaders and followers across your cluster, as follows:
 
 ![Leader distribution](/images/explore/scalability/node-addition-complete.png)
 

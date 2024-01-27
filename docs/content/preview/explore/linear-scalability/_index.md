@@ -33,7 +33,7 @@ Depending on your business, you may find you need to scale for a variety of reas
 - **Changing business priorities**. Scaling needs are often unpredictable. To take one example, retail priorities shifted radically when Covid entered the picture. With a database that can scale, you can pivot quickly when the business environment shifts.
 - **New geographies**. Your user base expands to new regions, and you need to add to your presence globally by adding more data centers in different continents.
 
-Being able to scale seamlessly is as important as being able to scale. Scaling needs to be operationally simple and completely transparent to the applications. With YugabyteDB, you can start small and add nodes as needed. You can scale your data, reads, and writes without disrupting ongoing applications. As your needs grow, YugabyteDB automatically shards data and scales out. You can also scale up your cluster for short-term needs and then scale down once the need is over.
+Being able to scale seamlessly is as important as being able to scale. Scaling needs to be operationally simple and completely transparent to the applications. With YugabyteDB, you can start small and add nodes as needed. You can scale your data, reads, and writes without disrupting ongoing applications. As your needs grow, YugabyteDB automatically shards data and scales out. You can also scale up your cluster for short-term needs and then scale down after the need is over.
 
 ## Ways to scale
 
@@ -62,10 +62,10 @@ Adding more nodes to a system seamlessly is the foundation of scalability. It is
 
 ### Sharding
 
-Data distribution is very critical in scaling. In YugabyteDB, data is [split (sharded)](./sharding-rebalancing) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
+Data distribution is critical in scaling. In YugabyteDB, data is [split (sharded)](./data-distribution/) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
 
 {{<tip>}}
-To learn more about the different types of sharding, see [Hash & Range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](../linear-scalability/sharding-rebalancing#tablet-splitting)
+To learn more about the different types of sharding, see [Hash & Range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting)
 {{</tip>}}
 
 ### Rebalancing
@@ -73,12 +73,12 @@ To learn more about the different types of sharding, see [Hash & Range sharding]
 As your data grows, tablets are split and moved across the different nodes in the cluster to maintain an equal distribution of data across the nodes. This process is known as _Rebalancing_. Data is moved automatically, without any interruption in service.
 
 {{<tip>}}
-For an illustration of how tablets are split, see [Tablet splitting](../linear-scalability/sharding-rebalancing#tablet-splitting)
+For an illustration of how tablets are rebalanced, see [Rebalancing](./data-distribution/#rebalancing)
 {{</tip>}}
 
 ### Adding nodes
 
-When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes, and the entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./data-distribution/#rebalancing) to the new nodes, and the entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
 {{<tip>}}
 For an illustration of what happens when nodes are added to a cluster, see [Adding nodes](node-addition/).
@@ -99,13 +99,13 @@ For best results, keep steady state resource usage under 60%, and take strong ac
   {{<index/item
     title="Distribute data across nodes"
     body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
-    href="./sharding-rebalancing"
+    href="data-distribution/"
     icon="fa-solid fa-building">}}
 
   {{<index/item
     title="Scale out by adding nodes"
     body="Seamlessly scale your cluster on demand by adding new nodes to the cluster."
-    href="./node-addition"
+    href="node-addition/"
     icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item
