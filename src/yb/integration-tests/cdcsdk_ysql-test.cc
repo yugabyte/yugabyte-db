@@ -1012,6 +1012,165 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeCDCStreamDelet
   ASSERT_EQ(DeleteCDCStream(stream_id), false);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTable)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  const vector<string> table_list_suffix = {"_1", "_2", "_3", "_4"};
+  const int kNumTables = 4;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  while (idx < 3) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        table_list_suffix[idx]));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
+        kTableName));
+    idx += 1;
+  }
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  SleepFor(MonoDelta::FromSeconds(2));
+  DropTable(&test_cluster_, "test_table_1");
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup, here
+  // wait for the metadata cleanup to finish by the background thread.
+  std::unordered_set<std::string> expected_table_ids_after_drop = {
+      table[1].table_id(), table[2].table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids_after_drop, "Waiting for stream metadata cleanup.");
+
+  // create a new table and verify that it gets added to stream metadata.
+  table[idx] = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+  ASSERT_OK(test_client()->GetTablets(
+      table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+
+  std::unordered_set<std::string> expected_table_ids_after_create_table =
+      expected_table_ids_after_drop;
+  expected_table_ids_after_create_table.insert(table[idx].table_id());
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids_after_create_table,
+      "Waiting for GetDBStreamInfo after table creation.");
+
+  // verify tablets of the new table are added to cdc_state table.
+  std::unordered_set<std::string> expected_tablet_ids;
+  for (idx = 1; idx < 4; idx++) {
+    expected_tablet_ids.insert(tablets[idx].Get(0).tablet_id());
+  }
+
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  std::unordered_set<TabletId> tablets_found;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << row.key.tablet_id
+              << " stream_id: " << row.key.stream_id
+              << " checkpoint: " << row.checkpoint->ToString();
+    if (row.key.stream_id == stream_id) {
+      tablets_found.insert(row.key.tablet_id);
+    }
+  }
+  ASSERT_OK(s);
+  LOG(INFO) << "tablets found: " << AsString(tablets_found)
+            << ", expected tablets: " << AsString(expected_tablet_ids);
+  ASSERT_EQ(expected_tablet_ids, tablets_found);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMasterRestart)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const vector<string> table_list_suffix = {"_1", "_2", "_3", "_4"};
+  const int kNumTables = 4;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  while (idx < 3) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        table_list_suffix[idx]));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
+        kTableName));
+    idx += 1;
+  }
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  SleepFor(MonoDelta::FromSeconds(2));
+  DropTable(&test_cluster_, "test_table_1");
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup, here
+  // wait for the metadata cleanup to finish by the background thread.
+  std::unordered_set<std::string> expected_table_ids_after_drop = {
+      table[1].table_id(), table[2].table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids_after_drop, "Waiting for stream metadata cleanup.");
+
+  // After metadata cleanup, skip processing any newly created table by bg thread.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
+
+  // create a new table and verify that it does not get added to stream metadata.
+  table[idx] = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_list_suffix[idx]));
+  ASSERT_OK(test_client()->GetTablets(
+      table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids_after_drop,
+      "Waiting for GetDBStreamInfo after table creation.");
+
+  // Restart leader master to repopulate namespace_to_cdcsdk_unprocessed_table_map_ in-memory map.
+  auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(leader_master->Restart());
+  LOG(INFO) << "Master Restarted";
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Enable processing of tables that are not part of cdc stream.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = false;
+
+  // verify newly created table has been added to stream metadata.
+  std::unordered_set<std::string> expected_table_ids_after_create_table =
+      expected_table_ids_after_drop;
+  expected_table_ids_after_create_table.insert(table[idx].table_id());
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids_after_create_table,
+      "Waiting for GetDBStreamInfo after master restart.");
+
+  // verify tablets of the new table are added to cdc_state table.
+  std::unordered_set<std::string> expected_tablet_ids;
+  for (idx = 1; idx < 4; idx++) {
+    expected_tablet_ids.insert(tablets[idx].Get(0).tablet_id());
+  }
+
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  std::unordered_set<TabletId> tablets_found;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << row.key.tablet_id
+              << " stream_id: " << row.key.stream_id
+              << " checkpoint: " << row.checkpoint->ToString();
+    if (row.key.stream_id == stream_id) {
+      tablets_found.insert(row.key.tablet_id);
+    }
+  }
+  ASSERT_OK(s);
+  LOG(INFO) << "tablets found: " << AsString(tablets_found)
+            << ", expected tablets: " << AsString(expected_tablet_ids);
+  ASSERT_EQ(expected_tablet_ids, tablets_found);
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStreamDelete)) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -3564,8 +3723,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                        ->TEST_service_pool("yb.cdc.CDCService")
                                                        ->TEST_get_service()
                                                        .get());
-  auto tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
+  auto tablet_info =
+      ASSERT_RESULT(cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablets[0].tablet_id()}));
   auto first_last_active_time = tablet_info.last_active_time;
   auto last_active_time_from_table = ASSERT_RESULT(
       GetLastActiveTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
@@ -3594,7 +3753,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                   ->TEST_get_service()
                                                   .get());
   tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
+      cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablets[0].tablet_id()}));
   auto second_last_active_time = tablet_info.last_active_time;
 
   last_active_time_from_table = ASSERT_RESULT(
@@ -7205,6 +7364,11 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
       "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+  res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(
+      res.ToString(),
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
@@ -7276,7 +7440,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
 void TestStreamCreationViaCDCService(CDCSDKYsqlTest* test_class, bool enable_replication_commands) {
   ASSERT_OK(test_class->SetUpWithParams(
       /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) =
       enable_replication_commands;
 
   ASSERT_OK(test_class->CreateDBStream());
@@ -7400,6 +7564,24 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsWithoutCDCStateTable) {
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  ASSERT_OK(conn.Execute("set yb_enable_replication_commands = false;"));
+  auto s = conn.Execute("create publication pub2 for all tables;");
+  ASSERT_NOK(s);
+  ASSERT_NE(s.message().AsStringView().find("CreatePublication is unavailable"), std::string::npos)
+      << s.message();
+
+  ASSERT_OK(conn.Execute("set yb_enable_replication_commands = true;"));
+  ASSERT_OK(conn.Execute("create publication pub2 for all tables;"));
 }
 
 }  // namespace cdc

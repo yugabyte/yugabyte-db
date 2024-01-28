@@ -153,12 +153,21 @@ public class AvailabilityZone extends Model {
 
   @JsonIgnore
   public long getNodeCount() {
-    return Customer.get(getRegion().getProvider().getCustomerUUID())
-        .getUniversesForProvider(getRegion().getProvider().getUuid())
-        .stream()
-        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
-        .filter(nd -> nd.azUuid.equals(getUuid()))
-        .count();
+    Provider provider = getRegion().getProvider();
+    long universeNodeCount =
+        Customer.get(provider.getCustomerUUID())
+            .getUniversesForProvider(provider.getUuid())
+            .stream()
+            .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+            .filter(nd -> nd.azUuid.equals(getUuid()))
+            .count();
+    long onpremInstanceCount = 0;
+    if (provider.getCloudCode() == CloudType.onprem) {
+      // We will have to consider the not-in-use instances associated with the az.
+      onpremInstanceCount = NodeInstance.listByZone(getUuid(), null).stream().count();
+    }
+
+    return universeNodeCount + onpremInstanceCount;
   }
 
   public static AvailabilityZone getOrCreate(

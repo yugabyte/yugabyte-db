@@ -259,8 +259,12 @@ message PgCreateTableRequestPB {
   bool skip_index_backfill = 17;
 
   bool is_matview = 21;
-  PgObjectIdPB matview_pg_table_oid = 18;
+  // Used during a table rewrite operation to explicitly store the PG table oid.
+  PgObjectIdPB pg_table_oid = 18;
   string schema_name = 19;
+  // Used during a table rewrite operation to store the relfilenode OID that maps to the old
+  // DocDB table.
+  PgObjectIdPB old_relfilenode_oid = 22;
 }
 
 message PgCreateTableResponsePB {

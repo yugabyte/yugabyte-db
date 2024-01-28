@@ -234,14 +234,17 @@ typedef struct PgSysColumns {
 //
 // Index-related parameters are used to describe different types of scan.
 //   - Sequential scan: Index parameter is not used.
-//     { index_oid, index_only_scan, use_secondary_index } = { kInvalidOid, false, false }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { kInvalidRelfileNodeOid, false, false }
 //   - IndexScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, false, true }
 //   - IndexOnlyScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, true, true }
 //   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
 //     primary-index database object from table object.
-//       index_oid = TableOid
+//       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //       use_secondary_index = false
 //
@@ -250,7 +253,7 @@ typedef struct PgSysColumns {
 //   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
 //     system-tables.
 typedef struct PgPrepareParameters {
-  YBCPgOid index_oid;
+  YBCPgOid index_relfilenode_oid;
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
@@ -364,6 +367,8 @@ typedef struct PgCallbacks {
   void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
+  /* pgstat.h */
+  uint32_t (*PgstatReportWaitStart)(uint32_t);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -401,7 +406,7 @@ typedef struct YbTablePropertiesData* YbTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
-  YBCPgOid table_oid;
+  YBCPgOid table_relfilenode_oid;
   size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
@@ -438,6 +443,7 @@ typedef struct PgExecReadWriteStats {
   uint64_t reads;
   uint64_t writes;
   uint64_t read_wait;
+  uint64_t rows_scanned;
 } YBCPgExecReadWriteStats;
 
 typedef struct PgExecEventMetric {
@@ -553,6 +559,9 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
+  // PgClient session id.
+  uint64_t session_id;
+
   // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
   // the ipv4/ipv6 address and client_port stores the port of the PG process
   // where the YSQL query originated. In case of AF_INET, the first 4 bytes
@@ -564,6 +573,14 @@ typedef struct AshMetadata {
   uint16_t client_port;
   uint8_t addr_family;
 } YBCAshMetadata;
+
+typedef struct YBCBindColumn {
+  int attr_num;
+  const YBCPgTypeEntity* type_entity;
+  YBCPgCollationInfo collation_info;
+  bool is_null;
+  uint64_t datum;
+} YBCBindColumn;
 
 #ifdef __cplusplus
 }  // extern "C"

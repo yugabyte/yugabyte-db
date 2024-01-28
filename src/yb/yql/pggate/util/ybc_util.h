@@ -119,6 +119,11 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * GUC variable that enables ALTER TABLE rewrite operations.
+ */
+extern bool yb_enable_alter_table_rewrite;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

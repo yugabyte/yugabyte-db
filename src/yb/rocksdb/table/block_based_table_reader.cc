@@ -337,27 +337,27 @@ BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(
   FATAL_INVALID_ENUM_VALUE(BlockType, block_type);
 }
 
-BloomFilterAwareFileFilter::BloomFilterAwareFileFilter(
-    const ReadOptions& read_options, const Slice& user_key)
-    : read_options_(read_options), user_key_(user_key.ToBuffer()) {}
+BloomFilterAwareFileFilter::BloomFilterAwareFileFilter() {}
 
-bool BloomFilterAwareFileFilter::Filter(TableReader* reader) const {
+bool BloomFilterAwareFileFilter::Filter(
+    const ReadOptions& read_options, Slice user_key, FilterKeyCache* filter_key_cache,
+    TableReader* reader) const {
   auto table = down_cast<BlockBasedTable*>(reader);
   if (table->rep_->filter_type == FilterType::kFixedSizeFilter) {
-    const auto filter_key = table->GetFilterKeyFromUserKey(user_key_);
+    const auto filter_key = table->GetFilterKeyFromUserKey(user_key, filter_key_cache);
     if (filter_key.empty()) {
       return true;
     }
-    auto filter_entry = table->GetFilter(read_options_.query_id,
-        read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key,
-        read_options_.statistics);
+    auto filter_entry = table->GetFilter(
+        read_options.query_id, read_options.read_tier == kBlockCacheTier /* no_io */, &filter_key,
+        read_options.statistics);
     FilterBlockReader* filter = filter_entry.value;
     // If bloom filter was not useful, then take this file into account.
     const bool use_file = table->NonBlockBasedFilterKeyMayMatch(filter, filter_key);
     if (!use_file) {
       // Record that the bloom filter was useful.
       auto* statistics =
-          read_options_.statistics ? read_options_.statistics : table->rep_->ioptions.statistics;
+          read_options.statistics ? read_options.statistics : table->rep_->ioptions.statistics;
       RecordTick(statistics, BLOOM_FILTER_USEFUL);
     }
     filter_entry.Release(table->rep_->table_options.block_cache.get());
@@ -972,13 +972,23 @@ Status BlockBasedTable::GetFixedSizeFilterBlockHandle(const Slice& filter_key,
   }
 }
 
-Slice BlockBasedTable::GetFilterKeyFromInternalKey(const Slice &internal_key) const {
+Slice BlockBasedTable::GetFilterKeyFromInternalKey(Slice internal_key) const {
   return GetFilterKeyFromUserKey(ExtractUserKey(internal_key));
 }
 
-Slice BlockBasedTable::GetFilterKeyFromUserKey(const Slice &user_key) const {
-  return rep_->filter_key_transformer ?
-      rep_->filter_key_transformer->Transform(user_key) : user_key;
+Slice BlockBasedTable::GetFilterKeyFromUserKey(Slice user_key) const {
+  FilterKeyCache filter_key_cache(user_key);
+  return GetFilterKeyFromUserKey(user_key, &filter_key_cache);
+}
+
+Slice BlockBasedTable::GetFilterKeyFromUserKey(
+    Slice user_key, FilterKeyCache* filter_key_cache) const {
+  auto transformer = rep_->filter_key_transformer;
+  if (transformer != filter_key_cache->transformer) {
+    filter_key_cache->transformer = transformer;
+    filter_key_cache->filter_key = transformer ? transformer->Transform(user_key) : user_key;
+  }
+  return filter_key_cache->filter_key;
 }
 
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(

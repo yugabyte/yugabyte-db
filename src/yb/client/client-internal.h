@@ -444,6 +444,17 @@ class YBClient::Data {
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
+  Status GetXClusterStreams(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      GetXClusterStreamsCallback user_cb);
+
+  Status IsXClusterBootstrapRequired(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      IsXClusterBootstrapRequiredCallback user_cb);
+
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(
       const ReqClass &req, RespClass *response, rpc::RpcController *controller,

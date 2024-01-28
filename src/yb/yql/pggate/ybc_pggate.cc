@@ -91,7 +91,8 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
     "If true, YB catalog preloads a default set of tables upon connection "
-    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_tablespace.");
+    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_cast,pg_inherits,"
+    "pg_policy,pg_proc,pg_tablespace,pg_trigger.");
 
 DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "A list of catalog tables that YSQL preloads additionally upon "
@@ -174,7 +175,7 @@ YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
 template<class Processor>
 Status ProcessYbctidImpl(const YBCPgYBTupleIdDescriptor& source, const Processor& processor) {
   auto ybctid = VERIFY_RESULT(pgapi->BuildTupleId(source));
-  return processor(source.table_oid, ybctid.AsSlice());
+  return processor(source.table_relfilenode_oid, ybctid.AsSlice());
 }
 
 template<class Processor>
@@ -701,26 +702,29 @@ YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
 YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const char *schema_name,
                               const char *table_name,
-                              const YBCPgOid database_oid,
-                              const YBCPgOid table_oid,
+                              YBCPgOid database_oid,
+                              YBCPgOid table_relfilenode_oid,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
                               bool is_colocated_via_database,
-                              const YBCPgOid tablegroup_oid,
-                              const YBCPgOid colocation_id,
-                              const YBCPgOid tablespace_oid,
+                              YBCPgOid tablegroup_oid,
+                              YBCPgOid colocation_id,
+                              YBCPgOid tablespace_oid,
                               bool is_matview,
-                              const YBCPgOid matview_pg_table_oid,
+                              YBCPgOid pg_table_oid,
+                              YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
-  const PgObjectId matview_pg_table_id(database_oid, matview_pg_table_oid);
+  const PgObjectId pg_table_id(database_oid, pg_table_oid);
+  const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
+
   return ToYBCStatus(pgapi->NewCreateTable(
       database_name, schema_name, table_name, table_id, is_shared_table,
       if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
-      tablespace_id, is_matview, matview_pg_table_id, handle));
+      tablespace_id, is_matview, pg_table_id, old_relfilenode_id, handle));
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -743,9 +747,9 @@ YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
-                             const YBCPgOid table_oid,
+                             const YBCPgOid table_relfilenode_oid,
                              YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewAlterTable(table_id, handle));
 }
 
@@ -773,8 +777,8 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgAlterTableSetTableId(
-    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid) {
-  const PgObjectId table_id(database_oid, table_oid);
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid) {
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
 }
 
@@ -783,17 +787,17 @@ YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgNewDropTable(const YBCPgOid database_oid,
-                            const YBCPgOid table_oid,
+                            const YBCPgOid table_relfilenode_oid,
                             bool if_exist,
                             YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDropTable(table_id, if_exist, handle));
 }
 
 YBCStatus YBCPgGetTableDesc(const YBCPgOid database_oid,
-                            const YBCPgOid table_oid,
+                            const YBCPgOid table_relfilenode_oid,
                             YBCPgTableDesc *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->GetTableDesc(table_id, handle));
 }
 
@@ -821,9 +825,9 @@ YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgNewTruncateTable(const YBCPgOid database_oid,
-                                const YBCPgOid table_oid,
+                                const YBCPgOid table_relfilenode_oid,
                                 YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewTruncateTable(table_id, handle));
 }
 
@@ -856,9 +860,9 @@ YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
-                           const YBCPgOid table_oid,
+                           const YBCPgOid table_relfilenode_oid,
                            bool *exists) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const auto result = pgapi->LoadTable(table_id);
 
   if (result.ok()) {
@@ -872,11 +876,11 @@ YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
   }
 }
 
-YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_relfilenode_oid,
                                 YBCPgOid database_oid,
                                 int64_t *size,
                                 int32_t *num_missing_tablets) {
-  return ExtractValueFromResult(pgapi->GetTableDiskSize({database_oid, table_oid}),
+  return ExtractValueFromResult(pgapi->GetTableDiskSize({database_oid, table_relfilenode_oid}),
                                 [size, num_missing_tablets](auto value) {
      *size = value.table_size;
      *num_missing_tablets = value.num_missing_tablets;
@@ -890,7 +894,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const char *index_name,
                               const YBCPgOid database_oid,
                               const YBCPgOid index_oid,
-                              const YBCPgOid table_oid,
+                              const YBCPgOid table_relfilenode_oid,
                               bool is_shared_index,
                               bool is_unique_index,
                               const bool skip_index_backfill,
@@ -899,16 +903,22 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const YBCPgOid tablegroup_oid,
                               const YBCPgOid colocation_id,
                               const YBCPgOid tablespace_oid,
+                              const YBCPgOid pg_table_oid,
+                              const YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle) {
   const PgObjectId index_id(database_oid, index_oid);
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId tablegroup_id(database_oid, tablegroup_oid);
   const PgObjectId tablespace_id(database_oid, tablespace_oid);
+  const PgObjectId pg_table_id(database_oid, pg_table_oid);
+  const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
+
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
                                            table_id, is_shared_index, is_unique_index,
                                            skip_index_backfill, if_not_exist,
                                            is_colocated_via_database, tablegroup_id,
-                                           colocation_id, tablespace_id, handle));
+                                           colocation_id, tablespace_id, pg_table_id,
+                                           old_relfilenode_id, handle));
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -982,6 +992,10 @@ YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool i
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
+  return ToYBCStatus(pgapi->DmlBindRow(handle, columns, count));
 }
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,
@@ -1089,11 +1103,11 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor *source, uint64_t *
 }
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          int targrows,
                          bool is_region_local,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewSample(table_id, targrows, is_region_local, handle));
 }
 
@@ -1115,11 +1129,11 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, is_region_local, handle, transaction_setting));
 }
 
@@ -1147,11 +1161,11 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewUpdate(table_id, is_region_local, handle, transaction_setting));
 }
 
@@ -1161,11 +1175,11 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewDelete(table_id, is_region_local, handle, transaction_setting));
 }
 
@@ -1179,11 +1193,11 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 
 // Colocated TRUNCATE Operations -------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
-                                    const YBCPgOid table_oid,
+                                    const YBCPgOid table_relfilenode_oid,
                                     bool is_region_local,
                                     YBCPgStatement *handle,
                                     YBCPgTransactionSetting transaction_setting) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewTruncateColocated(
       table_id, is_region_local, handle, transaction_setting));
 }
@@ -1194,13 +1208,13 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
 
 // SELECT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          const YBCPgPrepareParameters *prepare_params,
                          bool is_region_local,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_oid);
+  const PgObjectId table_id(database_oid, table_relfilenode_oid);
   const PgObjectId index_id(database_oid,
-                            prepare_params ? prepare_params->index_oid : kInvalidOid);
+                            prepare_params ? prepare_params->index_relfilenode_oid : kInvalidOid);
   return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, is_region_local, handle));
 }
 
@@ -1498,12 +1512,12 @@ YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor *so
   });
 }
 
-void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
-  pgapi->DeleteForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
+void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid) {
+  pgapi->DeleteForeignKeyReference(table_relfilenode_oid, YbctidAsSlice(ybctid));
 }
 
-void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid) {
-  pgapi->AddForeignKeyReference(table_oid, YbctidAsSlice(ybctid));
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid) {
+  pgapi->AddForeignKeyReference(table_relfilenode_oid, YbctidAsSlice(ybctid));
 }
 
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor *source, bool* res) {
@@ -1761,9 +1775,9 @@ void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no) {
   pgapi->ForceReadTimeSerialNo(read_time_serial_no);
 }
 
-YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
-                                 bool* is_object_part_of_xrepl) {
-  auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_oid));
+YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
+    bool* is_object_part_of_xrepl) {
+  auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_relfilenode_oid));
   if (res.ok()) {
     *is_object_part_of_xrepl = *res;
     return YBCStatusOK();
@@ -1776,13 +1790,13 @@ YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id) {
 }
 
 YBCStatus YBCGetTableKeyRanges(
-    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
     uint64_t* current_tserver_ht,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param) {
   auto res = pgapi->GetTableKeyRanges(
-      PgObjectId(database_oid, table_oid), Slice(lower_bound_key, lower_bound_key_size),
+      PgObjectId(database_oid, table_relfilenode_oid), Slice(lower_bound_key, lower_bound_key_size),
       Slice(upper_bound_key, upper_bound_key_size), max_num_ranges, range_size_bytes, is_forward,
       max_key_length);
   if (!res.ok()) {

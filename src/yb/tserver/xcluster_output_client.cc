@@ -93,8 +93,8 @@ namespace yb {
 namespace tserver {
 
 XClusterOutputClient::XClusterOutputClient(
-    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    const cdc::ProducerTabletInfo& producer_tablet_info,
+    XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
     : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
@@ -704,8 +704,8 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
 }
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
-    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    const cdc::ProducerTabletInfo& producer_tablet_info,
+    XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(

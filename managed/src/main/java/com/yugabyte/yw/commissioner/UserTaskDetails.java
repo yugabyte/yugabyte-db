@@ -255,7 +255,9 @@ public class UserTaskDetails {
     ValidateConfigurations,
 
     // Manage Otel Collector.
-    ManageOtelCollector
+    ManageOtelCollector,
+
+    ValidatingNode
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -595,6 +597,10 @@ public class UserTaskDetails {
       case ManageOtelCollector:
         title = "Managing OpenTelemetry Collector";
         description = "Managing OpenTelemetry Collector";
+        break;
+      case ValidatingNode:
+        title = "Validating node status";
+        description = "Validating node's current state before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

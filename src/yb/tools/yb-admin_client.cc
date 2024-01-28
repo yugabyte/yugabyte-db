@@ -45,6 +45,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -1688,9 +1689,9 @@ Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListAllNamespaces() {
+Status ClusterAdminClient::ListAllNamespaces(bool include_nonrunning) {
   cout << "name | UUID | language | state | colocated" << endl << endl;
-  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap());
+  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap(include_nonrunning));
   const auto list_namespaces = [&] (bool for_system_namespace) -> void {
     cout << (for_system_namespace ? "System Namespaces:" : "User Namespaces:") << endl;
     for (const auto& namespace_info_pair : namespaces) {
@@ -2449,9 +2450,11 @@ Result<Response> ClusterAdminClient::InvokeRpc(
       VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message, timeout)));
 }
 
-Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {
+Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap(
+    bool include_nonrunning) {
   if (namespace_map_.empty()) {
-    auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
+    auto v = VERIFY_RESULT(
+        yb_client_->ListNamespaces(client::IncludeNonrunningNamespaces(include_nonrunning)));
     for (auto& ns : v) {
       auto ns_id = ns.id.id();
       namespace_map_.emplace(std::move(ns_id), std::move(ns));
@@ -4212,7 +4215,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
         // If we are adding tables, then wait for the altered producer to be deleted (this happens
         // once it is merged with the original).
         RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
-            cdc::GetAlterReplicationGroupId(replication_group_id).ToString()));
+            xcluster::GetAlterReplicationGroupId(xcluster::ReplicationGroupId(replication_group_id))
+                .ToString()));
   }
 
   cout << "Replication altered successfully" << endl;

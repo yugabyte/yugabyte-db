@@ -9,8 +9,10 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +27,10 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   @Inject
   protected SoftwareKubernetesUpgradeYB(
-      BaseTaskDependencies baseTaskDependencies, AutoFlagUtil autoFlagUtil) {
-    super(baseTaskDependencies);
+      BaseTaskDependencies baseTaskDependencies,
+      AutoFlagUtil autoFlagUtil,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
     this.autoFlagUtil = autoFlagUtil;
   }
 
@@ -41,18 +45,26 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           String newVersion = taskParams().ybSoftwareVersion;
           String currentVersion =
               getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse(), isFirstTry());
-          // Preliminary checks for upgrades.
-          createCheckUpgradeTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,

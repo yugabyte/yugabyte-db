@@ -152,9 +152,10 @@ TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
   auto new_leader = cluster_->mini_master(new_leader_idx);
 
   // Step down the leader.
-  ASSERT_OK(StepDown(old_leader->tablet_peer(),
-      new_leader->permanent_uuid(),
-      ForceStepDown::kFalse));
+  LOG(INFO) << "Stepping down from " << old_leader->tablet_peer()->permanent_uuid()
+            << " to " << new_leader->permanent_uuid();
+  ASSERT_OK(StepDown(
+      old_leader->tablet_peer(), new_leader->permanent_uuid(), ForceStepDown::kFalse));
   // This waits for the new leader to be elected.
   ASSERT_EQ(new_leader_idx, cluster_->LeaderMasterIdx());
   // The new master's catalog loader should enqueue a DeleteYsqlDatabaseAsync task which will mark
@@ -165,9 +166,10 @@ TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
   }, 10s * kTimeMultiplier, "Wait for namespace to be marked as DELETED"));
 
   // Step down the new leader to the original leader.
-  ASSERT_OK(StepDown(new_leader->tablet_peer(),
-      old_leader->permanent_uuid(),
-      ForceStepDown::kFalse));
+  LOG(INFO) << "Stepping down from " << new_leader->permanent_uuid()
+            << " to " << old_leader->tablet_peer()->permanent_uuid();
+  ASSERT_OK(StepDown(
+      new_leader->tablet_peer(), old_leader->permanent_uuid(), ForceStepDown::kFalse));
 
   // Wait for the sys catalog load to start. It should get blocked on the leader_lock_ that is held
   // by ProcessPendingNamespace.

@@ -44,19 +44,16 @@ class CDCServiceProxy;
 
 namespace tserver {
 
-class XClusterConsumer;
-
-namespace xcluster {
 class AutoFlagsCompatibleVersion;
-}  // namespace xcluster
+class XClusterConsumer;
 
 class XClusterPoller : public XClusterAsyncExecutor {
  public:
   XClusterPoller(
-      const cdc::ProducerTabletInfo& producer_tablet_info,
-      const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      std::shared_ptr<const xcluster::AutoFlagsCompatibleVersion> auto_flags_version,
-      ThreadPool* thread_pool, rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
+      const xcluster::ProducerTabletInfo& producer_tablet_info,
+      const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+      std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
+      rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
       SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term);
@@ -87,8 +84,12 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
-  const cdc::ConsumerTabletInfo& GetConsumerTabletInfo() const { return consumer_tablet_info_; }
-  const cdc::ProducerTabletInfo& GetProducerTabletInfo() const { return producer_tablet_info_; }
+  const xcluster::ConsumerTabletInfo& GetConsumerTabletInfo() const {
+    return consumer_tablet_info_;
+  }
+  const xcluster::ProducerTabletInfo& GetProducerTabletInfo() const {
+    return producer_tablet_info_;
+  }
 
   bool IsStuck() const;
   std::string State() const;
@@ -105,7 +106,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);
 
  private:
-  const cdc::ReplicationGroupId& GetReplicationGroupId() const {
+  const xcluster::ReplicationGroupId& GetReplicationGroupId() const {
     return producer_tablet_info_.replication_group_id;
   }
 
@@ -127,10 +128,10 @@ class XClusterPoller : public XClusterAsyncExecutor {
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
 
-  const cdc::ProducerTabletInfo producer_tablet_info_;
-  const cdc::ConsumerTabletInfo consumer_tablet_info_;
+  const xcluster::ProducerTabletInfo producer_tablet_info_;
+  const xcluster::ConsumerTabletInfo consumer_tablet_info_;
   const XClusterPollerId poller_id_;
-  const std::shared_ptr<const xcluster::AutoFlagsCompatibleVersion> auto_flags_version_;
+  const std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);

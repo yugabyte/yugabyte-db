@@ -97,8 +97,7 @@ func (c *Container) GetVoyagerMigrations(ctx echo.Context) error {
         Migrations: []models.VoyagerMigrationDetails{},
     }
 
-    // Use the session from the context.
-    conn, err := c.GetConnectionFromMap(helpers.HOST, "yugabyte")
+    conn, err := c.GetConnection("yugabyte")
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
@@ -121,8 +120,7 @@ func (c *Container) GetVoyagerMetrics(ctx echo.Context) error {
     var migrationUuid string
     migrationUuid = ctx.QueryParam("uuid")
 
-    // Use the session from the context.
-    conn, err := c.GetConnectionFromMap(helpers.HOST, "yugabyte")
+    conn, err := c.GetConnection("yugabyte")
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
@@ -143,7 +141,7 @@ func (c *Container) GetMigrateSchemaInfo(ctx echo.Context) error {
     migrateSchemaTaskInfoResponse := models.MigrateSchemaTaskInfo{}
     migrationUuid := ctx.QueryParam("uuid")
 
-    conn, err := c.GetConnectionFromMap(helpers.HOST, "yugabyte")
+    conn, err := c.GetConnection("yugabyte")
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
@@ -474,7 +472,7 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     migrationAssesmentInfo.TopSuggestions = []string{}
     migrationAssesmentInfo.AssesmentStatus = false
 
-    conn, err := c.GetConnectionFromMap(helpers.HOST, "yugabyte")
+    conn, err := c.GetConnection("yugabyte")
     if err != nil {
         return ctx.String(http.StatusInternalServerError, err.Error())
     }

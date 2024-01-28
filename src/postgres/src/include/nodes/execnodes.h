@@ -1912,9 +1912,11 @@ typedef struct YbBatchedNestLoopState
 	TupleHashIterator hashiter;
 	BucketTupleInfo *current_ht_tuple;
 	TupleHashEntry current_hash_entry;
-	FmgrInfo *hashFunctions;
+	FmgrInfo *outerHashFunctions;
+	FmgrInfo *innerHashFunctions;
 	int numLookupAttrs;
 	AttrNumber *innerAttrs;
+	ExprState *ht_lookup_fn;
 
 	/* Function pointers to local join methods */
 	FlushTupleFn_t FlushTupleImpl;

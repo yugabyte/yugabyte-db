@@ -72,6 +72,7 @@
 
 /* Yugabyte includes */
 #include "catalog/pg_yb_tablegroup.h"
+#include "optimizer/clauses.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -249,17 +250,15 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 											 is_nulls_first));
 }
 
-/* Utility function to add columns to the YB create statement
+/*
+ * Utility function to add columns to the YB create statement
  * Columns need to be sent in order first hash columns, then rest of primary
  * key columns, then regular columns.
- *
- * Table counts as colocated if it has a tablegroup or resides within the
- * colocated database and hasn't opted-out from colocation.
  */
-static void CreateTableAddColumns(YBCPgStatement handle,
-								  TupleDesc desc,
-								  Constraint *primary_key,
-								  const bool colocated)
+static void
+CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
+					  Constraint *primary_key, const bool colocated,
+					  const bool is_tablegroup)
 {
 	ListCell  *cell;
 	IndexElem *index_elem;
@@ -276,17 +275,20 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 					 errmsg("OID should be the only primary key column")));
 
 		index_elem = linitial_node(IndexElem, primary_key->yb_index_params);
-		SortByDir order = index_elem->ordering;
 		/*
 		 * We can only have OID columns on system catalog tables
 		 * and we disallow hash partitioning on those, so OID is not allowed
 		 * to be a hash column - but that will be caught normally.
 		 */
-		bool is_hash = (order == SORTBY_HASH ||
-						(order == SORTBY_DEFAULT && !colocated));
+
+		SortByDir yb_order = YbSortOrdering(index_elem->ordering, colocated,
+											is_tablegroup,
+											true /* is_first_key */);
+		bool is_hash = (yb_order == SORTBY_HASH);
 		bool is_desc = false;
 		bool is_nulls_first = false;
-		ColumnSortingOptions(order,
+
+		ColumnSortingOptions(yb_order,
 							 index_elem->nulls_ordering,
 							 &is_desc,
 							 &is_nulls_first);
@@ -307,6 +309,11 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		foreach(cell, primary_key->yb_index_params)
 		{
 			index_elem = lfirst_node(IndexElem, cell);
+
+			if (index_elem->ordering == SORTBY_HASH && colocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								errmsg("cannot colocate hash partitioned table")));
+
 			bool column_found = false;
 			for (int i = 0; i < desc->natts; ++i)
 			{
@@ -319,25 +326,26 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								 errmsg("PRIMARY KEY containing column of type"
 										" '%s' not yet supported",
 										YBPgTypeOidToStr(att->atttypid))));
-					SortByDir order = index_elem->ordering;
+
+
 					/* In YB mode, the first column defaults to HASH if it is
 					 * not set and its table is not colocated */
 					const bool is_first_key =
 						cell == list_head(primary_key->yb_index_params);
-					bool is_hash = (order == SORTBY_HASH ||
-									(is_first_key &&
-									 order == SORTBY_DEFAULT && !colocated));
+
+					SortByDir yb_order =
+						YbSortOrdering(index_elem->ordering, colocated,
+									   is_tablegroup, is_first_key);
 					bool is_desc = false;
 					bool is_nulls_first = false;
-					ColumnSortingOptions(order,
+
+					ColumnSortingOptions(yb_order,
 										 index_elem->nulls_ordering,
 										 &is_desc,
 										 &is_nulls_first);
-					CreateTableAddColumn(handle,
-										 att,
-										 is_hash,
-										 true /* is_primary */,
-										 is_desc,
+					CreateTableAddColumn(handle, att,
+										 (yb_order == SORTBY_HASH) /* is_hash */,
+										 true /* is_primary */, is_desc,
 										 is_nulls_first);
 					column_found = true;
 					break;
@@ -355,6 +363,13 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	for (int i = 0; i < desc->natts; ++i)
 	{
 		Form_pg_attribute att = TupleDescAttr(desc, i);
+		/*
+		 * We may be creating this table as part of table rewrite. Therefore,
+		 * the table metadata may include the metadata of previously dropped
+		 * attributes, which we should ignore.
+		 */
+		if (att->attisdropped)
+			continue;
 		bool is_key = false;
 		if (primary_key)
 			foreach(cell, primary_key->yb_index_params)
@@ -448,12 +463,11 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 }
 
 /* Utility function to handle split points */
-static void CreateTableHandleSplitOptions(YBCPgStatement handle,
-										  TupleDesc desc,
-										  OptSplit *split_options,
-										  Constraint *primary_key,
-										  Oid namespaceId,
-										  const bool colocated)
+static void
+CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
+							  OptSplit *split_options, Constraint *primary_key,
+							  Oid namespaceId, const bool colocated,
+							  const bool is_tablegroup)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -468,8 +482,9 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 				IndexElem *index_elem = (IndexElem*) lfirst(head);
 
 				if (!index_elem ||
-				   !(index_elem->ordering == SORTBY_HASH ||
-				   index_elem->ordering == SORTBY_DEFAULT))
+					YbSortOrdering(index_elem->ordering, colocated,
+								   is_tablegroup,
+								   true /* is_first_key */) != SORTBY_HASH)
 					hashable = false;
 			} else {
 				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
@@ -483,8 +498,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			}
 
 			if (!hashable)
-				ereport(ERROR, (errmsg("HASH columns must be present to "
-							"split by number of tablets")));
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("HASH columns must be present to split by number of tablets")));
 			/* Tell pggate about it */
 			HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets));
 			break;
@@ -527,10 +542,25 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 	}
 }
 
+/* 
+ * The fields pgTableId and oldRelfileNodeId are used during table rewrite.
+ * During table rewrite, pgTableId is used to relay to DocDB the pg table OID,
+ * so that DocDB has a mapping from the table to the correct pg table OID.
+ * oldRelfileNodeId is used to construct the old DocDB table ID that
+ * corresponds to the rewritten table. This is used to determine if the
+ * table being rewritten is a part of xCluster replication (if it is, the
+ * rewrite operation must fail).
+ * tableName is used to specify the name of the DocDB table. For a typical
+ * CREATE TABLE command, the tableName is the same as stmt->relation->relname.
+ * However, during table rewrites, stmt->relation points to the new transient
+ * PG relation (named pg_temp_xxxx), but we want to create a DocDB table with
+ * the same name as the original PG relation.
+ */ 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
+YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid relationId, Oid namespaceId, Oid tablegroupId,
-			   Oid colocationId, Oid tablespaceId, Oid matviewPgTableId)
+			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
+			   Oid oldRelfileNodeId)
 {
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
@@ -556,10 +586,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		schema_name = get_namespace_name(namespaceId);
 	}
 	if (!IsBootstrapProcessingMode())
-		YBC_LOG_INFO("Creating Table %s.%s.%s",
+		YBC_LOG_INFO("Creating Table %s.%s.%s with DocDB table name %s",
 					 db_name,
 					 schema_name,
-					 stmt->relation->relname);
+					 stmt->relation->relname,
+					 tableName);
 
 	Constraint *primary_key = NULL;
 
@@ -726,7 +757,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
-									   stmt->relation->relname,
+									   tableName,
 									   databaseId,
 									   relationId,
 									   is_shared_relation,
@@ -737,13 +768,12 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   colocationId,
 									   tablespaceId,
 									   is_matview,
-									   matviewPgTableId,
+									   pgTableId,
+									   oldRelfileNodeId,
 									   &handle));
 
-	CreateTableAddColumns(handle,
-						  desc,
-						  primary_key,
-						  is_colocated_via_database || OidIsValid(tablegroupId));
+	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
+						  OidIsValid(tablegroupId) /* is_tablegroup */);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
@@ -755,7 +785,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 				 errmsg("cannot create colocated table with split option")));
 		CreateTableHandleSplitOptions(
 			handle, desc, split_options, primary_key, namespaceId,
-			is_colocated_via_database || OidIsValid(tablegroupId));
+			is_colocated_via_database,
+			OidIsValid(tablegroupId) /* is_tablegroup */);
 	}
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));
@@ -783,12 +814,10 @@ YBCDropTable(Relation relation)
 	if (yb_props->is_colocated)
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   YbGetStorageRelid(relation),
-															   false,
-															   &handle,
-																 YB_TRANSACTIONAL),
-									 &not_found);
+		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(
+				databaseId, YbGetRelfileNodeId(relation), false, &handle,
+				YB_TRANSACTIONAL),
+			&not_found);
 		/*
 		 * Since the creation of the handle could return a 'NotFound' error,
 		 * execute the statement only if the handle is valid.
@@ -806,11 +835,10 @@ YBCDropTable(Relation relation)
 	/* Drop the table */
 	{
 		bool not_found = false;
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
-													   YbGetStorageRelid(relation),
-													   false, /* if_exists */
-													   &handle),
-													   &not_found);
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(
+				databaseId, YbGetRelfileNodeId(relation),
+				false /* if_exists */, &handle),
+			&not_found);
 		if (not_found)
 		{
 			return;
@@ -884,7 +912,7 @@ void
 YbTruncate(Relation rel)
 {
 	YBCPgStatement handle;
-	Oid			relationId = RelationGetRelid(rel);
+	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 	Oid			databaseId = YBCGetDatabaseOid(rel);
 	bool		isRegionLocal = YBCIsRegionLocal(rel);
 
@@ -895,7 +923,7 @@ YbTruncate(Relation rel)
 		 * relations.
 		 */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-												 relationId,
+												 relfileNodeId,
 												 isRegionLocal,
 												 &handle,
 												 YB_TRANSACTIONAL));
@@ -907,7 +935,7 @@ YbTruncate(Relation rel)
 	{
 		/* Send truncate table RPC to master for non-colocated relations */
 		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
-											 relationId,
+											 relfileNodeId,
 											 &handle));
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
@@ -986,6 +1014,10 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 	}
 }
 
+/*
+ * Similar to YBCCreateTable, pgTableId and oldRelfileNodeId are used during
+ * table rewrite.
+ */
 void
 YBCCreateIndex(const char *indexName,
 			   IndexInfo *indexInfo,
@@ -999,7 +1031,9 @@ YBCCreateIndex(const char *indexName,
 			   bool is_colocated,
 			   Oid tablegroupId,
 			   Oid colocationId,
-			   Oid tablespaceId)
+			   Oid tablespaceId,
+			   Oid pgTableId,
+			   Oid oldRelfileNodeId)
 {
 	char *db_name	  = get_database_name(YBCGetDatabaseOid(rel));
 	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
@@ -1017,7 +1051,7 @@ YBCCreateIndex(const char *indexName,
 									   indexName,
 									   YBCGetDatabaseOid(rel),
 									   indexId,
-									   YbGetStorageRelid(rel),
+									   YbGetRelfileNodeId(rel),
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
@@ -1027,6 +1061,8 @@ YBCCreateIndex(const char *indexName,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
+									   pgTableId,
+									   oldRelfileNodeId,
 									   &handle));
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)
@@ -1046,7 +1082,13 @@ YBCCreateIndex(const char *indexName,
 								YBPgTypeOidToStr(att->atttypid))));
 		}
 
-		const int16 options        = coloptions[i];
+		/*
+		 * Non-key columns' options are always 0, and aren't explicitly stored
+		 * in pg_index.indoptions. As they aren't stored, we may not have
+		 * them in coloptions if the caller chose not to include them,
+		 * so avoid checking coloptions if the column is a key column.
+		 */
+		const int16 options        = is_key ? coloptions[i] : 0;
 		const bool  is_hash        = options & INDOPTION_HASH;
 		const bool  is_desc        = options & INDOPTION_DESC;
 		const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
@@ -1076,6 +1118,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						YBCPgStatement* rollbackHandle,
 						bool isPartitionOfAlteredTable)
 {
+	Oid relationId = RelationGetRelid(rel);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
+
 	if (isPartitionOfAlteredTable)
 	{
 		/*
@@ -1098,7 +1143,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				return handles;
 		}
 	}
-	Oid relationId = YbGetStorageRelid(rel);
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:
@@ -1131,7 +1175,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
 
-			YBCPgExpr res = NULL;
+			YBCPgExpr missing_value = NULL;
 			if (colDef->raw_default && yb_enable_add_column_missing_default)
 			{
 				ParseState *pstate = make_parsestate(NULL);
@@ -1145,22 +1189,31 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
 												  typeOid, typmod,
 												  colDef->colname);
-				expr = expression_planner(expr);
-				EState *estate = CreateExecutorState();
-				ExprState *exprState = ExecPrepareExpr(expr, estate);
-				ExprContext *econtext = GetPerTupleExprContext(estate);
-				bool missingIsNull;
-				Datum missingval = ExecEvalExpr(exprState, econtext,
-												&missingIsNull);
-				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
-									 missingval, missingIsNull);
-				FreeExecutorState(estate);
+				/*
+				 * Compute the missing default value if the default expression
+				 * is non-volatile.
+				 */
+				if (!contain_volatile_functions((Node *) expr))
+				{
+					expr = expression_planner(expr);
+					EState *estate = CreateExecutorState();
+					ExprState *exprState = ExecPrepareExpr(expr, estate);
+					ExprContext *econtext = GetPerTupleExprContext(estate);
+					bool missingIsNull;
+					Datum missingValDatum = ExecEvalExpr(exprState, econtext,
+														 &missingIsNull);
+					missing_value = YBCNewConstant(add_col_handle, typeOid,
+												   colDef->collOid,
+												   missingValDatum,
+												   missingIsNull);
+					FreeExecutorState(estate);
+				}
 			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
 													col_type,
-													res));
+													missing_value));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -1173,7 +1226,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (*rollbackHandle == NULL)
 			{
 				HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOid(rel),
-												  relationId,
+												  relfileNodeId,
 												  rollbackHandle));
 			}
 			HandleYBStatus(YBCPgAlterTableDropColumn(*rollbackHandle,
@@ -1446,7 +1499,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				HandleYBStatus(
 					YBCPgNewAlterTable(
 						YBCGetDatabaseOidByRelid(relationId),
-						YbGetStorageRelid(dependent_rel),
+						YbGetRelfileNodeId(dependent_rel),
 						&alter_cmd_handle));
 				HandleYBStatus(
 					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
@@ -1484,7 +1537,7 @@ YBCPrepareAlterTable(List** subcmds,
 	List *handles = NIL;
 	YBCPgStatement db_handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
-									  YbGetStorageRelid(rel),
+									  YbGetRelfileNodeId(rel),
 									  &db_handle));
 	handles = lappend(handles, db_handle);
 	ListCell *lcmd;
@@ -1512,13 +1565,6 @@ YBCPrepareAlterTable(List** subcmds,
 }
 
 void
-YBCSetTableIdForAlterTable(YBCPgStatement handle, Oid databaseId,
-						   Oid relationId)
-{
-	HandleYBStatus(YBCPgAlterTableSetTableId(handle, databaseId, relationId));
-}
-
-void
 YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 {
 	if (handle)
@@ -1535,35 +1581,22 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 	YBCPgStatement	handle     = NULL;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char		   *db_name	   = get_database_name(databaseId);
-	Relation		rel;
 
 	switch (stmt->renameType)
 	{
 		case OBJECT_MATVIEW:
-			rel = RelationIdGetRelation(relationId);
-			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  YbGetStorageRelid(rel),
-											  &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
-			RelationClose(rel);
-			break;
-		case OBJECT_INDEX:
 		case OBJECT_TABLE:
+		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  relationId,
-											  &handle));
+				YbGetRelfileNodeIdFromRelId(relationId), &handle));
 			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
 			break;
-
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
-			rel = RelationIdGetRelation(relationId);
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  YbGetStorageRelid(rel),
-											  &handle));
+				YbGetRelfileNodeIdFromRelId(relationId), &handle));
 
 			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
-			RelationClose(rel);
 			break;
 
 		default:
@@ -1591,19 +1624,19 @@ YBCDropIndex(Relation index)
 	 */
 
 	YBCPgStatement handle;
-	Oid			indexId      = RelationGetRelid(index);
-	Oid			databaseId   = YBCGetDatabaseOid(index);
+	Oid			indexRelfileNodeId      = YbGetRelfileNodeId(index);
+	Oid			databaseId              = YBCGetDatabaseOid(index);
 
 	/* Create table-level tombstone for colocated (via DB or tablegroup) indexes */
 	if (yb_props->is_colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   indexId,
-															   false,
-															   &handle,
-																 YB_TRANSACTIONAL),
-									 &not_found);
+				indexRelfileNodeId,
+				false,
+				&handle,
+				YB_TRANSACTIONAL),
+			&not_found);
 		const bool valid_handle = !not_found;
 		if (valid_handle)
 		{
@@ -1618,10 +1651,10 @@ YBCDropIndex(Relation index)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
-													   indexId,
-													   false, /* if_exists */
-													   &handle),
-									 &not_found);
+				indexRelfileNodeId,
+				false, /* if_exists */
+				&handle),
+			&not_found);
 		if (not_found)
 			return;
 

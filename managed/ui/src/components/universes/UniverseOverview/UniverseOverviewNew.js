@@ -42,7 +42,9 @@ import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import {
   SoftwareUpgradeState,
   getcurrentUniverseFailedTask,
-  SoftwareUpgradeTaskType
+  SoftwareUpgradeTaskType,
+  getUniverseStatus,
+  UniverseState
 } from '../helpers/universeHelpers';
 
 class DatabasePanel extends PureComponent {
@@ -472,11 +474,14 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-
+    
     if (isNullOrEmpty(currentUniverse)) return;
+
+    const clusterWidgetSize = this.hasReadReplica(currentUniverse) ? 3 : 4;
+
     if (isRollBackFeatureEnabled) {
       return (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -487,7 +492,7 @@ export default class UniverseOverviewNew extends Component {
       );
     } else {
       return isDedicatedNodes ? (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -496,7 +501,7 @@ export default class UniverseOverviewNew extends Component {
           />
         </Col>
       ) : (
-        <Col lg={4} sm={6} md={4} xs={8}>
+        <Col lg={clusterWidgetSize} sm={6} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -511,7 +516,7 @@ export default class UniverseOverviewNew extends Component {
   getReadReplicaClusterWidget = (currentUniverse) => {
     if (isNullOrEmpty(currentUniverse)) return;
     return (
-      <Col lg={2} sm={6} md={4} xs={8}>
+      <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
           universeInfo={currentUniverse}
@@ -848,9 +853,12 @@ export default class UniverseOverviewNew extends Component {
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster?.userIntent;
     const dedicatedNodes = userIntent?.dedicatedNodes;
-    const dbVersionValue = userIntent?.ybSoftwareVersion;
     const failedTask = getcurrentUniverseFailedTask(universeInfo, tasks.customerTaskList);
     const ybSoftwareUpgradeState = universeDetails?.softwareUpgradeState;
+    const universeStatus = getUniverseStatus(universeInfo);
+    const isUpgradePreCheckFailed =
+      universeStatus.state === UniverseState.GOOD &&
+      failedTask?.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE;
 
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -871,7 +879,8 @@ export default class UniverseOverviewNew extends Component {
           [
             SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
             SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-          ].includes(failedTask.type) && (
+          ].includes(failedTask?.type) &&
+          !isUpgradePreCheckFailed && (
             <Row className="p-16">
               <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
@@ -883,6 +892,7 @@ export default class UniverseOverviewNew extends Component {
             <DBVersionWidget
               higherVersionCount={updateAvailable}
               isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+              failedTaskDetails={failedTask}
             />
           </Col>
         </Row>

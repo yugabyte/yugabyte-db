@@ -72,7 +72,6 @@ set(MASTER_SRCS
   async_rpc_tasks.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
-  auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
@@ -91,6 +90,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  master_auto_flags_manager.cc
   tablet_health_manager.cc
   master_backup_service.cc
   master_client_service.cc
@@ -108,6 +108,8 @@ set(MASTER_SRCS
   master-path-handlers.cc
   mini_master.cc
   master_snapshot_coordinator.cc
+  multi_step_monitored_task.cc
+  post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
   snapshot_coordinator_context.cc
@@ -128,13 +130,16 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
-  xcluster/add_table_to_xcluster_task.cc
+  xcluster/add_table_to_xcluster_target_task.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
-  xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_manager.cc
+  xcluster/xcluster_outbound_replication_group.cc
   xcluster/xcluster_replication_group.cc
+  xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_source_manager.cc
+  xcluster/xcluster_target_manager.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -179,6 +184,7 @@ set(MASTER_DEPS
   yb_pggate_flags
   yb_pggate
   cdc_util
+  auto_flags_manager_common
 )
 
 ADD_YB_LIBRARY(master
@@ -243,6 +249,7 @@ ADD_YB_TEST(sys_catalog_xrepl-test)
 ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
+ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

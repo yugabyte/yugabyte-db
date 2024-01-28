@@ -36,6 +36,9 @@ class ScopedWaitingTxnRegistration {
     const TransactionId& waiting,
     std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
+  virtual Status RegisterSingleShardWaiter(
+      const TabletId& tablet_id,
+      uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
 };
@@ -62,7 +65,8 @@ class WaitQueue {
       const std::shared_future<client::YBClient*>& client_future,
       const server::ClockPtr& clock,
       const MetricEntityPtr& metrics,
-      std::unique_ptr<ThreadPoolToken> thread_pool_token);
+      std::unique_ptr<ThreadPoolToken> thread_pool_token,
+      rpc::Messenger* messenger);
 
   ~WaitQueue();
 
@@ -76,7 +80,7 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us,
+      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
@@ -89,7 +93,7 @@ class WaitQueue {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t req_start_us,
+      int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback);
 
   void Poll(HybridTime now);
@@ -122,6 +126,7 @@ class WaitQueue {
   // from this wait queue. If transactions is not empty, restrict returned information to locks
   // which are requested by the given set of transactions.
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
                        TransactionLockInfoManager* lock_info_manager) const;
 

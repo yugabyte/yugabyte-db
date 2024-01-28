@@ -819,12 +819,11 @@ templates:
     name: Under-replicated master
     description: Master is missing from raft group or has follower lag higher than
       threshold
-    queryTemplate: (min_over_time((ybp_universe_replication_factor{universe_uuid='{{ $labels.universe_uuid }}'}
+    queryTemplate: (min_over_time((ybp_universe_replication_factor{universe_uuid="__universeUuid__"}
       - on(universe_uuid) count by(universe_uuid) (count by (universe_uuid, exported_instance)
-      (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'})))[{{
+      (follower_lag_ms{export_type="master_export", universe_uuid="__universeUuid__"})))[{{
       query_threshold }}s:]) > 0 or (max by(universe_uuid) (follower_lag_ms{export_type="master_export",
-      universe_uuid='{{ $labels.universe_uuid }}'}) {{ query_condition }} ({{ query_threshold }} *
-      1000)))
+      universe_uuid="__universeUuid__"}) {{ query_condition }} ({{ query_threshold }} * 1000)))
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
@@ -1491,3 +1490,60 @@ templates:
       summary: >-
         More recent OS version is recommended for this universe. Consider running VM image
         upgrade for the nodes to incorporate security patches and address vulnerabilities.
+
+  DB_YSQL_WEB_SERVER_DOWN:
+    name: DB YSQL web server down
+    description: DB YSQL web server is down for 15 minutes
+    queryTemplate: count by (universe_uuid) (max_over_time(up{export_type="ysql_export",universe_uuid="__universeUuid__"}[15m]) < 1 and on (universe_uuid,
+      node_address) (min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__", export_type="tserver_export"}[1m])
+      * on(universe_uuid, node_address) min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__",export_type="ysql_export"}[1m])
+      == 1)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (max_over_time(up{export_type='ysql_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        and on (universe_uuid, node_name)
+        (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'}[1m])
+        * on(universe_uuid, node_name, node_address) min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}', export_type='ysql_export'}[1m])
+        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} DB YSQL web server are down for more than 15 minutes for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  DB_YCQL_WEB_SERVER_DOWN:
+    name: DB YCQL web server down
+    description: DB YCQL web server is down for 15 minutes
+    queryTemplate: count by (universe_uuid) (max_over_time(up{export_type="cql_export",universe_uuid="__universeUuid__"}[15m]) < 1 and on (universe_uuid,
+      node_address) (min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__", export_type="tserver_export"}[1m])
+      * on(universe_uuid, node_address) min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__",export_type="cql_export"}[1m])
+      == 1)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (max_over_time(up{export_type='cql_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        and on (universe_uuid, node_name)
+        (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'}[1m])
+        * on(universe_uuid, node_name, node_address) min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}', export_type='cql_export'}[1m])
+        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} DB YCQL web server are down for more than 15 minutes for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}

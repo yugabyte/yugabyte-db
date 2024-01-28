@@ -31,9 +31,6 @@ struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
   ReadOperationData read_operation_data;
   HybridTime* restart_read_ht;
-  DocRowwiseIterator* iterator;
-  // Whether we should restart seek while fetching entry from doc key.
-  bool restart_seek;
   SchemaPackingProvider* schema_packing_provider;  // null okay
 
   CoarseTimePoint deadline() const {
@@ -54,7 +51,7 @@ const int kNilSubkeyIndex = -1;
 
 typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
 
-YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents));
+YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents)(kStrongReadIntents));
 YB_DEFINE_ENUM(DocOperationType,
                (PGSQL_WRITE_OPERATION)(QL_WRITE_OPERATION)(REDIS_WRITE_OPERATION));
 YB_STRONGLY_TYPED_BOOL(SingleOperation);
@@ -81,18 +78,8 @@ class DocOperation {
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const = 0;
 
   virtual Status Apply(const DocOperationApplyData& data) = 0;
-  virtual Type OpType() = 0;
+  [[nodiscard]] virtual Type OpType() const = 0;
   virtual void ClearResponse() = 0;
-
-  // Update iterator stored in iterator, and setup data to use it.
-  // prev - The operation before this one, that works with the current iterator.
-  //        Should be used to check whether iterators are compatible.
-  // single_operation - is this operation is the only operation in batch.
-  virtual Status UpdateIterator(
-      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) {
-    return Status::OK();
-  }
 
   virtual std::string ToString() const = 0;
 };
@@ -102,7 +89,7 @@ class DocOperationBase : public DocOperation {
  public:
   explicit DocOperationBase(std::reference_wrapper<const RequestPB> request) : request_(request) {}
 
-  Type OpType() override {
+  [[nodiscard]] Type OpType() const override {
     return OperationType;
   }
 

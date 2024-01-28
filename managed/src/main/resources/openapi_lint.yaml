@@ -1,0 +1,130 @@
+apis:
+  public@v2:
+    root: openapi/openapi.yaml
+  internal@v2:
+    root: openapi/openapi.yaml
+
+extends:
+  - all
+# Built-in rules: https://redoc.ly/docs/cli/resources/built-in-rules/
+rules:
+  # Special rules
+  no-unresolved-refs: error # Every $ref must exist
+  no-unused-components: error # All components must be used
+  security-defined: error # Security rules must be defined, either globally or per-operation
+  spec: error # Conform to the declared OpenAPI specification version
+  spec-components-invalid-map-name: error # Use only alphanumeric and basic punctuation as key
+                                          # names in the components section
+  spec-strict-refs: error # Restricts the usage of the $ref keyword inside component section
+
+  # Info rules
+  info-contact: error # Contact section is defined under info
+  info-license: error # License section is defined under info
+  info-license-url: error # License section contains a url to the license
+
+  # Operations
+  operation-2xx-response: error # Every operation needs at least one 2xx response
+  operation-4xx-response: error # Every operation needs at least one 4xx response
+  operation-4xx-problem-details-rfc7807: off # Every operation with 4xx HTTP response has
+                                             # content-type application/problem+json
+  operation-description: error # Description field is required for every operation
+  operation-operationId: error # OperationId is required for every operation
+  operation-operationId-unique: error # OperationId must be unique
+  operation-operationId-url-safe: error # OperationIds can only contain characters that are safe
+                                        # to use in URLs
+  operation-summary: error # Summary is required for every operation
+
+  # Parameters
+  boolean-parameter-prefixes: off # All boolean paramater names start with a particular prefix
+                                  # (such as "is")
+  no-invalid-parameter-examples: # Parameter examples must match declared schema types
+    severity: error
+    allowAdditionalProperties: true
+  operation-parameters-unique: error # No repeated parameter names within an operation
+  parameter-description: error # Parameters must all have descriptions
+  path-declaration-must-exist: error # Paths must define template variables where placeholders
+                                     # are needed
+  path-not-include-query: error # No query parameters in path declarations (declare them as
+                                # parameters with in: query)
+  path-parameters-defined: error # Path template variables must be defined as parameters
+  # Paths
+  no-ambiguous-paths: error # No path can match more than one PathItem entry, including template
+                            # variables
+  no-http-verbs-in-paths: error # Verbs like "get" cannot be used in paths
+  no-identical-paths: error # Paths cannot be identical, including template variables
+  no-path-trailing-slash: error # No trailing slashes on paths
+  path-excludes-patterns: off # Set a regular expression that cannot be used in paths
+  path-segment-plural: off # All URL segments in a path must be plural (exceptions can be
+                           # configured)
+  paths-kebab-case: off # Paths must be in kebab-case format
+
+  # Requests, Responses, and Schemas
+  no-enum-type-mismatch: error # Enum options must match the data type declared in the schema
+  no-example-value-and-externalValue: error # Either the value or externalValue may be present,
+                                            # but not both
+  no-invalid-media-type-examples: # Example request bodies must match the declared schema
+    severity: error
+    allowAdditionalProperties: false
+  no-invalid-schema-examples: # Schema examples must match declared types
+    severity: error
+    allowAdditionalProperties: true
+  request-mime-type: # Configure allowed mime types for responses
+    severity: error
+    allowedValues:
+      - application/json
+      - multipart/form-data
+  response-mime-type: # Configure allowed mime types for responses
+    severity: error
+    allowedValues:
+      - application/json
+  response-contains-header: off # List headers that must be included with specific response types
+  response-contains-property: off # Specify properties that should be present in specific response
+                                  # types
+  scalar-property-missing-example: off # All required scalar (non-object) properties must have
+                                       # examples defined
+  required-string-property-missing-min-length: off # All required properties of type string must
+                                                   # have a minLength configured
+
+  # Servers
+  no-empty-servers: error # Servers array must be defined
+  no-server-example.com: error # example.com is not acceptable as a server URL
+  no-server-trailing-slash: error # Server URLs cannot end with a slash (paths usually start with
+                                  # a slash)
+  no-server-variables-empty-enum: error # Require that enum values are set if variables are used
+                                        # in server definition
+  no-undefined-server-variable: error # All variables in server definition must be defined
+
+  # Tags
+  operation-singular-tag: error # Each operation may only have one tag
+  operation-tag-defined: error # Tags can only be used if they are defined at the top level
+  tag-description: error # Tags must have descriptions
+  tags-alphabetical: error # Tags in the top-level tags section must appear alphabetically
+
+  # Configurable rules
+  # From https://github.com/Redocly/redocly-cli-cookbook/tree/main/configurable-rules/ \
+  # operation-post-should-define-request-body
+  rule/post-should-define-requestBody:
+    severity: error
+    message: '"POST" SHOULD define a "requestBody" schema unless using an "actions" pattern'
+    subject:
+      type: Operation
+    where:
+      - subject:
+          type: PathItem
+          # Here you can define your own URI pattern to ignore if providing a requestBody is not
+          # required. The negation happens in this portion of the regex `(?<!/actions)`.
+          # The regex takes the entire URI pattern string and then uses a "negative lookbehind"
+          # from the end of the string to find the pattern to be negated.
+          matchParentKeys: /^([\w-\{\}/.](?<!/actions))*$/
+        assertions:
+          defined: true
+      - subject:
+          type: Operation
+          filterInParentKeys:
+            - post
+        assertions:
+          disallowed:
+            - deprecated
+    assertions:
+      required:
+        - requestBody

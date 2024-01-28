@@ -429,3 +429,43 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
     newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
   };
 };
+
+export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+  if (!currentClusterConfig || !newClusterConfig) {
+    return {
+      numNodesChanged: false,
+      currentTServerNodeCount: 0,
+      newTServerNodeCount: 0,
+      oldNumReadReplicas: 0,
+      newNumReadReplicas: 0,
+      oldTServerNumCores: 0,
+      newTServerNumCores: 0,
+      oldTServerMemory: 0,
+      newTServerMemory: 0,
+      oldTServerVolumeSize: 0,
+      newTServerVolumeSize: 0,
+      oldMasterNumCores: 0,
+      newMasterNumCores: 0,
+      oldMasterMemory: 0,
+      newMasterMemory: 0
+    };
+  }
+
+  return {
+    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
+    newNodeCount: newClusterConfig?.userIntent?.numNodes,
+    oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldTServerNumCores: currentClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.cpuCoreCount,
+    newTServerNumCores: newClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.cpuCoreCount,
+    oldTServerMemory: currentClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.memoryGib,
+    newTServerMemory: newClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.memoryGib,
+    oldTServerVolumeSize: currentClusterConfig?.userIntent?.deviceInfo?.volumeSize,
+    newTServerVolumeSize: newClusterConfig?.userIntent?.deviceInfo?.volumeSize,
+    oldMasterNumCores: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
+    newMasterNumCores: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
+    oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
+    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
+  };
+};

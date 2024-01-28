@@ -49,7 +49,7 @@ Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
 
 Result<cdc::ProducerEntryPB*> GetProducerEntry(
     SysClusterConfigEntryPB& cluster_config_pb,
-    const cdc::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id) {
   auto producer_entry = FindOrNull(
       *cluster_config_pb.mutable_consumer_registry()->mutable_producer_map(),
       replication_group_id.ToString());

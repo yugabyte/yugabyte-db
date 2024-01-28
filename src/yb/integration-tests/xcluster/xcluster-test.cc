@@ -19,10 +19,10 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/xcluster_util.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client-test-util.h"
@@ -497,7 +497,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
   Status WaitForReplicationBootstrap(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const cdc::ReplicationGroupId& replication_group_id) {
+      const xcluster::ReplicationGroupId& replication_group_id) {
     return LoggedWaitFor(
         [=]() -> Result<bool> {
           master::IsSetupNamespaceReplicationWithBootstrapDoneRequestPB req;
@@ -519,7 +519,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
   }
 
   Status VerifyReplicationBootstrapCleanupOnFailure(
-      const cdc::ReplicationGroupId& replication_group_id) {
+      const xcluster::ReplicationGroupId& replication_group_id) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -1446,6 +1446,21 @@ TEST_F(XClusterTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
 
   ASSERT_NOK(SetupUniverseReplication(
       {producer_table_, producer_transaction_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
+}
+
+TEST_F(XClusterTestTransactionalOnly, FailedSetupMissingTable) {
+  // Make sure we cannot setup replication when consumer is missing a table.
+  constexpr int kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, 1 /* replication_factor */));
+  auto extra_producer_table_name =
+      ASSERT_RESULT(CreateTable(producer_client(), namespace_name, "extra_table_", kNumTablets));
+
+  std::shared_ptr<client::YBTable> extra_producer_table;
+  ASSERT_OK(producer_client()->OpenTable(extra_producer_table_name, &extra_producer_table));
+
+  auto status = SetupUniverseReplication({producer_table_, extra_producer_table});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Could not find matching table for yugabyte.extra_table_");
 }
 
 TEST_F(XClusterTestTransactionalOnly, ApplyOperationsWithTransactions) {
@@ -2622,8 +2637,8 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Wait for alter universe to be deleted on start up
-  ASSERT_OK(
-      WaitForSetupUniverseReplicationCleanUp(GetAlterReplicationGroupId(kReplicationGroupId)));
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(
+      xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
 
   // Change should not have gone through
   new_req.set_replication_group_id(kReplicationGroupId.ToString());
@@ -2633,7 +2648,8 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
-  new_req.set_replication_group_id(GetAlterReplicationGroupId(kReplicationGroupId).ToString());
+  new_req.set_replication_group_id(
+      xcluster::GetAlterReplicationGroupId(kReplicationGroupId).ToString());
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());

@@ -27,10 +27,13 @@ import {
   isKubernetesUniverse,
   isPausableUniverse,
   getPrimaryCluster,
-  hasLiveNodes
+  hasLiveNodes,
+  isAsymmetricCluster
 } from '../../../utils/UniverseUtils';
+import { getReadOnlyClusters } from '../../../utils/universeUtilsTyped';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
+import { YBTooltip } from '../../../redesign/components';
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { UniverseHealthCheckList } from './compounds/UniverseHealthCheckList';
 import { UniverseTaskList } from './compounds/UniverseTaskList';
@@ -377,6 +380,12 @@ class UniverseDetail extends Component {
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
+    const hasAsymmetricPrimaryCluster = !!isAsymmetricCluster(
+      getPrimaryCluster(currentUniverse.data?.universeDetails.clusters)
+    );
+    const hasAsymmetricAsyncCluster = !!getReadOnlyClusters(
+      currentUniverse.data?.universeDetails.clusters
+    )?.some((cluster) => isAsymmetricCluster(cluster));
 
     const editTLSAvailability = getFeatureState(
       currentCustomer.data.features,
@@ -487,6 +496,22 @@ class UniverseDetail extends Component {
             <DrPanel currentUniverseUuid={currentUniverse.data.universeUUID} />
           </Tab.Pane>
         ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
+          <Tab.Pane
+            eventKey={'replication'}
+            tabtitle="xCluster Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
+          >
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
+          </Tab.Pane>
+        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
           <Tab.Pane
             eventKey={'tasks'}
@@ -504,22 +529,6 @@ class UniverseDetail extends Component {
               refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
-          </Tab.Pane>
-        ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
-          <Tab.Pane
-            eventKey={'replication'}
-            tabtitle="xCluster Replication"
-            key="replication-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
-          >
-            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
-            ) : (
-              <ReplicationContainer />
-            )}
           </Tab.Pane>
         )
       ],
@@ -839,16 +848,29 @@ class UniverseDetail extends Component {
                               ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                             }}
                           >
-                            <YBMenuItem
-                              to={`/universes/${uuid}/edit/primary`}
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.editUniverse'
-                              )}
-                              disabled={isUniverseStatusPending}
+                            <YBTooltip
+                              title={
+                                hasAsymmetricPrimaryCluster
+                                  ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                  : ''
+                              }
+                              placement="left"
                             >
-                              <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
-                            </YBMenuItem>
+                              <span>
+                                <YBMenuItem
+                                  to={`/universes/${uuid}/edit/primary`}
+                                  availability={getFeatureState(
+                                    currentCustomer.data.features,
+                                    'universes.details.overview.editUniverse'
+                                  )}
+                                  disabled={isUniverseStatusPending || hasAsymmetricPrimaryCluster}
+                                >
+                                  <YBLabelWithIcon icon="fa fa-pencil">
+                                    Edit Universe
+                                  </YBLabelWithIcon>
+                                </YBMenuItem>
+                              </span>
+                            </YBTooltip>
                           </RbacValidator>
                         )}
                       {!universePaused && !this.isRRFlagsEnabled() && (
@@ -860,20 +882,35 @@ class UniverseDetail extends Component {
                           }}
                           overrideStyle={{ display: 'block' }}
                         >
-                          <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
-                                !isGFlagAllowDuringPrefinalize)
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster
+                                ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
                             }
-                            onClick={showGFlagsModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
+                            placement="left"
                           >
-                            <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
-                          </YBMenuItem>
+                            <span>
+                              <YBMenuItem
+                                disabled={
+                                  isUniverseStatusPending ||
+                                  ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
+                                    !isGFlagAllowDuringPrefinalize) ||
+                                  hasAsymmetricPrimaryCluster ||
+                                  hasAsymmetricAsyncCluster
+                                }
+                                onClick={showGFlagsModal}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editGFlags'
+                                )}
+                              >
+                                <YBLabelWithIcon icon="fa fa-flag fa-fw">
+                                  Edit Flags
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
                         </RbacValidator>
                       )}
                       {!universePaused && this.isRRFlagsEnabled() && (
@@ -885,20 +922,35 @@ class UniverseDetail extends Component {
                           }}
                           overrideStyle={{ display: 'block' }}
                         >
-                          <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
-                                !isGFlagAllowDuringPrefinalize)
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster
+                                ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
                             }
-                            onClick={showGFlagsNewModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
+                            placement="left"
                           >
-                            <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
-                          </YBMenuItem>
+                            <span>
+                              <YBMenuItem
+                                disabled={
+                                  isUniverseStatusPending ||
+                                  ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
+                                    !isGFlagAllowDuringPrefinalize) ||
+                                  hasAsymmetricPrimaryCluster ||
+                                  hasAsymmetricAsyncCluster
+                                }
+                                onClick={showGFlagsNewModal}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editGFlags'
+                                )}
+                              >
+                                <YBLabelWithIcon icon="fa fa-flag fa-fw">
+                                  Edit Flags
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
                         </RbacValidator>
                       )}
                       {!universePaused && isItKubernetesUniverse && (
@@ -1011,24 +1063,35 @@ class UniverseDetail extends Component {
                               : ApiPermissionMap.CREATE_READ_REPLICA)
                           }}
                         >
-                          <YBMenuItem
-                            disabled={isUniverseStatusPending}
-                            to={
-                              this.isNewUIEnabled()
-                                ? `/universes/${uuid}/${
-                                    this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                  }/async`
-                                : `/universes/${uuid}/edit/async`
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
                             }
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.readReplica'
-                            )}
+                            placement="left"
                           >
-                            <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                              {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                            <span>
+                              <YBMenuItem
+                                disabled={isUniverseStatusPending || hasAsymmetricAsyncCluster}
+                                to={
+                                  this.isNewUIEnabled()
+                                    ? `/universes/${uuid}/${
+                                        this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                      }/async`
+                                    : `/universes/${uuid}/edit/async`
+                                }
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.readReplica'
+                                )}
+                              >
+                                <YBLabelWithIcon icon="fa fa-copy fa-fw">
+                                  {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
                         </RbacValidator>
                       )}
 

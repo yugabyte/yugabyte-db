@@ -38,7 +38,7 @@ using std::min;
 
 using namespace std::chrono_literals;
 
-DEFINE_UNKNOWN_int32(xcluster_safe_time_table_num_tablets, 1,
+DEFINE_NON_RUNTIME_int32(xcluster_safe_time_table_num_tablets, 1,
     "Number of tablets to use when creating the xcluster safe time table. "
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
@@ -297,6 +297,8 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
 }
 
 namespace {
+// Pick valid safe time such that we do not go backwards.
+// If the new value is not valid then we return the previous value.
 HybridTime GetNewSafeTime(
     const XClusterNamespaceToSafeTimeMap& previous_safe_time_map, const NamespaceId& namespace_id,
     const HybridTime& safe_time) {
@@ -311,43 +313,12 @@ HybridTime GetNewSafeTime(
   return previous_safe_time;
 }
 
-XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
+void MakeAtLeastPrevious(
     const XClusterNamespaceToSafeTimeMap& previous_safe_time_map,
-    const std::unordered_map<NamespaceId, HybridTime>& namespace_safe_time) {
-  XClusterNamespaceToSafeTimeMap new_safe_time_map;
-
-  // System tables like 'transactions' table affect the safe time of every user namespace. Compute
-  // that first and use it as min in every other namespace.
-  HybridTime sys_safe_time = HybridTime::kInvalid;
-  auto sys_namespace_it = FindOrNull(namespace_safe_time, kSystemNamespaceId);
-  if (sys_namespace_it) {
-    sys_safe_time = new_safe_time_map[kSystemNamespaceId] =
-        GetNewSafeTime(previous_safe_time_map, kSystemNamespaceId, *sys_namespace_it);
+    std::unordered_map<NamespaceId, HybridTime>& namespace_safe_time) {
+  for (auto& [namespace_id, safe_time] : namespace_safe_time) {
+    safe_time = GetNewSafeTime(previous_safe_time_map, namespace_id, safe_time);
   }
-
-  for (auto[namespace_id, safe_time] : namespace_safe_time) {
-    if (namespace_id == kSystemNamespaceId) {
-      continue;
-    }
-
-    if (!safe_time.is_special() &&
-        sys_namespace_it &&
-        (sys_safe_time.is_special() || sys_safe_time < safe_time)) {
-      // Set the safe time of the user namespace when the following 3 conditions are true:
-      // 1. The user namespace safe time is valid. If it's invalid, it means that not all tablets in
-      // the safe time table have valid values and we want to let GetNewSafeTime figure out the safe
-      // time.
-      // 2. The system namespace is in the safe time map.
-      // 3. The system namespace is either invalid or its safe time is less than than the user
-      // namespace safe time, and we always want to use the min of the two.
-      safe_time = sys_safe_time;
-    }
-
-    new_safe_time_map[namespace_id] =
-        GetNewSafeTime(previous_safe_time_map, namespace_id, safe_time);
-  }
-
-  return new_safe_time_map;
 }
 
 // Similar to YB_LOG_EVERY_N_SECS, but doesn't return ShouldLog true until interval has passed since
@@ -393,6 +364,8 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   std::unordered_map<NamespaceId, HybridTime> namespace_min_safe_time;
 
   for (const auto& [tablet_info, namespace_id] : producer_tablet_namespace_map_) {
+    SCHECK_NE(namespace_id, kSystemNamespaceId, IllegalState, "System tables cannot be replicated");
+
     namespace_safe_time_map[namespace_id] = HybridTime::kMax;
     // Add Invalid values for missing tablets
     InsertIfNotPresent(&tablet_to_safe_time_map, tablet_info, HybridTime::kInvalid);
@@ -455,16 +428,16 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   }
 
   const auto previous_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
-  auto new_safe_time_map = ComputeSafeTimeMap(previous_safe_time_map, namespace_safe_time_map);
+  MakeAtLeastPrevious(previous_safe_time_map, namespace_safe_time_map);
 
   // Use the leader term to ensure leader has not changed between the time we did our computation
   // and setting the new config. Its important to make sure that the config we persist is accurate
   // as only that protects the safe time from going backwards.
-  RETURN_NOT_OK(SetXClusterSafeTime(leader_term, new_safe_time_map));
+  RETURN_NOT_OK(SetXClusterSafeTime(leader_term, namespace_safe_time_map));
 
   if (update_metrics) {
     // Update the metrics using the newly computed maps.
-    UpdateMetrics(tablet_to_safe_time_map, new_safe_time_map);
+    UpdateMetrics(tablet_to_safe_time_map, namespace_safe_time_map);
   }
 
   // There is no guarantee that we are still running on a leader. But this is ok as we are just
@@ -518,14 +491,15 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   };
 
   for (const auto& row : client::TableRange(*safe_time_table_, options)) {
-    auto replication_group_id = row.column(kXCReplicationGroupIdIdx).string_value();
+    auto replication_group_id =
+        xcluster::ReplicationGroupId(row.column(kXCReplicationGroupIdIdx).string_value());
     auto tablet_id = row.column(kXCProducerTabletIdIdx).string_value();
     auto safe_time = row.column(kXCSafeTimeIdx).int64_value();
     HybridTime safe_ht;
     RETURN_NOT_OK_PREPEND(
         safe_ht.FromUint64(static_cast<uint64_t>(safe_time)),
         Format(
-            "Invalid safe time set in $0 table. universe_uuid:$1, tablet_id:$2",
+            "Invalid safe time set in table $0 replication_group_id:$1, tablet_id:$2",
             kSafeTimeTableName.table_name(), replication_group_id, tablet_id));
 
     tablet_safe_time[{replication_group_id, tablet_id}] = safe_ht;
@@ -569,16 +543,16 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     auto consumer_registry = VERIFY_RESULT(catalog_manager_->GetConsumerRegistry());
     if (consumer_registry && consumer_registry->role() != cdc::XClusterRole::ACTIVE) {
       const auto& producer_map = consumer_registry->producer_map();
-      for (const auto& cluster_entry : producer_map) {
-        const auto& cluster_uuid = cluster_entry.first;
-        for (const auto& stream_entry : cluster_entry.second.stream_map()) {
-          const auto& consumer_table_id = stream_entry.second.consumer_table_id();
-          auto consumer_namespace =
+      for (const auto& [replication_group_id, producer_entry] : producer_map) {
+        for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
+          const auto& consumer_table_id = stream_entry.consumer_table_id();
+          auto consumer_namespace_id =
               VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
-
-          for (const auto& tablets_entry : stream_entry.second.consumer_producer_tablet_map()) {
-            for (const auto& tablet_id : tablets_entry.second.tablets()) {
-              producer_tablet_namespace_map_[{cluster_uuid, tablet_id}] = consumer_namespace;
+          for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
+            for (const auto& tablet_id : producer_tablets.tablets()) {
+              producer_tablet_namespace_map_[{
+                  xcluster::ReplicationGroupId(replication_group_id), tablet_id}] =
+                  consumer_namespace_id;
             }
           }
         }
@@ -635,15 +609,14 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
 
   auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
-  for (auto& tablet : entries_to_delete) {
+  for (auto& tablet_info : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, tablet.cluster_uuid);
-    QLAddStringHashValue(req, tablet.tablet_id);
+    QLAddStringHashValue(req, tablet_info.replication_group_id.ToString());
+    QLAddStringHashValue(req, tablet_info.tablet_id);
 
-    VLOG_WITH_FUNC(1) << "Cleaning up tablet from " << kSafeTimeTableName.table_name()
-                      << ". cluster_uuid: " << tablet.cluster_uuid
-                      << ", tablet_id: " << tablet.tablet_id;
+    VLOG_WITH_FUNC(1) << "Cleaning up tablet from " << kSafeTimeTableName.table_name() << ". "
+                      << tablet_info.ToString();
 
     session->Apply(std::move(op));
   }

@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V44__19211__yb_stream_id_in_pg_replication_slots.sql
-{ major => '44', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V45__19128__yb_ash.sql
+{ major => '45', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

@@ -35,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 
 #include "yb/gutil/ref_counted.h"
 
@@ -82,7 +83,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kTruncateTablet)
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
-  (kAddTableToXClusterReplication));
+  (kAddTableToXClusterTarget)
+  (kMarkTableAsRunning));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
@@ -95,7 +97,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   virtual MonitoredTaskState AbortAndReturnPrevState(const Status& status) = 0;
 
   // Task State.
-  virtual MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }
+  MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }
 
   virtual MonitoredTaskType type() const = 0;
 

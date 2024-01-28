@@ -340,7 +340,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<qlexpr::IndexInfo>(table.index_info())
                                : boost::none,
-        table.schema_version(), partition_schema);
+        table.schema_version(), partition_schema, table.pg_table_id());
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
     auto create_result = RaftGroupMetadata::CreateNew(
         tablet::RaftGroupMetadataData{

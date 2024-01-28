@@ -16,148 +16,80 @@
 #include <string>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/consensus/consensus_util.h"
 
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_config.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 
 #include "yb/rpc/rpc_context.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
+DEFINE_test_flag(bool, enable_xcluster_api_v2, false, "Allow the usage of new xCluster APIs");
+
+#define LOG_FUNC_AND_RPC \
+  LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
+
 namespace yb::master {
 
 XClusterManager::XClusterManager(
-    Master* master, CatalogManager* catalog_manager, SysCatalogTable* sys_catalog)
-    : master_(master), catalog_manager_(catalog_manager), sys_catalog_(sys_catalog) {
-  xcluster_config_ = std::make_unique<XClusterConfig>(sys_catalog_);
+    Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
+    : XClusterSourceManager(master, catalog_manager, sys_catalog),
+      XClusterTargetManager(master, catalog_manager, sys_catalog),
+      master_(master),
+      catalog_manager_(catalog_manager),
+      sys_catalog_(sys_catalog) {
+  xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
 }
 
 XClusterManager::~XClusterManager() {}
 
-void XClusterManager::Shutdown() {
-  if (xcluster_safe_time_service_) {
-    xcluster_safe_time_service_->Shutdown();
-  }
-}
+void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
 
 Status XClusterManager::Init() {
-  DCHECK(!xcluster_safe_time_service_);
-  xcluster_safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
-      master_, catalog_manager_, master_->metric_registry());
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+  RETURN_NOT_OK(XClusterTargetManager::Init());
 
   return Status::OK();
+}
+
+void XClusterManager::Clear() {
+  xcluster_config_->ClearState();
+  XClusterSourceManager::Clear();
+  XClusterTargetManager::Clear();
 }
 
 Status XClusterManager::RunLoaders() {
-  xcluster_config_->ClearState();
-  xcluster_safe_time_info_.Clear();
+  Clear();
 
-  RETURN_NOT_OK(Load<XClusterConfigLoader>("XCluster safe time", *xcluster_config_));
-  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("xcluster configuration", xcluster_safe_time_info_));
+  RETURN_NOT_OK(
+      sys_catalog_.Load<XClusterConfigLoader>("xcluster configuration", *xcluster_config_));
 
-  return Status::OK();
-}
+  RETURN_NOT_OK(XClusterSourceManager::RunLoaders());
+  RETURN_NOT_OK(XClusterTargetManager::RunLoaders());
 
-template <template <class> class Loader, typename CatalogEntityWrapper>
-Status XClusterManager::Load(
-    const std::string& title, CatalogEntityWrapper& catalog_entity_wrapper) {
-  Loader<CatalogEntityWrapper> loader(catalog_entity_wrapper);
-  LOG_WITH_FUNC(INFO) << __func__ << ": Loading " << title << " into memory.";
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(&loader), "Failed while visiting " + title + " in sys catalog");
   return Status::OK();
 }
 
 void XClusterManager::SysCatalogLoaded() {
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
+  XClusterSourceManager::SysCatalogLoaded();
+  XClusterTargetManager::SysCatalogLoaded();
 }
 
 void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   if (on_disk_dump) {
-    auto l = xcluster_safe_time_info_.LockForRead();
-    if (!l->pb.safe_time_map().empty()) {
-      *out << "XCluster Safe Time: " << l->pb.ShortDebugString() << "\n";
-    }
-
     xcluster_config_->DumpState(out);
   }
+  XClusterSourceManager::DumpState(*out, on_disk_dump);
+  XClusterTargetManager::DumpState(*out, on_disk_dump);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
-  XClusterNamespaceToSafeTimeMap result;
-  auto l = xcluster_safe_time_info_.LockForRead();
+Status XClusterManager::FillHeartbeatResponse(
+    const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
+  RETURN_NOT_OK(XClusterTargetManager::FillHeartbeatResponse(req, resp));
 
-  for (auto& [namespace_id, hybrid_time] : l->pb.safe_time_map()) {
-    result[namespace_id] = HybridTime(hybrid_time);
-  }
-  return result;
-}
-
-Status XClusterManager::SetXClusterNamespaceToSafeTimeMap(
-    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
-  auto l = xcluster_safe_time_info_.LockForWrite();
-  auto& safe_time_map_pb = *l.mutable_data()->pb.mutable_safe_time_map();
-  safe_time_map_pb.clear();
-  for (auto& [namespace_id, hybrid_time] : safe_time_map) {
-    safe_time_map_pb[namespace_id] = hybrid_time.ToUint64();
-  }
-
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Upsert(leader_term, &xcluster_safe_time_info_),
-      "Updating XCluster safe time in sys-catalog");
-
-  l.Commit();
-
-  return Status::OK();
-}
-
-Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  auto l = xcluster_safe_time_info_.LockForRead();
-  SCHECK(
-      l->pb.safe_time_map().count(namespace_id), NotFound,
-      "XCluster safe time not found for namespace $0", namespace_id);
-
-  return HybridTime(l->pb.safe_time_map().at(namespace_id));
-}
-
-void XClusterManager::CreateXClusterSafeTimeTableAndStartService() {
-  WARN_NOT_OK(
-      xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound(),
-      "Creation of XClusterSafeTime table failed");
-
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
-}
-
-Status XClusterManager::GetXClusterSafeTime(
-    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
-    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  RETURN_NOT_OK_SET_CODE(
-      xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
-      MasterError(MasterErrorPB::INTERNAL_ERROR));
-
-  // Also fill out the namespace_name for each entry.
-  if (resp->namespace_safe_times_size()) {
-    for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
-      const auto namespace_info = VERIFY_RESULT_OR_SET_CODE(
-          catalog_manager_->FindNamespaceById(safe_time_info.namespace_id()),
-          MasterError(MasterErrorPB::INTERNAL_ERROR));
-
-      safe_time_info.set_namespace_name(namespace_info->name());
-    }
-  }
-
-  return Status::OK();
-}
-
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
-    const LeaderEpoch& epoch) {
-  return xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+  return xcluster_config_->FillHeartbeatResponse(req, resp);
 }
 
 Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate) {
@@ -177,20 +109,8 @@ Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {
   return xcluster_config_->GetVersion();
 }
 
-Status XClusterManager::FillHeartbeatResponse(
-    const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
-  {
-    auto l = xcluster_safe_time_info_.LockForRead();
-    if (!l->pb.safe_time_map().empty()) {
-      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
-    }
-  }
-
-  return xcluster_config_->FillHeartbeatResponse(req, resp);
-}
-
-Status XClusterManager::RemoveStreamFromXClusterProducerConfig(const LeaderEpoch& epoch,
-    const std::vector<CDCStreamInfo*>& streams) {
+Status XClusterManager::RemoveStreamFromXClusterProducerConfig(
+    const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams) {
   return xcluster_config_->RemoveStreams(epoch, streams);
 }
 
@@ -198,7 +118,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
     const PauseResumeXClusterProducerStreamsRequestPB* req,
     PauseResumeXClusterProducerStreamsResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing PauseXCluster request from " << RequestorString(rpc) << ".";
+  LOG_FUNC_AND_RPC;
   SCHECK(req->has_is_paused(), InvalidArgument, "is_paused must be set in the request");
   bool paused = req->is_paused();
   std::string action = paused ? "Pausing" : "Resuming";
@@ -206,7 +126,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
     LOG(INFO) << action << " replication for all XCluster streams.";
   }
 
-  auto xrepl_stream_ids = catalog_manager_->GetAllXreplStreamIds();
+  auto xrepl_stream_ids = catalog_manager_.GetAllXreplStreamIds();
   std::vector<xrepl::StreamId> streams_to_change;
 
   if (req->stream_ids().empty()) {
@@ -226,4 +146,155 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
   return xcluster_config_->PauseResumeXClusterProducerStreams(epoch, streams_to_change, paused);
 }
 
+Result<XClusterNamespaceToSafeTimeMap> XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
+  return XClusterTargetManager::GetXClusterNamespaceToSafeTimeMap();
+}
+
+Status XClusterManager::SetXClusterNamespaceToSafeTimeMap(
+    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
+  return XClusterTargetManager::SetXClusterNamespaceToSafeTimeMap(leader_term, safe_time_map);
+}
+
+Status XClusterManager::GetXClusterSafeTime(
+    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  return XClusterTargetManager::GetXClusterSafeTime(resp, epoch);
+}
+
+Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
+  return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
+}
+
+Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+}
+
+Status XClusterManager::XClusterCreateOutboundReplicationGroup(
+    const XClusterCreateOutboundReplicationGroupRequestPB* req,
+    XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  SCHECK(FLAGS_TEST_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
+
+  LOG_FUNC_AND_RPC;
+
+  SCHECK(
+      !req->replication_group_id().empty(), InvalidArgument,
+      "Replication group id cannot be empty");
+  SCHECK(req->namespace_names_size() > 0, InvalidArgument, "Namespace names must be specified");
+
+  std::vector<NamespaceName> namespace_names;
+  for (const auto& namespace_name : req->namespace_names()) {
+    namespace_names.emplace_back(namespace_name);
+  }
+
+  auto namespace_ids = VERIFY_RESULT(CreateOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch,
+      rpc->GetClientDeadline()));
+  for (const auto& namespace_id : namespace_ids) {
+    *resp->add_namespace_ids() = namespace_id;
+  }
+
+  return Status::OK();
+}
+
+Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
+    const XClusterAddNamespaceToOutboundReplicationGroupRequestPB* req,
+    XClusterAddNamespaceToOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
+
+  auto namespace_id = VERIFY_RESULT(AddNamespaceToOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch,
+      rpc->GetClientDeadline()));
+
+  resp->set_namespace_id(namespace_id);
+  return Status::OK();
+}
+
+Status XClusterManager::XClusterRemoveNamespaceFromOutboundReplicationGroup(
+    const XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB* req,
+    XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  return RemoveNamespaceFromOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), epoch);
+}
+
+Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
+    const XClusterDeleteOutboundReplicationGroupRequestPB* req,
+    XClusterDeleteOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return DeleteOutboundReplicationGroup(
+      xcluster::ReplicationGroupId(req->replication_group_id()), epoch);
+}
+
+Status XClusterManager::IsXClusterBootstrapRequired(
+    const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  auto bootstrap_required = VERIFY_RESULT(IsBootstrapRequired(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id()));
+
+  if (!bootstrap_required.has_value()) {
+    resp->set_not_ready(true);
+    return Status::OK();
+  }
+
+  resp->set_initial_bootstrap_required(bootstrap_required.value());
+
+  return Status::OK();
+}
+
+Status XClusterManager::GetXClusterStreams(
+    const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  std::vector<std::pair<TableName, PgSchemaName>> table_names;
+  for (const auto& table_name : req->table_infos()) {
+    table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
+  }
+
+  auto ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreams(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_names));
+
+  if (!ns_info.has_value()) {
+    resp->set_not_ready(true);
+    return Status::OK();
+  }
+
+  resp->set_initial_bootstrap_required(ns_info->initial_bootstrap_required);
+  for (const auto& ns_table_info : ns_info->table_infos) {
+    auto* table_info = resp->add_table_infos();
+    table_info->set_table_id(ns_table_info.table_id);
+    table_info->set_xrepl_stream_id(ns_table_info.stream_id.ToString());
+    table_info->set_table_name(ns_table_info.table_name);
+    table_info->set_pg_schema_name(ns_table_info.pg_schema_name);
+  }
+
+  return Status::OK();
+}
+
+std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
+    const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> result;
+  {
+    auto tasks = XClusterSourceManager::GetPostTabletCreateTasks(table_info, epoch);
+    MoveCollection(&tasks, &result);
+  }
+  {
+    auto tasks = XClusterTargetManager::GetPostTabletCreateTasks(table_info, epoch);
+    MoveCollection(&tasks, &result);
+  }
+
+  return result;
+}
 }  // namespace yb::master

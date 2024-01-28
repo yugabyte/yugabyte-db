@@ -36,6 +36,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -330,7 +331,7 @@ class ClusterAdminClient {
   Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
   Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
 
-  Status ListAllNamespaces();
+  Status ListAllNamespaces(bool include_nonrunning = false);
 
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
@@ -589,7 +590,7 @@ class ClusterAdminClient {
       const MonoDelta timeout = MonoDelta());
 
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
-  Result<const NamespaceMap&> GetNamespaceMap();
+  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

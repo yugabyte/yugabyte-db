@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 
@@ -314,6 +314,11 @@ class CatalogManagerIf {
       const yb::OpIdPB& safe_opid,
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
+
+  virtual Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

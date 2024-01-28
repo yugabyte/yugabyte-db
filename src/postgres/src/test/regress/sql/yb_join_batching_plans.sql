@@ -202,6 +202,8 @@ analyze q2;
 
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 
@@ -232,3 +234,14 @@ SET yb_bnl_batch_size = 1024;
 explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
 drop table tab2;
 drop table tab1;
+
+create table tab1(c1 int primary key);
+insert into tab1 select generate_series(1, 10000);
+create table tab2(c1 int, c2 int);
+insert into tab2 select i/10, i%10 from generate_series(1, 100000) i;
+create index on tab2 (c1);
+analyze tab1;
+analyze tab2;
+explain (costs off) /*+YbBatchedNL(tab1 tab2)*/ select * from tab1, tab2 where tab1.c1 = tab2.c1;
+drop table tab1;
+drop table tab2;

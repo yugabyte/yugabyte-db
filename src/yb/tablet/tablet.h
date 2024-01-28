@@ -622,11 +622,11 @@ class Tablet : public AbstractTablet,
 
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
-        regular_db_.get(),
-        intents_db_.get(),
-        &key_bounds_,
-        retention_policy_.get(),
-        metrics ? metrics : metrics_.get() };
+        .regular = regular_db_.get(),
+        .intents = intents_db_.get(),
+        .key_bounds = &key_bounds_,
+        .retention_policy = retention_policy_.get(),
+        .metrics = metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:
@@ -889,7 +889,8 @@ class Tablet : public AbstractTablet,
   // present in the associated aborted subtxns.
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
-      TabletLockInfoPB* tablet_lock_info) const;
+      TabletLockInfoPB* tablet_lock_info,
+      uint64_t max_single_shard_waiter_start_time_us) const;
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
@@ -1234,7 +1235,7 @@ class Tablet : public AbstractTablet,
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
 
-  AutoFlagsManager* auto_flags_manager_ = nullptr;
+  AutoFlagsManagerBase* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

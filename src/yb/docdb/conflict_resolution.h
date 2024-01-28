@@ -23,6 +23,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/wait_queue.h"
+#include "yb/tablet/tablet_fwd.h"
 
 namespace rocksdb {
 
@@ -102,6 +103,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   CoarseTimePoint deadline,
                                    ResolutionCallback callback);
 
 // Resolves conflicts for doc operations.
@@ -127,6 +129,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  tablet::TabletMetrics* tablet_metrics,
                                  LockBatch* lock_batch,
                                  WaitQueue* wait_queue,
+                                 CoarseTimePoint deadline,
                                  ResolutionCallback callback);
 
 struct ParsedIntent {

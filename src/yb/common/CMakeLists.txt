@@ -86,6 +86,7 @@ set(COMMON_SRCS
   id_mapping.cc
   key_encoder.cc
   pgsql_error.cc
+  path-handler-util.cc
   placement_info.cc
   pg_types.cc
   ql_protocol_util.cc

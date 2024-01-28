@@ -21,9 +21,9 @@ public class DrConfigSafetimeResp {
     private final long safetimeEpochUs;
     private final long safetimeLagUs;
     private final long safetimeSkewUs;
-    private final long estimatedDataLossMs;
+    private final double estimatedDataLossMs;
 
-    public NamespaceSafetime(NamespaceSafeTimePB namespaceSafeTimePB, long estimatedDataLossMs) {
+    public NamespaceSafetime(NamespaceSafeTimePB namespaceSafeTimePB, double estimatedDataLossMs) {
       this.namespaceId = namespaceSafeTimePB.getNamespaceId();
       this.namespaceName = namespaceSafeTimePB.getNamespaceName();
       this.safetimeEpochUs =

@@ -70,7 +70,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.22 (STS)    | Mid 2024       |
+| Next STS    | Mid 2024       |
 
 ## Recommended release series for projects
 

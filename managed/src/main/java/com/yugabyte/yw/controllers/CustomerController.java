@@ -357,7 +357,8 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Add metrics to a customer",
+      notes = "YbaApi Internal.",
+      value = "Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
   @ApiResponses(
@@ -418,6 +419,8 @@ public class CustomerController extends AuthenticatedController {
         Common.CloudType.aws.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws));
     hostInfo.put(
         Common.CloudType.gcp.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp));
+    hostInfo.put(
+        Common.CloudType.azu.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.azu));
 
     return PlatformResults.withRawData(hostInfo);
   }

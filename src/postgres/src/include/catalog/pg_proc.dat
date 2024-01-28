@@ -10471,4 +10471,13 @@
   prorettype => 'uuid', proargtypes => '',
   prosrc => 'yb_get_current_transaction' },
 
+{ oid => '8065',
+  descr => 'Get all the samples from the Active Session History circular buffer',
+  proname => 'yb_active_session_history', prorows => '100000',
+  proretset => 't', provolatile => 'v', proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{timestamptz,uuid,int8,text,text,text,uuid,int8,int8,text,text,float4}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,yql_endpoint_tserver_uuid,query_id,session_id,client_node_ip,wait_event_aux,sample_weight}',
+  prosrc => 'yb_active_session_history'},
 ]

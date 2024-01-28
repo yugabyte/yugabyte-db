@@ -18,6 +18,7 @@ export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTabl
 export const YBAHost = {
   GCP: 'gcp',
   AWS: 'aws',
+  AZU: 'azu',
   SELF_HOSTED: 'selfHosted'
 } as const;
 
@@ -48,7 +49,10 @@ export const RuntimeConfigKey = {
   SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   ENABLE_NODE_AGENT: 'yb.node_agent.client.enabled',
-  GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize'
+  GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',
+  RELEASES_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.releases_redesign',
+  ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
+  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled'
 } as const;
 
 /**

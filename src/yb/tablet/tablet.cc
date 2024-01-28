@@ -36,7 +36,7 @@
 
 #include <boost/container/static_vector.hpp>
 
-#include "yb/client/auto_flags_manager.h"
+#include "yb/server/auto_flags_manager_base.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -115,7 +115,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -600,7 +599,8 @@ Tablet::Tablet(const TabletInitData& data)
       transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
         client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL),
+        data.messenger));
     }
   }
 
@@ -926,7 +926,7 @@ Status Tablet::OpenKeyValueTablet() {
         metadata_->cdc_sdk_min_checkpoint_op_id(),
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
-        doc_db(), &key_bounds_, &pending_op_counter_blocking_rocksdb_shutdown_start_));
+        doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -2250,7 +2250,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
-      table_info.schema_version(), op_id);
+      table_info.schema_version(), op_id, table_info.pg_table_id());
 
   return Status::OK();
 }
@@ -2399,35 +2399,6 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
 
 namespace {
 
-Result<pgwrapper::PGConn> ConnectToPostgres(
-    const HostPort& pgsql_proxy_bind_address,
-    const std::string& database_name,
-    uint64_t postgres_auth_key,
-    const CoarseTimePoint& deadline) {
-  // Note that the plain password in the connection string will be sent over the wire, but since
-  // it only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
-  //
-  // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
-  // it to at least 2 in the first place. See connectDBComplete.
-  auto conn_res = pgwrapper::PGConnBuilder({
-    .host = PgDeriveSocketDir(pgsql_proxy_bind_address),
-    .port = pgsql_proxy_bind_address.port(),
-    .dbname = database_name,
-    .user = "postgres",
-    .password = UInt64ToString(postgres_auth_key),
-    .connect_timeout = static_cast<size_t>(std::max(
-        2, static_cast<int>(ToSeconds(deadline - CoarseMonoClock::Now()))))
-  }).Connect();
-  if (!conn_res) {
-    auto libpq_error_message = AuxilaryMessage(conn_res.status()).value();
-    if (libpq_error_message.empty()) {
-      return STATUS(IllegalState, "backfill failed to connect to DB");
-    }
-    return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", libpq_error_message);
-  }
-  return conn_res;
-}
-
 string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_to_backfill) {
   PgsqlBackfillSpecPB backfill_spec;
   std::string serialized_backfill_spec;
@@ -2563,8 +2534,10 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline);
-  auto conn = VERIFY_RESULT(ConnectToPostgres(
-    pgsql_proxy_bind_address, database_name, postgres_auth_key, backfill_params.modified_deadline));
+  auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
+                                pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                                backfill_params.modified_deadline)
+                                .Connect());
 
   // Construct query string.
   std::string index_oids;
@@ -4460,7 +4433,8 @@ Status PopulateLockInfoFromIntent(
 }
 
 Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
-                             TabletLockInfoPB* tablet_lock_info) const {
+                             TabletLockInfoPB* tablet_lock_info,
+                             uint64_t max_single_shard_waiter_start_time_us) const {
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4561,7 +4535,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
   const auto& wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
-    RETURN_NOT_OK(wait_queue->GetLockStatus(transactions, *this, &lock_info_manager));
+    RETURN_NOT_OK(wait_queue->GetLockStatus(
+        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager));
   }
 
   return Status::OK();

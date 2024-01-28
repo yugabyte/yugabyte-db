@@ -951,6 +951,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1645,8 +1646,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   req.set_is_matview(meta.is_matview());
 
-  if (meta.has_matview_pg_table_id()) {
-    req.set_matview_pg_table_id(meta.matview_pg_table_id());
+  if (meta.has_pg_table_id()) {
+    req.set_pg_table_id(meta.pg_table_id());
   }
 
   RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr, epoch));

@@ -3243,9 +3243,11 @@ TEST_F_EX(PgLibPqTest,
   for (int i = 0; i < 50; i++) {
     ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
       string count;
-      RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0 | wc -l", postmaster_pid), &count);
-      return count[0] == '1';
-    }, 1500ms, "Webserver restarting..."));
+      // The Mac implementation of pgrep has a bug and requires -P before -f.
+      // Otherwise, the -f argument is ignored.
+      RunShellProcess(Format("pgrep -P $0 -f 'YSQL webserver' | wc -l", postmaster_pid), &count);
+      return count.find("1") != string::npos;
+    }, 2500ms, "Webserver restarting..."));
     ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
                                 &message));
   }
@@ -3857,6 +3859,50 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
   // Check that no new files are created on view creation.
   values = ASSERT_RESULT(conn.FetchRows<bool>(query));
   ASSERT_EQ(values, decltype(values){true});
+}
+
+class PgBackendsSessionExpireTest : public LibPqTestBase {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          Format("--pg_client_session_expiration_ms=$0", kHeartbeatTimeout.ToMilliseconds()),
+          Format("--pg_client_heartbeat_interval_ms=$0", kHeartbeatInterval.ToMilliseconds()),
+          Format("--max_num_tablets_for_table=$0", kMaxTabletsPerTable)
+        });
+  }
+
+  const MonoDelta kHeartbeatTimeout = 1s;
+  const MonoDelta kHeartbeatInterval = 10s;
+  static constexpr int kMaxTabletsPerTable = 10;
+};
+
+// Test validates that a backend with an expired tablet server session causes
+// the connection to FATAL.
+TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
+  constexpr auto query = "SELECT * FROM pg_class LIMIT 1";
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  // The backend sends a heartbeat to the tablet server once every 10s by default.
+  // This is controlled by the 'pg_client_heartbeat_interval_ms' flag.
+  // The flag 'pg_client_session_expiration_ms' controls how often the tserver checks for the
+  // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little
+  // over 2x the duration, we can ensure that the session has indeed expired.
+  SleepFor((kHeartbeatTimeout * 2) + 100ms);
+  ASSERT_NOK(conn.Execute(query));
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+
+  // "Unknown Session" is an InvalidArgument error.
+  // Validate that other InvalidArgument errors do not produce FATALs.
+  // Creating a table with an invalid number of tablets produces an InvalidArgument error.
+  // The error is not propagated to the client, so we cannot assert it here.
+  conn.Reset();
+  ASSERT_NOK(conn.FetchFormat("CREATE TABLE test (h INT) SPLIT INTO $0 TABLETS",
+                              kMaxTabletsPerTable + 1));
+  ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
+  ASSERT_OK(conn.Fetch(query));
 }
 
 } // namespace pgwrapper

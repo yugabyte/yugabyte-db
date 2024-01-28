@@ -93,7 +93,7 @@ public class Region extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -142,12 +142,21 @@ public class Region extends Model {
   @JsonIgnore
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
-    return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid())
-        .stream()
-        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
-        .filter(nd -> azUUIDs.contains(nd.azUuid))
-        .count();
+    long universeNodeCount =
+        Customer.get(getProvider().getCustomerUUID())
+            .getUniversesForProvider(getProvider().getUuid())
+            .stream()
+            .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+            .filter(nd -> azUUIDs.contains(nd.azUuid))
+            .count();
+
+    long onpremInstanceCount = 0;
+    if (provider.getCloudCode() == CloudType.onprem) {
+      // We will have to consider the not-in-use instances associated with the az.
+      onpremInstanceCount = NodeInstance.listByRegion(getUuid(), null).stream().count();
+    }
+
+    return universeNodeCount + onpremInstanceCount;
   }
 
   @JsonProperty("securityGroupId")
@@ -166,7 +175,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -193,7 +202,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);

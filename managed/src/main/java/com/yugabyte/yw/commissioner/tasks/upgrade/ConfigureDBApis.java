@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -40,6 +39,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -48,16 +54,10 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
-          // Update custom communication ports in universe and node details
-          // to set ports related flags on nodes.
-          if (taskParams().enableYCQL || taskParams().enableYSQL) {
-            CommunicationPorts ports = universe.getUniverseDetails().communicationPorts;
-            UniverseTaskParams.CommunicationPorts.mergeCommunicationPorts(ports, taskParams());
-            createUpdateUniverseCommunicationPortsTask(ports)
-                .setSubTaskGroupType(getTaskSubGroupType());
-          }
-
           createTaskToConfigureApiThroughRollingGFlagsUpgrade(universe);
+
+          createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts)
+              .setSubTaskGroupType(getTaskSubGroupType());
 
           // Update user intent details regarding apis in universe details.
           createUpdateDBApiDetailsTask(
@@ -93,10 +93,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
       createRollingUpgradeTaskFlow(
           (nodes, processTypes) -> {
             // In case of rolling restart, we only deal with one node at a time.
-            NodeDetails node = nodes.iterator().next();
-            node.isYqlServer = taskParams().enableYCQL;
-            node.isYsqlServer = taskParams().enableYSQL;
-            createNodeDetailsUpdateTask(node, false);
             createServerConfFileUpdateTasks(
                 userIntent,
                 nodes,
@@ -104,7 +100,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                 currentCluster,
                 currClusters,
                 currentCluster,
-                currClusters);
+                currClusters,
+                taskParams().communicationPorts);
+            NodeDetails node = nodes.iterator().next();
+            node.isYqlServer = taskParams().enableYCQL;
+            node.isYsqlServer = taskParams().enableYSQL;
+            CommunicationPorts.setCommunicationPorts(taskParams().communicationPorts, node);
+            createNodeDetailsUpdateTask(node, false);
           },
           masterNodes,
           tserverNodes,
@@ -114,7 +116,11 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // intent fetched during runtime will not be correct as universe details are not updated
           // upto this point so passing the new expected user intent as part of the
           // waitForServer(YSQL sevrver check) in params.
-          RUN_BEFORE_STOPPING.builder().userIntent(userIntent).build(),
+          RUN_BEFORE_STOPPING
+              .builder()
+              .userIntent(userIntent)
+              .communicationPorts(taskParams().communicationPorts)
+              .build(),
           universe.isYbcEnabled());
     }
   }

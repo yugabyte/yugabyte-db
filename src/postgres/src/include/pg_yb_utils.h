@@ -587,10 +587,18 @@ extern char *yb_test_block_index_phase;
 extern char *yb_test_fail_index_state_change;
 
 /*
+ * If set to true, any DDLs that rewrite tables/indexes will fail after
+ * the new table is created.
+ */
+extern bool yb_test_fail_table_rewrite_after_creation;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+extern bool yb_use_hash_splitting_by_default;
 
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
@@ -674,7 +682,8 @@ int32_t YBFollowerReadStalenessMs();
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
  * Resulted object can be released with pfree.
  */
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+	int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
@@ -784,12 +793,16 @@ extern const int yb_funcs_unsafe_for_pushdown_count;
 void YBSetParentDeathSignal();
 
 /**
- * Return the relid to be used for the relation's storage in docDB.
- * Ex: If we have swapped relation A with relation B, relation A's
- * filenode has been set to relation B's OID.
+ * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
+ * maps to the relation's DocDB table ID. Note: if the table has not
+ * previously been rewritten, this function returns the OID of the table.
  */
-Oid YbGetStorageRelid(Relation relation);
+Oid YbGetRelfileNodeId(Relation relation);
 
+/**
+ * Given a relation ID, return the relation's relfilenode OID.
+ */
+Oid YbGetRelfileNodeIdFromRelId(Oid relationId);
 /*
  * Check whether the user ID is of a user who has the yb_db_admin role.
  */
@@ -1021,11 +1034,31 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
+
 /*
  * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
  * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
  * statement if it increments the catalog version.
  */
 extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
+
+extern bool yb_use_tserver_key_auth;
+
+extern bool yb_use_tserver_key_auth_check_hook(bool *newval,
+		void **extra, GucSource source);
+
+extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
+										   Relation pg_constraint,
+										   CreateStmt *create_stmt);
+
+extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
+									 bool yb_copy_split_options);
+
+/*
+ * Returns the ordering type for a primary key. By default, the first element of
+ * YB relations are sorted by HASH, unless Postgres sorting is set, or the table
+ * is colocated.
+ */
+extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
 #endif /* PG_YB_UTILS_H */

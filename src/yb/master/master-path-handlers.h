@@ -232,6 +232,8 @@ class MasterPathHandlers {
   void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetXClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetXClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void GetXClusterJSON(std::stringstream& output, bool pretty);
+  void HandleXCluster(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -281,8 +283,10 @@ class MasterPathHandlers {
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
-  Status GetClusterAndXClusterConfigStatus(
-      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config);
+  Status GetXClusterConfigs(
+      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config,
+      GetReplicationStatusResponsePB* xcluster_status,
+      std::vector<SysUniverseReplicationEntryPB>* replication_infos);
 
   Master* master_;
 

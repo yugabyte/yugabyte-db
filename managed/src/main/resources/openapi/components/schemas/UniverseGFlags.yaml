@@ -1,0 +1,7 @@
+title: GFlags for the universe
+type: object
+properties:
+  primary_gflags:
+    $ref: ./SpecificGFlagsPerCluster.yaml
+  read_replica_gflags:
+    $ref: ./SpecificGFlagsPerCluster.yaml

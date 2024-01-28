@@ -16,6 +16,11 @@ import {
 } from '../../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../../universe-form/utils/helpers';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../../universe-form/utils/constants';
+//Rbac
+import { RBAC_ERR_MSG_NO_PERM } from '../../../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
+//imported styles
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
 //icons
 import LinkIcon from '../../../../../assets/link.svg';
@@ -107,6 +112,8 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
         <Typography variant="body2">
           {t('universeActions.dbRollbackUpgrade.preFinalize.modalMsg2')}
         </Typography>
+        {/* 
+        Do not remove this, We need this once We get Doc link
         <Box display="flex" flexDirection={'row'} alignItems={'center'} mt={3}>
           <Typography variant="body2">
             <Link underline="always" color="inherit">
@@ -115,7 +122,7 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
           </Typography>
           &nbsp;
           <img src={LinkIcon} alt="---" height={'16px'} width="16px" />
-        </Box>
+        </Box> */}
       </>
     );
   };
@@ -156,6 +163,11 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
     );
   };
 
+  const canFinalizeUpgrade = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.UPGRADE_UNIVERSE_FINALIZE
+  });
+
   const modalTitle = isLoading
     ? 'Loading ...'
     : hasImpactedXclusters
@@ -191,12 +203,14 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
       hideCloseBtn={hasImpactedXclusters ? true : false}
       buttonProps={{
         primary: {
-          disabled: isLoading
+          disabled: isLoading || (!hasImpactedXclusters && !canFinalizeUpgrade)
         },
         secondary: {
-          disabled: isLoading
+          disabled: isLoading || (hasImpactedXclusters && !canFinalizeUpgrade)
         }
       }}
+      submitButtonTooltip={!hasImpactedXclusters && !canFinalizeUpgrade ? RBAC_ERR_MSG_NO_PERM : ''}
+      cancelButtonTooltip={hasImpactedXclusters && !canFinalizeUpgrade ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <Box className={classes.modalContainer}>
         {isLoading ? (

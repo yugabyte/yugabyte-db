@@ -341,15 +341,9 @@ Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
 
 Result<std::unique_ptr<YsqlUpgradeHelper::DatabaseEntry>>
 YsqlUpgradeHelper::MakeDatabaseEntry(std::string database_name) {
-  // Note that the plain password in the connection string will be sent over the wire, but since it
-  // only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
-  auto builder = PGConnBuilder({
-    .host = PgDeriveSocketDir(ysql_proxy_addr_),
-    .port = ysql_proxy_addr_.port(),
-    .dbname = database_name,
-    .user = "postgres",
-    .password = UInt64ToString(ysql_auth_key_),
-  });
+  // Explicitly using an infinite connect_timeout here.
+  auto builder = pgwrapper::CreateInternalPGConnBuilder(
+      ysql_proxy_addr_, database_name, ysql_auth_key_, /* deadline */ std::nullopt);
 
   std::unique_ptr<DatabaseEntry> entry;
   if (use_single_connection_) {
@@ -427,12 +421,29 @@ Status YsqlUpgradeHelper::Upgrade() {
     }
   }
 
+  // Fix for https://github.com/yugabyte/yugabyte-db/issues/18507:
+  // This bug only shows up when upgrading from 2.4.x or 2.6.x, in these
+  // two releases the table pg_yb_catalog_version exists but the function
+  // yb_catalog_version does not exist. However we have skipped V1 because
+  // SystemTableHasRows(pgconn, "pg_yb_catalog_version") returns true.
+  for (auto& entry : databases) {
+    auto conn = VERIFY_RESULT(entry->GetConnection());
+    if (!VERIFY_RESULT(FunctionExists(conn.get(), "yb_catalog_version"))) {
+      LOG(WARNING) << "Function yb_catalog_version is missing in " << entry->database_name_;
+      // Run V1 migration script to introduce function "yb_catalog_version".
+      const Version version = {0, 0};
+      RETURN_NOT_OK(MigrateOnce(entry.get(), &version));
+    } else {
+      LOG(INFO) << "Found function yb_catalog_version in " << entry->database_name_;
+    }
+  }
+
   return Status::OK();
 }
 
-Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
+Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version) {
   const auto& db_name = db_entry->database_name_;
-  const auto& version = db_entry->version_;
+  const auto& version = historical_version ? *historical_version : db_entry->version_;
 
   auto pgconn = VERIFY_RESULT(db_entry->GetConnection());
 
@@ -482,6 +493,11 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
   if (!catalog_version_migration_applied_) {
     SleepFor(MonoDelta::FromMilliseconds(2 * heartbeat_interval_ms_));
     catalog_version_migration_applied_ = true;
+  }
+
+  if (historical_version) {
+    LOG(INFO) << db_name << ": migration successfully applied without version bump";
+    return Status::OK();
   }
 
   RETURN_NOT_OK_PREPEND(

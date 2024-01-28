@@ -38,6 +38,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/clock.h"
@@ -56,12 +57,14 @@
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
+DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 100,
     "If greater than zero, indicates the maximum amount of time to wait to lock keys "
     "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
@@ -158,6 +161,11 @@ const Status kRefreshWaiterTimeout = STATUS(
     TimedOut,
     "Waiter transaction timed out waiting in queue, invoking callback.");
 
+const Status kWaiterTimeout = STATUS(
+    TimedOut,
+    "Failed to resume Waiter transaction from queue within deadline."
+);
+
 CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
   static constexpr auto kDefaultWaitForRelockUnblockedTxnKeys = 1000ms;
   if (FLAGS_wait_for_relock_unblocked_txn_keys_ms > 0) {
@@ -245,7 +253,8 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
              scoped_refptr<EventStats>* finished_waiting_latency,
-             OperationCounter* in_progress_rpc_status_req_callbacks)
+             OperationCounter* in_progress_rpc_status_req_callbacks,
+             CoarseTimePoint deadline)
       : id(id_),
         subtxn_id(subtxn_id_),
         locks(locks_),
@@ -261,7 +270,8 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
         rpcs_(*rpcs),
-        in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks) {
+        in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks),
+        deadline_(deadline) {
     DCHECK(txn_start_us || id.IsNil());
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
@@ -288,29 +298,62 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
 
-  void InvokeCallback(const Status& waiter_status, HybridTime resume_ht = HybridTime::kInvalid) {
-    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << waiter_status;
+  void InvokeCallbackOrWarn(
+      Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
+      CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
+    WARN_NOT_OK(
+        InvokeCallback(waiter_status, resume_ht, locking_deadline),
+        Format("$0Unable to invoke waiter callback", LogPrefix()));
+  }
+
+  // Returns Status::OK() if the waiter's callback would have been executed (either in this
+  // function call or sometime in the past) post returning of the function.
+  Status InvokeCallback(
+      Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
+      CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
     SET_WAIT_STATUS(OnCpu_Passive);
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    auto status = waiter_status;
-    {
-      UniqueLock l(mutex_);
-      if (!unlocked_) {
-        LOG_WITH_PREFIX(INFO)
-            << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
-            << "be rare.";
-        return;
+    auto& status = waiter_status;
+    std::optional<UnlockedBatch> unlocked_copy = AtomicConsumeUnlockedBatch();
+    if (!unlocked_copy) {
+      // This branch may be hit somewhat commonly as WaitQueue::Poll and SignalCommitted may
+      // concurrently detect that a blocker is resolved. Whichever one is second will hit this path.
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Skipping InvokeCallback for waiter whose callback was already invoked.";
+      return Status::OK();
+    }
+
+    if (status.ok()) {
+      if (CoarseMonoClock::Now() > deadline_) {
+        VLOG_WITH_PREFIX_AND_FUNC(1) << "Waiter passed deadline. Executing callback with failure.";
+        auto wq_entry = MonoTime::FromUint64(wq_entry_time.ToUint64());
+        status = kWaiterTimeout.CloneAndAppend(Format(
+          "deadline: $0, timeout: $1", deadline_, deadline_ - ToCoarse(wq_entry)));
+      } else {
+        *locks = unlocked_copy->TryLock(locking_deadline);
+        if (!locks->status().ok()) {
+          {
+            // Restore the state of 'unlocked_' enabling retry of waiter resumption.
+            UniqueLock l(mutex_);
+            unlocked_.swap(unlocked_copy);
+          }
+          return locks->status().CloneAndPrepend(
+            Format("$0Waiter failed to re-acquire in memory locks", LogPrefix()));
+        }
       }
-      finished_waiting_latency_->Increment(MicrosSinceCreation());
-      if (status.ok()) {
-        *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-        status = locks->status();
-      }
-      unlocked_ = std::nullopt;
     }
     DEBUG_ONLY_TEST_SYNC_POINT("WaiterData::Impl::InvokeCallback:1");
+    {
+      UniqueLock l(mutex_);
+      finished_waiting_latency_->Increment(MicrosSinceCreation());
+      if (is_wait_queue_shutting_down_) {
+        status = kShuttingDownError;
+      }
+    }
+    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
     callback(status, resume_ht);
+    return Status::OK();
   }
 
   std::string LogPrefix() {
@@ -423,9 +466,20 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return serial_no < rhs->serial_no;
   }
 
+  CoarseTimePoint deadline() {
+    return deadline_;
+  }
+
  private:
   int64_t MicrosSinceCreation() const {
     return GetCurrentTimeMicros() - wq_entry_time.GetPhysicalValueMicros();
+  }
+
+  std::optional<UnlockedBatch> AtomicConsumeUnlockedBatch() EXCLUDES(mutex_) {
+    UniqueLock l(mutex_);
+    std::optional<UnlockedBatch> unlocked = std::nullopt;
+    unlocked.swap(unlocked_);
+    return unlocked;
   }
 
   scoped_refptr<EventStats>& finished_waiting_latency_;
@@ -437,6 +491,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   // Raw pointer to the host wait-queue's 'in_progress_rpc_status_req_callbacks_'. Shouldn't be
   // operated on when 'is_wait_queue_shutting_down_' is true.
   OperationCounter* in_progress_rpc_status_req_callbacks_;
+  CoarseTimePoint deadline_;
 };
 
 using WaiterDataPtr = std::shared_ptr<WaiterData>;
@@ -692,12 +747,34 @@ struct SerialWaiter {
   }
 };
 
+void ResumeContentiousWaiter(const SerialWaiter& to_resume) {
+  DCHECK(PREDICT_TRUE(ThreadRestrictions::IsIOAllowed()))
+      << "IO disallowed, but the thread might have to perform IO operations downstearm.";
+
+  auto& waiter = to_resume.waiter;
+  VLOG(1) << "Resuming waiter " << waiter->LogPrefix() << "on Scheduler.";
+
+  auto start_time = MonoTime::Now();
+  auto deadline = waiter->deadline();
+  auto s = waiter->InvokeCallback(Status::OK(), to_resume.resolve_ht, deadline);
+  if (s.ok()) {
+    VLOG(4) << "Successfully executed waiter " << waiter->LogPrefix() << "callback on Scheduler.";
+    return;
+  }
+
+  s = s.CloneAndAppend(Format("timeout: $0", deadline - ToCoarse(start_time)));
+  VLOG(1) << "Couldn't resume waiter on Scheduler: " << s;
+  DCHECK_OK(waiter->InvokeCallback(s));
+}
+
 // Resumes waiters async, in serial, and in the order of the waiter's serial_no, running the lowest
 // serial number first in a best effort manner.
 class ResumedWaiterRunner {
  public:
-  ResumedWaiterRunner(ThreadPoolToken* thread_pool_token, const std::string& log_prefix)
-    : thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)), log_prefix_(log_prefix) {}
+  ResumedWaiterRunner(
+      ThreadPoolToken* thread_pool_token, const std::string& log_prefix, rpc::Messenger* messenger)
+          : thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)), log_prefix_(log_prefix),
+            messenger_(messenger) {}
 
   void Submit(const WaiterDataPtr& waiter, const Status& status, HybridTime resolve_ht) {
     {
@@ -708,7 +785,7 @@ class ResumedWaiterRunner {
         // callback here as the record might have already been erased from waiter_status_. Else,
         // we risk dropping execution of the callback all together.
         l.unlock();
-        waiter->InvokeCallback(kShuttingDownError);
+        waiter->InvokeCallbackOrWarn(kShuttingDownError);
         return;
       }
       AddWaiter(waiter, status, resolve_ht);
@@ -725,15 +802,22 @@ class ResumedWaiterRunner {
     std::vector<WaiterDataPtr> waiters;
     {
       UniqueLock l(mutex_);
-      waiters.reserve(pq_.size());
+      waiters.reserve(pq_.size() + contentious_waiters_.size());
       while (!pq_.empty()) {
         waiters.push_back(std::move(pq_.top().waiter));
         pq_.pop();
       }
+      for (auto& weak_waiter : contentious_waiters_) {
+        if (auto shared_waiter = weak_waiter.lock()) {
+          waiters.push_back(std::move(shared_waiter));
+        }
+      }
+      contentious_waiters_.clear();
       shutting_down_ = true;
     }
     for (const auto& waiter : waiters) {
-      waiter->InvokeCallback(kShuttingDownError);
+      waiter->SignalWaitQueueShutdown();
+      waiter->InvokeCallbackOrWarn(kShuttingDownError);
     }
   }
 
@@ -743,26 +827,77 @@ class ResumedWaiterRunner {
     LOG_IF_WITH_PREFIX(DFATAL, !shutting_down_) << "Called when not in shutting_down_ state.";
     LOG_IF_WITH_PREFIX(DFATAL, !pq_.empty())
         << "pq_ found in non-empty state. Could block tablet shutdown.";
+    LOG_IF_WITH_PREFIX(DFATAL, !contentious_waiters_.empty())
+        << "contentious_waiters_ found in non-empty state. Could block tablet shutdown.";
+  }
+
+  void CleanContentiousWeakWaiterDatas() EXCLUDES(mutex_) {
+    UniqueLock l(mutex_);
+    EraseIf([](const auto& weak_waiter) {
+      return weak_waiter.expired();
+    }, &contentious_waiters_);
   }
 
  private:
   void TriggerPoll() {
     WARN_NOT_OK(thread_pool_token_->SubmitFunc([this]() {
+      std::vector<SerialWaiter> unresumed_waiters;
       for (;;) {
-        WaiterDataPtr to_invoke;
+        WaiterDataPtr waiter;
         HybridTime resolve_ht;
         {
           UniqueLock l(this->mutex_);
           if (pq_.empty()) {
-            return;
+            break;
           }
-          to_invoke = pq_.top().waiter;
+          waiter = pq_.top().waiter;
           resolve_ht = pq_.top().resolve_ht;
           pq_.pop();
-          VLOG_WITH_PREFIX(4) << "Popped waiter " << to_invoke->id
-                              << " with start time (us) " << to_invoke->txn_start_us;
+          VLOG_WITH_PREFIX(4) << "Popped waiter " << waiter->id
+                              << " with start time (us) " << waiter->txn_start_us;
         }
-        to_invoke->InvokeCallback(Status::OK(), resolve_ht);
+        auto s = waiter->InvokeCallback(Status::OK(), resolve_ht);
+        if (!s.ok()) {
+          VLOG_WITH_PREFIX(1) << "Waiter's InvokeCallback failed: " << s;
+          unresumed_waiters.push_back(SerialWaiter {
+            .waiter = waiter,
+            .resolve_ht = resolve_ht
+          });
+        }
+      }
+
+      bool is_shutting_down = false;
+      {
+        UniqueLock l(this->mutex_);
+        if (shutting_down_) {
+          is_shutting_down = true;
+        } else {
+          contentious_waiters_.reserve(contentious_waiters_.size() + unresumed_waiters.size());
+          for (auto& serial_waiter : unresumed_waiters) {
+            contentious_waiters_.push_back(serial_waiter.waiter);
+          }
+        }
+      }
+
+      for (auto& serial_waiter : unresumed_waiters) {
+        if (is_shutting_down) {
+          // A shutdown request could have arrived after the waiter was popped off pq_, and we
+          // could have failed to invoke the waiter's callback due to inability to obtain the
+          // shared in-memory locks. Instead of scheduling the callback, execute the callback
+          // in-line here.
+          serial_waiter.waiter->InvokeCallbackOrWarn(kShuttingDownError);
+        } else {
+          VLOG_WITH_PREFIX(1) << "Scheduling waiter " << serial_waiter.waiter->LogPrefix()
+                              << "resumption on the Tablet Server's Scheduler.";
+          messenger_->scheduler().Schedule([serial_waiter](const Status& s) {
+            if (!s.ok()) {
+              serial_waiter.waiter->InvokeCallbackOrWarn(
+                  s.CloneAndPrepend("Failed scheduling contentious waiter resumption: "));
+              return;
+            }
+            ResumeContentiousWaiter(serial_waiter);
+          }, std::chrono::milliseconds(100));
+        }
       }
     }), "Failed to trigger poll of ResumedWaiterRunner in wait queue");
   }
@@ -779,7 +914,7 @@ class ResumedWaiterRunner {
     } else {
       // If error status, resume waiter right away, no need to respect serial_no
       WARN_NOT_OK(thread_pool_token_->SubmitFunc([waiter, status]() {
-        waiter->InvokeCallback(status);
+        waiter->InvokeCallbackOrWarn(status);
       }), "Failed to submit waiter resumption");
     }
   }
@@ -791,9 +926,12 @@ class ResumedWaiterRunner {
   mutable rw_spinlock mutex_;
   std::priority_queue<
       SerialWaiter, std::vector<SerialWaiter>, SerialWaiter> pq_ GUARDED_BY(mutex_);
+  // Set of weak waiter data pointers scheduled for resumption.
+  std::vector<std::weak_ptr<WaiterData>> contentious_waiters_ GUARDED_BY(mutex_);
   ThreadPoolToken* thread_pool_token_;
   bool shutting_down_ GUARDED_BY(mutex_) = false;
   const std::string log_prefix_;
+  rpc::Messenger* messenger_;
 };
 
 } // namespace
@@ -804,11 +942,12 @@ class WaitQueue::Impl {
        WaitingTxnRegistry* waiting_txn_registry,
        const std::shared_future<client::YBClient*>& client_future,
        const server::ClockPtr& clock, const MetricEntityPtr& metrics,
-       std::unique_ptr<ThreadPoolToken> thread_pool_token)
+       std::unique_ptr<ThreadPoolToken> thread_pool_token,
+       rpc::Messenger* messenger)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
         thread_pool_token_(std::move(thread_pool_token)),
-        waiter_runner_(thread_pool_token_.get(), LogPrefix()),
+        waiter_runner_(thread_pool_token_.get(), LogPrefix(), messenger),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
@@ -894,7 +1033,7 @@ class WaitQueue::Impl {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t request_start_us,
+      int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
@@ -926,7 +1065,7 @@ class WaitQueue::Impl {
         RETURN_NOT_OK(SetupWaiterUnlocked(
             waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no,
             txn_start_us, request_start_us,
-            std::move(callback), std::move(blocker_datas), std::move(blockers)));
+            std::move(callback), std::move(blocker_datas), std::move(blockers), deadline));
         TRACE("pre-wait will block");
         return true;
       } else {
@@ -946,7 +1085,7 @@ class WaitQueue::Impl {
   Status WaitOn(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us,
+      uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback) {
     TRACE_FUNC();
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
@@ -967,7 +1106,7 @@ class WaitQueue::Impl {
         LOG_WITH_PREFIX_AND_FUNC(DFATAL)
             << "Existing waiter already found - " << waiter_txn_id << ". "
             << "This should not happen.";
-        waiter_status_[waiter_txn_id]->InvokeCallback(
+        waiter_status_[waiter_txn_id]->InvokeCallbackOrWarn(
           STATUS(IllegalState, "Unexpected duplicate waiter in wait queue - try again."));
       }
 
@@ -1013,7 +1152,8 @@ class WaitQueue::Impl {
 
       return SetupWaiterUnlocked(
           waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
-          request_start_us, std::move(callback), std::move(blocker_datas), std::move(blockers));
+          request_start_us, std::move(callback),
+          std::move(blocker_datas), std::move(blockers), deadline);
     }
   }
 
@@ -1022,18 +1162,24 @@ class WaitQueue::Impl {
       const TabletId& status_tablet_id, uint64_t serial_no,
       int64_t txn_start_us, uint64_t request_start_us,
       WaitDoneCallback callback, std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
-      std::shared_ptr<ConflictDataManager> blockers) REQUIRES(mutex_) {
+      std::shared_ptr<ConflictDataManager> blockers, CoarseTimePoint deadline) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
     TRACE_FUNC();
     SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
-    if (!waiter_txn_id.IsNil()) {
+    if (waiter_txn_id.IsNil()) {
       // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
       // to report single shard transactions to transaction coordinators because they can't
       // possibly be involved in a deadlock. This is true because no transactions can wait on
       // single shard transactions, so they only have out edges in the wait-for graph and cannot
       // be a part of a cycle.
+      //
+      // We still register the single shard waiters with the local waiting transaction registry
+      // for the purpose of observability in pg_locks.
+      RETURN_NOT_OK(scoped_reporter->RegisterSingleShardWaiter(
+          txn_status_manager_->tablet_id(), request_start_us));
+    } else {
       DCHECK(!status_tablet_id.empty());
       // TODO(wait-queues): Instead of moving blockers to local_waiting_txn_registry, we could store
       // the blockers in the waiter_data record itself. That way, we could avoid re-running conflict
@@ -1047,7 +1193,7 @@ class WaitQueue::Impl {
     auto waiter_data = std::make_shared<WaiterData>(
         waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, request_start_us, clock_->Now(),
         status_tablet_id, std::move(blocker_datas), std::move(callback), std::move(scoped_reporter),
-        &rpcs_, &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_);
+        &rpcs_, &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_, deadline);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
              waiter_data->wq_entry_time >= single_shard_waiters_.front()->wq_entry_time);
@@ -1182,8 +1328,9 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : stale_single_shard_waiters) {
-      waiter->InvokeCallback(kRetrySingleShardOp);
+      waiter->InvokeCallbackOrWarn(kRetrySingleShardOp);
     }
+    waiter_runner_.CleanContentiousWeakWaiterDatas();
   }
 
   void UpdateWaitersOnBlockerPromotion(const TransactionId& id,
@@ -1218,8 +1365,9 @@ class WaitQueue::Impl {
     // queue to ensure their wait-for relationships are re-registered with their coordinator
     // pointing to the correct blocker status tablet.
     if (promoted_blocker) {
+      auto status_time = res.status_time;
       for (const auto& waiter : promoted_blocker->Signal(std::move(res), clock_->Now())) {
-        InvokeWaiterCallback(Status::OK(), waiter, res.status_time);
+        InvokeWaiterCallback(Status::OK(), waiter, status_time);
       }
     }
   }
@@ -1255,11 +1403,11 @@ class WaitQueue::Impl {
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->SignalWaitQueueShutdown();
-      waiter_data->InvokeCallback(kShuttingDownError);
+      waiter_data->InvokeCallbackOrWarn(kShuttingDownError);
     }
     for (const auto& waiter_data : single_shard_waiters_copy) {
       waiter_data->SignalWaitQueueShutdown();
-      waiter_data->InvokeCallback(kShuttingDownError);
+      waiter_data->InvokeCallbackOrWarn(kShuttingDownError);
     }
     in_progress_rpc_status_req_callbacks_.Shutdown();
     return !shutdown_complete_;
@@ -1364,6 +1512,7 @@ class WaitQueue::Impl {
   }
 
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
                        TransactionLockInfoManager* lock_info_manager) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
@@ -1371,9 +1520,9 @@ class WaitQueue::Impl {
       SharedLock l(mutex_);
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
       // explicitly check 'shutting_down_' and return.
-
-      if (transactions.empty()) {
-        // When transactions is empty, return awaiting locks info of all waiters.
+      if (transactions.empty() && max_single_shard_waiter_start_time_us == 0) {
+        // When transactions is empty and the max start time of single shard waiters isn't set,
+        // return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
           waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
@@ -1385,6 +1534,11 @@ class WaitQueue::Impl {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
             waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
+          }
+        }
+        for (const auto& waiter_data : single_shard_waiters_) {
+          if (waiter_data->request_start_us <= max_single_shard_waiter_start_time_us) {
+            waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
           }
         }
       }
@@ -1426,8 +1580,8 @@ class WaitQueue::Impl {
           .types = lock_batch_entry.intent_types,
           .doc_ht = Slice(),
         };
-        // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
-        // the LockInfoPB response. Currently we don't track either for waiter txn(s).
+        // TODO(pglocks): Populate 'is_explicit' info of waiter txn(s) in the LockInfoPB response.
+        // Currently we don't track it for waiter txn(s).
         auto* lock = waiter_info->add_locks();
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
             parsed_intent, DecodedIntentValue{}, table_info_provider, lock,
@@ -1491,24 +1645,24 @@ class WaitQueue::Impl {
     DCHECK(waiter != nullptr);
 
     if (!status.ok()) {
-      waiter->InvokeCallback(
+      waiter->InvokeCallbackOrWarn(
           status.CloneAndPrepend("Failed to get txn status while waiting"));
       return;
     }
     if (resp.has_error()) {
-      waiter->InvokeCallback(StatusFromPB(resp.error().status()).CloneAndPrepend(
+      waiter->InvokeCallbackOrWarn(StatusFromPB(resp.error().status()).CloneAndPrepend(
           "Failed to get txn status while waiting"));
       return;
     }
     if (resp.status(0) == ABORTED) {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
       if (resp.deadlock_reason().empty() || resp.deadlock_reason(0).code() == AppStatusPB::OK) {
-        waiter->InvokeCallback(
+        waiter->InvokeCallbackOrWarn(
             // Return InternalError so that TabletInvoker does not retry.
             STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kConflict),
                              "Transaction $0 was aborted while waiting for locks", waiter_id));
       } else {
-        waiter->InvokeCallback(StatusFromPB(resp.deadlock_reason(0)));
+        waiter->InvokeCallbackOrWarn(StatusFromPB(resp.deadlock_reason(0)));
       }
       return;
     }
@@ -1600,9 +1754,10 @@ class WaitQueue::Impl {
       }
     }
 
-    LOG_IF(WARNING, !found_waiter)
+    VLOG_IF_WITH_PREFIX(1, !found_waiter)
       << "Tried to invoke callback on waiter which has already been removed. "
-      << "This should be rare but is not an error otherwise.";
+      << "This can happen any time a waiter has multiple blockers which resolve at similar times, "
+      << "or if a blocker is detected as resolved by both Poll and SignalCommitted concurrently.";
 
     // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
     // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
@@ -1698,31 +1853,32 @@ WaitQueue::WaitQueue(
     const std::shared_future<client::YBClient*>& client_future,
     const server::ClockPtr& clock,
     const MetricEntityPtr& metrics,
-    std::unique_ptr<ThreadPoolToken> thread_pool_token):
+    std::unique_ptr<ThreadPoolToken> thread_pool_token,
+    rpc::Messenger* messenger):
   impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics, std::move(thread_pool_token))) {}
+                 metrics, std::move(thread_pool_token), messenger)) {}
 
 WaitQueue::~WaitQueue() = default;
 
 Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-    uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us,
+    uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
     WaitDoneCallback callback) {
   return impl_->WaitOn(
       waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no,
-      txn_start_us, request_start_us, callback);
+      txn_start_us, request_start_us, deadline, callback);
 }
 
 
 Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     const TabletId& status_tablet_id, uint64_t serial_no,
-    int64_t txn_start_us, uint64_t request_start_us,
+    int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
     WaitDoneCallback callback) {
   return impl_->MaybeWaitOnLocks(
       waiter, subtxn_id, locks, status_tablet_id, serial_no,
-      txn_start_us, request_start_us, callback);
+      txn_start_us, request_start_us, deadline, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {
@@ -1758,9 +1914,11 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
 }
 
 Status WaitQueue::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                                uint64_t max_single_shard_waiter_start_time_us,
                                 const TableInfoProvider& table_info_provider,
                                 TransactionLockInfoManager* lock_info_manager) const {
-  return impl_->GetLockStatus(transactions, table_info_provider, lock_info_manager);
+  return impl_->GetLockStatus(
+      transactions, max_single_shard_waiter_start_time_us, table_info_provider, lock_info_manager);
 }
 
 }  // namespace docdb

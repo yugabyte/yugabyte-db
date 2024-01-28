@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -41,9 +42,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected UpgradeKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   public static class Params extends KubernetesUpgradeParams {}
@@ -62,10 +63,10 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
+      kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.UpgradeKubernetesUniverse.name(),
           getUserTaskUUID(),
           UniverseState.EDITING);
 
@@ -173,9 +174,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.UpgradeKubernetesUniverse.name(),
           getUserTaskUUID(),
-          (th != null) ? UniverseState.ERROR : UniverseState.READY,
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

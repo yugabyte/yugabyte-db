@@ -45,7 +45,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -78,10 +78,22 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
-class AutoFlagsManager;
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+}
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+}
 
 namespace tserver {
 
+class TserverAutoFlagsManager;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
 
@@ -345,7 +357,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // The options passed at construction time, and will be updated if master config changes.
   TabletServerOptions opts_;
 
-  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
+  std::unique_ptr<TserverAutoFlagsManager> auto_flags_manager_;
 
   // Manager for tablets which are available on this server.
   std::unique_ptr<TSTabletManager> tablet_manager_;

@@ -794,6 +794,13 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 		outNode(str, node->hashClauseInfos[i].outerParamExpr);
 	}
 
+	appendStringInfoString(str, " :orig_expr");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].orig_expr);
+	}
+
 	WRITE_INT_FIELD(numSortCols);
 
 	appendStringInfoString(str, " :sortColIdx");

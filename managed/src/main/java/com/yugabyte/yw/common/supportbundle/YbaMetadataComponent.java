@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -35,19 +36,25 @@ public class YbaMetadataComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponent(
-      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws IOException {
-    log.info("Gathering call home json data for customer '{}'.", customer.getUuid());
+      SupportBundleTaskParams supportBundleTaskParams,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node)
+      throws IOException {
+    log.info("Gathering YBA Metadata json data for customer '{}'.", customer.getUuid());
 
     // Create YBA_METADATA_FOLDER folder inside the support bundle folder.
     String destDir = bundlePath.toString() + "/" + YBA_METADATA_FOLDER;
     Files.createDirectories(Paths.get(destDir));
 
-    // Gather and save the YBA call home data.
+    // Gather and save the YBA metadata.
     supportBundleUtil.gatherAndSaveAllMetadata(customer, destDir);
   }
 
   @Override
   public void downloadComponentBetweenDates(
+      SupportBundleTaskParams supportBundleTaskParams,
       Customer customer,
       Universe universe,
       Path bundlePath,
@@ -55,6 +62,6 @@ public class YbaMetadataComponent implements SupportBundleComponent {
       Date endDate,
       NodeDetails node)
       throws IOException, ParseException {
-    this.downloadComponent(customer, universe, bundlePath, node);
+    this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
   }
 }

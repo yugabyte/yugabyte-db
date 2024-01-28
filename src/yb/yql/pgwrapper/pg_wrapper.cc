@@ -27,6 +27,8 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -46,7 +48,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 #include "ybgate/ybgate_api.h"
@@ -205,6 +206,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
                             "Enable using the default value for existing rows after an ADD COLUMN"
                             " ... DEFAULT operation");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
+                            "Enable ALTER TABLE rewrite operations");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
@@ -219,7 +223,7 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
 // TODO(#19211): Convert this to an auto-flag.
-DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
@@ -403,9 +407,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_TEST_yb_enable_ash) {
-    metricsLibs.push_back("yb_ash");
-  }
 
   vector<string> lines;
   string line;
@@ -655,6 +656,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
 
+  unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats)
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
 
@@ -680,6 +682,11 @@ Status PgWrapper::Start() {
                 FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes);
   proc_->SetEnv("FLAGS_mem_tracker_update_consumption_interval_us",
                 FLAGS_pg_mem_tracker_update_consumption_interval_us);
+
+  proc_->SetEnv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH",
+      FLAGS_enable_ysql_conn_mgr ? "1" : "0");
+
+  rpc::SetOpenSSLEnv(&*proc_);
 
   RETURN_NOT_OK(proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {

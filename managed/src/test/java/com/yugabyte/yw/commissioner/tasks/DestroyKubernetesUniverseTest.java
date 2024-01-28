@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -71,6 +72,12 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   private AvailabilityZone az1, az2, az3;
 
   private YBClient mockClient;
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+  }
 
   private void setupUniverse(boolean updateInProgress) {
     config.put("KUBECONFIG", "test");

@@ -1781,60 +1781,32 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Oid			atttype;
 		Oid			attcollation;
 
-		if (IsYugaByteEnabled())
+		SortByDir   yb_ordering = attribute->ordering;
+
+		if (use_yb_ordering)
 		{
-			if (use_yb_ordering)
+			yb_ordering =
+				YbSortOrdering(attribute->ordering, is_colocated,
+							   OidIsValid(tablegroupId) /* is_tablegroup */,
+							   (attn == 0) /* is_first_key */);
+
+			if (yb_ordering == SORTBY_DESC || yb_ordering == SORTBY_ASC)
 			{
-				switch (attribute->ordering)
-				{
-					case SORTBY_ASC:
-					case SORTBY_DESC:
-						range_index = true;
-						break;
-					case SORTBY_DEFAULT:
-						/*
-						 * In YB mode, first attribute defaults to HASH and
-						 * other attributes default to ASC.  However, for
-						 * colocated tables, the first attribute defaults to
-						 * ASC.
-						 */
-						if (attn > 0 || is_colocated || tablegroupId != InvalidOid)
-						{
-							range_index = true;
-							break;
-						}
-						switch_fallthrough();
-					case SORTBY_HASH:
-						if (range_index)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot create a hash partitioned"
-									 		" index in a TABLEGROUP")));
-						else if (is_colocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot colocate hash partitioned index")));
-						break;
-					default:
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-						break;
-				}
+				range_index = true;
 			}
-			else
+			else if (yb_ordering == SORTBY_HASH)
 			{
-				if (attribute->ordering == SORTBY_HASH)
-				{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-				}
+				if (range_index)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+							 errmsg("hash column not allowed after an ASC/DESC column")));
 			}
+		}
+		else if (attribute->ordering == SORTBY_HASH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("unsupported column sort order")));
 		}
 
 		/*
@@ -2079,18 +2051,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
-			if (IsYugaByteEnabled() &&
-				attribute->ordering == SORTBY_HASH)
-				colOptionP[attn] |= INDOPTION_HASH;
 
-			/*
-			 * In Yugabyte, use HASH as the default for the first column of
-			 * non-colocated tables
-			 */
-			if (use_yb_ordering &&
-				attn == 0 &&
-				attribute->ordering == SORTBY_DEFAULT &&
-				!is_colocated && tablegroupId == InvalidOid)
+			if (yb_ordering == SORTBY_HASH)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */
@@ -2653,7 +2615,9 @@ ReindexIndex(RangeVar *indexRelation, int options)
 	persistence = irel->rd_rel->relpersistence;
 	index_close(irel, NoLock);
 
-	reindex_index(indOid, false, persistence, options);
+	reindex_index(indOid, false, persistence, options,
+				  false /* is_yb_table_rewrite */,
+				  true /* yb_copy_split_options */);
 }
 
 /*
@@ -2732,7 +2696,9 @@ ReindexTable(RangeVar *relation, int options)
 	if (!reindex_relation(heapOid,
 						  REINDEX_REL_PROCESS_TOAST |
 						  REINDEX_REL_CHECK_CONSTRAINTS,
-						  options))
+						  options,
+						  false /* is_yb_table_rewrite */,
+						  true /* yb_copy_split_options */))
 		ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
 						relation->relname)));
@@ -2903,7 +2869,9 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 		if (reindex_relation(relid,
 							 REINDEX_REL_PROCESS_TOAST |
 							 REINDEX_REL_CHECK_CONSTRAINTS,
-							 options))
+							 options,
+							 false /* is_yb_table_rewrite */,
+							 true /* yb_copy_split_options */))
 
 			if (options & REINDEXOPT_VERBOSE)
 				ereport(INFO,

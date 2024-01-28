@@ -35,10 +35,12 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
+#include "common/ip.h"
 #include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
+#include "storage/dsm_impl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
@@ -722,4 +724,101 @@ YbSendFatalForLogicalConnectionPacket()
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+bool
+yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
+									GucSource source)
+{
+	/* Allow setting yb_is_client_ysqlconnmgr as false */
+	if (!(*newval))
+		return true;
+
+	/* Client needs to be connected on unix domain socket */
+	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("yb_is_client_ysqlconnmgr can only be set "
+							   "if the connection is made over unix domain socket")));
+
+	/* Authentication method needs to be yb-tserver-key */
+	if (!MyProcPort->yb_is_tserver_auth_method)
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("yb_is_client_ysqlconnmgr can only be set "
+						"if the authentication method was yb-tserver-key")));
+
+	return true;
+}
+
+/*
+ * Calculate the number of logical and physical connections to a database
+ * or user or both. These values are used to calcualte the actual
+ * number of client connections which should be considered for DROP DATABASE.
+ *
+ * These values are read from the shared memory segment for Ysql Connection
+ * Manager stats.
+ */
+bool
+YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
+							   uint32_t *num_logical_conn,
+							   uint32_t *num_physical_conn)
+{
+	const char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+
+	/*
+	 * If YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME is not set,
+	 * Ysql Connection Manager is not enabled on the node.
+	 */
+	if (stats_shm_key == NULL)
+		return false;
+
+	const int32_t shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
+	if (shmid == -1)
+	{
+		elog(WARNING,
+			 "Unable to attach to the shared memory segment %d, errno: %d",
+			 shmid, errno);
+		return false;
+	}
+
+	struct ConnectionStats *shmp;
+	shmp = (struct ConnectionStats *) shmat(shmid, NULL, 0);
+	if (shmp == NULL)
+	{
+		elog(WARNING,
+			 "Unable to read the shared memory segment %d, errno: %d",
+			 shmid, errno);
+		return false;
+	}
+
+	/*
+	 * Count the number of logical and physical connections associated with
+	 * a database/user
+	 */
+	*num_logical_conn = 0;
+	*num_physical_conn = 0;
+	for (uint32_t itr = 0; itr < YSQL_CONN_MGR_MAX_POOLS; ++itr)
+	{
+		if (strcmp(shmp[itr].database_name, "") == 0 ||
+			strcmp(shmp[itr].user_name, "") == 0)
+			break;
+
+		if (db_name != NULL && strcmp(shmp[itr].database_name, db_name) != 0)
+			continue;
+
+		if (user_name != NULL && strcmp(shmp[itr].user_name, user_name) != 0)
+			continue;
+
+		/*
+		 * TODO (janand) GH #20745 The values of Ysql Connection Manager stats
+		 * can get changed while reading the shared memory segment.
+		 */
+		*num_logical_conn += shmp[itr].active_clients +
+							 shmp[itr].idle_or_pending_clients +
+							 shmp[itr].queued_clients;
+		*num_physical_conn += shmp[itr].active_servers + shmp[itr].idle_servers;
+	}
+
+	shmdt(shmp);
+	return true;
 }

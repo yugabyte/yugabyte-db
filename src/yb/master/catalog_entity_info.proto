@@ -169,8 +169,11 @@ message SysTablesEntryPB {
   optional bytes parent_table_id = 40;
 
   // For materialized views:
-  optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
   optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 36;
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
@@ -749,4 +752,26 @@ message SysUniverseReplicationBootstrapEntryPB {
   // SetupNamespaceReplicationWithBootstrap.
   optional int64 leader_term = 11;
   optional int32 pitr_count = 12;
+}
+
+message SysXClusterOutboundReplicationGroupEntryPB {
+  message NamespaceInfoPB {
+    enum State {
+      CHECKPOINTING = 0;
+      READY = 1;
+    }
+    required State state = 1;
+
+    message TableInfoPB {
+      optional bytes stream_id = 1;
+      optional bool is_checkpointing = 2; // [default = false]
+    }
+    // Table id -> TableInfoPB
+    map<string, TableInfoPB> table_infos = 2;
+
+    optional bool initial_bootstrap_required = 3; // [default = false]
+  }
+
+  // Namespace Id -> NamespaceInfoPB
+  map<string, NamespaceInfoPB> namespace_infos = 1;
 }

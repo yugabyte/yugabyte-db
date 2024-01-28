@@ -45,7 +45,14 @@ namespace env_util {
 // immediately returned. Otherwise, we start walking up from the directory of the current executable
 // until we are in a directory that has a subdirectory with the given name. Then we return the path
 // of that directory (not of the subdirectory).
+//
+// In cases where we fail to get the directory of the current executable, GetRootDir will return a
+// default value of "".
+// In cases where we fail to find search_for_dir, GetRootDir returns the directory of the current
+// executable.
+// In both of the above cases, GetRootDirResult will instead return a non-OK status.
 std::string GetRootDir(const std::string& search_for_dir);
+Result<std::string> GetRootDirResult(const std::string& search_for_dir);
 
 Status OpenFileForWrite(Env *env, const std::string &path,
                         std::shared_ptr<WritableFile> *file);

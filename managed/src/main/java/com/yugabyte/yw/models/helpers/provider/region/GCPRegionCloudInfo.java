@@ -16,7 +16,9 @@ import lombok.EqualsAndHashCode;
 public class GCPRegionCloudInfo implements CloudInfoInterface {
 
   @ApiModelProperty(
-      value = "Deprecated since YBA version 2.20.0. Use provider.imageBundle instead",
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.</b> Use"
+              + " provider.imageBundle instead",
       accessMode = AccessMode.READ_WRITE)
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0")
   public String ybImage;

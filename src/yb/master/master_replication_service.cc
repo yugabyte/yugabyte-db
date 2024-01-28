@@ -63,6 +63,12 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       XClusterManager,
       (GetXClusterSafeTime)
       (PauseResumeXClusterProducerStreams)
+      (XClusterCreateOutboundReplicationGroup)
+      (XClusterAddNamespaceToOutboundReplicationGroup)
+      (XClusterRemoveNamespaceFromOutboundReplicationGroup)
+      (XClusterDeleteOutboundReplicationGroup)
+      (IsXClusterBootstrapRequired)
+      (GetXClusterStreams)
   )
 };
 

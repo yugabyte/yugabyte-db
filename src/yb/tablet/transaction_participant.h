@@ -167,7 +167,7 @@ class TransactionParticipant : public TransactionStatusManager {
   Status ProcessReplicated(const ReplicatedData& data);
 
   Status SetDB(
-      const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
+      const docdb::DocDB& db,
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start);
 
   Status CheckAborted(const TransactionId& id);

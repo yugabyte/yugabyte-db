@@ -198,7 +198,7 @@ class BootstrapTest : public LogTestBase {
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
         schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-        partition.first);
+        partition.first, "" /* pg_table_id */);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,

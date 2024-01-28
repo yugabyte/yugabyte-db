@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.ConfigureYSQLFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
@@ -70,6 +71,7 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo =
         CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     initYSQL(universe, "", true);
     verifyYSQL(universe, false, YUGABYTE_DB, "", true);
 
@@ -81,13 +83,34 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     json = Json.parse(contentAsString(result));
     taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYSQL(universe);
+
+    int newYsqlServerRpcPort = 5678;
+    int newYsqlServerHttpPort = 13001;
+    formData.communicationPorts.ysqlServerRpcPort = newYsqlServerRpcPort;
+    formData.communicationPorts.ysqlServerHttpPort = newYsqlServerHttpPort;
+    formData.ysqlPassword = "";
+    result = configureYSQL(formData, universe.getUniverseUUID());
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYSQL(universe);
+    assertEquals(
+        newYsqlServerRpcPort, universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort);
+    assertEquals(
+        newYsqlServerHttpPort, universe.getUniverseDetails().communicationPorts.ysqlServerHttpPort);
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(newYsqlServerRpcPort, node.ysqlServerRpcPort);
+      assertEquals(newYsqlServerHttpPort, node.ysqlServerHttpPort);
+    }
   }
 
   @Test
   public void testConfigureYCQL() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
-    // Enable YSQL Auth for the universe.
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
 
@@ -103,10 +126,11 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     TaskInfo taskInfo =
         CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     initYCQL(universe, true, YCQL_PASSWORD);
     verifyYCQL(universe, true, YCQL_PASSWORD);
 
-    // Disable YSQL Auth for the universe.
+    // Disable YCQL Auth for the universe.
     formData.enableYCQLAuth = false;
 
     result = configureYCQL(formData, universe.getUniverseUUID());
@@ -114,6 +138,28 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     json = Json.parse(contentAsString(result));
     taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYCQL(universe);
+
+    int newYqlServerRpcPort = 9078;
+    int newYqlServerHttpPort = 12001;
+    formData.communicationPorts.yqlServerHttpPort = newYqlServerHttpPort;
+    formData.communicationPorts.yqlServerRpcPort = newYqlServerRpcPort;
+    formData.ycqlPassword = "";
+    result = configureYCQL(formData, universe.getUniverseUUID());
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo = CommissionerBaseTest.waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYCQL(universe);
+    assertEquals(
+        newYqlServerRpcPort, universe.getUniverseDetails().communicationPorts.yqlServerRpcPort);
+    assertEquals(
+        newYqlServerHttpPort, universe.getUniverseDetails().communicationPorts.yqlServerHttpPort);
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(newYqlServerRpcPort, node.yqlServerRpcPort);
+      assertEquals(newYqlServerHttpPort, node.yqlServerHttpPort);
+    }
   }
 }

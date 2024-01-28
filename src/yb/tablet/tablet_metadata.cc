@@ -151,7 +151,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const IndexMap& index_map,
                      const boost::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
-                     dockv::PartitionSchema partition_schema)
+                     dockv::PartitionSchema partition_schema,
+                     TableId pg_table_id_)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
@@ -164,7 +165,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
-      partition_schema(std::move(partition_schema)) {
+      partition_schema(std::move(partition_schema)),
+      pg_table_id(std::move(pg_table_id_)) {
   CompleteInit();
 }
 
@@ -255,6 +257,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   table_name = pb.table_name();
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
+  pg_table_id = pb.pg_table_id();
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
   if (pb.has_index_info()) {
@@ -329,6 +332,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
+  pb->set_pg_table_id(pg_table_id);
 }
 
 const Schema& TableInfo::schema() const {
@@ -1285,7 +1289,7 @@ void RaftGroupMetadata::AddTable(
     const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const boost::optional<IndexInfo>& index_info,
-    const SchemaVersion schema_version, const OpId& op_id) {
+    const SchemaVersion schema_version, const OpId& op_id, const TableId& pg_table_id) {
   DCHECK(schema.has_column_ids());
   std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
@@ -1299,7 +1303,8 @@ void RaftGroupMetadata::AddTable(
                                                             index_map,
                                                             index_info,
                                                             schema_version,
-                                                            partition_schema);
+                                                            partition_schema,
+                                                            pg_table_id);
   if (!primary) {
     if (schema.table_properties().is_ysql_catalog_table()) {
       // TODO(alex): cotable_id seems to be properly copied from schema, do we need this section?

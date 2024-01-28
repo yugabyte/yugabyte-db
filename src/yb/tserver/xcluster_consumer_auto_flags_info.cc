@@ -16,7 +16,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/util/shared_lock.h"
 
-namespace yb::tserver::xcluster {
+namespace yb::tserver {
 
 AutoFlagsCompatibleVersion::AutoFlagsCompatibleVersion(uint32 compatible_version)
     : compatible_version_(compatible_version) {}
@@ -40,7 +40,7 @@ AutoFlagsVersionHandler::AutoFlagsVersionHandler(std::shared_ptr<client::YBClien
     : client_(std::move(client)) {}
 
 void AutoFlagsVersionHandler::InsertOrUpdate(
-    const cdc::ReplicationGroupId& replication_group_id, uint32 compatible_version,
+    const xcluster::ReplicationGroupId& replication_group_id, uint32 compatible_version,
     uint32 max_reported_version) {
   std::lock_guard l(mutex_);
   auto& auto_flags_info_ptr = version_info_map_[replication_group_id];
@@ -53,19 +53,19 @@ void AutoFlagsVersionHandler::InsertOrUpdate(
   }
 }
 
-void AutoFlagsVersionHandler::Delete(const cdc::ReplicationGroupId& replication_group_id) {
+void AutoFlagsVersionHandler::Delete(const xcluster::ReplicationGroupId& replication_group_id) {
   std::lock_guard l(mutex_);
   version_info_map_.erase(replication_group_id);
 }
 
 std::shared_ptr<AutoFlagVersionInfo> AutoFlagsVersionHandler::GetAutoFlagsCompatibleVersion(
-    const cdc::ReplicationGroupId& replication_group_id) const {
+    const xcluster::ReplicationGroupId& replication_group_id) const {
   SharedLock l(mutex_);
   return FindPtrOrNull(version_info_map_, replication_group_id);
 }
 
 Status AutoFlagsVersionHandler::ReportNewAutoFlagConfigVersion(
-    const cdc::ReplicationGroupId& replication_group_id, uint32_t new_version) const {
+    const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const {
   auto version_info = GetAutoFlagsCompatibleVersion(replication_group_id);
   SCHECK_FORMAT(version_info, NotFound, "Replication group $0 not found", replication_group_id);
 
@@ -104,8 +104,8 @@ Status AutoFlagsVersionHandler::ReportNewAutoFlagConfigVersion(
 }
 
 Status AutoFlagsVersionHandler::XClusterReportNewAutoFlagConfigVersion(
-    const cdc::ReplicationGroupId& replication_group_id, uint32 new_version) const {
+    const xcluster::ReplicationGroupId& replication_group_id, uint32 new_version) const {
   return client_->XClusterReportNewAutoFlagConfigVersion(replication_group_id, new_version);
 }
 
-}  // namespace yb::tserver::xcluster
+}  // namespace yb::tserver

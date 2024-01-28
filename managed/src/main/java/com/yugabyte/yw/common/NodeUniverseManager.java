@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -630,6 +631,61 @@ public class NodeUniverseManager extends DevopsBase {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
     return nodeFilePathStrings.stream().map(Paths::get).collect(Collectors.toList());
+  }
+
+  /**
+   * Returns a list of file sizes (in bytes) and their names present in a remote directory on the
+   * node. This function creates a temp file with these sizes and names and copies the temp file
+   * from remote to local. Then reads and processes this info from the local temp file. This is done
+   * so that this operation is scalable for large number of files present on the node.
+   *
+   * @param node
+   * @param universe
+   * @param remoteDirPath
+   * @return the list of pairs (size, name)
+   */
+  public List<Pair<Integer, String>> getNodeFilePathsAndSize(
+      NodeDetails node, Universe universe, String remoteDirPath) {
+    String randomUUIDStr = UUID.randomUUID().toString();
+    String localTempFilePath =
+        getLocalTmpDir() + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
+    String remoteTempFilePath =
+        getRemoteTmpDir(node, universe) + "/" + randomUUIDStr + "-source-files-and-sizes.txt";
+
+    List<String> findCommandParams = new ArrayList<>();
+    findCommandParams.add("get_paths_and_sizes");
+    findCommandParams.add(remoteDirPath);
+    findCommandParams.add(remoteTempFilePath);
+
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    // Download the files list.
+    copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
+
+    // Delete file from remote server after copying to local.
+    List<String> removeCommand = new ArrayList<>();
+    removeCommand.add("rm");
+    removeCommand.add(remoteTempFilePath);
+    runCommand(node, universe, removeCommand);
+
+    // Populate the text file into array.
+    List<String> nodeFilePathStrings = Arrays.asList();
+    List<Pair<Integer, String>> nodeFileSizePathStrings = new ArrayList<>();
+    try {
+      nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
+      log.debug("List of files found on the node '{}': '{}'", node.nodeName, nodeFilePathStrings);
+      for (String outputLine : nodeFilePathStrings) {
+        String[] outputLineSplit = outputLine.split("\\s+", 2);
+        if (!StringUtils.isBlank(outputLine) && outputLineSplit.length == 2) {
+          nodeFileSizePathStrings.add(
+              new Pair<>(Integer.valueOf(outputLineSplit[0]), outputLineSplit[1]));
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error occurred", e);
+    } finally {
+      FileUtils.deleteQuietly(new File(localTempFilePath));
+    }
+    return nodeFileSizePathStrings;
   }
 
   public enum UniverseNodeAction {

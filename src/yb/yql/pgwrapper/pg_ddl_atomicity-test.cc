@@ -1397,63 +1397,130 @@ TEST_F(PgLibPqMatviewTest, MatviewTest) {
   MatviewTest();
 }
 
-class PgLibPqMatviewFailure: public PgDdlAtomicitySanityTest {
+YB_STRONGLY_TYPED_BOOL(EnableDDLAtomicity);
+
+// TODO(deepthi): Remove the tests for txn GC after 'ysql_ddl_rollback_enabled' is set to true
+// by default.
+class PgLibPqTableRewrite:
+  public PgDdlAtomicitySanityTest,
+  public ::testing::WithParamInterface<EnableDDLAtomicity> {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
       "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back(
-        Format("--TEST_yb_test_fail_matview_refresh_after_creation=true"));
+    options->extra_tserver_flags.push_back("--ysql_enable_reindex=true");
+    if (!GetParam()) {
+      options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=10000");
+      // Disable the current version of DDL rollback so that we can test the
+      // transaction GC framework.
+      options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=false");
+    } else {
+      options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+    }
   }
  protected:
-  void RefreshMatviewRollback();
+  void SetupTestData() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", kTable));
+    // Insert some data.
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))", kTable));
+    // Create index.
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (b DESC)", kIndex, kTable));
+    // Create materialized view.
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMaterializedView, kTable));
+    // Insert some more data.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (a, b) VALUES (6, 6)", kTable));
+    // Set the index as invalid (so that we can test reindex).
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE pg_index SET indisvalid='f' WHERE indexrelid = '$0'::regclass", kIndex));
+  }
+  Status WaitForDroppedTablesCleanup() {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    return LoggedWaitFor([this, &client]() -> Result<bool> {
+      auto num_tables = VERIFY_RESULT(client->ListTables(kTable)).size();
+      auto num_indexes = VERIFY_RESULT(client->ListTables(kIndex)).size();
+      auto num_matviews = VERIFY_RESULT(client->ListTables(kMaterializedView)).size();
+      return num_tables == 1 && num_indexes == 1 && num_matviews == 1;
+    }, MonoDelta::FromSeconds(60), "Verify that we dropped the stale DocDB tables");
+  }
+  const std::string kTable = "test_table";
+  const std::string kIndex = "test_idx";
+  const std::string kMaterializedView = "test_mv";
 };
 
+INSTANTIATE_TEST_CASE_P(bool, PgLibPqTableRewrite,
+    ::testing::Values(EnableDDLAtomicity::kFalse, EnableDDLAtomicity::kTrue));
 
-void PgLibPqMatviewFailure::RefreshMatviewRollback() {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Now test failure of Matview refresh.
-  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  // Wait for DDL verification to complete for the above statement.
-  ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, "mv"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
-      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
-  // The following statement fails because we set 'yb_test_fail_matview_refresh_after_creation'.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_NOK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
-
-  // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
-  VerifyTableExists(client.get(), kDatabase, pg_temp_table_name, 20);
-
-  // This temp table is later cleaned up once the transaction failure is detected.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
-  VerifyTableNotExists(client.get(), kDatabase, pg_temp_table_name, 20);
-}
-
-// Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
-// by transaction GC.
-// TODO(deepthi): Remove this test after 'ysql_ddl_rollback_enabled' is set to true by default.
+// Test that orphaned tables left after failed rewrites are cleaned up.
 // TODO(deepthi): Re-enable both these tests in TSAN after #16055 is fixed.
-TEST_F_EX(PgDdlAtomicitySanityTest,
-          YB_DISABLE_TEST_IN_TSAN(TestMatviewRollbackWithTxnGC),
-          PgLibPqMatviewFailure) {
-  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10000"));
-  // Disable the current version of DDL rollback so that we can test the transaction GC framework.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
-  RefreshMatviewRollback();
+TEST_P(PgLibPqTableRewrite,
+       YB_DISABLE_TEST_IN_TSAN(TestTableRewriteRollback)) {
+  SetupTestData();
+  if (GetParam()) {
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  ASSERT_NOK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
+
+  // Verify that we created orphaned DocDB tables.
+  const auto client = ASSERT_RESULT(cluster_->CreateClient());
+  vector<client::YBTableName> tables = ASSERT_RESULT(client->ListTables(kTable));
+  ASSERT_EQ(tables.size(), 2);
+  tables = ASSERT_RESULT(client->ListTables(kIndex));
+  ASSERT_EQ(tables.size(), 2);
+  tables = ASSERT_RESULT(client->ListTables(kMaterializedView));
+  ASSERT_EQ(tables.size(), 2);
+
+  // Verify that we drop the new DocDB tables after failed rewrite operations.
+  if (GetParam()) {
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+  }
+  ASSERT_OK(WaitForDroppedTablesCleanup());
+
+  // Verify the data.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_index SET indisvalid = 't' WHERE indexrelid = '$0'::regclass", kIndex));
+  ASSERT_NOK(conn.ExecuteFormat("SELECT c FROM $0", kTable));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      Format("SELECT * FROM $0", kTable))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 WHERE b = 1", kTable))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 ORDER BY a", kMaterializedView))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}));
 }
 
-// Test that the DocDB tables created upon Matview creation and refresh are rolled-back
-// by the DDL Atomicity framework.
-TEST_F_EX(PgDdlAtomicitySanityTest,
-          YB_DISABLE_TEST_IN_TSAN(TestMatviewRollbackWithDdlAtomicity),
-          PgLibPqMatviewFailure) {
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "true"));
-  RefreshMatviewRollback();
+// Test that orphaned tables left after successful rewrites are cleaned up.
+TEST_P(PgLibPqTableRewrite,
+       YB_DISABLE_TEST_IN_TSAN(TestTableRewriteSuccess)) {
+  SetupTestData();
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_OK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
+
+  // Verify that we drop the old DocDB tables after successful rewrite operations.
+  ASSERT_OK(WaitForDroppedTablesCleanup());
+
+  // Sanity check to ensure we can perform ALTERs on the rewritten table/materialized view.
+  const auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN d int", kTable));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN c TO c_serial", kTable));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kTable, {"a", "b", "c_serial", "d"}));
+  ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 RENAME COLUMN a TO a_renamed",
+      kMaterializedView));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kMaterializedView,
+      {"ybrowid", "a_renamed", "b"}));
 }
 
 } // namespace pgwrapper

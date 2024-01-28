@@ -424,4 +424,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Duration between retries while waiting for ysql to come up",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> geoPartitioningEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.geo_partitioning_enabled",
+          ScopeType.PROVIDER,
+          "Enable Geo-partitioning",
+          "Enables geo-partitioning for universes created with this provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

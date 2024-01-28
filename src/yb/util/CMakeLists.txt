@@ -394,6 +394,7 @@ ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(priority_thread_pool-test)
+ADD_YB_TEST(prometheus_metric_filter-test)
 ADD_YB_TEST(pstack_watcher-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
@@ -438,6 +439,7 @@ ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(write_buffer-test)
+ADD_YB_TEST(scope_exit-test)
 
 #######################################
 # jsonwriter_test_proto

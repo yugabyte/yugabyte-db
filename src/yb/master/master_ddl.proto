@@ -108,11 +108,16 @@ message CreateTableRequestPB {
 
   optional bool is_matview = 26;
 
-  optional bytes matview_pg_table_id = 24;
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 24;
 
   repeated StatefulServiceKind hosted_stateful_services = 27;
 
   optional bool ysql_ddl_rollback_enabled = 28 [ default = false ];
+
+  // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
+  optional bytes old_rewrite_table_id = 29;
 }
 
 message CreateTableResponsePB {
@@ -224,6 +229,9 @@ message GetTableSchemaResponsePB {
   optional uint32 wal_retention_secs = 15;
 
   repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 17;
+
+  // If the table is rewritten, this field explicitly stores the PG table id.
+  optional bytes pg_table_id = 18;
 }
 
 message GetTablegroupSchemaRequestPB {
@@ -566,6 +574,7 @@ message AlterNamespaceResponsePB {
 
 message ListNamespacesRequestPB {
   optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
+  optional bool include_nonrunning = 2;
 }
 
 message ListNamespacesResponsePB {

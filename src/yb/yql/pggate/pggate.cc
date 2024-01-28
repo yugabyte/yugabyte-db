@@ -299,7 +299,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
-          ybctids->emplace_back(it->table()->id().object_oid, ybctid.ToBuffer());
+          ybctids->emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
         }
       }
     }
@@ -413,7 +413,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     PgSession* session, const YBCPgYBTupleIdDescriptor& descr) {
   Prepare();
   auto target_desc = VERIFY_RESULT(session->LoadTable(
-      PgObjectId(descr.database_oid, descr.table_oid)));
+      PgObjectId(descr.database_oid, descr.table_relfilenode_oid)));
   const auto num_keys = target_desc->num_key_columns();
   SCHECK_EQ(
       descr.nattrs, num_keys,
@@ -892,12 +892,14 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  bool is_matview,
-                                 const PgObjectId& matview_pg_table_oid,
+                                 const PgObjectId& pg_table_oid,
+                                 const PgObjectId& old_relfilenode_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
-      tablegroup_oid, colocation_id, tablespace_oid, is_matview, matview_pg_table_oid);
+      tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
+      old_relfilenode_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -1180,12 +1182,14 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
+                                 const PgObjectId& pg_table_id,
+                                 const PgObjectId& old_relfilenode_id,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       is_colocated_via_database, tablegroup_oid, colocation_id,
-      tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
+      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1317,6 +1321,10 @@ Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, b
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
+}
+
+Status PgApiImpl::DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
+  return down_cast<PgDmlWrite*>(handle)->BindRow(columns, count);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,

@@ -577,6 +577,141 @@ std::string PgExpr::ToString() const {
 
 //--------------------------------------------------------------------------------------------------
 
+void DatumToQLValue(
+    const YBCPgTypeEntity* type_entity,
+    bool collate_is_valid_non_c,
+    const char *collation_sortkey,
+    uint64_t datum,
+    bool is_null,
+    LWQLValuePB* ql_value) {
+  if (is_null) {
+    if (type_entity->yb_type == YB_YQL_DATA_TYPE_GIN_NULL) {
+      uint8_t value;
+      type_entity->datum_to_yb(datum, &value, nullptr);
+      ql_value->set_gin_null_value(value);
+    }
+    return;
+  }
+
+  switch (type_entity->yb_type) {
+    case YB_YQL_DATA_TYPE_INT8: {
+        int8_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_int8_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT16: {
+        int16_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_int16_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT32: {
+        int32_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_int32_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_INT64: {
+        int64_t value;
+        if (PREDICT_TRUE(!FLAGS_TEST_do_not_add_enum_sort_order)) {
+          type_entity->datum_to_yb(datum, &value, nullptr);
+        } else {
+          // pass &value as the third argument to tell datum_to_yb not
+          // to add sort order to datum.
+          type_entity->datum_to_yb(datum, &value, &value);
+        }
+        ql_value->set_int64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_UINT32: {
+        uint32_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_uint32_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_UINT64: {
+        uint64_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_uint64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_STRING: {
+        char *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(datum, &value, &bytes);
+        if (collate_is_valid_non_c) {
+          CHECK(collation_sortkey);
+          // Once YSQL supports non-deterministic collations, we need to compute
+          // the deterministic attribute properly.
+          ql_value->ref_string_value(MakeCollationEncodedString(
+              &ql_value->arena(), value, bytes, kCollationMarker | kDeterministicCollation,
+              collation_sortkey));
+        } else {
+          CHECK(!collation_sortkey);
+          ql_value->dup_string_value(Slice(value, bytes));
+        }
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_BOOL: {
+        bool value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_bool_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_FLOAT: {
+        float value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_float_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_DOUBLE: {
+        double value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_double_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_BINARY: {
+        uint8_t *value;
+        int64_t bytes = type_entity->datum_fixed_size;
+        type_entity->datum_to_yb(datum, &value, &bytes);
+        ql_value->dup_binary_value(Slice(value, bytes));
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_TIMESTAMP: {
+        int64_t value;
+        type_entity->datum_to_yb(datum, &value, nullptr);
+        ql_value->set_int64_value(value);
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_DECIMAL: {
+        char* plaintext;
+        // Calls YBCDatumToDecimalText in yb_type.c
+        type_entity->datum_to_yb(datum, &plaintext, nullptr);
+        util::Decimal yb_decimal(plaintext);
+        ql_value->dup_decimal_value(yb_decimal.EncodeToComparable());
+      }
+      break;
+
+    case YB_YQL_DATA_TYPE_GIN_NULL: [[fallthrough]];
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
+      LOG(DFATAL) << "Internal error: unsupported type " << type_entity->yb_type;
+  }
+}
+
 PgConstant::PgConstant(ThreadSafeArena* arena,
                        const YBCPgTypeEntity *type_entity,
                        bool collate_is_valid_non_c,
@@ -584,144 +719,9 @@ PgConstant::PgConstant(ThreadSafeArena* arena,
                        uint64_t datum,
                        bool is_null,
                        PgExpr::Opcode opcode)
-    : PgExpr(opcode, type_entity, collate_is_valid_non_c),
-      ql_value_(arena), collation_sortkey_(collation_sortkey) {
-
-  switch (type_entity_->yb_type) {
-    case YB_YQL_DATA_TYPE_INT8:
-      if (!is_null) {
-        int8_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int8_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_INT16:
-      if (!is_null) {
-        int16_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int16_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_INT32:
-      if (!is_null) {
-        int32_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int32_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_INT64:
-      if (!is_null) {
-        int64_t value;
-        if (PREDICT_TRUE(!FLAGS_TEST_do_not_add_enum_sort_order)) {
-          type_entity_->datum_to_yb(datum, &value, nullptr);
-        } else {
-          // pass &value as the third argument to tell datum_to_yb not
-          // to add sort order to datum.
-          type_entity_->datum_to_yb(datum, &value, &value);
-        }
-        ql_value_.set_int64_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_UINT32:
-      if (!is_null) {
-        uint32_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_uint32_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_UINT64:
-      if (!is_null) {
-        uint64_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_uint64_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_STRING:
-      if (!is_null) {
-        char *value;
-        int64_t bytes = type_entity_->datum_fixed_size;
-        type_entity_->datum_to_yb(datum, &value, &bytes);
-        if (collate_is_valid_non_c_) {
-          CHECK(collation_sortkey_);
-          // Once YSQL supports non-deterministic collations, we need to compute
-          // the deterministic attribute properly.
-          ql_value_.ref_string_value(MakeCollationEncodedString(
-              arena, value, bytes, kCollationMarker | kDeterministicCollation, collation_sortkey_));
-        } else {
-          CHECK(!collation_sortkey_);
-          ql_value_.dup_string_value(Slice(value, bytes));
-        }
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_BOOL:
-      if (!is_null) {
-        bool value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_bool_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_FLOAT:
-      if (!is_null) {
-        float value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_float_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_DOUBLE:
-      if (!is_null) {
-        double value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_double_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_BINARY:
-      if (!is_null) {
-        uint8_t *value;
-        int64_t bytes = type_entity_->datum_fixed_size;
-        type_entity_->datum_to_yb(datum, &value, &bytes);
-        ql_value_.dup_binary_value(Slice(value, bytes));
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_TIMESTAMP:
-      if (!is_null) {
-        int64_t value;
-        type_entity_->datum_to_yb(datum, &value, nullptr);
-        ql_value_.set_int64_value(value);
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_DECIMAL:
-      if (!is_null) {
-        char* plaintext;
-        // Calls YBCDatumToDecimalText in yb_type.c
-        type_entity_->datum_to_yb(datum, &plaintext, nullptr);
-        util::Decimal yb_decimal(plaintext);
-        ql_value_.dup_decimal_value(yb_decimal.EncodeToComparable());
-      }
-      break;
-
-    case YB_YQL_DATA_TYPE_GIN_NULL:
-      CHECK(is_null) << "gin null type should be marked null";
-      uint8_t value;
-      type_entity_->datum_to_yb(datum, &value, nullptr);
-      ql_value_.set_gin_null_value(value);
-      break;
-
-    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
-    YB_PG_INVALID_TYPES_IN_SWITCH:
-      LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
-  }
+    : PgExpr(opcode, type_entity, collate_is_valid_non_c), ql_value_(arena) {
+  DatumToQLValue(
+      type_entity, collate_is_valid_non_c, collation_sortkey, datum, is_null, &ql_value_);
 }
 
 PgConstant::PgConstant(ThreadSafeArena* arena,
@@ -729,8 +729,7 @@ PgConstant::PgConstant(ThreadSafeArena* arena,
                        bool collate_is_valid_non_c,
                        PgDatumKind datum_kind,
                        PgExpr::Opcode opcode)
-    : PgExpr(opcode, type_entity, collate_is_valid_non_c), ql_value_(arena),
-      collation_sortkey_(nullptr) {
+    : PgExpr(opcode, type_entity, collate_is_valid_non_c), ql_value_(arena) {
   switch (datum_kind) {
     case PgDatumKind::YB_YQL_DATUM_STANDARD_VALUE:
       // Leave the result as NULL.

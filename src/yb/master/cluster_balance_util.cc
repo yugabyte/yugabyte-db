@@ -380,6 +380,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   if (tablet_meta.has_wrong_placements()) {
     tablets_wrong_placement_.insert(tablet_id);
   }
+  if (tablet_meta.has_badly_placed_leader()) {
+    tablets_with_badly_placed_leaders_.insert(tablet_id);
+  }
 
   return Status::OK();
 }
@@ -500,7 +503,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If this server has a pending tablet delete, don't use it.
   if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
+    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts << " has a pending delete. "
               << "Not allowing it to take more tablets";
     return false;
   }
@@ -570,8 +573,8 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
           auto ci_from_ts = GetValidPlacement(from_uuid, &placement_info);
           auto ci_to_ts = GetValidPlacement(to_uuid, &placement_info);
           if (ci_to_ts.has_value() && ci_from_ts.has_value() &&
-          TSDescriptor::generate_placement_id(*ci_from_ts) ==
-                                    TSDescriptor::generate_placement_id(*ci_to_ts)) {
+              TSDescriptor::generate_placement_id(*ci_from_ts) ==
+                  TSDescriptor::generate_placement_id(*ci_to_ts)) {
             found_match = true;
             VLOG(3) << "Found destination " << to_uuid << " where replica can be added"
                 << ". Blacklisted tserver and this server are in the same placement";
@@ -589,6 +592,10 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
         *out_to_ts = to_uuid;
         return true;
       }
+    }
+    if (fallback_to_uuid.empty()) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Cannot move tablet from blacklisted tablet server "
+                                    << from_uuid << ": no eligible destination tablet servers";
     }
   }
 

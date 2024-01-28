@@ -366,7 +366,7 @@ Colocation: true
 -- cannot colocate hash-partitioned table.
 CREATE TABLE hash_k (i int primary key) with (colocation = false);
 CREATE TABLE hash_k_fail_test (LIKE hash_k INCLUDING ALL);
-ERROR:  Invalid table definition: Error creating table colocation_test.hash_k_fail_test on the master: Cannot colocate hash partitioned table
+ERROR:  cannot colocate hash partitioned table
 CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocation = false);
 \d hash_k_test
             Table "public.hash_k_test"

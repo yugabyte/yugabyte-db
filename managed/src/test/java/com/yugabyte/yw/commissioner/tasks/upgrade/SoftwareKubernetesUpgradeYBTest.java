@@ -39,7 +39,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
@@ -51,13 +50,14 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
+  private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
 
   private YBClient mockClient;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUpgrade,
+          TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -105,6 +105,10 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+    this.softwareKubernetesUpgrade =
+        new SoftwareKubernetesUpgrade(
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {
@@ -114,6 +118,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(

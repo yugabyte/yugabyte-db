@@ -37,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -134,6 +135,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -145,6 +147,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -160,6 +163,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -252,6 +256,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
+          TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.EditUniverse,
           TaskType.AddNodeToUniverse,
@@ -340,6 +345,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     REDISSERVER,
     EITHER
   }
+
+  public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -1470,16 +1477,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isForceDelete if this is true, ignore ansible errors
    * @param deleteNode if true, the node info is deleted from the universe db.
    * @param deleteRootVolumes if true, the volumes are deleted.
+   * @param skipDestroyPrecheck if true, skips the pre-check validation subtask before destroying
+   *     server.
    */
   public SubTaskGroup createDestroyServerTasks(
       Universe universe,
       Collection<NodeDetails> nodes,
       boolean isForceDelete,
       boolean deleteNode,
-      boolean deleteRootVolumes) {
+      boolean deleteRootVolumes,
+      boolean skipDestroyPrecheck) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     nodes = filterUniverseNodes(universe, nodes, n -> true);
+
+    // TODO: Update to use node whitelist when the db implements this.
+    if (!skipDestroyPrecheck) {
+      createCheckNodeSafeToDeleteTasks(universe, nodes);
+    }
+
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it, free up the onprem node
@@ -1526,6 +1542,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       params.useSystemd = userIntent.useSystemd;
+      params.otelCollectorInstalled = universe.getUniverseDetails().otelCollectorEnabled;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);
@@ -1889,6 +1906,98 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /*
+   * Create subtask to determine that the node is not part of the universe quorum.
+   * Checks that no tablets exists on the tserver (if applicable) and node ip is not
+   * part of the quorum.
+   *
+   * @param universe universe for which the node belongs.
+   * @param node node we want to check.
+   */
+  public void createCheckNodeSafeToDeleteTasks(Universe universe, Collection<NodeDetails> nodes) {
+    boolean clusterMembershipCheckEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.clusterMembershipCheckEnabled);
+    if (clusterMembershipCheckEnabled) {
+      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodeSafeToDelete");
+      for (NodeDetails node : nodes) {
+        NodeTaskParams params = new NodeTaskParams();
+        params.setUniverseUUID(taskParams().getUniverseUUID());
+        params.nodeName = node.getNodeName();
+        CheckNodeSafeToDelete task = createTask(CheckNodeSafeToDelete.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ValidatingNode);
+    }
+  }
+
+  /*
+   * For a given node, finds the tablets assigned to its tserver (if relevant).
+   *
+   * @param universe universe for which the node belongs.
+   * @param currentNode node we want to check.
+   * @return a set of tablets for the associated tserver.
+   */
+  public Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
+    // Wait for a maximum of 10 seconds for url to succeed.
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    HostAndPort masterLeaderHostPort =
+        HostAndPort.fromParts(
+            masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
+    String masterLeaderUrl =
+        String.format("http://%s%s", masterLeaderHostPort.toString(), DUMP_ENTITIES_URL_SUFFIX);
+
+    RetryTaskUntilCondition<DumpEntitiesResponse> waitForCheck =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              log.debug("Making url request to endpoint: {}", masterLeaderUrl);
+              JsonNode masterLeaderDumpJson = nodeUIApiHelper.getRequest(masterLeaderUrl);
+              DumpEntitiesResponse dumpEntities =
+                  Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
+              return dumpEntities;
+            },
+            (d) -> {
+              if (d.getError() != null) {
+                log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
+                return false;
+              }
+              return true;
+            });
+
+    DumpEntitiesResponse dumpEntitiesResponse = waitForCheck.retryWithBackoff(1, 2, 10);
+
+    HostAndPort currentNodeHP =
+        HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
+
+    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
+  }
+
+  /*
+   * Checks whether or not the node has a master process in the universe quorum
+   *
+   * @param universe universe for which the node belongs
+   * @param currentNode node we want to check for
+   * @return whether or not the node has a master process in the universe in the quorum
+   */
+  protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
+    String ip = node.cloudInfo.private_ip;
+    String masterAddresses = universe.getMasterAddresses();
+
+    try (YBClient client =
+        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+      ListMastersResponse response = client.listMasters();
+      List<ServerInfo> servers = response.getMasters();
+      return servers.stream().anyMatch(s -> s.getHost().equals(ip));
+    } catch (Exception e) {
+      String msg =
+          String.format(
+              "Error when fetching listMasters rpc for node %s - %s",
+              node.nodeName, e.getMessage());
+      throw new RuntimeException(msg, e);
+    }
+  }
+
   /**
    * Create tasks to execute Cluster CTL command against specific process in parallel
    *
@@ -2180,36 +2289,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         nodes,
         type,
         config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
-        null /* userIntent */);
+        null /* userIntent */,
+        null /* communicationPorts */);
   }
 
   public SubTaskGroup createWaitForServersTasks(
-      Collection<NodeDetails> nodes, ServerType type, UserIntent userIntent) {
+      Collection<NodeDetails> nodes,
+      ServerType type,
+      UserIntent userIntent,
+      CommunicationPorts communicationPorts) {
     return createWaitForServersTasks(
         nodes,
         type,
         config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
-        userIntent);
+        userIntent,
+        communicationPorts);
   }
 
   public SubTaskGroup createWaitForServersTasks(
       Collection<NodeDetails> nodes, ServerType type, Duration timeout) {
-    return createWaitForServersTasks(nodes, type, timeout, null /* userIntent */);
+    return createWaitForServersTasks(
+        nodes, type, timeout, null /* userIntent */, null /* communicationPorts */);
   }
 
   /**
    * Create a task list to ping all servers until they are up.
    *
    * @param nodes : a collection of nodes that need to be pinged.
-   * @param type : Master or tserver type server running on these nodes.
+   * @param type : Master or tserver type server running on this node.
    * @param timeout : time to wait for each rpc call to the server.
    * @param userIntent : userIntent of the node.
+   * @param communicationPorts: custom communication ports of the node.
    */
   public SubTaskGroup createWaitForServersTasks(
       Collection<NodeDetails> nodes,
       ServerType type,
       Duration timeout,
-      @Nullable UserIntent userIntent) {
+      @Nullable UserIntent userIntent,
+      @Nullable UniverseTaskParams.CommunicationPorts communicationPorts) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServer");
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
@@ -2218,6 +2335,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.serverType = type;
       params.serverWaitTimeoutMs = timeout.toMillis();
       params.userIntent = userIntent;
+      params.customCommunicationPorts = communicationPorts;
       WaitForServer task = createTask(WaitForServer.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
@@ -2868,7 +2986,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    createPreflightValidateBackupTask(backupTableParams, ybcBackup);
+    createPreflightValidateBackupTask(backupTableParams, ybcBackup)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
     if (!ybcBackup) {
       if (cloudType != CloudType.kubernetes) {
@@ -2978,7 +3097,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
         && pCluster.userIntent.providerType != CloudType.local) {
       getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
-      createPreflightValidateRestoreTask(restoreBackupParams);
+      createPreflightValidateRestoreTask(restoreBackupParams)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);

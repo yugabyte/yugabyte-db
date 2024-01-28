@@ -10,12 +10,8 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
-import com.azure.core.management.AzureEnvironment;
-import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.BinaryData;
 import com.azure.core.util.IterableStream;
-import com.azure.identity.ClientSecretCredential;
-import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
@@ -27,6 +23,7 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -676,16 +673,8 @@ public class AZUtil implements CloudUtil {
   private boolean isSpotInstanceInterrupted(String nodeName, Provider provider, String startTime) {
     try {
       AzureCloudInfo azuInfo = provider.getDetails().getCloudInfo().getAzu();
-      AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
-      ClientSecretCredential clientSecretCredential =
-          new ClientSecretCredentialBuilder()
-              .clientId(azuInfo.getAzuClientId())
-              .clientSecret(azuInfo.getAzuClientSecret())
-              .tenantId(azuInfo.getAzuTenantId())
-              .build();
-      AzureResourceManager azure =
-          AzureResourceManager.authenticate(clientSecretCredential, profile)
-              .withSubscription(azuInfo.getAzuSubscriptionId());
+      AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azuInfo);
+      AzureResourceManager azure = apiClient.getAzureResourceManager();
       String resourceID =
           String.format(
               "/SUBSCRIPTIONS/%s/RESOURCEGROUPS/%s/PROVIDERS/MICROSOFT.COMPUTE/VIRTUALMACHINES/%s",

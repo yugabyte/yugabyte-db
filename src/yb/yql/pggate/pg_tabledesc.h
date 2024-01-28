@@ -17,13 +17,15 @@
 
 #pragma once
 
-#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/dockv/partition.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -39,13 +41,17 @@ class PgClient;
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
-  PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+  PgTableDesc(const PgObjectId& relfilenode_id, const master::GetTableSchemaResponsePB& resp,
               client::VersionedTablePartitionList partition_list);
 
   Status Init();
 
-  const PgObjectId& id() const {
-    return id_;
+  const PgObjectId& relfilenode_id() const {
+    return relfilenode_id_;
+  }
+
+  PgOid pg_table_id() const {
+    return pg_table_id_ != kInvalidOid ? pg_table_id_ : relfilenode_id_.object_oid;
   }
 
   const client::YBTableName& table_name() const;
@@ -60,7 +66,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Find the column given the postgres attr number.
   Result<size_t> FindColumn(int attr_num) const;
 
-  Result<YBCPgColumnInfo> GetColumnInfo(int16_t attr_number) const;
+  Result<YBCPgColumnInfo> GetColumnInfo(int attr_number) const;
 
   bool IsHashPartitioned() const;
 
@@ -94,6 +100,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const Schema& schema() const;
 
+  const dockv::SchemaPacking& schema_packing() const {
+    return *schema_packing_;
+  }
+
   // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
@@ -106,7 +116,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   bool IsIndex() const;
 
  private:
-  PgObjectId id_;
+  PgObjectId relfilenode_id_;
+  YBCPgOid pg_table_id_{kInvalidOid};
   master::GetTableSchemaResponsePB resp_;
   client::VersionedTablePartitionList table_partition_list_;
   client::PartitionListVersion latest_known_table_partition_list_version_;
@@ -114,9 +125,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   client::YBTableName table_name_;
   Schema schema_;
   dockv::PartitionSchema partition_schema_;
+  std::optional<dockv::SchemaPacking> schema_packing_;
 
   // Attr number to column index map.
-  std::unordered_map<int, size_t> attr_num_map_;
+  std::vector<std::pair<int, size_t>> attr_num_map_;
   YBCPgOid tablegroup_oid_{kInvalidOid};
 };
 

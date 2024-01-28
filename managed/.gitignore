@@ -52,10 +52,23 @@ ui/junit.xml
 
 src/public/*
 
-client/*/generated
+client/*/v1
+client/*/v2
 lib
 
 devops/pex/pexEnv
 
 # This is for people using pyenv with a local version for YBA set.
 .python-version
+
+# openapi generated server stubs during build
+src/main/java/api/v2/models/
+src/main/java/api/v2/controllers/*ApiController.java
+src/main/java/api/v2/controllers/*ApiControllerImpInterface.java
+src/main/java/app/Module.java
+src/main/java/.openapi-generator/
+src/main/java/conf/routes
+src/main/java/public/openapi.json
+src/main/resources/openapi.yaml
+src/main/resources/openapi_public.yaml
+src/main/resources/openapi/paths/_index.yaml

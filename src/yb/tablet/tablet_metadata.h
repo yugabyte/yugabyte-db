@@ -104,6 +104,10 @@ struct TableInfo {
   // Partition schema of the table.
   dockv::PartitionSchema partition_schema;
 
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  TableId pg_table_id;
+
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
   // associated data has been discarded. In the future, we can garbage collect such column IDs to
@@ -125,7 +129,8 @@ struct TableInfo {
             const qlexpr::IndexMap& index_map,
             const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
-            dockv::PartitionSchema partition_schema);
+            dockv::PartitionSchema partition_schema,
+            TableId pg_table_id);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
@@ -490,7 +495,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const dockv::PartitionSchema& partition_schema,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
-                const OpId& op_id) EXCLUDES(data_mutex_);
+                const OpId& op_id,
+                const TableId& pg_table_id) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 

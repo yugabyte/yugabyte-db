@@ -33,20 +33,26 @@
       "bin/yugabyted",
       "bin/openssl_proxy.sh",
       "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
       "scripts/installation/bin/yb-ctl",
+      "thirdparty/installed/common/bin/openssl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
-    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
     "postgres": ["$BUILD_ROOT/postgres/*"],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
       "$BUILD_ROOT/share/ysql_conn_mgr.template.conf",
       "$BUILD_ROOT/share/ysql_migrations",
-      "sample/*.sql"
+      "sample/*.sql",
+      "https://downloads.yugabyte.com/ybc/2.0.0.0-b19/ybc-2.0.0.0-b19-${YBCOS}-${ARCH}.tar.gz"
     ],
     "tools": [
       "bin/yb-prof.py",
@@ -66,12 +72,17 @@
     "bin": [
       "$BUILD_ROOT/postgres/bin/ysqlsh",
       "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
+      "thirdparty/installed/common/bin/openssl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
-    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "sample/*.sql"

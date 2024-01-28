@@ -1194,12 +1194,14 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode response = Json.parse("{\"foo\": \"bar\"}");
     when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws)).thenReturn(response);
     when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp)).thenReturn(response);
+    when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.azu)).thenReturn(response);
     Result result = getHostInfo(customer.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     ObjectNode responseNode = Json.newObject();
     responseNode.put("aws", response);
     responseNode.put("gcp", response);
+    responseNode.put("azu", response);
     assertEquals(json, responseNode);
     assertAuditEntry(0, customer.getUuid());
   }

@@ -1126,7 +1126,7 @@ insert into fastpath select generate_series(1,10000), 'b', 100;
 -- guarantee if index-only scans will be picked up in all cases or not, but
 -- that fuzziness actually helps the test.
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 set enable_seqscan to false;
 set enable_bitmapscan to false;
 select sum(a) from fastpath where a = 6456;
@@ -1180,7 +1180,7 @@ truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 -- again, vacuum here either forces index-only scans or creates fuzziness
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1216,7 +1216,7 @@ create index fpindex3 on fastpath(a desc, b asc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1251,7 +1251,7 @@ create index fpindex4 on fastpath(a asc, b desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1287,7 +1287,7 @@ create index fpindex5 on fastpath(b asc, a desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1322,7 +1322,7 @@ create index fpindex6 on fastpath(b desc, a desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5

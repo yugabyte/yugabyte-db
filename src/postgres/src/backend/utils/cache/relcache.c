@@ -103,9 +103,11 @@
 #include "utils/tqual.h"
 
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
+#include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
 
@@ -5333,7 +5335,8 @@ RelationBuildLocalRelation(const char *relname,
  */
 void
 RelationSetNewRelfilenode(Relation relation, char persistence,
-						  TransactionId freezeXid, MultiXactId minmulti)
+						  TransactionId freezeXid, MultiXactId minmulti,
+						  bool yb_copy_split_options)
 {
 	Oid			newrelfilenode;
 	RelFileNodeBackend newrnode;
@@ -5364,22 +5367,38 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 RelationGetRelid(relation));
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
-	/*
-	 * Create storage for the main fork of the new relfilenode.
-	 *
-	 * NOTE: any conflict in relfilenode value will be caught here, if
-	 * GetNewRelFileNode messes up for any reason.
-	 */
-	newrnode.node = relation->rd_node;
-	newrnode.node.relNode = newrelfilenode;
-	newrnode.backend = relation->rd_backend;
-	RelationCreateStorage(newrnode.node, persistence);
-	smgrclosenode(newrnode);
+	if (IsYBRelation(relation))
+	{
+		/* Currently, this function is only used during reindex in YB. */
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX);
+		/*
+		 * Drop the old DocDB table associated with this index.
+		 * Note: The drop isn't finalized until after the txn commits/aborts.
+		 */
+		YBCDropIndex(relation);
+		/* Create a new DocDB table for the index. */
+		YbIndexSetNewRelfileNode(relation, newrelfilenode,
+								 yb_copy_split_options);
+	}
+	else
+	{
+		/*
+		 * Create storage for the main fork of the new relfilenode.
+		 *
+		 * NOTE: any conflict in relfilenode value will be caught here, if
+		 * GetNewRelFileNode messes up for any reason.
+		 */
+		newrnode.node = relation->rd_node;
+		newrnode.node.relNode = newrelfilenode;
+		newrnode.backend = relation->rd_backend;
+		RelationCreateStorage(newrnode.node, persistence);
+		smgrclosenode(newrnode);
 
-	/*
-	 * Schedule unlinking of the old storage at transaction commit.
-	 */
-	RelationDropStorage(relation);
+		/*
+		 * Schedule unlinking of the old storage at transaction commit.
+		 */
+		RelationDropStorage(relation);
+	}
 
 	/*
 	 * Now update the pg_class row.  However, if we're dealing with a mapped

@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useMemo, useCallback } from 'react';
+import { FC, useState } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,7 @@ import {
 } from '../../../../components/universes/helpers/universeHelpers';
 import { dbVersionWidgetStyles } from './DBVersionWidgetStyles';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
+import { TaskObject } from '../universe-actions/rollback-upgrade/utils/types';
 //icons
 import UpgradeArrow from '../../../assets/upgrade-arrow.svg';
 import WarningExclamation from '../../../assets/warning-triangle.svg';
@@ -25,11 +26,13 @@ import WarningExclamation from '../../../assets/warning-triangle.svg';
 interface DBVersionWidgetProps {
   higherVersionCount: number;
   isRollBackFeatureEnabled: boolean;
+  failedTaskDetails: TaskObject;
 }
 
 export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   higherVersionCount,
-  isRollBackFeatureEnabled
+  isRollBackFeatureEnabled,
+  failedTaskDetails
 }) => {
   const { t } = useTranslation();
   const classes = dbVersionWidgetStyles();
@@ -47,6 +50,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
     currentUniverse?.universeUUID,
     tasks?.customerTaskList
   );
+  const failedTaskTargetVersion = failedTaskDetails?.details?.versionNumbers?.ybSoftwareVersion;
 
   const upgradingVersion = universePendingTask?.details?.versionNumbers?.ybSoftwareVersion;
 
@@ -56,7 +60,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       &nbsp;
       {isRollBackFeatureEnabled &&
         higherVersionCount > 0 &&
-        upgradeState === SoftwareUpgradeState.READY &&
+        universeStatus.state === UniverseState.GOOD &&
         !isUniversePaused &&
         _.isEmpty(universePendingTask) && (
           <>
@@ -77,13 +81,13 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         </YBTooltip>
       )}
       {[SoftwareUpgradeState.FINALIZE_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
-        upgradeState
+        upgradeState && universeStatus.state !== UniverseState.GOOD
       ) && (
         <YBTooltip
           title={
             upgradeState === SoftwareUpgradeState.FINALIZE_FAILED
-              ? `Failed to finalize upgrade to v${minifiedCurrentVersion}`
-              : `Failed to upgrade database version to v${minifiedCurrentVersion}`
+              ? `Failed to finalize upgrade to v${failedTaskTargetVersion}`
+              : `Failed to upgrade database version to v${failedTaskTargetVersion}`
           }
         >
           <span>
@@ -92,7 +96,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         </YBTooltip>
       )}
       {upgradeState === SoftwareUpgradeState.ROLLBACK_FAILED && (
-        <YBTooltip title={`Failed to rollback to v${previousDBVersion}`}>
+        <YBTooltip title={`Failed to rollback to v${failedTaskTargetVersion}`}>
           <span>
             <i className={`fa fa-warning ${classes.errorIcon}`} />
           </span>

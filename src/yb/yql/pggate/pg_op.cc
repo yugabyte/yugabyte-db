@@ -128,7 +128,7 @@ PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool i
                          PgsqlMetricsCaptureType metrics_capture)
     : PgsqlReadOp(arena, is_region_local) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
-  read_request_.dup_table_id(desc.id().GetYbTableId());
+  read_request_.dup_table_id(desc.relfilenode_id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
   read_request_.set_metrics_capture(metrics_capture);

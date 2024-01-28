@@ -307,7 +307,8 @@ class PgApiImpl {
                         const ColocationId colocation_id,
                         const PgObjectId& tablespace_oid,
                         bool is_matview,
-                        const PgObjectId& matview_pg_table_oid,
+                        const PgObjectId& pg_table_oid,
+                        const PgObjectId& old_relfilenode_oid,
                         PgStatement **handle);
 
   Status CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -380,6 +381,8 @@ class PgApiImpl {
                         const PgObjectId& tablegroup_oid,
                         const YBCPgOid& colocation_id,
                         const PgObjectId& tablespace_oid,
+                        const PgObjectId& pg_table_oid,
+                        const PgObjectId& old_relfilenode_oid,
                         PgStatement **handle);
 
   Status CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
@@ -455,6 +458,7 @@ class PgApiImpl {
                              int n_attr_values,
                              YBCPgExpr *attr_values);
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
+  Status DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);

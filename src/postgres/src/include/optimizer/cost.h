@@ -52,11 +52,11 @@
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
 /* DocDB Remote filter cost */
-#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 50
+#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 10.0
+#define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
 
 /* 
  * TODO : Since we cannot currently estimate the number of key value pairs per 
@@ -87,7 +87,6 @@ extern PGDLLIMPORT double seq_page_cost;
 extern PGDLLIMPORT double random_page_cost;
 
 extern PGDLLIMPORT double yb_network_fetch_cost;
-
 extern PGDLLIMPORT double yb_intercloud_cost;
 extern PGDLLIMPORT double yb_interregion_cost;
 extern PGDLLIMPORT double yb_interzone_cost;

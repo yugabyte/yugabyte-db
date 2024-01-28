@@ -156,6 +156,10 @@ message CreateTabletRequestPB {
   repeated bytes snapshot_schedules = 16;
 
   repeated StatefulServiceKind hosted_stateful_services = 17;
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 18;
 }
 
 message CreateTabletResponsePB {

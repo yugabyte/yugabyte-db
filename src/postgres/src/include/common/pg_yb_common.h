@@ -130,11 +130,6 @@ extern const char *YbGetTmpDir();
 extern bool YBIsCollationEnabled();
 
 /**
- * Returns whether failure injection is enabled for matview refreshes.
- */
-extern bool YBIsRefreshMatviewFailureInjected();
-
-/**
  * Returns the value of the configration variable `max_clock_sec_usec`
  * returns -1 if the configuration was not found.
  */

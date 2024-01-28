@@ -43,6 +43,7 @@
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
 #include "catalog/catalog.h"
+#include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -76,13 +77,19 @@
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/variable.h"
+#include "commands/ybccmds.h"
+#include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
+#include "libpq/libpq.h"
+#include "libpq/libpq-be.h"
 #include "optimizer/cost.h"
+#include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
@@ -97,6 +104,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
+#include "yb_ash.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -322,7 +330,8 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 	YBCPgTableDesc ybc_tabledesc = NULL;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
-	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel),
+		&ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -857,9 +866,12 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
+		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
 		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
 					  &MyProc->yb_is_ash_metadata_set);
 		YBCInstallTxnDdlHook();
+		if (YBEnableAsh())
+			YbAshInstallHooks();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -878,6 +890,8 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
+		if (YBEnableAsh())
+			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
 
@@ -1327,9 +1341,13 @@ char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";
 
+bool yb_test_fail_table_rewrite_after_creation = false;
+
 bool ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;
+
+bool yb_use_hash_splitting_by_default = true;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -2140,13 +2158,14 @@ int32_t YBFollowerReadStalenessMs() {
 	return yb_follower_read_staleness_ms;
 }
 
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+	int nattrs) {
 	void* mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
 	YBCPgYBTupleIdDescriptor* result = mem;
 	result->nattrs = nattrs;
 	result->attrs = mem + sizeof(YBCPgYBTupleIdDescriptor);
 	result->database_oid = db_oid;
-	result->table_oid = table_oid;
+	result->table_relfilenode_oid = table_relfilenode_oid;
 	return result;
 }
 
@@ -2327,10 +2346,10 @@ YbGetTablePropertiesCommon(Relation rel)
 	}
 
 	Oid dbid          = YBCGetDatabaseOid(rel);
-	Oid storage_relid = YbGetStorageRelid(rel);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
 	YBCPgTableDesc desc = NULL;
-	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
+	YBCStatus status = YBCPgGetTableDesc(dbid, relfileNodeId, &desc);
 	if (status)
 		return status;
 
@@ -2460,13 +2479,13 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	Relation	rel = relation_open(relid, AccessShareLock);
 	Oid dbid		= YBCGetDatabaseOid(rel);
-	Oid storage_relid = YbGetStorageRelid(rel);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
 	YBCPgTableDesc yb_tabledesc = NULL;
 	YbTablePropertiesData yb_table_properties;
 	bool not_found = false;
 	HandleYBStatusIgnoreNotFound(
-		YBCPgGetTableDesc(dbid, storage_relid, &yb_tabledesc), &not_found);
+		YBCPgGetTableDesc(dbid, relfileNodeId, &yb_tabledesc), &not_found);
 	if (!not_found)
 		HandleYBStatusIgnoreNotFound(
 			YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties),
@@ -2910,15 +2929,25 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	YbTablePropertiesData yb_table_properties;
 	StringInfoData str;
 	char	   *range_split_clause = NULL;
+	Relation	relation = RelationIdGetRelation(relid);
+	Oid			relfileNodeId;
 
-	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (relation)
+	{
+		relfileNodeId = YbGetRelfileNodeId(relation);
+		RelationClose(relation);
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, relfileNodeId,
+			&exists_in_yb));
+	}
+
 	if (!exists_in_yb)
 	{
 		elog(NOTICE, "relation with oid %u is not backed by YB", relid);
 		PG_RETURN_NULL();
 	}
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relfileNodeId,
+		&yb_tabledesc));
 	HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
 
 	if (yb_table_properties.num_hash_key_columns > 0)
@@ -3462,12 +3491,18 @@ void YBSetParentDeathSignal()
 #endif
 }
 
-Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
-		relation->rd_rel->relfilenode != InvalidOid) {
+Oid YbGetRelfileNodeId(Relation relation) {
+	if (relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
 	return RelationGetRelid(relation);
+}
+
+Oid YbGetRelfileNodeIdFromRelId(Oid relationId) {
+	Relation rel = RelationIdGetRelation(relationId);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
+	RelationClose(rel);
+	return relfileNodeId;
 }
 
 bool IsYbDbAdminUser(Oid member) {
@@ -3718,16 +3753,19 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->tbl_reads.count += exec_stats->tables.reads;
 	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
 	instr->tbl_writes += exec_stats->tables.writes;
+	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
 	instr->index_reads.wait_time += exec_stats->indices.read_wait;
 	instr->index_writes += exec_stats->indices.writes;
+	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
 	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
 	instr->catalog_writes += exec_stats->catalog.writes;
+	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -3751,9 +3789,13 @@ static YBCPgExecReadWriteStats
 getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
 					  const YBCPgExecReadWriteStats *old)
 {
-	return (YBCPgExecReadWriteStats){current->reads - old->reads,
-									 current->writes - old->writes,
-									 current->read_wait - old->read_wait};
+	return (YBCPgExecReadWriteStats)
+	{
+		current->reads - old->reads,
+		current->writes - old->writes,
+		current->read_wait - old->read_wait,
+		current->rows_scanned - old->rows_scanned
+	};
 }
 
 static void
@@ -3963,6 +4005,9 @@ void YbSetIsBatchedExecution(bool value)
 OptSplit *
 YbGetSplitOptions(Relation rel)
 {
+	if (rel->yb_table_properties->is_colocated)
+		return NULL;
+
 	OptSplit *split_options = makeNode(OptSplit);
 	/*
 	 * The split type is NUM_TABLETS when the relation has hash key columns
@@ -3984,7 +4029,7 @@ YbGetSplitOptions(Relation rel)
 	{
 		YBCPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
-						RelationGetRelid(rel), &yb_desc));
+						YbGetRelfileNodeId(rel), &yb_desc));
 		getRangeSplitPointsList(RelationGetRelid(rel), yb_desc,
 								rel->yb_table_properties,
 								&split_options->split_points);
@@ -4108,4 +4153,214 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 
 	buf[*length] = '\0';
 	return buf;
+}
+
+/*
+ * Needed to support the guc variable yb_use_tserver_key_auth, which is
+ * processed before authentication i.e. before setting this variable.
+ */
+bool yb_use_tserver_key_auth;
+
+bool
+yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
+{
+	/* Allow setting yb_use_tserver_key_auth to false */
+	if (!(*newval))
+		return true;
+
+	/*
+	 * yb_use_tserver_key_auth can only be set for client connections made on
+	 * unix socket.
+	 */
+	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("yb_use_tserver_key_auth can only be set if the "
+						"connection is made over unix domain socket")));
+
+	/*
+	 * If yb_use_tserver_key_auth is set, authentication method used
+	 * is yb_tserver_key. The auth method is decided even before setting the
+	 * yb_use_tserver_key GUC variable in hba_getauthmethod (present in hba.c).
+	 */
+	Assert(MyProcPort->yb_is_tserver_auth_method);
+
+	return true;
+}
+
+/*
+ * Copies the primary key of a relation to a create stmt intended to clone that
+ * relation.
+ */
+void
+YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
+							   CreateStmt *create_stmt)
+{
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple	tuple;
+
+	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(rel)));
+	scan = systable_beginscan(pg_constraint, ConstraintRelidTypidNameIndexId,
+							  true /* indexOK */, NULL /* snapshot */,
+							  1 /* nkeys */, &key);
+
+	bool pk_copied = false;
+	while (!pk_copied && HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(tuple);
+		switch (con_form->contype)
+		{
+			case CONSTRAINT_PRIMARY:
+			{
+				/*
+				 * We don't actually need to map attributes here since there
+				 * isn't a new relation yet, but we still need a map to
+				 * generate an index stmt.
+				 */
+				AttrNumber *att_map = convert_tuples_by_name_map(
+					RelationGetDescr(rel), RelationGetDescr(rel),
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
+
+				Relation idx_rel =
+					index_open(con_form->conindid, AccessShareLock);
+				IndexStmt *index_stmt = generateClonedIndexStmt(
+					NULL, RelationGetRelid(rel), idx_rel, att_map,
+					RelationGetDescr(rel)->natts, NULL);
+
+				Constraint *pk_constr = makeNode(Constraint);
+				pk_constr->contype = CONSTR_PRIMARY;
+				pk_constr->conname = index_stmt->idxname;
+				pk_constr->options = index_stmt->options;
+				pk_constr->indexspace = index_stmt->tableSpace;
+
+				ListCell *cell;
+				foreach(cell, index_stmt->indexParams)
+				{
+					IndexElem *ielem = lfirst(cell);
+					pk_constr->keys =
+						lappend(pk_constr->keys, makeString(ielem->name));
+					pk_constr->yb_index_params =
+						lappend(pk_constr->yb_index_params, ielem);
+				}
+				create_stmt->constraints =
+					lappend(create_stmt->constraints, pk_constr);
+
+				index_close(idx_rel, AccessShareLock);
+				pk_copied = true;
+				break;
+			}
+			case CONSTRAINT_CHECK:
+			case CONSTRAINT_FOREIGN:
+			case CONSTRAINT_UNIQUE:
+			case CONSTRAINT_TRIGGER:
+			case CONSTRAINT_EXCLUSION:
+				break;
+			default:
+				elog(ERROR, "invalid constraint type \"%c\"",
+					 con_form->contype);
+				break;
+		}
+	}
+	systable_endscan(scan);
+}
+
+/*
+ * In YB, a "relfilenode" corresponds to a DocDB table.
+ * This function creates a new DocDB table for the given index,
+ * with UUID corresponding to the given relfileNodeId. It is used when a
+ * user index is re-indexed.
+ */
+void
+YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
+						 bool yb_copy_split_options)
+{
+	bool		isNull;
+	HeapTuple	tuple;
+	Datum		reloptions = (Datum) 0;
+	Relation	indexedRel;
+	IndexInfo	*indexInfo;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(
+		RelationGetRelid(indexRel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for index %u",
+				RelationGetRelid(indexRel));
+
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+		Anum_pg_class_reloptions, &isNull);
+	ReleaseSysCache(tuple);
+	reloptions = ybExcludeNonPersistentReloptions(reloptions);
+	indexedRel = heap_open(
+		IndexGetRelation(RelationGetRelid(indexRel), false), ShareLock);
+	indexInfo = BuildIndexInfo(indexRel);
+
+	YbGetTableProperties(indexRel);
+	YBCCreateIndex(RelationGetRelationName(indexRel),
+				   indexInfo,
+				   RelationGetDescr(indexRel),
+				   indexRel->rd_indoption,
+				   reloptions,
+				   newRelfileNodeId,
+				   indexedRel,
+				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
+				   false,
+				   indexRel->yb_table_properties->is_colocated,
+				   indexRel->yb_table_properties->tablegroup_oid,
+				   InvalidOid /* colocation ID */,
+				   indexRel->rd_rel->reltablespace,
+				   RelationGetRelid(indexRel),
+				   YbGetRelfileNodeId(indexRel));
+
+	heap_close(indexedRel, ShareLock);
+
+	if (yb_test_fail_table_rewrite_after_creation)
+		elog(ERROR, "Injecting error.");
+}
+
+SortByDir
+YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
+			   bool is_first_key)
+{
+	switch (ordering)
+	{
+		case SORTBY_DEFAULT:
+			/*
+				 * In Yugabyte, use HASH as the default for the first column of
+				 * non-colocated tables
+			 */
+			if (IsYugaByteEnabled() && yb_use_hash_splitting_by_default &&
+				is_first_key && !is_colocated && !is_tablegroup)
+				return SORTBY_HASH;
+
+			return SORTBY_ASC;
+
+		case SORTBY_ASC:
+		case SORTBY_DESC:
+			break;
+
+		case SORTBY_USING:
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("USING is not allowed in an index")));
+			break;
+
+		case SORTBY_HASH:
+			if (is_tablegroup && !MyDatabaseColocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot create a hash partitioned index in a TABLEGROUP")));
+			else if (is_colocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot colocate hash partitioned index")));
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("unsupported column sort order: %d", ordering)));
+			break;
+	}
+
+	return ordering;
 }

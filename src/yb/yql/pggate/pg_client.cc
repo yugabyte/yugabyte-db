@@ -526,6 +526,7 @@ class PgClient::Impl : public BigDataFetcher {
       // Don't send ASH metadata if it's not set
       // ash_metadata_ can be null during tests which directly create the
       // pggate layer without the PG backend.
+      // session_id is not set here as it's already set in PgPerformRequestPB
       if (is_ash_metadata_set_ != nullptr && ash_metadata_ != nullptr &&
           *is_ash_metadata_set_) {
         auto* ash_metadata = options->mutable_ash_metadata();

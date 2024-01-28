@@ -30,6 +30,12 @@ import {
 } from '../../../../../actions/tasks';
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
+import { fetchLatestStableVersion, fetchCurrentLatestVersion } from './utils/helper';
+//Rbac
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+//imported styles
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 //icons
 import BulbIcon from '../../../../assets/bulb.svg';
@@ -44,11 +50,13 @@ interface DBUpgradeModalProps {
 }
 
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
+const MINIMUM_SUPPORTED_VERSION = '2.20.2';
 export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, universeData }) => {
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const [needPrefinalize, setPrefinalize] = useState(false);
   const releases = useSelector((state: any) => state.customer.softwareVersionswithMetaData);
+  const featureFlags = useSelector((state: any) => state.featureFlags);
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
@@ -56,15 +64,23 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
     universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
 
-  const finalOptions: Record<string, any>[] = Object.keys(releases)
-    .sort(sortVersion)
-    .map((e: any) => ({
-      version: e,
-      info: releases[e],
-      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        e.split('.')[1] % 2 === 0 ? '(STS)' : '(Preview)'
-      }`
-    }));
+  let finalOptions: Record<string, any>[] = [];
+  const latestStableVersion = fetchLatestStableVersion(releases);
+  const latestCurrentRelease = fetchCurrentLatestVersion(releases, currentRelease);
+  if (latestStableVersion) finalOptions = [latestStableVersion];
+  if (latestCurrentRelease) finalOptions = [...finalOptions, latestCurrentRelease];
+  finalOptions = [
+    ...finalOptions,
+    ...Object.keys(releases)
+      .sort(sortVersion)
+      .map((e: any) => ({
+        version: e,
+        info: releases[e],
+        series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
+          e.split('.')[1] % 2 === 0 ? '(STS)' : '(Preview)'
+        }`
+      }))
+  ];
 
   const formMethods = useForm<DBUpgradeFormFields>({
     defaultValues: {
@@ -129,7 +145,8 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
         universeUUID,
         taskType: 'Software',
         clusters: universeDetails.clusters,
-        nodePrefix: universeDetails.nodePrefix
+        nodePrefix: universeDetails.nodePrefix,
+        enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc
       };
       try {
         await upgradeSoftware.mutateAsync(payload);
@@ -152,6 +169,11 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     setPrefinalize(false);
     setValue('softwareVersion', option?.version, { shouldValidate: true });
   };
+
+  const canUpgradeSoftware = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.UPGRADE_NEW_UNIVERSE_SOFTWARE
+  });
 
   const renderDropdown = () => {
     return (
@@ -202,6 +224,12 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       submitTestId="DBUpgradeModal-UpgradeButton"
       cancelTestId="DBUpgradeModal-Cancel"
       titleIcon={<UpgradeArrow />}
+      buttonProps={{
+        primary: {
+          disabled: !canUpgradeSoftware
+        }
+      }}
+      submitButtonTooltip={!canUpgradeSoftware ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box className={classes.mainContainer} data-testid="DBUpgradeModal-Container">
@@ -303,16 +331,18 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
             </Box>
           </Box>
           <Box width="100%" display="flex" flexDirection="column">
-            <Box className={classes.greyFooter}>
-              <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
-              <Box ml={0.5} mt={0.5}>
-                <Typography variant="body2">
-                  {t('universeActions.dbRollbackUpgrade.footerMsg1')}
-                  <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
-                  {t('universeActions.dbRollbackUpgrade.footerMsg2')}
-                </Typography>
+            {_.gte(currentRelease, MINIMUM_SUPPORTED_VERSION) && (
+              <Box className={classes.greyFooter}>
+                <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
+                <Box ml={0.5} mt={0.5}>
+                  <Typography variant="body2">
+                    {t('universeActions.dbRollbackUpgrade.footerMsg1')}
+                    <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
+                    {t('universeActions.dbRollbackUpgrade.footerMsg2')}
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
+            )}
             {universeHasXcluster && (
               <Box className={classes.xclusterBanner}>
                 <Box display="flex" mr={1}>

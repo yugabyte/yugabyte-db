@@ -1748,8 +1748,8 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
 
   // 4. Setup replication with data should fail.
-  ASSERT_NOK(
-      SetupUniverseReplication(cdc::ReplicationGroupId("replication-group-2"), producer_tables_));
+  ASSERT_NOK(SetupUniverseReplication(
+      xcluster::ReplicationGroupId("replication-group-2"), producer_tables_));
 }
 
 // Checks that with missing logs, replication will require bootstrapping
@@ -2706,6 +2706,11 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
     ASSERT_STR_CONTAINS(
         res.ToString(),
         "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+    res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(
+        res.ToString(),
+        "cannot rewrite a table that is a part of CDC or XCluster replication");
   }
 }
 

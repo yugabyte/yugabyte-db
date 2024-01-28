@@ -247,6 +247,9 @@ public class Commissioner {
     // Add some generic information about the task
     responseJson.put("title", task.getFriendlyDescription());
     responseJson.put("createTime", task.getCreateTime().toString());
+    if (task.getCompletionTime() != null) {
+      responseJson.put("completionTime", task.getCompletionTime().toString());
+    }
     responseJson.put("target", task.getTargetName());
     responseJson.put("targetUUID", task.getTargetUUID().toString());
     responseJson.put("type", task.getType().name());
@@ -311,15 +314,21 @@ public class Commissioner {
     ObjectNode versionNumbers = Json.newObject();
     JsonNode taskDetails = taskInfo.getDetails();
     if (ImmutableSet.of(
-                CustomerTask.TaskType.SoftwareUpgrade, CustomerTask.TaskType.RollbackUpgrade)
-            .contains(task.getType())
-        && taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
-      versionNumbers.put(
-          Commissioner.YB_PREV_SOFTWARE_VERSION,
-          taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
-      versionNumbers.put(
-          Commissioner.YB_SOFTWARE_VERSION,
-          taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+            CustomerTask.TaskType.SoftwareUpgrade,
+            CustomerTask.TaskType.RollbackUpgrade,
+            CustomerTask.TaskType.FinalizeUpgrade)
+        .contains(task.getType())) {
+      if (taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            Commissioner.YB_PREV_SOFTWARE_VERSION,
+            taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
+      }
+
+      if (taskDetails.has(Commissioner.YB_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            Commissioner.YB_SOFTWARE_VERSION,
+            taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+      }
     }
     return versionNumbers;
   }

@@ -129,11 +129,19 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+/* Following parameters are used by the older heuristics-based cost model */
 double		yb_network_fetch_cost = YB_DEFAULT_FETCH_COST;
+double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
+double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
+double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
+double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
+/* 
+ * Following parameters are used in the newer cost model that aims to model the
+ * pggate and DocDB storage layer and LSM index lookup more precisely.
+ */
 double		yb_seq_block_cost = DEFAULT_SEQ_PAGE_COST;
 double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
-
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double 		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
 double 		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
@@ -141,12 +149,6 @@ int 		yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int 		yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 double		yb_local_latency_cost = YB_DEFAULT_LOCAL_LATENCY_COST;
 double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
-
-double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
-double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
-double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
-
-double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
@@ -2377,12 +2379,15 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 
 	/* cost of source data */
 	int yb_batch_size = 1;
+	bool yb_is_batched = false;
 	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
 	{
-		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
-		if (is_batched)
+		yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
+		if (yb_is_batched)
 			yb_batch_size = yb_bnl_batch_size;
 	}
+
+	bool yb_costing_bnl = yb_batch_size > 1;
 
 	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
@@ -2399,8 +2404,8 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	inner_run_cost = inner_path->total_cost - inner_path->startup_cost;
 	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost);
 
-	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
-		extra->inner_unique)
+	if ((jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
+		extra->inner_unique) && !yb_costing_bnl)
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -2478,6 +2483,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model && yb_is_batched)
 		yb_batch_size = yb_bnl_batch_size;
 
+	bool yb_costing_bnl = yb_batch_size > 1;
+
 	/* For partial paths, scale row estimate. */
 	if (path->path.parallel_workers > 0)
 	{
@@ -2498,8 +2505,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */
 
-	if (path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI ||
-		extra->inner_unique)
+	/*
+	 * YB: We exclude BNL semi/anti joins from this because BNL's still pull
+	 * all innerrel tuples instead of stopping prematurely. It still needs
+	 * the adjustment to ntuples that is done after this branch statement.
+	 */
+	if ((path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI ||
+		extra->inner_unique) && !yb_costing_bnl)
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -2528,13 +2540,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		 * Compute number of tuples processed (not number emitted!).  First,
 		 * account for successfully-matched outer rows.
 		 */
-		 /*
-		  * YB: Note that in the case of BNL, the inner_path_rows gives us the
-		  * number of rows returned by the inner side per BATCH of outer tuples.
-		  * We correct for such cases by dividing by yb_batch_size.
-		  */
-		ntuples = (outer_matched_rows / yb_batch_size)
-			* inner_path_rows * inner_scan_frac;
+
+		ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
 
 		/*
 		 * Now we need to estimate the actual costs of scanning the inner
@@ -2561,14 +2568,12 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * case, use inner_run_cost for the first matched tuple and
 			 * inner_rescan_run_cost for additional ones.
 			 */
-
 			if (outer_matched_rows > 0)
 				run_cost += inner_run_cost * inner_scan_frac;
 
-			if (outer_matched_rows > yb_batch_size)
-				run_cost +=
-					((outer_matched_rows - yb_batch_size) / yb_batch_size) *
-						inner_rescan_run_cost * inner_scan_frac;
+			if (outer_matched_rows > 1)
+				run_cost += (outer_matched_rows - 1) *
+					inner_rescan_run_cost * inner_scan_frac;
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.
@@ -2576,15 +2581,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * of a nonempty scan.  We consider that these are all rescans,
 			 * since we used inner_run_cost once already.
 			 */
-
-			/*
-			 * YB: We assume that when we are using batched nested loop joins,
-			 * the chances of us coming up with a non-matching batch are
-			 * negligible.
-			 */
-			if (yb_batch_size == 1)
-				run_cost += outer_unmatched_rows *
-					inner_rescan_run_cost / inner_path_rows;
+			run_cost += outer_unmatched_rows *
+				inner_rescan_run_cost / inner_path_rows;
 
 			/*
 			 * We won't be evaluating any quals at all for unmatched rows, so
@@ -2607,26 +2605,22 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 */
 
 			/* First, count all unmatched join tuples as being processed */
-			ntuples += (outer_unmatched_rows / yb_batch_size) * inner_path_rows;
+			ntuples += outer_unmatched_rows * inner_path_rows;
 
 			/* Now add the forced full scan, and decrement appropriate count */
 			run_cost += inner_run_cost;
-			if (outer_unmatched_rows >= yb_batch_size)
-				outer_unmatched_rows -= yb_batch_size;
+			if (outer_unmatched_rows >= 1)
+				outer_unmatched_rows -= 1;
 			else
-				outer_matched_rows -=
-					outer_matched_rows < yb_batch_size ?
-						outer_matched_rows : yb_batch_size;
+				outer_matched_rows -= 1;
 
 			/* Add inner run cost for additional outer tuples having matches */
 			if (outer_matched_rows > 0)
-				run_cost += (outer_matched_rows / yb_batch_size) *
-					inner_rescan_run_cost * inner_scan_frac ;
+				run_cost += outer_matched_rows * inner_rescan_run_cost * inner_scan_frac;
 
 			/* Add inner run cost for additional unmatched outer tuples */
 			if (outer_unmatched_rows > 0)
-				run_cost += (outer_unmatched_rows / yb_batch_size) *
-					inner_rescan_run_cost;
+				run_cost += outer_unmatched_rows * inner_rescan_run_cost;
 		}
 	}
 	else
@@ -2635,6 +2629,19 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 		/* Compute number of tuples processed (not number emitted!) */
 		ntuples = (outer_path_rows / yb_batch_size) * inner_path_rows;
+
+		if (path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI
+			|| extra->inner_unique)
+		{
+			Assert(yb_is_batched);
+			double		outer_matched_rows;
+			Selectivity inner_scan_frac;
+
+			outer_matched_rows =
+				rint(outer_path_rows * extra->semifactors.outer_match_frac);
+			inner_scan_frac = 2.0 / (extra->semifactors.match_count + 1.0);
+			ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
+		}
 	}
 
 	/* CPU costs */
@@ -5656,6 +5663,10 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	double		result_page_size_mb;
 	Cost 		per_result_page_cost;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -5668,12 +5679,11 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int results_per_page = yb_fetch_size_limit / (result_width * 1.25);
-		// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
-		// 25% larger.
-
-		num_result_pages = ceil(result_tuples / results_per_page);
-		result_page_size_mb = (double) results_per_page * result_width / MEGA;
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
+		result_page_size_mb = 
+			fmin(result_tuples, max_results_per_page) * 
+			result_width / MEGA;
 	}
 	else
 	{
@@ -5701,6 +5711,10 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 {
 	uint32_t	num_result_pages = 0;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
 	{
@@ -5710,9 +5724,8 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int 		results_per_page =
-			floor(((double)yb_fetch_size_limit) / result_width);
-		num_result_pages = ceil(result_tuples / results_per_page);
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
 	}
 	else
 	{
