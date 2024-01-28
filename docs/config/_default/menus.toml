@@ -913,12 +913,12 @@
   [stable.params]
     showSection = true
 
-[[stable]]
-  name = "Tutorials"
-  weight = 7
-  identifier = "tutorials"
-  [stable.params]
-    showSection = true
+#[[stable]]
+#  name = "Tutorials"
+#  weight = 7
+#  identifier = "tutorials"
+#  [stable.params]
+#    showSection = true
 
 # [[stable]]
 #  name = "Migrate"

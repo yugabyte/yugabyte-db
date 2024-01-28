@@ -5,7 +5,7 @@ linkTitle: Amazon MSK
 description: Amazon MSK for Change Data Capture in YugabyteDB.
 headcontent: Stream data from YugabyteDB CDC to Amazon MSK using Debezium
 menu:
-  preview:
+  preview_tutorials:
     parent: tutorials-kafka-stream
     identifier: cdc-aws-msk
     weight: 10
