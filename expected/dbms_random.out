@@ -121,7 +121,7 @@ SELECT dbms_random.string('p', 10);
 
 SELECT dbms_random.string('uu', 10); -- error
 ERROR:  this first parameter value is more than 1 characters long
-SELECT dbms_random.string('w', 10);  
+SELECT dbms_random.string('w', 10);
    string   
 ------------
  AXPCTOMDNY
