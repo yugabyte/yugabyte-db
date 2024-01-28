@@ -5,7 +5,7 @@ linkTitle: Join Strategies
 description: Understand the various methodologies used for joining multiple tables
 headcontent: Understand the various methods used for joining multiple tables
 menu:
-  preview:
+  stable:
     name: Join strategies
     identifier: explore-joins-ysql
     parent: explore-ysql-language-features
