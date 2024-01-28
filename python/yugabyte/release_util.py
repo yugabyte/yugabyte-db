@@ -145,6 +145,7 @@ class ReleaseUtil:
         - Replace ${project.version} with the Java version from pom.xml.
         - Replace the leading "thirdparty/" with the respective YB_THIRDPARTY_DIR from the build.
         - Replace $BUILD_ROOT with the actual build_root.
+        - Replace $ARCH with the machine's arch (x86_64/aarch64)
         """
         # Substitution for Java.
         new_value = old_value.replace('${project.version}', self.java_project_version)
@@ -152,6 +153,11 @@ class ReleaseUtil:
         thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
         if thirdparty_prefix_match:
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
+        # Substitution for ARCH.
+        new_value = new_value.replace("$ARCH", platform.machine())
+        # Substitution for YBCOS.  This doesn't map cleanly yet.
+        new_value = new_value.replace("$YBOS",
+                                      {"aarch64": "el8", "x86_64": "linux"}[platform.machine()])
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
         thirdparty_intrumentation = "uninstrumented"
@@ -264,7 +270,7 @@ class ReleaseUtil:
             if distro.id() == "centos" and distro.major_version() == "7" \
                     or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
                 system = "centos"
-            elif distro.id == "ubuntu":
+            elif distro.id() == "ubuntu":
                 system = distro.id() + distro.version()
             else:
                 system = distro.id() + distro.major_version()

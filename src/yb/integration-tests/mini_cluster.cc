@@ -1155,18 +1155,25 @@ Status WaitForLeaderOfSingleTablet(
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down) {
+    ForceStepDown force_step_down, MonoDelta timeout) {
   consensus::LeaderStepDownRequestPB req;
   req.set_tablet_id(leader->tablet_id());
   req.set_new_leader_uuid(new_leader_uuid);
   if (force_step_down) {
     req.set_force_step_down(true);
   }
-  consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(VERIFY_RESULT(leader->GetConsensus())->StepDown(&req, &resp));
-  if (resp.has_error()) {
-    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
-  }
+  return WaitFor([&]() -> Result<bool> {
+    consensus::LeaderStepDownResponsePB resp;
+    RETURN_NOT_OK(VERIFY_RESULT(leader->GetConsensus())->StepDown(&req, &resp));
+    if (resp.has_error()) {
+      if (resp.error().code() == tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+        LOG(INFO) << "Leader not ready to step down";
+        return false;
+      }
+      return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
+    }
+    return true;
+  }, timeout, Format("Waiting for step down to $0", new_leader_uuid));
   return Status::OK();
 }
 

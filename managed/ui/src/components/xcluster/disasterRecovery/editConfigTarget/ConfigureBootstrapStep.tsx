@@ -6,6 +6,7 @@ import { YBTooltip } from '../../../../redesign/components';
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { EditConfigTargetFormValues } from './EditConfigTargetModal';
+import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
 
 interface ConfigureBootstrapStepProps {
   isFormDisabled: boolean;
@@ -63,6 +64,8 @@ export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapSte
         name="storageConfig"
         rules={{ required: t('error.backupStorageConfigRequired') }}
         isDisabled={isFormDisabled}
+        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+        maxWidth="100%"
       />
     </>
   );

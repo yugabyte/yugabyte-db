@@ -183,8 +183,13 @@ spec:
                 properties:
                   volumeSize:
                     type: integer
+                    default: 100
                   numVolumes:
                     type: integer
+                    default: 1
+                    x-kubernetes-validations:
+                      - message:   numVolumes cannot be changed once set.
+                        rule: self == oldSelf
                   diskIops:
                     type: integer
                     x-kubernetes-validations:

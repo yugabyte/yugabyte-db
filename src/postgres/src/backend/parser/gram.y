@@ -985,6 +985,7 @@ stmt :
 			| TransactionStmt
 			| TruncateStmt
 			| UpdateStmt
+			| VacuumStmt
 			| VariableResetStmt
 			| VariableSetStmt
 			| VariableShowStmt
@@ -1009,7 +1010,6 @@ stmt :
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }

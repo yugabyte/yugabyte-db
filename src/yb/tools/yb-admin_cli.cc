@@ -717,11 +717,20 @@ Status delete_read_replica_placement_info_action(
   return Status::OK();
 }
 
-const auto list_namespaces_args = "";
+const auto list_namespaces_args = "[INCLUDE_NONRUNNING] (default false)";
 Status list_namespaces_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->ListAllNamespaces(), "Unable to list namespaces");
-  return Status::OK();
+    bool include_nonrunning = false;
+    if (args.size() > 0) {
+      if (IsEqCaseInsensitive(args[0], "INCLUDE_NONRUNNING")) {
+        include_nonrunning = true;
+      } else {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+    }
+    RETURN_NOT_OK_PREPEND(
+        client->ListAllNamespaces(include_nonrunning), "Unable to list namespaces");
+    return Status::OK();
 }
 
 const auto delete_namespace_args = "<namespace>";

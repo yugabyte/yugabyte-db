@@ -44,7 +44,6 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/snapshot_transfer_manager.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -3920,7 +3919,8 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
               consumer_info, HostPort::ToCommaSeparatedString(hp), *universe.get(),
               xcluster_rpc_tasks);
           if (!s.ok()) {
-            LOG(ERROR) << "Error registering subscriber: " << s;
+            LOG(ERROR) << "Universe replication " << replication_group_id
+                       << " failed. Error registering subscriber: " << s;
             l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
             universe->SetSetupUniverseReplicationErrorStatus(s);
           } else {
@@ -4238,8 +4238,9 @@ void CatalogManager::MergeUniverseReplication(
           "Updating universe replication entries and cluster config in sys-catalog");
     }
 
-    SyncXClusterConsumerReplicationStatusMap(
-        xcluster::ReplicationGroupId(original_universe->id()), *pm);
+    SyncXClusterConsumerReplicationStatusMap(original_universe->ReplicationGroupId(), *pm);
+    SyncXClusterConsumerReplicationStatusMap(universe->ReplicationGroupId(), *pm);
+
     alter_lock.Commit();
     cl.Commit();
     original_lock.Commit();
@@ -5932,6 +5933,18 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
   }
 
   return Status::OK();
+}
+
+std::vector<SysUniverseReplicationEntryPB>
+CatalogManager::GetAllXClusterUniverseReplicationInfos() {
+  SharedLock lock(mutex_);
+  std::vector<SysUniverseReplicationEntryPB> result;
+  for (const auto& [_, universe_info] : universe_replication_map_) {
+    auto l = universe_info->LockForRead();
+    result.push_back(l->pb);
+  }
+
+  return result;
 }
 
 // Validate that the given replication slot name is valid.

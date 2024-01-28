@@ -299,9 +299,12 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   YBCPgExecParameters *exec_params,
 							   bool is_internal_scan);
 
-/* Returns whether the given populated ybScan needs PG-side recheck. */
-extern bool YbNeedsRecheck(YbScanDesc ybScan);
-/* The same thing but with less context, used in node init phase. */
+/* Returns whether the given populated ybScan needs PG recheck. */
+extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
+/*
+ * Used in Agg node init phase to determine whether YB preliminary check or PG
+ * recheck may be needed.
+ */
 extern bool YbPredetermineNeedsRecheck(Relation relation,
 									   Relation index,
 									   bool xs_want_itup,

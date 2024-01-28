@@ -79,19 +79,21 @@ class XClusterSafeTimeService {
   FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
 
   struct ProducerTabletInfo {
-    std::string cluster_uuid;
+    xcluster::ReplicationGroupId replication_group_id;
     TabletId tablet_id;
 
     bool operator==(const ProducerTabletInfo& rhs) const {
-      return cluster_uuid == rhs.cluster_uuid && tablet_id == rhs.tablet_id;
+      return replication_group_id == rhs.replication_group_id && tablet_id == rhs.tablet_id;
     }
 
     bool operator<(const ProducerTabletInfo& rhs) const {
-      if (cluster_uuid == rhs.cluster_uuid) {
+      if (replication_group_id == rhs.replication_group_id) {
         return tablet_id < rhs.tablet_id;
       }
-      return cluster_uuid < rhs.cluster_uuid;
+      return replication_group_id < rhs.replication_group_id;
     }
+
+    std::string ToString() const { return YB_STRUCT_TO_STRING(replication_group_id, tablet_id); }
   };
 
   void ProcessTaskPeriodically() EXCLUDES(task_enqueue_lock_);
