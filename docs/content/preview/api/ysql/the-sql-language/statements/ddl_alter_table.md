@@ -88,6 +88,10 @@ HINT:  To suppress this warning, set the 'ysql_beta_feature_tablespace_alteratio
 
 {{< /note >}}
 
+Tables can be moved to the default tablespace using:
+```sql
+ALTER TABLE table_name SET TABLESPACE pg_default;
+```
 
 #### ALTER TABLE ALL IN *tablespace* SET TABLESPACE *tablespace_name*
 
