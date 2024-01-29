@@ -88,6 +88,12 @@ HINT:  To suppress this warning, set the 'ysql_beta_feature_tablespace_alteratio
 
 {{< /note >}}
 
+
+#### ALTER TABLE ALL IN *tablespace* SET TABLESPACE *tablespace_name*
+
+The `ALL IN TABLESPACE` form will move all tables in the current database into another tablespace. 
+
+
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.
