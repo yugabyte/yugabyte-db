@@ -1221,7 +1221,7 @@ When set to true, disables deadlock detection. If `enable_wait_queues=false`, th
 Default: `false`
 
 {{< warning title="Warning">}}
-Use of this flag can potentially result in deadlocks which cannot be resolved by YSQL. Should only be used if the application layer can guarantee deadlock avoidance.
+Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
 {{< /warning >}}
 
 ##### --wait_queue_poll_interval_ms
