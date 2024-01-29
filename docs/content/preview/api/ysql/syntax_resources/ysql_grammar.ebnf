@@ -246,6 +246,14 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
+(* 'ALTER' 'INDEX' *)
+alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
+                        alter_index_action { ',' alter_index_action } ;
+
+alter_index_action =
+  ( 'RENAME' 'TO' new_name
+    | 'SET' 'TABLESPACE' tablespace_name ) ;
+
 (* 'ALTER' 'SCHEMA' *)
 alter_schema = 'ALTER' 'SCHEMA' schema_name (
                 'RENAME' 'TO' new_name |
