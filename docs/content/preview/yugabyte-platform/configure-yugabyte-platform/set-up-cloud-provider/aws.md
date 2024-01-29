@@ -1,16 +1,16 @@
 ---
 title: Configure the AWS cloud provider
-headerTitle: Create provider configuration
-linkTitle: Create provider configuration
+headerTitle: Create cloud provider configuration
+linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
-headContent: Configure an AWS provider configuration
+headContent: For deploying universes on AWS
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/aws
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
-    parent: configure-yugabyte-platform
+    parent: set-up-cloud-provider
     weight: 20
 type: docs
 ---
@@ -34,34 +34,6 @@ type: docs
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
-    </a>
-  </li>
-
-  <li>
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
-  <li>
-    <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      VMware Tanzu
-    </a>
-  </li>
-
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
-      OpenShift
-    </a>
-  </li>
-
-  <li>
-    <a href="../on-premises/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      On-premises
     </a>
   </li>
 

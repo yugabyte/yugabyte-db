@@ -1,70 +1,18 @@
 ---
-title: Configure the on-premises cloud provider
-headerTitle: Create provider configuration
-linkTitle: Create provider configuration
+title: Configure an on-premises provider configuration
+headerTitle: Create on-premises provider configuration
+linkTitle: On-premises
 description: Configure the on-premises provider configuration.
-headContent: Configure an on-premises provider configuration
+headContent: For deploying universes on your private cloud
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
   preview_yugabyte-platform:
-    identifier: set-up-cloud-provider-6-on-premises
-    parent: configure-yugabyte-platform
+    identifier: set-up-on-premises
+    parent: set-up-cloud-provider
     weight: 20
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../aws/" class="nav-link">
-      <i class="fa-brands fa-aws"></i>
-      AWS
-    </a>
-  </li>
-
-  <li>
-    <a href="../gcp/" class="nav-link">
-      <i class="fa-brands fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="../azure/" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
-
-  <li>
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
-      Kubernetes
-    </a>
-  </li>
-
-  <li>
-    <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      VMware Tanzu
-    </a>
-  </li>
-
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
-      OpenShift
-    </a>
-  </li>
-
-  <li>
-    <a href="../on-premises/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
-</ul>
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 

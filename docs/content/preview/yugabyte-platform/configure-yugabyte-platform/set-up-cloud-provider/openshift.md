@@ -1,40 +1,20 @@
 ---
 title: Configure the OpenShift cloud provider
-headerTitle: Create provider configuration
-linkTitle: Create provider configuration
+headerTitle: Create Kubernetes provider configuration
+linkTitle: Kubernetes
 description: Configure the OpenShift provider configuration
-headContent: Configure an OpenShift provider configuration
+headContent: For deploying universes on OpenShift
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
   preview_yugabyte-platform:
-    identifier: set-up-cloud-provider-5-openshift
-    parent: configure-yugabyte-platform
+    identifier: set-up-kubernetes-provider-3
+    parent: set-up-cloud-provider
     weight: 20
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../aws/" class="nav-link">
-      <i class="fa-brands fa-aws"></i>
-      AWS
-    </a>
-  </li>
-
-  <li>
-    <a href="../gcp/" class="nav-link">
-      <i class="fa-brands fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="../azure/" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
@@ -54,13 +34,6 @@ type: docs
     <a href="../openshift/" class="nav-link active">
       <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
-    </a>
-  </li>
-
-  <li>
-    <a href="../on-premises/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      On-premises
     </a>
   </li>
 

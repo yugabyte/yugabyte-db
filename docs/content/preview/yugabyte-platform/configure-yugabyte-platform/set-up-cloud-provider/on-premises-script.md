@@ -1,13 +1,13 @@
 ---
 title: Manually provision on-premises nodes using a script
 headerTitle: Manually provision on-premises nodes
-linkTitle: Manually provision on-prem nodes
+linkTitle: Manually provision nodes
 description: Provision the on-premises nodes using a script.
 headContent: Your SSH user has sudo privileges that require a password
 menu:
   preview_yugabyte-platform:
     identifier: on-premises-manual-1
-    parent: configure-yugabyte-platform
+    parent: set-up-on-premises
     weight: 20
 type: docs
 ---
