@@ -1206,7 +1206,7 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 ## Concurrency Control Flags
 
-To learn about Wait-on-Conflict concurrency control, see [Concurrency Control](../../../architecture/transactions/concurrency-control/).
+To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 
 ##### --enable_wait_queues
 
