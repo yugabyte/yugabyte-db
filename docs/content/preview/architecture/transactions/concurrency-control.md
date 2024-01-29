@@ -1239,7 +1239,8 @@ When multiple requests are waiting on the same resource in the wait queue, and t
     1. Re-run conflict resolution and acquire locks on the requested resource
     2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue
 
-We have two mechanisms to detect that a resource has become available:
+YugabyteDB has two mechanisms to detect that a resource has become available:
+
 1. Direct signal from the transaction coordinator
     - Signals are sent with best effort and may not always arrive immediately or in-order
 2. Polling from the wait queue to the transaction coordinator
