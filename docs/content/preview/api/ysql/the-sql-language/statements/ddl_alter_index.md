@@ -39,6 +39,32 @@ Renaming an index is a non-blocking metadata change operation.
 
 {{< /note >}}
 
+#### ALTER [ COLUMN ] column_number SET STATISTICS *integer*
+
+Set the per-column statistics-gathering target for subsequent ANALYZE operations. It can only be used on index columns that are defined as an expression. 
+Since expressions lack a unique name, we refer to them using the ordinal number of the index column. 
+The value can be set in the range 0 to 10000. The default `-1` uses the system default statistics target (`default_statistics_target`). 
+
+```sql
+yugabyte=# CREATE TABLE attmp (initial int4, a int4 default 3, b name,d float8,e float4);
+yugabyte=# CREATE INDEX attmp_idx ON attmp (a, (d + e), b);
+yugabyte=# ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
+ERROR:  column number must be in range from 1 to 32767
+LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
+yugabyte=# ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
+ERROR:  cannot alter statistics on non-expression column "a" of index "attmp_idx"
+HINT:  Alter statistics on table column instead.
+
+yugabyte=# ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
+yugabyte=# \d+ attmp_idx
+                        Index "public.attmp_idx"
+ Column |       Type       | Key? | Definition | Storage | Stats target
+--------+------------------+------+------------+---------+--------------
+ a      | integer          | yes  | a          | plain   |
+ expr   | double precision | yes  | (d + e)    | plain   | 1000
+ b      | name             | yes  | b          | plain   |
+lsm, for table "public.attmp"
+```
 
 #### SET TABLESPACE *tablespace_name*
 

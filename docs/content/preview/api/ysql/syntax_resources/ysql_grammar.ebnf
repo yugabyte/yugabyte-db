@@ -252,6 +252,7 @@ alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
 
 alter_index_action =
   ( 'RENAME' 'TO' new_name
+    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' integer
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 
