@@ -164,7 +164,7 @@ Your application is added to the **Applications** page.
 To configure Okta federated authentication in YugabyteDB Managed, you need the following application properties:
 
 - Client ID and secret of the application you created. These are provided on the **General** tab.
-- Your Okta domain. Click your account name in the top right corner of the Okta dashboard; the domain is displayed under your account name.
+- Your Okta domain. Click your account name in the top right corner of the Okta Admin Console; the domain is displayed under your account name.
 
 For more information, refer to [App integrations](https://help.okta.com/oie/en-us/content/topics/apps/apps_apps.htm) in the Okta Identity Engine documentation.
 
