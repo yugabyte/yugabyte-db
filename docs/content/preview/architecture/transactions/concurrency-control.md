@@ -1223,7 +1223,9 @@ commit;
 
 ### Versioning and upgrades
 
-When turning `enable_wait_queues` on/off, or during rolling restarts across versions with the flag “on” in the higher version, if some nodes have wait-on-conflict behavior enabled and some don’t, users will experience mixed (but still correct) behavior. A mix of both fail-on-conflict and wait-on-conflict traffic will result in the following additional YSQL specific semantics -
+When turning `enable_wait_queues` on or off, or during a rolling restart, where during an update the flag could be on on nodes with a more recent version, if some nodes have wait-on-conflict behavior enabled and some don’t, you will experience mixed (but still correct) behavior.
+
+A mix of both fail-on-conflict and wait-on-conflict traffic results in the following additional YSQL-specific semantics:
 
 1. If a transaction using fail-on-conflict sees transactions that have written conflicting intents -
     - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
