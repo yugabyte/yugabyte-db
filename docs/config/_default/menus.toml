@@ -630,7 +630,7 @@
 
 [[preview_tutorials]]
   name = "CDC"
-  weight = 7
+  weight = 8
   identifier = "tutorials-cdc"
   parent = "tutorials"
   [preview_tutorials.params]

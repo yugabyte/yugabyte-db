@@ -45,6 +45,17 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="google/">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/google/google-cloud-logo.svg" aria-hidden="true" />
+        <div class="title">Google</div>
+      </div>
+      <div class="body">
+        Build with YugabyteDB on Google Cloud.
+      </div>
+    </a>
+  </div>
 
 </div>
 
@@ -53,13 +64,13 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="azure/">
+    <a class="section-link icon-offset" href="cdc-tutorials/">
       <div class="head">
-        <img class="icon" src="/images/tutorials/azure/azure-logo.png" aria-hidden="true" />
-        <div class="title">Azure</div>
+        <img class="icon" src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png" aria-hidden="true" />
+        <div class="title">Kafka</div>
       </div>
       <div class="body">
-        Build with YugabyteDB on Microsoft Azure.
+        Stream data with different Kafka environments.
       </div>
     </a>
   </div>
