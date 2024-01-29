@@ -42,9 +42,11 @@ Currently, YugabyteDB Managed supports Microsoft Entra ID, PingOne, and Okta for
 
 ### Prerequisites
 
-Before configuring federated authentication, keep in mind the following:
+Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
 
-- Be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+### Set up federated authentication
+
+Before enabling federated authentication in YugabyteDB Managed, you must configure your IdP and obtain the necessary credentials.
 
 {{< tabpane text=true >}}
 
