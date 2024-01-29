@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Transactions are a set of SQL statements that are expected to be executed atomically. It is a sequence of one or more operations or database commands that are executed as a single unit of work. The fundamental goal of a transaction is to ensure the consistency, integrity, and reliability of the database even in the face of failures or concurrent access by multiple users. Transactions scale linearly in YugabyteDB as more nodes are added to the cluster.
+Transactions are a set of SQL statements that are expected to be executed atomically. It is a sequence of one or more operations or database commands that are executed as a single unit of work. The fundamental goal of a transaction is to ensure consistency, integrity, and reliability of the database even during failures or concurrent access by multiple users. Transactions scale linearly in YugabyteDB as more nodes are added to the cluster.
 
-Getting a transaction to work correctly on a distributed database involves multiple components. Let's look into how they work.
+Getting a transaction to work correctly on a distributed database involves multiple components, and the following sections describe how they work.
 
 ## How transactions work
 

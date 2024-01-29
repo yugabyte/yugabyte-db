@@ -25,7 +25,7 @@ showRightNav: true
 type: indexpage
 ---
 
-Scaling a distributed system is essential to meet the increasing demands of users, workloads, and data reliably and efficiently. Scaling is a crucial aspect of designing and maintaining distributed systems to ensure they can handle increasing workloads, provide high availability, optimize resource usage, and adapt to changing requirements and future growth. Depending on your business, you may find you need to scale for a variety of reasons:
+Scaling a distributed system is essential to meet the increasing demands of users, workloads, and data reliably and efficiently. Scaling is a crucial aspect of designing and maintaining distributed systems to ensure they can handle increasing workloads, provide high availability, optimize resource usage, and adapt to changing requirements and future growth. Depending on your business, you may need to scale for a variety of reasons:
 
 - **Growing user base**. Your application becomes popular, users love your app, and the user base is expanding.
 - **Seasonal traffic**. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example.
@@ -40,7 +40,7 @@ Being able to scale seamlessly is as important as being able to scale. Scaling n
 There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. In vertical scaling you add more CPUs/RAM and storage to the existing nodes of your cluster whereas in horizontal scaling, you add more nodes of the same type to your cluster. Horizontal scaling is the most common type of scaling in YugabyteDB. As YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
 {{<tip>}}
-To learn more about the pros and cons of these two types of scaling, see [Horizontal vs Vertical scaling](./horizontal-vs-vertical-scaling).
+To learn more about the pros and cons of the two types of scaling, see [Horizontal vs Vertical scaling](./horizontal-vs-vertical-scaling).
 {{</tip>}}
 
 ## How scaling works
@@ -52,7 +52,7 @@ It is important to understand what happens inside YugabyteDB to get an idea of t
 Data distribution is critical in scaling. In YugabyteDB, data is [split (sharded)](./data-distribution/) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
 
 {{<tip>}}
-To learn more about the different types of sharding, see [Hash & Range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting)
+To learn more about the different types of sharding, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting).
 {{</tip>}}
 
 ### Rebalancing
