@@ -1227,11 +1227,10 @@ When turning `enable_wait_queues` on or off, or during a rolling restart, where 
 
 A mix of both fail-on-conflict and wait-on-conflict traffic results in the following additional YSQL-specific semantics:
 
-1. If a transaction using fail-on-conflict sees transactions that have written conflicting intents -
+- If a transaction using fail-on-conflict encounters transactions that have conflicting writes -
     - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
-    2. Else, behaviour is as today
-2. If a transaction uses wait-on-conflict and sees transactions that have written conflicting intents -
-    1. Wait for all conflicting transactions to end (including any using fail-on-conflict semantics)
+    - Else, YugabyteDB will abort either the current request or encountered conflicting transactions based on transaction priority
+- If a transaction using wait-on-conflict encounters transactions that have conflicting writes, it waits for all conflicting transactions to end (including any using fail-on-conflict semantics).
 
 ### Fairness
 
