@@ -77,7 +77,7 @@
 #include <netdb.h>
 #include <limits.h>
 
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
 
@@ -4375,13 +4375,13 @@ BackendStartup(Port *port)
 	pid = fork_process();
 	if (pid == 0)				/* child */
 	{
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 		/*
 		 * In YB, all backends are stateless and upon PG master termination, all
 		 * backend processes should also terminate regardless what state they are
 		 * in. No clean-up procedure is needed in the backends.
 		 */
-		if (IsYugaByteEnabled())
+		if (YBIsEnabledInPostgresEnvVar())
 			prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
 
