@@ -156,7 +156,7 @@ To create a GCP provider:
 
 1. Click **Create Config** to open the **Create GCP Provider Configuration** page.
 
-    ![Create GCP provider](/images/yb-platform/config/yba-gcp-config-create.png)
+    ![Create GCP provider](/images/yb-platform/config/yba-gcp-config-create-stable.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
