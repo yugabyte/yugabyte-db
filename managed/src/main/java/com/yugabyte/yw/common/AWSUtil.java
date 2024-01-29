@@ -100,6 +100,7 @@ public class AWSUtil implements CloudUtil {
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
 
+  public static final String AWS_S3_LOCATION_PREFIX = "s3://";
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   private static final String AWS_REGION_SPECIFIC_HOST_BASE_FORMAT = "s3.%s.amazonaws.com";
@@ -237,9 +238,16 @@ public class AWSUtil implements CloudUtil {
   // splitLocation[0] gives the bucket
   // splitLocation[1] gives the suffix string
   public static String[] getSplitLocationValue(String location) {
-    location = location.substring(5);
+    location = location.substring(AWS_S3_LOCATION_PREFIX.length());
     String[] split = location.split("/", 2);
     return split;
+  }
+
+  @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!backupLocation.startsWith(AWS_S3_LOCATION_PREFIX)) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not an S3 location");
+    }
   }
 
   @Override

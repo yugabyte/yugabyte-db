@@ -145,6 +145,10 @@ public class NFSUtil implements StorageUtil {
       boolean checkBucket) {
     region = StringUtils.isBlank(region) ? YbcBackupUtil.DEFAULT_REGION_STRING : region;
     String configLocation = getRegionLocationsMap(configData).get(region);
+    if (checkBucket) {
+      String bucket = getRegionBucketMap(configData).get(region);
+      configLocation = BackupUtil.getPathWithPrefixSuffixJoin(configLocation, bucket);
+    }
     if (!StringUtils.startsWith(backupLocation, configLocation)) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED,

@@ -73,6 +73,8 @@ import play.libs.Json;
 @Slf4j
 public class AZUtil implements CloudUtil {
 
+  public static final String AZURE_LOCATION_PREFIX = "https://";
+
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
   public static final String YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
@@ -103,9 +105,16 @@ public class AZUtil implements CloudUtil {
    * splitLocation[2] is equal to the suffix part of string
    */
   public static String[] getSplitLocationValue(String backupLocation) {
-    backupLocation = backupLocation.substring(8);
+    backupLocation = backupLocation.substring(AZURE_LOCATION_PREFIX.length());
     String[] split = backupLocation.split("/", 3);
     return split;
+  }
+
+  @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!backupLocation.startsWith(AZURE_LOCATION_PREFIX)) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not an Azure location");
+    }
   }
 
   @Override
