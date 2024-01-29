@@ -1221,7 +1221,7 @@ commit;
 </tbody>
 </table>
 
-### Versioning and Upgrades
+### Versioning and upgrades
 
 When turning `enable_wait_queues` on/off, or during rolling restarts across versions with the flag “on” in the higher version, if some nodes have wait-on-conflict behavior enabled and some don’t, users will experience mixed (but still correct) behavior. A mix of both fail-on-conflict and wait-on-conflict traffic will result in the following additional YSQL specific semantics -
 
