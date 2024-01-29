@@ -602,7 +602,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     return (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides))
         || checkIfGFlagsChanged(u, currentUserIntent)
-        || currentUserIntent.numNodes != incomingIntent.numNodes
+        || shouldUpdateYbUniverse(currentUserIntent, incomingIntent)
         || !currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion);
   }
 
