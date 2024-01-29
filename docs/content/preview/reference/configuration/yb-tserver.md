@@ -1204,7 +1204,7 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## Concurrency Control Flags
+## Concurrency control flags
 
 To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 
