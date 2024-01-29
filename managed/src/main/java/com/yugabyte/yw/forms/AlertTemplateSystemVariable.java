@@ -22,6 +22,7 @@ public enum AlertTemplateSystemVariable {
       "yugabyte_alert_expression",
       "Prometheus expression used to trigger alert",
       "$labels.alert_expression"),
+  YUGABYTE_ALERT_UUID("yugabyte_alert_uuid", "Alert UUID.", "$labels.alert_uuid"),
   YUGABYTE_CUSTOMER_CODE("yugabyte_customer_code", "Customer code", "$labels.customer_code"),
   YUGABYTE_CUSTOMER_NAME("yugabyte_customer_name", "Customer name", "$labels.customer_name"),
   YUGABYTE_CUSTOMER_UUID("yugabyte_customer_uuid", "Customer UUID", "$labels.customer_uuid"),

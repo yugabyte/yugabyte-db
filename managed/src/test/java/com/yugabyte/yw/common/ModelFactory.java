@@ -336,6 +336,9 @@ public class ModelFactory {
           @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+            if (params.nodeDetailsSet == null) {
+              params.nodeDetailsSet = new HashSet<>();
+            }
             for (int i = 1; i <= numNodesToAdd; i++) {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();
@@ -381,6 +384,11 @@ public class ModelFactory {
 
   public static CustomerConfig createNfsStorageConfig(
       Customer customer, String configName, String backupLocation) {
+    return createNfsStorageConfig(customer, configName, backupLocation, "yugabyte_backup");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation, String bucketName) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
@@ -388,6 +396,8 @@ public class ModelFactory {
                 + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
                 + backupLocation
+                + "\", \"NFS_BUCKET\": \""
+                + bucketName
                 + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }

@@ -1258,7 +1258,7 @@
         },
         "systemVariables" : {
           "items" : {
-            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_AFFECTED_NODE_NAMES", "YUGABYTE_AFFECTED_NODE_ADDRESSES", "YUGABYTE_AFFECTED_NODE_IDENTIFIERS", "YUGABYTE_ALERT_LABELS_JSON" ],
+            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_ALERT_UUID", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_AFFECTED_NODE_NAMES", "YUGABYTE_AFFECTED_NODE_ADDRESSES", "YUGABYTE_AFFECTED_NODE_IDENTIFIERS", "YUGABYTE_ALERT_LABELS_JSON" ],
             "type" : "string"
           },
           "type" : "array"
@@ -24006,6 +24006,40 @@
         "tags" : [ "Backups" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cdc_replication_slots" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change.",
+        "operationId" : "listReplicationSlot",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List CDC Replication slot for a cluster",
+        "tags" : [ "Universe CDC Management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
         "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
@@ -28779,6 +28813,8 @@
     "name" : "Session management"
   }, {
     "name" : "Support Bundle management"
+  }, {
+    "name" : "Universe CDC Management"
   }, {
     "name" : "Universe Upgrades Management"
   }, {

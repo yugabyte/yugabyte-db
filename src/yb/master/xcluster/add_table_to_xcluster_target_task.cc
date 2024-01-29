@@ -15,7 +15,6 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"

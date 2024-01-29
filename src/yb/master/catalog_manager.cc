@@ -144,7 +144,6 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
@@ -9824,9 +9823,11 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
       continue;
     }
-    // Only return RUNNING namespaces.
+    // Only return namespaces in state RUNNING unless list_all is true.
     if (namespace_info.state() != SysNamespaceEntryPB::RUNNING) {
-      continue;
+      if (!req->include_nonrunning()) {
+        continue;
+      }
     }
 
     NamespaceIdentifierPB *ns = resp->add_namespaces();
@@ -12929,8 +12930,11 @@ Status CatalogManager::CollectTable(
       }
     }
   }
-  all_tables->push_back(table_description);
-
+  // Avoid adding colocation parent tables (tablegroups and colocated database) twice.
+  if (!IsColocationParentTableId(table_description.table_info->id()) ||
+      parent_colocated_table_ids->insert(table_description.table_info->id()).second) {
+    all_tables->push_back(table_description);
+  }
   if (flags.Test(CollectFlag::kAddIndexes)) {
     TRACE(Substitute("Locking object with id $0", table_description.table_info->id()));
 
@@ -12976,6 +12980,7 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     for (const auto& table_id_pb : table_identifiers) {
       if (table_id_pb.table_name().empty() && table_id_pb.table_id().empty() &&
           table_id_pb.has_namespace_()) {
+        // Collect all tables belonging to a namespace. Happens when only the namespace is specified
         auto namespace_info = FindNamespaceUnlocked(table_id_pb.namespace_());
         if (!namespace_info.ok()) {
           VLOG_WITH_PREFIX_AND_FUNC(1)

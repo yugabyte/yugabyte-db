@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { alertConfigQueryKey } from '../../../../redesign/helpers/api';
 import { formatLagMetric } from '../../../../utils/Formatters';
-import { AlertName } from '../../constants';
+import { AlertName, PollingIntervalMs } from '../../constants';
 import { getStrictestReplicationLagAlertConfig } from '../../ReplicationUtils';
 
 import { IAlertConfiguration as AlertConfiguration } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
@@ -30,11 +30,11 @@ const useStyles = makeStyles((theme) => ({
   instruction: {
     marginBottom: theme.spacing(4)
   },
-  formSectionDescription: {
-    marginBottom: theme.spacing(3)
-  },
   fieldLabel: {
     marginBottom: theme.spacing(1)
+  },
+  link: {
+    textDecoration: 'underline'
   }
 }));
 
@@ -54,7 +54,8 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
   };
   const alertConfigQuery = useQuery<AlertConfiguration[]>(
     alertConfigQueryKey.list(alertConfigFilter),
-    () => getAlertConfigurations(alertConfigFilter)
+    () => getAlertConfigurations(alertConfigFilter),
+    { refetchInterval: PollingIntervalMs.ALERT_CONFIGURATION }
   );
 
   /**
@@ -71,9 +72,6 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
           <Typography variant="body1" className={classes.instruction}>
             {t('instruction')}
           </Typography>
-          <div className={classes.formSectionDescription}>
-            <Typography variant="body2">{t('infoText')}</Typography>
-          </div>
           {alertConfigQuery.isLoading ? (
             <i className="fa fa-spinner fa-spin yb-spinner" />
           ) : alertConfigQuery.data?.length ? (
@@ -94,7 +92,16 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
               <Typography variant="body2">
                 <Trans
                   i18nKey={`${TRANSLATION_KEY_PREFIX}.editReplicationLagAlertPrompt`}
-                  components={{ manageAlertConfigLink: <Link to={'/admin/alertConfig'} /> }}
+                  components={{
+                    manageAlertConfigLink: (
+                      <Link
+                        to={'/admin/alertConfig'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={classes.link}
+                      />
+                    )
+                  }}
                 />
               </Typography>
             </Box>
@@ -102,14 +109,23 @@ export const ConfirmAlertStep = ({ sourceUniverse }: ConfirmAlertStepProps) => {
             <Typography variant="body2">
               <Trans
                 i18nKey={`${TRANSLATION_KEY_PREFIX}.setUpReplicationLagAlertPrompt`}
-                values={{ sourceUniverseName: sourceUniverse.name }}
                 components={{
-                  manageAlertConfigLink: <Link to={'/admin/alertConfig'} />,
+                  manageAlertConfigLink: (
+                    <Link
+                      to={'/admin/alertConfig'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={classes.link}
+                    />
+                  ),
                   paragraph: <p />
                 }}
               />
             </Typography>
           )}
+          <Box marginTop={6}>
+            <Typography variant="body2">{t('infoText')}</Typography>
+          </Box>
         </li>
       </ol>
     </div>

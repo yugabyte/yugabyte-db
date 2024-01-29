@@ -17,13 +17,15 @@
 
 #pragma once
 
-#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/dockv/partition.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -64,7 +66,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Find the column given the postgres attr number.
   Result<size_t> FindColumn(int attr_num) const;
 
-  Result<YBCPgColumnInfo> GetColumnInfo(int16_t attr_number) const;
+  Result<YBCPgColumnInfo> GetColumnInfo(int attr_number) const;
 
   bool IsHashPartitioned() const;
 
@@ -98,6 +100,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const Schema& schema() const;
 
+  const dockv::SchemaPacking& schema_packing() const {
+    return *schema_packing_;
+  }
+
   // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
@@ -119,9 +125,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   client::YBTableName table_name_;
   Schema schema_;
   dockv::PartitionSchema partition_schema_;
+  std::optional<dockv::SchemaPacking> schema_packing_;
 
   // Attr number to column index map.
-  std::unordered_map<int, size_t> attr_num_map_;
+  std::vector<std::pair<int, size_t>> attr_num_map_;
   YBCPgOid tablegroup_oid_{kInvalidOid};
 };
 

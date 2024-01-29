@@ -16,6 +16,7 @@
 #include <deque>
 #include <list>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -255,6 +256,16 @@ TEST(ToStringTest, Struct) {
   };
 
   ASSERT_EQ(TestClass(42, "test").ToString(), "{ a: 42 b: test }");
+}
+
+TEST(ToStringTest, Optional) {
+  using Opt = std::optional<int>;
+  Opt i{10};
+  const auto& ci = i;
+
+  ASSERT_EQ(ToString(i), "10");
+  ASSERT_EQ(ToString(ci), "10");
+  ASSERT_EQ(ToString(std::vector<Opt>{10, std::nullopt, 20}), "[10, <nullopt>, 20]");
 }
 
 } // namespace util_test

@@ -573,8 +573,8 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
           auto ci_from_ts = GetValidPlacement(from_uuid, &placement_info);
           auto ci_to_ts = GetValidPlacement(to_uuid, &placement_info);
           if (ci_to_ts.has_value() && ci_from_ts.has_value() &&
-          TSDescriptor::generate_placement_id(*ci_from_ts) ==
-                                    TSDescriptor::generate_placement_id(*ci_to_ts)) {
+              TSDescriptor::generate_placement_id(*ci_from_ts) ==
+                  TSDescriptor::generate_placement_id(*ci_to_ts)) {
             found_match = true;
             VLOG(3) << "Found destination " << to_uuid << " where replica can be added"
                 << ". Blacklisted tserver and this server are in the same placement";
@@ -592,6 +592,10 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
         *out_to_ts = to_uuid;
         return true;
       }
+    }
+    if (fallback_to_uuid.empty()) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Cannot move tablet from blacklisted tablet server "
+                                    << from_uuid << ": no eligible destination tablet servers";
     }
   }
 

@@ -15,6 +15,8 @@
 #include <atomic>
 #include <map>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/hybrid_time.h"
@@ -771,6 +773,64 @@ class IntentProcessor {
   IntentTypesContainer& container_;
 };
 
+using DocPaths = boost::container::small_vector<RefCntPrefix, 8>;
+
+class DocPathProcessor {
+ public:
+  DocPathProcessor(IntentProcessor* processor, KeyBytes* buffer, PartialRangeKeyIntents partial)
+      : processor_(*processor), buffer_(*buffer), partial_(partial) {}
+
+  Status operator()(DocPaths* paths, dockv::IntentTypeSet intent_types) {
+    for (const auto& path : *paths) {
+      VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
+      RETURN_NOT_OK(EnumerateIntents(
+          path.as_slice(),
+          /*intent_value=*/ Slice(),
+          [&processor = processor_, &intent_types](
+              auto ancestor_doc_key, auto full_doc_key, auto, auto intent_key, auto, auto) {
+            processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
+            return Status::OK();
+          },
+          &buffer_,
+          partial_));
+    }
+    paths->clear();
+    return Status::OK();
+  }
+
+ private:
+  IntentProcessor& processor_;
+  KeyBytes& buffer_;
+  PartialRangeKeyIntents partial_;
+
+  DISALLOW_COPY_AND_ASSIGN(DocPathProcessor);
+};
+
+Status ProcessIntents(
+    const DocOperations& doc_ops, IntentProcessor* intent_processor, KeyBytes* buffer,
+    PartialRangeKeyIntents partial, IsolationLevel isolation_level) {
+  static const dockv::IntentTypeSet kStrongReadIntentTypeSet{dockv::IntentType::kStrongRead};
+  dockv::IntentTypeSet intent_types;
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+    intent_types = dockv::GetIntentTypesForWrite(isolation_level);
+  }
+  DocPaths doc_paths;
+
+  DocPathProcessor processor(intent_processor, buffer, partial);
+  for (const auto& doc_op : doc_ops) {
+    IsolationLevel op_isolation;
+    RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &op_isolation));
+    RETURN_NOT_OK(processor(
+        &doc_paths,
+        intent_types.None() ? dockv::GetIntentTypesForWrite(op_isolation) : intent_types));
+
+    RETURN_NOT_OK(
+        doc_op->GetDocPaths(GetDocPathsMode::kStrongReadIntents, &doc_paths, &op_isolation));
+    RETURN_NOT_OK(processor(&doc_paths, kStrongReadIntentTypeSet));
+  }
+  return Status::OK();
+}
+
 class StrongConflictChecker {
  public:
   StrongConflictChecker(const TransactionId& transaction_id,
@@ -1015,49 +1075,28 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
 
-    boost::container::small_vector<RefCntPrefix, 8> paths;
-
-    const size_t kKeyBufferInitialSize = 512;
+    constexpr size_t kKeyBufferInitialSize = 512;
     KeyBytes buffer;
     buffer.Reserve(kKeyBufferInitialSize);
-    const auto row_mark = GetRowMarkTypeFromPB(write_batch_);
     IntentTypesContainer container;
-    auto intent_types = dockv::GetIntentTypesForWrite(metadata_.isolation);
     IntentProcessor intent_processor(&container);
-    for (const auto& doc_op : doc_ops()) {
-      paths.clear();
-      IsolationLevel ignored_isolation_level;
-      RETURN_NOT_OK(doc_op->GetDocPaths(
-          GetDocPathsMode::kIntents, &paths, &ignored_isolation_level));
-
-      for (const auto& path : paths) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
-        RETURN_NOT_OK(EnumerateIntents(
-            path.as_slice(),
-            /* intent_value */ Slice(),
-            [&intent_processor, intent_types](
-                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto, auto) {
-              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
-              return Status::OK();
-            },
-            &buffer,
-            resolver->partial_range_key_intents()));
-      }
-    }
+    RETURN_NOT_OK(ProcessIntents(
+        doc_ops(), &intent_processor, &buffer, resolver->partial_range_key_intents(),
+        metadata_.isolation));
 
     const auto& pairs = write_batch_.read_pairs();
     if (!pairs.empty()) {
+      const auto read_intents =
+          dockv::GetIntentTypesForRead(metadata_.isolation, GetRowMarkTypeFromPB(write_batch_));
+
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
-          [&intent_processor,
-           intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark)] (
+          [&intent_processor, &read_intents](
               auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
               auto is_row_lock) {
             intent_processor.Process(
                 ancestor_doc_key, full_doc_key, intent_key,
-                GetIntentTypes(intent_types, is_row_lock));
+                GetIntentTypes(read_intents, is_row_lock));
             return Status::OK();
           },
           resolver->partial_range_key_intents()));
@@ -1201,41 +1240,12 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
   // Reads stored intents that could conflict with our operations.
   Status ReadConflicts(ConflictResolver* resolver) override {
-    boost::container::small_vector<RefCntPrefix, 8> doc_paths;
-    boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes encoded_key_buffer;
-
-    IntentTypeSet intent_types;
-
     IntentTypesContainer container;
     IntentProcessor intent_processor(&container);
-    for (const auto& doc_op : doc_ops()) {
-      doc_paths.clear();
-      IsolationLevel isolation;
-      RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
-
-      intent_types = dockv::GetIntentTypesForWrite(isolation);
-
-      for (const auto& doc_path : doc_paths) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
-        RETURN_NOT_OK(EnumerateIntents(
-            doc_path.as_slice(),
-            /* intent_value */ Slice(),
-            [&intent_processor, intent_types](
-                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto, auto) {
-              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
-              return Status::OK();
-            },
-            &encoded_key_buffer,
-            resolver->partial_range_key_intents()));
-      }
-    }
-
-    if (container.empty()) {
-      return Status::OK();
-    }
+    RETURN_NOT_OK(ProcessIntents(
+        doc_ops(), &intent_processor, &encoded_key_buffer, resolver->partial_range_key_intents(),
+        IsolationLevel::NON_TRANSACTIONAL));
 
     for (const auto& [key, intent_data] : container) {
       encoded_key_buffer.Reset(key.AsSlice());

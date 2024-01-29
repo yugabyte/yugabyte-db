@@ -64,7 +64,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     defaultUser = ModelFactory.testUser(defaultCustomer);

@@ -91,7 +91,8 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
     "If true, YB catalog preloads a default set of tables upon connection "
-    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_tablespace.");
+    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_cast,pg_inherits,"
+    "pg_policy,pg_proc,pg_tablespace,pg_trigger.");
 
 DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "A list of catalog tables that YSQL preloads additionally upon "
@@ -991,6 +992,10 @@ YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool i
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
+  return ToYBCStatus(pgapi->DmlBindRow(handle, columns, count));
 }
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,

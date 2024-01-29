@@ -1428,6 +1428,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       GetReplicationStatusResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  std::vector<SysUniverseReplicationEntryPB> GetAllXClusterUniverseReplicationInfos();
+
   typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.

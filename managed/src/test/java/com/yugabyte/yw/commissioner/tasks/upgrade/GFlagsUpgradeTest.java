@@ -902,9 +902,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
+
     assertThat(
-        thrown.getMessage(),
-        containsString("No changes in gflags (modify specificGflags in cluster)"));
+        thrown.getMessage(), containsString(GFlagsUpgradeParams.SPECIFIC_GFLAGS_NO_CHANGES_ERROR));
   }
 
   @Test

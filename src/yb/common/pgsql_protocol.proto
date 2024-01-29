@@ -221,6 +221,9 @@ message PgsqlWriteRequestPB {
   // Not used with UPDATEs. Use column_new_values to UPDATE a value.
   repeated PgsqlColumnValuePB column_values = 10;
 
+  // Value encoded in doc db format for packed row.
+  optional bytes packed_value = 26;
+
   // If this attribute is present, this request is a batch request.
   repeated PgsqlBatchArgumentPB batch_arguments = 18;
 

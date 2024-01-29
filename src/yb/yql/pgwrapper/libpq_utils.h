@@ -30,6 +30,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"
 
 namespace yb::pgwrapper {
@@ -78,8 +79,7 @@ concept BasePGType =
     std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
 
 template<class T>
-concept OptionalPGType =
-    std::is_same_v<T, std::optional<typename T::value_type>> && BasePGType<typename T::value_type>;
+concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
 
 template<class T>
 concept AllowedPGType = BasePGType<T> || OptionalPGType<T>;
@@ -276,6 +276,15 @@ class PGConn {
   auto FetchRows(const std::string& query) {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRows(Fetch(query));
   }
+
+  // The following two methods are really important because they convenient way for checking table
+  // content and debugging tests.
+  // Please do not remove them. Consult @sergei if you have any questions.
+  Result<std::string> FetchRowAsString(
+      const std::string& command, const std::string& sep = DefaultColumnSeparator());
+  Result<std::string> FetchAllAsString(const std::string& command,
+      const std::string& column_sep = DefaultColumnSeparator(),
+      const std::string& row_sep = DefaultRowSeparator());
 
   Status StartTransaction(IsolationLevel isolation_level);
   Status CommitTransaction();

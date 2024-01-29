@@ -73,6 +73,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
@@ -559,7 +560,9 @@ public class LocalNodeManager {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     String newYBBinDir = versionBinPathMap.get(version);
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
-    localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    if (StringUtils.isNotEmpty(newYBBinDir)) {
+      localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    }
     ProviderDetails details = provider.getDetails();
     ProviderDetails.CloudInfo cloudInfo = details.getCloudInfo();
     cloudInfo.setLocal(localCloudInfo);

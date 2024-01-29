@@ -12,6 +12,7 @@ menu:
     parent: faq
     weight: 60
 type: docs
+unversioned: true
 rightNav:
   hideH3: true
   hideH4: true

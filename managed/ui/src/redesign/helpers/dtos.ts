@@ -23,6 +23,7 @@ export interface HostInfo {
         project: string;
       }
     | string;
+  azu: |{}| string;
 }
 
 export interface SuggestedKubernetesConfig {

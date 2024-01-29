@@ -1349,6 +1349,20 @@ TEST_F(AdminCliTest, TestListNamespaces) {
   ASSERT_LT(user_namespaces_pos, system_namespaces_pos);
   ASSERT_GT(user_namespace_match.position(0), user_namespaces_pos);
   ASSERT_LT(user_namespace_match.position(0), system_namespaces_pos);
+
+  // We test just YSQL namespaces here because YCQL namespaces get directly deleted without being
+  // in the DELETED state and thus there is nothing for include_nonrunning to see in that case.
+  ASSERT_OK(client_->CreateNamespace("new_user_namespace", YQL_DATABASE_PGSQL));
+
+  ASSERT_OK(CallAdmin("delete_namespace", "ysql.new_user_namespace"));
+
+  status = CallAdmin("list_namespaces");
+  ASSERT_OK(status);
+  ASSERT_STR_NOT_CONTAINS(status.ToString(), "new_user_namespace");
+
+  status = CallAdmin("list_namespaces", "include_nonrunning");
+  ASSERT_OK(status);
+  ASSERT_TRUE(std::regex_search(status.ToString(), std::regex("new_user_namespace.*DELETED")));
 }
 
 TEST_F(AdminCliTest, PrintArgumentExpressions) {

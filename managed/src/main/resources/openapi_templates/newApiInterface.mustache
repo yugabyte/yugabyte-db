@@ -1,0 +1,127 @@
+package {{package}};
+
+import static play.mvc.Results.ok;
+
+{{#imports}}import {{import}};
+{{/imports}}
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformServiceException;
+{{#supportAsync}}
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
+{{/supportAsync}}
+import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
+{{#useBeanValidation}}
+import javax.validation.constraints.*;
+{{/useBeanValidation}}
+import openapitools.OpenAPIUtils;
+import org.apache.pekko.stream.Materializer;
+import org.apache.pekko.util.ByteString;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
+import play.mvc.Http.RequestBody;
+import play.mvc.Result;
+import lombok.extern.slf4j.Slf4j;
+
+{{#operations}}
+@Slf4j
+@SuppressWarnings("RedundantThrows")
+public abstract class {{classname}}ControllerImpInterface {
+  {{#useBeanValidation}}
+  @Inject private Config configuration;
+  {{/useBeanValidation}}
+  @Inject private Materializer mat;
+    {{! Yugabyte modification: Changed mapper to be constructed with additional configuration }}
+  protected ObjectMapper mapper =
+      Json.mapper()
+          .copy()
+          .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+          .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+
+{{#operation}}
+  public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}Http(
+      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      {{#handleExceptions}}throws Exception{{/handleExceptions}} {
+    {{>responseToResult}}  }
+
+  public abstract {{^returnType}}void{{/returnType}}{{#returnType}}{{#supportAsync}}CompletionStage<{{/supportAsync}}{{>returnTypesNoVoid}}{{#supportAsync}}>{{/supportAsync}}{{/returnType}} {{operationId}}(
+      Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
+      {{#handleExceptions}}throws Exception{{/handleExceptions}};
+{{/operation}}
+
+{{! Yugabyte modification: convenience methods to handle request/response model conversions }}
+  // Yugabyte convenience methods below
+
+
+  protected <T> void registerDeserializer(Class<T> type, JsonDeserializer<? extends T> deser) {
+    SimpleModule module = new SimpleModule();
+    module.addDeserializer(type, deser);
+    mapper.registerModule(module);
+  }
+  
+  /*
+   * Convenience method to convert a given bean to a target type. Assumes the two classes are bean mappable.
+   */
+  protected <S, T> T convert(
+      S source, Class<T> targetClassType, JsonDeserializer<? extends T> deser) {
+    T target;
+    try {
+      if (deser != null) {
+        registerDeserializer(targetClassType, deser);
+      }
+      target = mapper.readValue(mapper.writeValueAsString(source), targetClassType);
+    } catch (Exception e) {
+      log.error("Failed at creating target type", e);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, "Failed at creating target type");
+    }
+    return target;
+  }
+
+  protected Request replaceRequestBody(Request request, Object data) {
+    return request.withBody(new RequestBody(Json.toJson(data)));
+  }
+
+  protected <T> T extractFromResult(Result result, Class<T> resultType)
+      throws InterruptedException, JsonProcessingException, ExecutionException {
+    ByteString resultBytes = result.body().consumeData(mat).thenApply(Function.identity()).toCompletableFuture().get();
+    String resultString = resultBytes.decodeString(result.charset().orElse("utf-8"));
+    T resultObj = mapper.readValue(resultString, resultType);
+    return resultObj;
+  }
+
+  /*
+   * Convert the given source bean into targetClassType and add to request body. The first step assumes that the source is mappable to the given target type. Throws exception otherwise.
+   */
+  protected <S, T> Request convertToRequest(
+      S source,
+      Class<T> targetClassType,
+      JsonDeserializer<? extends T> targetDeser,
+      Request request) {
+    return replaceRequestBody(request, convert(source, targetClassType, targetDeser));
+  }
+
+  /*
+   * Extracts the body from given result with the assumption that it is of type sourceType, and bean maps that to the targetType.
+   */
+  protected <S, T> T convertResult(
+      Result result,
+      Class<S> sourceType,
+      Class<T> targetType,
+      JsonDeserializer<? extends T> targetDeser)
+      throws Exception {
+    S source = extractFromResult(result, sourceType);
+    return convert(source, targetType, targetDeser);
+  }
+}
+{{/operations}}

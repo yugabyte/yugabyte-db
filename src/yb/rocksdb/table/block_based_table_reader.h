@@ -89,13 +89,11 @@ YB_DEFINE_ENUM(BlockType, (kData)(kIndex));
 // hashed components as the key specified in constructor.
 class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
  public:
-  BloomFilterAwareFileFilter(const ReadOptions& read_options, const Slice& user_key);
+  BloomFilterAwareFileFilter();
 
-  bool Filter(TableReader* reader) const override;
-
- private:
-  const ReadOptions read_options_;
-  const std::string user_key_;
+  bool Filter(
+      const ReadOptions& read_options, Slice user_key, FilterKeyCache* filter_key_cache,
+      TableReader* reader) const override;
 };
 
 // A Table is a sorted map from strings to strings.  Tables are
@@ -235,10 +233,12 @@ class BlockBasedTable : public TableReader {
       BlockHandle* filter_block_handle) const;
 
   // Returns key to be added to filter or verified against filter based on internal_key.
-  Slice GetFilterKeyFromInternalKey(const Slice &internal_key) const;
+  Slice GetFilterKeyFromInternalKey(Slice internal_key) const;
 
   // Returns key to be added to filter or verified against filter based on user_key.
-  Slice GetFilterKeyFromUserKey(const Slice& user_key) const;
+  // filter_key_cache could be reused only with the same user key.
+  Slice GetFilterKeyFromUserKey(Slice user_key, FilterKeyCache* filter_key_cache) const;
+  Slice GetFilterKeyFromUserKey(Slice user_key) const;
 
   // If `no_io == true`, we will not try to read filter/index from sst file (except fixed-size
   // filter blocks) were they not present in cache yet.
