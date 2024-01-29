@@ -21,23 +21,23 @@ A fall-forward approach allows you to test the system end-to-end. This workflow 
 
 ## Fall-forward workflow
 
-![fall-forward short](/images/migrate/live-fall-forward-short.png)
+![fall-forward short](/images/migrate/live-fall-forward-short-new.png)
 
 Before starting a live migration, you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
 
-![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
+![After import data to source-replica](/images/migrate/after-import-data-to-sr-new.png)
 
 At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
 
-![After cutover](/images/migrate/cutover-to-target.png)
+![After cutover](/images/migrate/cutover-to-target-new.png)
 
 Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to your source-replica](#cutover-to-source-replica-optional).
 
-![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica.png)
+![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica-new.png)
 
 The following illustration describes the workflow for live migration using YB Voyager with the fall-forward option.
 
-![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
+![Live migration with fall-forward workflow](/images/migrate/live-fall-forward-new.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
