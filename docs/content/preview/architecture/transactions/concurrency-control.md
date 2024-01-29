@@ -1236,7 +1236,7 @@ When turning `enable_wait_queues` on/off, or during rolling restarts across vers
 When multiple requests are waiting on the same resource in the wait queue, and that resource becomes available, we have to decide in which order those waiting requests should get access to the contentious resource. We generally use the following process:
 1. Sort all waiting requests based on the _transaction start time_, with requests from the oldest transactions first
 2. Resume requests in order:
-    1. Re-run conflict resolution and acquire locks on the requested resource
+    1. Re-run conflict resolution and acquire locks on the requested resource.
     2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue.
 
 YugabyteDB has two mechanisms to detect that a resource has become available:
