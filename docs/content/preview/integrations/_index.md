@@ -6,6 +6,8 @@ description: Integrate popular third party tools with YugabyteDB, including Pres
 headcontent: Use YugabyteDB with popular third-party integrations
 image: /images/section_icons/develop/api-icon.png
 type: indexpage
+cascade:
+  unversioned: true
 showRightNav: true
 ---
 
