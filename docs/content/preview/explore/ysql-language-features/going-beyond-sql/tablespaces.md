@@ -332,11 +332,28 @@ EXPLAIN output for querying the table from `eu-west-2`:
 (2 rows)
 ```
 
+## Alter tablespace of tables and indexes
+
+Both tables and indexes can be moved to different tablespaces. The tablespace change will immediately reflect in the config of the table/index, however the tablet move by the load balancer happens in the background. 
+While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
+
+```sql
+ALTER TABLE multi_region_table SET TABLESPACE eu_west_tablespace;
+```
+
+```output
+WARNING:  'tablespace_alteration' is a beta feature!
+LINE 1: ALTER TABLE multi_region_table SET TABLESPACE eu_west_...
+                                       ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablespace_alteration' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+```
+
+
 ## What's next?
 
 The following features will be supported in upcoming releases:
 
-- Using `ALTER TABLE` to change the `TABLESPACE` specified for a table.
 - Support for `ALTER TABLESPACE`.
 - Setting read replica placements using tablespaces.
 - Setting tablespaces for colocated tables and databases.
