@@ -83,7 +83,7 @@ You can access the Prometheus server on port 9090 of the YugabyteDB Anywhere nod
 
 | Service           | Port |
 | ----------------- | ---- |
-| Prometheus server | 9090 |
+| Prometheus server for YugabyteDB Anywhere | 9090 |
 | Node metrics      | 9300 |
 
 For information on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).

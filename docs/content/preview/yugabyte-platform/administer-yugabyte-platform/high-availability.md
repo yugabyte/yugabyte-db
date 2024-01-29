@@ -100,9 +100,9 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Switch to the active instance.
 
-1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. **Note**  that you need to perform this step on the active instance, and not the standby instance.
+1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. This allows the primary to connect to the standby instance.
 
-    This allows the primary to connect to the standby instance.
+    Note that you need to perform this step on the _active_ instance, and not the standby instance.
 
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
@@ -119,6 +119,8 @@ Your standby instance is now configured.
 To confirm communication between the active and standby, you can do the following:
 
 - Click **Make Active** on the standby (but don't promote it). You should see a list of available backups that you can restore from.
+    ![Make Active](/images/yp/high-availability/ha-make-active.png)
+
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)

@@ -286,7 +286,7 @@ If Replicated is using HTTPS, migrate as follows:
 1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
 1. Migrate and finish the standby instances.
 
-Failovers are only possible only after you finish the migration on both the primary and standby.
+Failovers are only possible after you finish the migration on both the primary and standby.
 
 If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
 
