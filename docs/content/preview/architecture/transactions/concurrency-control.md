@@ -1237,7 +1237,7 @@ When multiple requests are waiting on the same resource in the wait queue, and t
 1. Sort all waiting requests based on the _transaction start time_, with requests from the oldest transactions first
 2. Resume requests in order:
     1. Re-run conflict resolution and acquire locks on the requested resource
-    2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue
+    2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue.
 
 YugabyteDB has two mechanisms to detect that a resource has become available:
 
