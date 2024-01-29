@@ -32,12 +32,9 @@ export const DeleteRegionModal = <RegionFieldType extends SupportedRegionField>(
       {...modalProps}
     >
       <p>
-        Are you sure you want to delete <b>{region?.code}</b>
+        Are you sure you want to delete <b>{region?.code}</b>?
       </p>
-      <p>
-        All region information will be deleted, including VPC ID, Security Group ID, Custom AMI ID
-        if applicable, and AZ mapping.
-      </p>
+      <p>All region information will be deleted.</p>
     </YBModal>
   );
 };
