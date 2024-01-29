@@ -1226,7 +1226,7 @@ commit;
 When turning `enable_wait_queues` on/off, or during rolling restarts across versions with the flag “on” in the higher version, if some nodes have wait-on-conflict behavior enabled and some don’t, users will experience mixed (but still correct) behavior. A mix of both fail-on-conflict and wait-on-conflict traffic will result in the following additional YSQL specific semantics -
 
 1. If a transaction using fail-on-conflict sees transactions that have written conflicting intents -
-    1. If there is even 1 conflicting transaction that uses wait-on-conflict, abort the requesting transaction
+    - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
     2. Else, behaviour is as today
 2. If a transaction uses wait-on-conflict and sees transactions that have written conflicting intents -
     1. Wait for all conflicting transactions to end (including any using fail-on-conflict semantics)
