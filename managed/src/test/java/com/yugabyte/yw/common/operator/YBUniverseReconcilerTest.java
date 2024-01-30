@@ -369,7 +369,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setAssignPublicIP(true);
     spec.setUseTimeSync(true);
     spec.setEnableYSQL(true);
-    spec.setEnableYEDIS(false);
     spec.setEnableYCQL(false);
     spec.setEnableNodeToNodeEncrypt(false);
     spec.setEnableClientToNodeEncrypt(false);
