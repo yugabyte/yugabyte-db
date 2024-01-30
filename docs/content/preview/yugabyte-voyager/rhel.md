@@ -28,25 +28,35 @@ Perform the following steps to install yb-voyager using yum for RHEL 7/8 and Cen
     ```
 
     ```sh
-    # For RHEL8 or Centos 8
+    # For RHEL 8 or Centos 8
     sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
     ```
 
-1. Install the PostgreSQL and Oracle instant clients repositories using the following command:
+1. Install the Oracle instant client repositories using the following command:
 
     ```sh
-    sudo yum install pgdg-redhat-repo oracle-instant-clients-repo
+    sudo yum install oracle-instant-clients-repo
+    ```
+
+1. Install the PostgreSQL repositories using the following command:
+
+    ```sh
+    # For RHEL 7
+    sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+    # For RHEL 8
+    sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
     ```
 
     These repositories contain the rest of the dependencies required to run `yb-voyager`.
 
     {{< note >}}
-Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two steps before proceeding to step 5.
+Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two steps before proceeding to step 6.
 
 - Disable the default `PostgreSQL` yum module on your machine using the following command:
 
     ```sh
-    sudo dnf --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-ppc64le/pgdg-redhat-repo-latest.noarch.rpm
+    sudo dnf -qy module disable postgresql
     ```
 
 - Install `perl-open` on your machine using the following command:
