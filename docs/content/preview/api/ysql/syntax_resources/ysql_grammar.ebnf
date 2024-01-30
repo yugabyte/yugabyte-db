@@ -212,7 +212,7 @@ server_name = name ;
 server_version = name ;
 
 (* 'ALTER' 'TABLE' *)
-alter_table = 'ALTER' 'TABLE' table_expr
+alter_table = 'ALTER' 'TABLE' [ 'IF' 'EXISTS' ] table_expr
                         alter_table_action { ',' alter_table_action } ;
 
 alter_table_action =
@@ -228,6 +228,7 @@ alter_table_action =
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
+    | 'SET' 'TABLESPACE' tablespace_name
     | 'NO' 'FORCE' 'ROW' 'LEVEL' 'SECURITY' ) ;
 
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -244,6 +245,24 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'UNIQUE' index_parameters |
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+(* 'ALTER' 'INDEX' *)
+alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
+                        alter_index_action { ',' alter_index_action } ;
+
+alter_index_action =
+  ( 'RENAME' 'TO' new_name
+    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' integer
+    | 'SET' 'TABLESPACE' tablespace_name ) ;
+
+
+(* 'ALTER' 'MATERIALIZED' 'VIEW' *)
+alter_materialized_view = 'ALTER' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name
+                        alter_materialized_view_action { ',' alter_materialized_view_action } ;
+
+alter_materialized_view_action =
+  ( 'RENAME' 'TO' new_name
+    | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 (* 'ALTER' 'SCHEMA' *)
 alter_schema = 'ALTER' 'SCHEMA' schema_name (
