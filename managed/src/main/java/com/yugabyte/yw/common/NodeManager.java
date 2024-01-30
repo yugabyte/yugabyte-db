@@ -93,8 +93,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Singleton
@@ -121,8 +119,6 @@ public class NodeManager extends DevopsBase {
   public static final long PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS = 300;
 
   public static final String YUGABYTE_USER = "yugabyte";
-
-  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   @Inject Config appConfig;
 
@@ -206,7 +202,7 @@ public class NodeManager extends DevopsBase {
         throw new RuntimeException("No node is found in universe " + universe.getName());
       }
       nodeDetails = nodeIter.next();
-      LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
+      log.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
     }
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
@@ -306,8 +302,8 @@ public class NodeManager extends DevopsBase {
         sshPort = params.sshPortOverride;
       }
 
-      LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
-      LOG.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
+      log.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
+      log.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
               params,
@@ -634,7 +630,7 @@ public class NodeManager extends DevopsBase {
                 subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
               }
             } catch (IOException e) {
-              LOG.error(e.getMessage(), e);
+              log.error(e.getMessage(), e);
               throw new RuntimeException(e);
             }
             break;
@@ -728,7 +724,7 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
             } catch (IOException e) {
-              LOG.error(e.getMessage(), e);
+              log.error(e.getMessage(), e);
               throw new RuntimeException(e);
             }
             break;
@@ -823,16 +819,15 @@ public class NodeManager extends DevopsBase {
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
     String masterAddresses = universe.getMasterAddresses();
+    if (StringUtils.isBlank(masterAddresses)) {
+      log.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
+    }
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     subcommand.add("--num_cores_to_keep");
     subcommand.add(String.valueOf(num_cores_to_keep));
-
-    if (masterAddresses == null || masterAddresses.isEmpty()) {
-      LOG.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
-    }
 
     if (!taskParam.isMasterInShellMode) {
       subcommand.add("--master_addresses_for_master");
@@ -1330,7 +1325,7 @@ public class NodeManager extends DevopsBase {
             } else if (taskParam.nodeToNodeChange < 0) {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             } else {
-              LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+              log.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
@@ -1454,7 +1449,7 @@ public class NodeManager extends DevopsBase {
         "ANSIBLE_LOCAL_TEMP",
         confGetter.getConfForScope(universe, UniverseConfKeys.ansibleLocalTemp));
 
-    LOG.trace("ansible env vars {}", envVars);
+    log.trace("ansible env vars {}", envVars);
     return envVars;
   }
 
@@ -1546,7 +1541,7 @@ public class NodeManager extends DevopsBase {
         Files.write(bootScriptFile, bootScript.getBytes());
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     } else {
@@ -1554,7 +1549,7 @@ public class NodeManager extends DevopsBase {
         Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     }
@@ -1755,7 +1750,7 @@ public class NodeManager extends DevopsBase {
               // If low mem instance, configure small boot disk size.
               if (isLowMemInstanceType(taskParam.instanceType)) {
                 String lowMemBootDiskSizeGB = "8";
-                LOG.info(
+                log.info(
                     "Detected low memory instance type. "
                         + "Setting up nodes using low boot disk size.");
                 commandArgs.add("--boot_disk_size_gb");
@@ -2483,7 +2478,7 @@ public class NodeManager extends DevopsBase {
         try {
           Files.deleteIfExists(bootScriptFile);
         } catch (IOException e) {
-          LOG.error(e.getMessage(), e);
+          log.error(e.getMessage(), e);
         }
       }
     }
