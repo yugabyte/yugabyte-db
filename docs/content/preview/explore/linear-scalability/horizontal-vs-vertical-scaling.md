@@ -14,7 +14,7 @@ rightNav:
 type: docs
 ---
 
-After you have decided to scale your system, there are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. Because YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
+After you have decided to scale your system, there are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. Because YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption, regardless of which method you choose.
 
 ## Vertical (scale up)
 
@@ -24,7 +24,7 @@ Vertical scaling is often limited by the capacity of a single server and can get
 
 ## Horizontal (scale out)
 
-To scale your system horizontally, You [add more nodes](../node-addition/) to handle increased load and data. Horizontal scaling is a first-class feature in YugabyteDB, and is the most common scaling model in YugabyteDB. It has several advantages, including the following:
+To scale your system horizontally, you [add more nodes](../node-addition/) to handle increased load and data. Horizontal scaling is a first-class feature in YugabyteDB, and is the most common scaling model in YugabyteDB. It has several advantages, including the following:
 
 - Improved performance - More nodes can process requests in parallel, reducing response times. [Reads](../scaling-reads/), [writes](../scaling-writes/), and [transactions](../scaling-transactions/) scale linearly as you add nodes.
 - Cost-effective - You can use commodity hardware, which is generally less expensive than high-end servers.
