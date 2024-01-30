@@ -1229,7 +1229,7 @@ A mix of both fail-on-conflict and wait-on-conflict traffic results in the follo
 
 - If a transaction using fail-on-conflict encounters transactions that have conflicting writes -
     - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
-    - Else, YugabyteDB will abort either the current request or encountered conflicting transactions based on transaction priority
+    - Otherwise, YugabyteDB uses the regular [fail-on-conflict semantics](#fail-on-conflict), which is to abort the lower priority transaction.
 - If a transaction using wait-on-conflict encounters transactions that have conflicting writes, it waits for all conflicting transactions to end (including any using fail-on-conflict semantics).
 
 ### Fairness
