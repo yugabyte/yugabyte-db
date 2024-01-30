@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 
@@ -635,6 +636,16 @@ message SysUniverseReplicationEntryPB {
   optional bool transactional = 11; // [default = false]
 
   optional uint32 validated_local_auto_flags_config_version = 12;
+
+  // DB Scoped repication.
+  message DBScopeInfo {
+    message NamespaceInfo {
+      required string consumer_namespace_id = 1;
+      required string producer_namespace_id = 2;
+    }
+    repeated NamespaceInfo namespace_infos = 13;
+  }
+  optional DBScopeInfo db_scoped_info = 13;
 }
 
 message XClusterSafeTimePB {
@@ -765,6 +776,9 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     message TableInfoPB {
       optional bytes stream_id = 1;
       optional bool is_checkpointing = 2; // [default = false]
+      // Was this stream checkpointed as part of the initial bootstrap, or was
+      // it added later by a newly created table?
+      optional bool is_part_of_initial_bootstrap = 3;
     }
     // Table id -> TableInfoPB
     map<string, TableInfoPB> table_infos = 2;
@@ -774,4 +788,25 @@ message SysXClusterOutboundReplicationGroupEntryPB {
 
   // Namespace Id -> NamespaceInfoPB
   map<string, NamespaceInfoPB> namespace_infos = 1;
+
+  message TargetUniverseInfo {
+    required bytes universe_uuid = 1;
+
+    enum State {
+      CREATING_REPLICATION_GROUP = 0;
+      FAILED = 1;
+      REPLICATING = 2;
+    }
+    required State state = 2 [ default = CREATING_REPLICATION_GROUP ];
+
+    optional AppStatusPB error_status = 3; // Set when status is FAILED
+  }
+
+  optional TargetUniverseInfo target_universe_info = 2;
+
+  enum State {
+    READY = 0;
+    DELETED = 1;
+  }
+  optional State state = 3 [ default = READY ];
 }
