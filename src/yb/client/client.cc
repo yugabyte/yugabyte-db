@@ -332,6 +332,19 @@ void FillFromRepeatedTabletLocations(
             BOOST_PP_CAT(method, Async))); \
   } while(0);
 
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
+  Result<master::BOOST_PP_CAT(method, ResponsePB)> YBClient::method( \
+      const master::BOOST_PP_CAT(method, RequestPB) & req) { \
+    master::BOOST_PP_CAT(method, ResponsePB) resp; \
+    CALL_SYNC_LEADER_MASTER_RPC_EX(service, req, resp, method); \
+    return resp; \
+  }
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC(i, data, set) IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP set
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPCS(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(IMPLEMENT_SYNC_LEADER_MASTER_RPC, ~, rpcs)
+
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -2889,6 +2902,8 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
   return std::move(resp.service_info());
 }
+
+IMPLEMENT_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
 
 }  // namespace client
 }  // namespace yb
