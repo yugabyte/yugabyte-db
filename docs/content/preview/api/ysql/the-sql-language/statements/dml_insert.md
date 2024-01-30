@@ -84,8 +84,6 @@ This is useful for obtaining values that were supplied by defaults, such as a se
 
 `RETURNING` column list is identical to that of the output list of `SELECT`. 
 
-Only successfully inserted or updated rows are returned.
-
 
 ### *column_values*
 
