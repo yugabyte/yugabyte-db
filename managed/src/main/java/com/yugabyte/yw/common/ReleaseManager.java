@@ -327,11 +327,11 @@ public class ReleaseManager {
   private static final Pattern ybHelmChartPattern = Pattern.compile("yugabyte-(.*).tgz");
 
   static final Pattern ybVersionPattern =
-      Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
+      Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?(.*)");
 
   // Similar to above but only matches local release /<releasesPath>/<version>/*
   static final Pattern ybLocalPattern =
-      Pattern.compile("(/.*?)(/\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
+      Pattern.compile("(/.*?)(/\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?(.*)");
 
   private static final Pattern ybcPackagePattern =
       Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|el8)(.*).tar.gz");
@@ -653,7 +653,7 @@ public class ReleaseManager {
             Pattern.compile("(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz");
 
         Pattern ybVersionPatternRequired =
-            Pattern.compile("^(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?$");
+            Pattern.compile("^(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?$");
 
         Map<String, ReleaseMetadata> successfullyAddedReleases =
             new HashMap<String, ReleaseMetadata>();
