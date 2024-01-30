@@ -25,7 +25,9 @@ showRightNav: true
 type: indexpage
 ---
 
-Scaling a distributed system is essential to meet the increasing demands of users, workloads, and data reliably and efficiently. Scaling is a crucial aspect of designing and maintaining distributed systems to ensure they can handle increasing workloads, provide high availability, optimize resource usage, and adapt to changing requirements and future growth. Depending on your business, you may need to scale for a variety of reasons:
+Being able to scale a distributed system is essential to reliably and efficiently meeting the increasing demands of users, workloads, and data. Scalability is central the design and maintenance of distributed systems. You need it to ensure systems can handle increasing workloads, provide high availability, optimize resource usage, adapt to changing requirements, and accommodate future growth.
+
+Depending on your business, you may need to scale for a variety of reasons:
 
 - **Growing user base**. Your application becomes popular, users love your app, and the user base is expanding.
 - **Seasonal traffic**. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example.
@@ -60,7 +62,7 @@ To learn more about the different types of sharding, see [Hash and range shardin
 As your data grows, tablets are split and moved across the different nodes in the cluster to maintain an equal distribution of data across the nodes. This process is known as _Rebalancing_. Data is moved automatically, without any interruption in service.
 
 {{<tip>}}
-For an illustration of how tablets are rebalanced, see [Rebalancing](./data-distribution/#rebalancing)
+For an illustration of how tablets are rebalanced, see [Rebalancing](./data-distribution/#rebalancing).
 {{</tip>}}
 
 ### Adding nodes
@@ -92,6 +94,12 @@ To learn more about the various metrics than you can monitor, see [Observability
     body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
     href="data-distribution/"
     icon="fa-solid fa-building">}}
+
+  {{<index/item
+    title="Horizontal vs vertical scaling"
+    body="Understand the differences between horizontal and vertical scaling."
+    href="horizontal-vs-vertical-scaling/"
+    icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item
     title="Scale out by adding nodes"
