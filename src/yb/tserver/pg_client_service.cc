@@ -1574,7 +1574,8 @@ class PgClientServiceImpl::Impl {
 
   Result<std::unordered_set<uint32_t>> GetPgDatabaseOids() {
     LOG(INFO) << "Fetching set of database oids";
-    auto namespaces = VERIFY_RESULT(client().ListNamespaces(YQL_DATABASE_PGSQL));
+    auto namespaces = VERIFY_RESULT(
+        client().ListNamespaces(client::IncludeNonrunningNamespaces::kFalse, YQL_DATABASE_PGSQL));
     std::unordered_set<uint32_t> result;
     for (const auto& ns : namespaces) {
       result.insert(VERIFY_RESULT(GetPgsqlDatabaseOid(ns.id.id())));

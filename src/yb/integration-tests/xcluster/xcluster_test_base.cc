@@ -281,11 +281,8 @@ Status XClusterTestBase::SetupUniverseReplication(
       bootstrap_ids, opts);
 }
 
-Status XClusterTestBase::SetupUniverseReplication(
-    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<TableId>& producer_table_ids,
-    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
+Status XClusterTestBase::SetupCertificates(
+    const xcluster::ReplicationGroupId& replication_group_id) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // replication_group_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -300,6 +297,16 @@ Status XClusterTestBase::SetupUniverseReplication(
         RecursiveCopy::kFalse));
     LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << universe_sub_dir;
   }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::SetupUniverseReplication(
+    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& producer_table_ids,
+    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
+  RETURN_NOT_OK(SetupCertificates(replication_group_id));
 
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;

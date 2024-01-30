@@ -151,8 +151,9 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.25.0",
   "org.apache.commons" % "commons-csv" % "1.10.0",
-  "org.apache.httpcomponents" % "httpcore" % "4.4.5",
-  "org.apache.httpcomponents" % "httpclient" % "4.5.13",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",

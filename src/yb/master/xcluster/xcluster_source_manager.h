@@ -77,23 +77,27 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const;
 
+  Status CreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
+
+  Result<IsOperationDoneResult> IsCreateXClusterReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
+
  private:
   Status InsertOutboundReplicationGroup(
       const std::string& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& metadata)
       EXCLUDES(outbound_replication_group_map_mutex_);
 
-  XClusterOutboundReplicationGroup InitOutboundReplicationGroup(
+  std::shared_ptr<XClusterOutboundReplicationGroup> InitOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& metadata);
 
-  Result<XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id)
-      REQUIRES(outbound_replication_group_map_mutex_);
-
-  Result<const XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
+  Result<std::shared_ptr<XClusterOutboundReplicationGroup>> GetOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id) const
-      REQUIRES_SHARED(outbound_replication_group_map_mutex_);
+      EXCLUDES(outbound_replication_group_map_mutex_);
 
   Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
 
@@ -105,7 +109,10 @@ class XClusterSourceManager {
   SysCatalogTable& sys_catalog_;
 
   mutable std::shared_mutex outbound_replication_group_map_mutex_;
-  std::map<xcluster::ReplicationGroupId, XClusterOutboundReplicationGroup>
+  // Map of XClusterOutboundReplicationGroups.
+  // Value will be nullptr if the group is being created and not yet written to the sys_catalog.
+  // This is done to ensure multiple create operations on the same Id are not allowed.
+  std::map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterOutboundReplicationGroup>>
       outbound_replication_group_map_ GUARDED_BY(outbound_replication_group_map_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(XClusterSourceManager);

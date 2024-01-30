@@ -3,7 +3,7 @@ package com.yugabyte.troubleshoot.ts.models;
 import lombok.Data;
 
 @Data
-class GraphSettings {
+public class GraphSettings {
   private SplitMode splitMode = SplitMode.NONE;
   private SplitType splitType = SplitType.NONE;
   private int splitCount;

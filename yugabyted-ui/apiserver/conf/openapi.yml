@@ -1565,7 +1565,9 @@ components:
     ConnectionStatsItem:
       type: object
       properties:
-        pool:
+        database_name:
+          type: string
+        user_name:
           type: string
         active_logical_connections:
           type: integer

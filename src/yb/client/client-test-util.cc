@@ -195,7 +195,8 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
 
 Result<string> GetNamespaceIdByNamespaceName(YBClient* client,
                                              const string& namespace_name) {
-  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
+  const auto namespaces = VERIFY_RESULT(
+      client->ListNamespaces(client::IncludeNonrunningNamespaces::kFalse, YQL_DATABASE_PGSQL));
   for (const auto& ns : namespaces) {
     if (ns.id.name() == namespace_name) {
       return ns.id.id();

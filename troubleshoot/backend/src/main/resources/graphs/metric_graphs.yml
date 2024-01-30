@@ -1,0 +1,7 @@
+query_latency:
+  layout:
+    title: "Query Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"

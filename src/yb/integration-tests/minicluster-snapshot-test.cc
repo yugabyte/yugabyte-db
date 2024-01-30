@@ -34,15 +34,19 @@
 #include <cmath>
 #include <memory>
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/postgres-minicluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager.h"
@@ -52,11 +56,29 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_context.h"
+
+#include "yb/tools/admin-test-base.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+
+DECLARE_bool(master_auto_run_initdb);
+DECLARE_int32(pgsql_proxy_webserver_port);
+
 namespace yb {
 namespace master {
+
+constexpr auto kInterval = 6s;
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+
+YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
 
 using namespace std::chrono_literals;
 
@@ -116,6 +138,47 @@ Result<SnapshotScheduleId> CreateSnapshotSchedule(
   return FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id());
 }
 
+Result<SnapshotScheduleInfoPB> GetSnapshotSchedule(
+    MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
+  rpc::RpcController controller;
+  ListSnapshotSchedulesRequestPB req;
+  ListSnapshotSchedulesResponsePB resp;
+  req.set_snapshot_schedule_id(id.data(), id.size());
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy->ListSnapshotSchedules(req, &resp, &controller));
+  SCHECK_EQ(resp.schedules_size(), 1, NotFound, "Wrong number of schedules");
+  return resp.schedules().Get(0);
+}
+
+Result<TxnSnapshotId> WaitNewSnapshot(MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
+  LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
+  std::string last_snapshot_id;
+  std::string new_snapshot_id;
+  RETURN_NOT_OK(WaitFor(
+      [&proxy, &id, &last_snapshot_id, &new_snapshot_id]() -> Result<bool> {
+        // If there's a master leader failover then we should wait for the next cycle.
+        auto schedule_info = VERIFY_RESULT(GetSnapshotSchedule(proxy, id));
+        auto& snapshots = schedule_info.snapshots();
+        if (snapshots.empty()) {
+          return false;
+        }
+        auto snapshot_id = snapshots[snapshots.size() - 1].id();
+        LOG(INFO) << "WaitNewSnapshot, last snapshot id: " << snapshot_id;
+        if (last_snapshot_id.empty()) {
+          last_snapshot_id = snapshot_id;
+          return false;
+        }
+        if (last_snapshot_id != snapshot_id) {
+          new_snapshot_id = snapshot_id;
+          return true;
+        } else {
+          return false;
+        }
+      },
+      kInterval * 5, "Wait new schedule snapshot"));
+  return FullyDecodeTxnSnapshotId(new_snapshot_id);
+}
+
 Status WaitForRestoration(
     MasterBackupProxy* proxy, const TxnSnapshotRestorationId& restoration_id, MonoDelta timeout) {
   auto condition = [proxy, &restoration_id, timeout]() -> Result<bool> {
@@ -132,6 +195,90 @@ Status WaitForRestoration(
     return false;
   };
   return WaitFor(condition, timeout, "Waiting for restoration to complete");
+}
+
+Status WaitForSnapshotComplete(
+    MasterBackupProxy* proxy, const TxnSnapshotId& snapshot_id, bool check_deleted = false) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        master::ListSnapshotsRequestPB req;
+        master::ListSnapshotsResponsePB resp;
+        rpc::RpcController rpc;
+        rpc.set_timeout(30s * kTimeMultiplier);
+        req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+        Status s = proxy->ListSnapshots(req, &resp, &rpc);
+        // If snapshot is cleaned up and we are waiting for a delete
+        // then succeed this call.
+        if (check_deleted && !s.ok() && s.IsNotFound()) {
+          return true;
+        }
+        if (resp.has_error()) {
+          Status s = StatusFromPB(resp.error().status());
+          if (check_deleted && s.IsNotFound()) {
+            return true;
+          }
+          return s;
+        }
+        if (resp.snapshots_size() != 1) {
+          return STATUS(
+              IllegalState, Format("There should be exactly one snapshot of id $0", snapshot_id));
+        }
+        if (check_deleted) {
+          return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::DELETED;
+        }
+        return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
+      },
+      30s * kTimeMultiplier, "Waiting for snapshot to complete");
+}
+
+Result<SnapshotInfoPB> WaitScheduleSnapshot(
+    MasterBackupProxy* proxy, const SnapshotScheduleId& id, MonoDelta duration,
+    uint32_t num_snapshots = 1) {
+  SnapshotInfoPB snapshot;
+  RETURN_NOT_OK(WaitFor(
+      [proxy, id, num_snapshots, &snapshot]() -> Result<bool> {
+        // If there's a master leader failover then we should wait for the next cycle.
+        auto schedule = VERIFY_RESULT(GetSnapshotSchedule(proxy, id));
+        if ((uint32_t)schedule.snapshots_size() < num_snapshots) {
+          return false;
+        }
+        snapshot = schedule.snapshots()[schedule.snapshots_size() - 1];
+        return true;
+      },
+      duration, Format("Wait for schedule to have $0 snapshots", num_snapshots)));
+
+  // Wait for the present time to become at-least the time chosen by the snapshot.
+  auto snapshot_time_string = snapshot.entry().snapshot_hybrid_time();
+  HybridTime snapshot_ht = HybridTime::FromPB(snapshot_time_string);
+
+  RETURN_NOT_OK(WaitFor(
+      [&snapshot_ht]() -> Result<bool> {
+        Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
+        HybridTime current_ht = HybridTime::FromMicros(current_time.ToInt64());
+        return snapshot_ht <= current_ht;
+      },
+      duration, "Wait Snapshot Time Elapses"));
+  return snapshot;
+}
+
+Result<master::SnapshotInfoPB> ExportSnapshot(
+    MasterBackupProxy* proxy, const TxnSnapshotId& snapshot_id, bool prepare_for_backup = true) {
+  master::ListSnapshotsRequestPB req;
+  master::ListSnapshotsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.set_prepare_for_backup(prepare_for_backup);
+  Status s = proxy->ListSnapshots(req, &resp, &rpc);
+  LOG(INFO) << Format("ExportSnapshot response is: $0", resp.ShortDebugString());
+  if (!s.ok()) {
+    return s;
+  }
+  if (resp.snapshots_size() != 1) {
+    return STATUS(
+        IllegalState, Format("There should be exactly one snapshot of id $0", snapshot_id));
+  }
+  return resp.snapshots(0);
 }
 
 class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
@@ -207,5 +354,149 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   }
   messenger->Shutdown();
 }
+
+class MasterExportSnapshotTest : public YBTest,
+                                 public ::testing::WithParamInterface<YsqlColocationConfig> {
+ public:
+  void SetUp() override {
+    master::SetDefaultInitialSysCatalogSnapshotFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+    YBTest::SetUp();
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+
+    test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
+
+    ASSERT_OK(mini_cluster()->StartSync());
+    ASSERT_OK(mini_cluster()->WaitForTabletServerCount(3));
+    ASSERT_OK(WaitForInitDb(mini_cluster()));
+    test_cluster_.client_ = ASSERT_RESULT(mini_cluster()->CreateClient());
+    ASSERT_OK(InitPostgres(&test_cluster_));
+
+    LOG(INFO) << "Cluster created successfully";
+  }
+
+  void TearDown() override {
+    YBTest::TearDown();
+
+    LOG(INFO) << "Destroying cluster";
+
+    if (test_cluster_.pg_supervisor_) {
+      test_cluster_.pg_supervisor_->Stop();
+    }
+    if (test_cluster_.mini_cluster_) {
+      test_cluster_.mini_cluster_->Shutdown();
+      test_cluster_.mini_cluster_.reset();
+    }
+    test_cluster_.client_.reset();
+  }
+
+  Status InitPostgres(PostgresMiniCluster* cluster) {
+    auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
+    auto port = cluster->mini_cluster_->AllocateFreePort();
+    pgwrapper::PgProcessConf pg_process_conf =
+        VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+            AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
+            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+            pg_ts->server()->GetSharedMemoryFd()));
+    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+    pg_process_conf.force_disable_log_file = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+        cluster->mini_cluster_->AllocateFreePort();
+
+    LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
+              << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+    cluster->pg_supervisor_ =
+        std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+    RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+
+    cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+    return Status::OK();
+  }
+  MiniCluster* mini_cluster() { return test_cluster_.mini_cluster_.get(); }
+
+  client::YBClient* client() { return test_cluster_.client_.get(); }
+  Status CreateDatabase(
+      PostgresMiniCluster* cluster, const std::string& namespace_name,
+      YsqlColocationConfig colocated) {
+    auto conn = VERIFY_RESULT(cluster->Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE DATABASE $0$1", namespace_name,
+        colocated == YsqlColocationConfig::kDBColocated ? " with colocation = true" : ""));
+    return Status::OK();
+  }
+
+  Result<Timestamp> GetCurrentTime() {
+    // IMPORTANT NOTE: THE SLEEP IS TEMPORARY AND
+    // SHOULD BE REMOVED ONCE GH#12796 IS FIXED.
+    SleepFor(MonoDelta::FromSeconds(4 * kTimeMultiplier));
+    auto time = Timestamp(VERIFY_RESULT(WallClock()->Now()).time_point);
+    LOG(INFO) << "Time to restore: " << time.ToHumanReadableTime();
+    return time;
+  }
+
+ protected:
+  PostgresMiniCluster test_cluster_;
+};
+
+INSTANTIATE_TEST_CASE_P(
+    Colocation, MasterExportSnapshotTest,
+    ::testing::Values(YsqlColocationConfig::kNotColocated, YsqlColocationConfig::kDBColocated));
+
+// Test that export_snapshot_from_schedule as of time generates correct SnapshotInfoPB.
+// 1. Create some tables.
+// 2. Mark time t and wait for a new snapshot to be created as part of the snapshot schedule.
+// 3. export_snapshot to generate the SnapshotInfoPB as of current time. It is the traditional
+// export_snapshot command (not the new command) to serve as ground truth.
+// 4. Create more tables.
+// 5. Generate snapshotInfo from schedule using the time t.
+// 6. Assert the output of 5 and 3 are the same.
+TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
+  auto namespace_name = "testdb";
+  ASSERT_OK(CreateDatabase(&test_cluster_, namespace_name, GetParam()));
+  LOG(INFO) << "Database created.";
+  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+  auto proxy_cache = rpc::ProxyCache(messenger.get());
+  auto proxy = MasterBackupProxy(&proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+
+  client::YBTableName table_name(YQL_DATABASE_PGSQL, "testdb", "test_table");
+  const auto timeout = MonoDelta::FromSeconds(30);
+  SnapshotScheduleId schedule_id =
+      ASSERT_RESULT(CreateSnapshotSchedule(&proxy, table_name, kInterval, kRetention, timeout));
+  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, 30s));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(namespace_name));
+  // 1.
+  LOG(INFO) << Format("Create tables t1,t2");
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, c1 TEXT, c2 TEXT)"));
+  // 2.
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+  LOG(INFO) << Format("current timestamp is: {$0}", time);
+
+  // 3.
+  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(&proxy, schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(&proxy, decoded_snapshot_id));
+  master::SnapshotInfoPB ground_truth = ASSERT_RESULT(ExportSnapshot(&proxy, decoded_snapshot_id));
+  // 4.
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, c1 INT, c2 TEXT, c3 TEXT)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD COLUMN new_col TEXT"));
+  // 5.
+  LOG(INFO) << Format(
+      "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
+  auto deadline = CoarseMonoClock::Now() + timeout;
+  master::SnapshotInfoPB snapshot_info_as_of_time = ASSERT_RESULT(
+      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
+          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+  // 6.
+  LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
+  LOG(INFO) << Format(
+      "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
+  ASSERT_TRUE(pb_util::ArePBsEqual(
+      std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
+  messenger->Shutdown();
+}
+
 }  // namespace master
 }  // namespace yb

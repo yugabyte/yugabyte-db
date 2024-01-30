@@ -545,7 +545,8 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 		execTuplesHashPrepare(node->numCols,
 							  node->dupOperators,
 							  &setopstate->eqfuncoids,
-							  &setopstate->hashfunctions);
+							  &setopstate->hashfunctions,
+							  NULL);
 	else
 		setopstate->eqfunction =
 			execTuplesMatchPrepare(outerDesc,

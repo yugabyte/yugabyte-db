@@ -54,6 +54,7 @@ src/public/*
 
 client/*/v1
 client/*/v2
+client/*/generated
 lib
 
 devops/pex/pexEnv

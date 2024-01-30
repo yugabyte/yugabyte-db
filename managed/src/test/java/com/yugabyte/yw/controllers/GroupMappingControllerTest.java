@@ -14,6 +14,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
@@ -27,10 +29,13 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.LdapDnToYbaRoleData.LdapDnYbaRoleDataPair;
+import com.yugabyte.yw.forms.OidcGroupToYbaRolesData.OidcGroupToYbaRolesPair;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
+import com.yugabyte.yw.models.OidcGroupToYbaRoles;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import java.io.IOException;
 import java.util.List;
 import junitparams.JUnitParamsRunner;
@@ -41,7 +46,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
-public class LdapDnToYbaRoleControllerTest extends FakeDBApplication {
+public class GroupMappingControllerTest extends FakeDBApplication {
 
   private Customer defaultCustomer;
   private Users defaultUser;
@@ -156,6 +161,104 @@ public class LdapDnToYbaRoleControllerTest extends FakeDBApplication {
     assertBadRequest(r, "SuperAdmin cannot be mapped to a disinguished name!");
   }
 
+  @Test
+  public void testOidcUpdateMapping() {
+    com.yugabyte.yw.models.rbac.Role role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "Admin", "Admin role", RoleType.System, null);
+    OidcGroupToYbaRolesPair pair = new OidcGroupToYbaRolesPair();
+    pair.setGroupName("Admins");
+    pair.setRoles(ImmutableList.of(role.getRoleUUID()));
+
+    ObjectNode bodyJson = Json.newObject();
+    ArrayNode pairList = mapper.createArrayNode().add(mapper.convertValue(pair, JsonNode.class));
+    bodyJson.put("oidcGroupToYbaRolesPairs", pairList);
+
+    // create new mapping
+    Result r = updateOidcGroupToYbaRoles(bodyJson);
+    assertOk(r);
+
+    OidcGroupToYbaRoles entity =
+        OidcGroupToYbaRoles.find.query().where().eq("group_name", "Admins").findOne();
+    assertNotNull(entity);
+    assertEquals(entity.getYbaRoles().get(0), role.getRoleUUID());
+
+    // update existing mapping
+    role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "BackupAdmin", "BackupAdmin role", RoleType.System, null);
+    pair.setRoles(ImmutableList.of(role.getRoleUUID()));
+    bodyJson = Json.newObject();
+    pairList = mapper.createArrayNode().add(mapper.convertValue(pair, JsonNode.class));
+    bodyJson.put("oidcGroupToYbaRolesPairs", pairList);
+
+    Result res = updateOidcGroupToYbaRoles(bodyJson);
+    assertOk(res);
+
+    entity = OidcGroupToYbaRoles.find.query().where().eq("group_name", "Admins").findOne();
+    assertNotNull(entity);
+    assertEquals(entity.getYbaRoles().get(0), role.getRoleUUID());
+
+    // test delete
+    deleteOidcGroupMapping("Admins");
+    entity = OidcGroupToYbaRoles.find.query().where().eq("group_name", "Admins").findOne();
+    assertNull(entity);
+
+    // try assigning SuperAdmin role
+    role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "SuperAdmin", "SuperAdmin role", RoleType.System, null);
+    pair.setRoles(ImmutableList.of(role.getRoleUUID()));
+    bodyJson = Json.newObject();
+    pairList = mapper.createArrayNode().add(mapper.convertValue(pair, JsonNode.class));
+    bodyJson.put("oidcGroupToYbaRolesPairs", pairList);
+    final ObjectNode requestBody = bodyJson;
+
+    r = assertPlatformException(() -> updateOidcGroupToYbaRoles(requestBody));
+    assertBadRequest(r, "Cannot assign SuperAdmin role to groups!");
+  }
+
+  @Test
+  public void testListOidcMapping() throws IOException {
+    com.yugabyte.yw.models.rbac.Role role1 =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "Admin", "Admin role", RoleType.System, null);
+    com.yugabyte.yw.models.rbac.Role role2 =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "BackupAdmin", "BackupAdmin role", RoleType.System, null);
+    com.yugabyte.yw.models.rbac.Role role3 =
+        com.yugabyte.yw.models.rbac.Role.create(
+            defaultCustomer.getUuid(), "ReadOnly", "ReadOnly role", RoleType.System, null);
+    OidcGroupToYbaRoles r1 =
+        OidcGroupToYbaRoles.create(
+            defaultCustomer.getUuid(), "Group-1", ImmutableList.of(role1.getRoleUUID()));
+    OidcGroupToYbaRoles r2 =
+        OidcGroupToYbaRoles.create(
+            defaultCustomer.getUuid(), "Group-2", ImmutableList.of(role2.getRoleUUID()));
+    OidcGroupToYbaRoles r3 =
+        OidcGroupToYbaRoles.create(
+            defaultCustomer.getUuid(), "Group-3", ImmutableList.of(role3.getRoleUUID()));
+
+    OidcGroupToYbaRolesPair rp1 = new OidcGroupToYbaRolesPair();
+    OidcGroupToYbaRolesPair rp2 = new OidcGroupToYbaRolesPair();
+    OidcGroupToYbaRolesPair rp3 = new OidcGroupToYbaRolesPair();
+
+    rp1.setGroupName(r1.getGroupName());
+    rp1.setRoles(r1.getYbaRoles());
+
+    rp2.setGroupName(r2.getGroupName());
+    rp2.setRoles(r2.getYbaRoles());
+
+    rp3.setGroupName(r3.getGroupName());
+    rp3.setRoles(r3.getYbaRoles());
+
+    ObjectReader reader = mapper.readerFor(new TypeReference<List<OidcGroupToYbaRolesPair>>() {});
+    List<OidcGroupToYbaRolesPair> OidcGroupToYbaRolePairs =
+        reader.readValue(fetchOidcGroupToYbaRoles().get("oidcGroupToYbaRolesPairs"));
+    assertEquals(OidcGroupToYbaRolePairs.size(), 3);
+    assertTrue(OidcGroupToYbaRolePairs.containsAll(ImmutableList.of(rp1, rp2, rp3)));
+  }
+
   private JsonNode fetchLdapDnToYbaRoles() {
     String authToken = defaultUser.createAuthToken();
     String method = "GET";
@@ -171,5 +274,31 @@ public class LdapDnToYbaRoleControllerTest extends FakeDBApplication {
     String method = "PUT";
     String url = "/api/customers/" + defaultCustomer.getUuid() + "/ldap_mappings";
     return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result updateOidcGroupToYbaRoles(ObjectNode bodyJson) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "PUT";
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/oidc_mappings";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private JsonNode fetchOidcGroupToYbaRoles() {
+    String authToken = defaultUser.createAuthToken();
+    String method = "GET";
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/oidc_mappings";
+
+    Result r = doRequestWithAuthToken(method, url, authToken);
+    assertOk(r);
+    return Json.parse(contentAsString(r));
+  }
+
+  private void deleteOidcGroupMapping(String groupName) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "DELETE";
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/oidc_mappings/" + groupName;
+
+    Result r = doRequestWithAuthToken(method, url, authToken);
+    assertOk(r);
   }
 }

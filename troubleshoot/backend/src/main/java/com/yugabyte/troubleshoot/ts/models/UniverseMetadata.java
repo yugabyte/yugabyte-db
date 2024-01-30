@@ -27,4 +27,6 @@ public class UniverseMetadata extends Model implements ModelWithId<UUID> {
   @NotNull @URL private String platformUrl;
 
   @NotNull @URL private String metricsUrl;
+
+  @NotNull private long metricsScrapePeriodSec;
 }

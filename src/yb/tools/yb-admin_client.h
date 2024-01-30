@@ -331,7 +331,7 @@ class ClusterAdminClient {
   Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
   Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
 
-  Status ListAllNamespaces();
+  Status ListAllNamespaces(bool include_nonrunning = false);
 
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
@@ -359,13 +359,11 @@ class ClusterAdminClient {
 
   Status DeleteSnapshot(const std::string& snapshot_id);
   Status AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id);
+  Status CreateSnapshotMetaFile(const std::string& snapshot_id, const std::string& file_name);
 
-  Status CreateSnapshotMetaFile(const std::string& snapshot_id,
-                                const std::string& file_name);
-  Status ImportSnapshotMetaFile(const std::string& file_name,
-                                const TypedNamespaceName& keyspace,
-                                const std::vector<client::YBTableName>& tables,
-                                bool selective_import);
+  Status ImportSnapshotMetaFile(
+      const std::string& file_name, const TypedNamespaceName& keyspace,
+      const std::vector<client::YBTableName>& tables, bool selective_import);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
   Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
@@ -590,7 +588,7 @@ class ClusterAdminClient {
       const MonoDelta timeout = MonoDelta());
 
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
-  Result<const NamespaceMap&> GetNamespaceMap();
+  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

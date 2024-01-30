@@ -23,6 +23,9 @@
 extern "C" {
 #endif
 
+typedef void (*YBCAshAcquireBufferLock)(bool);
+typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
@@ -774,6 +777,11 @@ YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
+
+// Active Session History
+void YBCStoreTServerAshSamples(
+    YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
+    uint64_t sample_time);
 
 #ifdef __cplusplus
 }  // extern "C"

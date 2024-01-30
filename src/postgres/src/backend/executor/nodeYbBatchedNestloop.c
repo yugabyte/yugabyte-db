@@ -483,7 +483,8 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	}
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
-						  &bnlstate->hashFunctions);
+						  &bnlstate->innerHashFunctions,
+						  &bnlstate->outerHashFunctions);
 
 	ExprState *tab_eq_fn =
 		ybPrepareOuterExprsEqualFn(outerParamExprs,
@@ -502,7 +503,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->hashtable =
 		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
 								 num_hashClauseInfos, keyexprs, tab_eq_fn,
-								 eqFuncOids, bnlstate->hashFunctions,
+								 eqFuncOids, bnlstate->outerHashFunctions,
 								 GetMaxBatchSize(plan), 0,
 								 econtext->ecxt_per_query_memory, tablecxt,
 								 econtext->ecxt_per_tuple_memory, econtext,
@@ -566,7 +567,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	data = FindTupleHashEntry(ht,
 							  inner,
 							  eq,
-							  bnlstate->hashFunctions,
+							  bnlstate->innerHashFunctions,
 							  bnlstate->innerAttrs);
 	if(data == NULL)
 	{

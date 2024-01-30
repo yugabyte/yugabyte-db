@@ -175,7 +175,10 @@ public class Audit extends Model {
     Role,
 
     @EnumValue("RoleBinding")
-    RoleBinding
+    RoleBinding,
+
+    @EnumValue("OIDC Group Mapping")
+    OIDCGroupMapping
   }
 
   public enum ActionType {

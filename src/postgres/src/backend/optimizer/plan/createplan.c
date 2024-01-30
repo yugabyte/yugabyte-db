@@ -4948,8 +4948,9 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
 											 	inner_relids);
-
-				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				hashOpno = ((OpExpr *) rinfo->clause)->opno;
+				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
+					hashOpno = get_commutator(hashOpno);
 			}
 
 			current_hinfo->hashOp = hashOpno;
