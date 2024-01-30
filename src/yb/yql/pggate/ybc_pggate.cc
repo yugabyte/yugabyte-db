@@ -69,10 +69,6 @@ DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
-DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
-                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
-                 "production environment. In unit test we use this flag to force allocation of "
-                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -549,10 +545,13 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid,
-                                        next_oid + static_cast<YBCPgOid>(
-                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid,
                                         count, begin_oid, end_oid));
+}
+
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid) {
+  DCHECK_NE(db_oid, kInvalidOid);
+  return ToYBCStatus(pgapi->GetNewObjectId(db_oid, new_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
@@ -1558,7 +1557,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file
+      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
+      .ysql_enable_pg_per_database_oid_allocator =
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator
   };
   // clang-format on
   return &accessor;
@@ -1770,6 +1771,70 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   return YBCStatusOK();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Replication Slots.
+
+YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        YBCPgOid database_oid,
+                                        YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
+                                                     database_oid,
+                                                     handle));
+}
+
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateReplicationSlot(handle));
+}
+
+YBCStatus YBCPgListReplicationSlots(
+    YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
+  const auto result = pgapi->ListReplicationSlots();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto &replication_slots_info = result.get().replication_slots();
+  *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
+  *DCHECK_NOTNULL(replication_slots) = NULL;
+  if (!replication_slots_info.empty()) {
+    *replication_slots = static_cast<YBCReplicationSlotDescriptor *>(
+        YBCPAlloc(sizeof(YBCReplicationSlotDescriptor) * replication_slots_info.size()));
+    YBCReplicationSlotDescriptor *dest = *replication_slots;
+    for (const auto &info : replication_slots_info) {
+      new (dest) YBCReplicationSlotDescriptor{
+          .slot_name = YBCPAllocStdString(info.slot_name()),
+          .stream_id = YBCPAllocStdString(info.stream_id()),
+          .database_oid = info.database_oid(),
+          .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active) {
+  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
+  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
+                                      YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropReplicationSlot(slot_name,
+                                                   handle));
+}
+
+YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
 }
 
 } // extern "C"

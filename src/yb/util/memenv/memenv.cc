@@ -70,7 +70,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
     return 0;
   }
 
-  const string& filename() const override {
+  const std::string& filename() const override {
     return file_->filename();
   }
 

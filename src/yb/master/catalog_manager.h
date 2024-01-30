@@ -57,10 +57,10 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -143,7 +143,6 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
-class XClusterManager;
 
 using PlacementId = std::string;
 
@@ -157,9 +156,6 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
 typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
-
-// Map[NamespaceId]:xClusterSafeTime
-typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
 
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 
@@ -667,7 +663,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   uint64_t GetTransactionTablesVersion() override;
 
-  Status WaitForTransactionTableVersionUpdateToPropagate(const LeaderEpoch& epoch);
+  Status WaitForTransactionTableVersionUpdateToPropagate();
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req, TSHeartbeatResponsePB* resp);
 
@@ -680,7 +676,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
 
-  XClusterManager* GetXClusterManager() override { return xcluster_manager_.get(); }
+  XClusterManagerIf* GetXClusterManager() override;
+  XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -1038,9 +1035,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
-  Status TEST_SendTestRetryRequest(
-      const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
-
   PitrCount pitr_count() const override {
     return sys_catalog_->pitr_count();
   }
@@ -1120,10 +1114,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
-  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
-  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const;
-  Status SetXClusterNamespaceToSafeTimeMap(
-      const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
 
   Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
@@ -1479,13 +1469,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class RoleLoader;
   friend class RedisConfigLoader;
   friend class SysConfigLoader;
-  friend class XClusterSafeTimeLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
   friend class MultiStageAlterTable;
   friend class BackfillTable;
   friend class BackfillTablet;
-  friend class XClusterConfigLoader;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTask;
@@ -2118,6 +2106,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
+  // The set of tablets that have ever been deleted from the cluster. This set is populated on the
+  // TabletLoader path in VisitSysCatalog when the loader sees a tablet with DELETED state.
+  // This set is used when processing a tablet report. If a reported tablet is not present in
+  // tablet_map_, then make sure it is present in deleted_tablets_loaded_from_sys_catalog_ before
+  // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
+  // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
+  // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
+  std::unordered_set<TabletId> deleted_tablets_loaded_from_sys_catalog_ GUARDED_BY(mutex_);
+
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
   // can be deleted and cdc_state metadata can also be cleaned up. retained_by_xcluster_ is a
@@ -2316,9 +2313,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
-  // XCluster Safe Time information.
-  XClusterSafeTimeInfo xcluster_safe_time_info_;
-
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch, TabletInfo* tablet);
 
@@ -2430,7 +2424,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::map<TableId, scoped_refptr<TableInfo>>* tables,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   struct ReportedTablet {
     TabletId tablet_id;
@@ -2448,7 +2442,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 

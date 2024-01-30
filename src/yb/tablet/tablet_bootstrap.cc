@@ -97,9 +97,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/to_stream.h"
 
 DEFINE_UNKNOWN_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
@@ -1330,13 +1331,14 @@ class TabletBootstrap {
 
       const auto common_details_str = [&]() {
         std::ostringstream ss;
-        ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
-           << EXPR_VALUE_FOR_LOG(last_op_id_in_retryable_requests) << ", "
-           << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
-           << EXPR_VALUE_FOR_LOG(const_min_duration_to_retain_logs) << ", "
-           << EXPR_VALUE_FOR_LOG(retryable_requests_retain_interval) << ", "
-           << EXPR_VALUE_FOR_LOG(*retryable_requests_replay_from_this_or_earlier_time) << ", "
-           << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
+        ss << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+            op_id_replay_lowest,
+            last_op_id_in_retryable_requests,
+            first_op_time,
+            const_min_duration_to_retain_logs,
+            retryable_requests_retain_interval,
+            *retryable_requests_replay_from_this_or_earlier_time,
+            *replay_from_this_or_earlier_time);
         return ss.str();
       };
 
@@ -1347,8 +1349,9 @@ class TabletBootstrap {
             !is_first_op_id_low_enough_for_retryable_requests &&
                 is_first_op_time_early_enough_for_retryable_requests)
             << "Retryable requests file is too old, ignore the expired retryable requests. "
-            << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
-            << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests);
+            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                is_first_op_id_low_enough_for_retryable_requests,
+                is_first_op_time_early_enough_for_retryable_requests);
         LOG_WITH_PREFIX(INFO)
             << kBootstrapOptimizerLogPrefix
             << "found first mandatory segment op id: " << op_id << ", "
@@ -1364,12 +1367,13 @@ class TabletBootstrap {
                   ? "However, this is already the earliest segment so we have to start replay "
                     "here. We should probably investigate how we got into this situation. "
                   : "Continuing to earlier segments.")
-          << EXPR_VALUE_FOR_LOG(op_id) << ", "
+          << YB_EXPR_TO_STREAM(op_id) << ", "
           << common_details_str() << ", "
-          << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
-          << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests) << ","
-          << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough) << ", "
-          << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough);
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              is_first_op_id_low_enough_for_retryable_requests,
+              is_first_op_time_early_enough_for_retryable_requests,
+              is_first_op_id_low_enough,
+              is_first_op_time_early_enough);
     }
 
     LOG_WITH_PREFIX(INFO)

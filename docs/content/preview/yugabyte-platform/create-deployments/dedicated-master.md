@@ -74,7 +74,7 @@ To create a universe with dedicated YB-Master nodes, do the following:
 
     - In the **Regions** field, select the regions where you want to deploy YB-TServer nodes.
 
-    - In the **Master Placement** field, select the **Place Masters on dedicated nodes** checkbox.
+    - In the **Master Placement** field, select the **Place Masters on dedicated nodes** option.
 
     - In the **Total Nodes** field, enter **3** for **TServer**. The **Master** field is always disabled because the number of master nodes is always equal to the **Replication Factor**.
 
@@ -108,6 +108,6 @@ To see a list of nodes that belong to this universe, select **Nodes**. You can a
 
 ![Dedicated universe nodes](/images/yp/create-deployments/dedicated-universe-nodes.png)
 
-You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics).
+You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../alerts-monitoring/anywhere-metrics/).
 
 ![Dedicated universe metrics](/images/yp/create-deployments/dedicated-universe-metrics.png)

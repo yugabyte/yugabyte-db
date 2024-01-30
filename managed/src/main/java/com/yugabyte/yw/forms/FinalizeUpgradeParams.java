@@ -16,14 +16,12 @@ public class FinalizeUpgradeParams extends UpgradeTaskParams {
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
-    // We will support it for k8s just after we are done with VM based
-    // universe upgrade.
-    return false;
+    return true;
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
   }
 
   public static class Converter extends BaseConverter<FinalizeUpgradeParams> {}

@@ -3634,7 +3634,7 @@ TEST_F(RaftConsensusITest, CatchupAfterLeaderRestarted) {
   for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
     if (ts_idx != paused_ts_idx) {
       ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-          cluster_->tablet_server(ts_idx), {tablet_id_}, /* is_compaction = */ false));
+          cluster_->tablet_server(ts_idx), {tablet_id_}, FlushTabletsRequestPB::FLUSH));
       cluster_->tablet_server(ts_idx)->Shutdown();
       ASSERT_OK(cluster_->tablet_server(ts_idx)->Restart());
     }

@@ -111,6 +111,41 @@ struct NamespaceInfo {
     bool colocated;
 };
 
+struct CDCSDKStreamInfo {
+    std::string stream_id;
+    uint32_t database_oid;
+    ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::unordered_map<std::string, std::string> options;
+
+    template <class PB>
+    void ToPB(PB* pb) const {
+      pb->set_stream_id(stream_id);
+      pb->set_database_oid(database_oid);
+      if (!cdcsdk_ysql_replication_slot_name.empty()) {
+        pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+    }
+
+    template <class PB>
+    static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
+      std::unordered_map<std::string, std::string> options;
+      options.reserve(pb.options_size());
+      for (const auto& option : pb.options()) {
+        options.emplace(option.key(), option.value());
+      }
+
+      auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+      auto stream_info = CDCSDKStreamInfo{
+          .stream_id = pb.stream_id(),
+          .database_oid = database_oid,
+          .cdcsdk_ysql_replication_slot_name =
+              ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .options = std::move(options)};
+
+      return stream_info;
+    }
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
@@ -571,6 +606,10 @@ class YBClient {
   Status DeleteCDCStream(
       const xrepl::StreamId& stream_id, bool force_delete = false, bool ignore_errors = false);
 
+  Status DeleteCDCStream(
+      const ReplicationSlotName& replication_slot_name, bool force_delete = false,
+      bool ignore_errors = false);
+
   void DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback);
 
   // Create a new CDC stream.
@@ -591,11 +630,18 @@ class YBClient {
       std::unordered_map<std::string, std::string>* options,
       cdc::StreamModeTransactional* transactional);
 
+  Status GetCDCStream(
+      const ReplicationSlotName& replication_slot_name,
+      xrepl::StreamId* stream_id);
+
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       StdStatusCallback callback);
+
+  // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
+  Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 

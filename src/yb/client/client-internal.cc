@@ -73,6 +73,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_encryption.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_rpc.h"
@@ -2383,7 +2384,9 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
           proxy_cache_.get(), host_port);
       master_replication_proxy_ = std::make_shared<master::MasterReplicationProxy>(
           proxy_cache_.get(), host_port);
-       master_encryption_proxy_ = std::make_shared<master::MasterEncryptionProxy>(
+      master_encryption_proxy_ = std::make_shared<master::MasterEncryptionProxy>(
+          proxy_cache_.get(), host_port);
+      master_test_proxy_ = std::make_shared<master::MasterTestProxy>(
           proxy_cache_.get(), host_port);
     }
 
@@ -2761,6 +2764,11 @@ shared_ptr<master::MasterReplicationProxy> YBClient::Data::master_replication_pr
 shared_ptr<master::MasterEncryptionProxy> YBClient::Data::master_encryption_proxy() const {
   std::lock_guard l(leader_master_lock_);
   return master_encryption_proxy_;
+}
+
+shared_ptr<master::MasterTestProxy> YBClient::Data::master_test_proxy() const {
+  std::lock_guard l(leader_master_lock_);
+  return master_test_proxy_;
 }
 
 

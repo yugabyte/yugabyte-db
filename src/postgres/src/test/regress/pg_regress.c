@@ -125,6 +125,7 @@ static void status(const char *fmt,...) pg_attribute_printf(1, 2);
 static StringInfo psql_start_command(void);
 static void psql_add_command(StringInfo buf, const char *query,...) pg_attribute_printf(2, 3);
 static void psql_end_command(StringInfo buf, const char *database);
+static void yb_postprocess_output(const char *filename);
 
 /*
  * allow core files if possible.
@@ -1323,31 +1324,13 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s.diff", resultsfile);
 
-	/*
-	 * A YugaByte-specific way to post-process the results file and also the
-	 * expected output file  before running diff. As part of this we can remove
-	 * trailing whitespace and LLVM sanitizer suppression warnings.
-	 */
-	char extra_cmd_and_semicolon[4096];
-	{
-		const char* resultsfile_postprocess_cmd =
-			getenv("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD");
-		extra_cmd_and_semicolon[0] = 0;
-		if (resultsfile_postprocess_cmd != NULL)
-		{
-			snprintf(extra_cmd_and_semicolon, sizeof(extra_cmd_and_semicolon),
-				"%s \"%s\"; %s \"%s\";",
-				resultsfile_postprocess_cmd,
-				resultsfile,
-				resultsfile_postprocess_cmd,
-				expectfile);
-		}
-	}
+	yb_postprocess_output(resultsfile);
+	yb_postprocess_output(expectfile);
 
 	/* OK, run the diff */
 	snprintf(cmd, sizeof(cmd),
-			 "%sdiff %s \"%s\" \"%s\" > \"%s\"",
-			 extra_cmd_and_semicolon, basic_diff_opts, expectfile, resultsfile, diff);
+			 "diff %s \"%s\" \"%s\" > \"%s\"",
+			 basic_diff_opts, expectfile, resultsfile, diff);
 
 	/* Is the diff file empty? */
 	if (run_diff(cmd, diff) == 0)
@@ -1378,6 +1361,8 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 			continue;
 		}
 
+		yb_postprocess_output(alt_expectfile);
+
 		snprintf(cmd, sizeof(cmd),
 				 "diff %s \"%s\" \"%s\" > \"%s\"",
 				 basic_diff_opts, alt_expectfile, resultsfile, diff);
@@ -1406,6 +1391,8 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 	if (platform_expectfile)
 	{
+		yb_postprocess_output(default_expectfile);
+
 		snprintf(cmd, sizeof(cmd),
 				 "diff %s \"%s\" \"%s\" > \"%s\"",
 				 basic_diff_opts, default_expectfile, resultsfile, diff);
@@ -2613,4 +2600,32 @@ regression_main(int argc, char *argv[],
 		exit(1);
 
 	return 0;
+}
+
+/*
+ * A Yugabyte-specific way to post-process the results file and
+ * expected output files before running diff. As part of this we can remove
+ * trailing whitespace and LLVM sanitizer suppression warnings.
+ */
+static void
+yb_postprocess_output(const char *filename)
+{
+	char		cmd[4096];
+	int			r;
+
+	Assert(filename);
+	const char *postprocess_cmd =
+			getenv("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD");
+	if (postprocess_cmd == NULL)
+		return;
+
+	snprintf(cmd, sizeof(cmd), "%s \"%s\"", postprocess_cmd, filename);
+	r = system(cmd);
+
+	if (!WIFEXITED(r) || WEXITSTATUS(r) > 1)
+	{
+		fprintf(stderr, "postprocess command failed with status %d: %s\n",
+				r, cmd);
+		exit(2);
+	}
 }

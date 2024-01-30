@@ -15,6 +15,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/to_stream.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -194,6 +195,19 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
+  const auto table = "foo";
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto value = conn.FetchFormat("SELECT pg_advisory_lock(k) FROM $0 WHERE k = 1", table);
+  ASSERT_NOK(value);
+  ASSERT_TRUE(value.status().message().Contains(
+      "ERROR:  advisory locks are not yet implemented"));
+}
+
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
  protected:
   void BeforePgProcessStart() override {
@@ -289,9 +303,10 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
     }
   }
   LOG(INFO) << "Test stats: "
-            << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(commit2_fail_count);
+            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                commit1_fail_count,
+                insert2_fail_count,
+                commit2_fail_count);
   ASSERT_GE(commit1_fail_count, iterations / 4);
   ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);

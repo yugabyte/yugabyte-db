@@ -40,9 +40,8 @@ import org.apache.commons.lang3.StringUtils;
 public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Inject
-  protected AnsibleConfigureServers(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleConfigureServers(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

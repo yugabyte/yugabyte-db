@@ -45,17 +45,17 @@ public class CertsRotateParams extends UpgradeTaskParams {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (!userIntent.providerType.equals(CloudType.kubernetes)) {
-      verifyParamsForNormalUpgrade(universe);
+      verifyParamsForNormalUpgrade(universe, isFirstTry);
     } else {
       verifyParamsForKubernetesUpgrade(universe);
     }
   }
 
-  private void verifyParamsForNormalUpgrade(Universe universe) {
+  private void verifyParamsForNormalUpgrade(Universe universe, boolean isFirstTry) {
     // Validate request params on different constraints based on current universe state.
     // Update rootCA, clientRootCA and rootAndClientRootCASame to their desired final state.
     // Decide what kind of upgrade needs to be done on rootCA and clientRootCA.
@@ -257,7 +257,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
 
     // When there is no upgrade needs to be done, fail the request
-    if (rootCARotationType == CertRotationType.None
+    if (isFirstTry
+        && rootCARotationType == CertRotationType.None
         && clientRootCARotationType == CertRotationType.None) {
       if (!(userIntent.enableNodeToNodeEncrypt
           && userIntent.enableClientToNodeEncrypt

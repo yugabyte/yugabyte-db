@@ -1,0 +1,4 @@
+# yb_auh extension
+comment = 'track active universe history'
+default_version = '1.0'
+module_pathname = '$libdir/yb_auh'

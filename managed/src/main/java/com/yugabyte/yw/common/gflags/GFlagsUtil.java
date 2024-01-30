@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.gflags;
 
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
+import static com.yugabyte.yw.common.Util.isIpAddress;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -1266,7 +1267,7 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
-            || !NodeManager.isIpAddress(node.cloudInfo.private_ip);
+            || !isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
         getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);

@@ -51,8 +51,8 @@ static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
 static const char* const kXClusterSafeTimeTableName = "xcluster_safe_time";
-static const char* const kXCUniverseId = "universe_id";
-constexpr size_t kXCUniverseIdIdx = 0;
+static const char* const kXCReplicationGroupId = "replication_group_id";
+constexpr size_t kXCReplicationGroupIdIdx = 0;
 static const char* const kXCProducerTabletId = "tablet_id";
 constexpr size_t kXCProducerTabletIdIdx = 1;
 static const char* const kXCSafeTime = "safe_time";

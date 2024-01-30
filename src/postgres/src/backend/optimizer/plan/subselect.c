@@ -2310,7 +2310,12 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_SeqScan:
+			context.paramids = bms_add_members(context.paramids, scan_params);
+			break;
+
 		case T_YbSeqScan:
+			finalize_primnode((Node *) ((YbSeqScan *) plan)->yb_pushdown.quals,
+							  &context);
 			context.paramids = bms_add_members(context.paramids, scan_params);
 			break;
 
@@ -2324,6 +2329,10 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			finalize_primnode((Node *) ((IndexScan *) plan)->indexqual,
 							  &context);
 			finalize_primnode((Node *) ((IndexScan *) plan)->indexorderby,
+							  &context);
+			finalize_primnode((Node *) ((IndexScan *) plan)->yb_rel_pushdown.quals,
+							  &context);
+			finalize_primnode((Node *) ((IndexScan *) plan)->yb_idx_pushdown.quals,
 							  &context);
 
 			/*
@@ -2340,6 +2349,8 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->recheckqual,
 							  &context);
 			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->indexorderby,
+							  &context);
+			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->yb_pushdown.quals,
 							  &context);
 
 			/*

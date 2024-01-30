@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -20,6 +22,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.YBClient;
 
 @Slf4j
+@Abortable
+@Retryable
 public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
 
   @Inject

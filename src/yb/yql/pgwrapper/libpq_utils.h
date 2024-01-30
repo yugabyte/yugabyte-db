@@ -195,6 +195,7 @@ class PGConn {
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
+  requires(sizeof...(Args) > 0)
   Result<PGResultPtr> FetchFormat(const std::string& format, Args&&... args) {
     return Fetch(Format(format, std::forward<Args>(args)...));
   }
@@ -268,6 +269,7 @@ struct PGConnSettings {
   const std::string& dbname = std::string();
   const std::string& user = kDefaultUser;
   const std::string& password = std::string();
+  const std::string& replication = std::string();
   size_t connect_timeout = 0;
 };
 

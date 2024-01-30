@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { useState } from 'react';
+import { find } from 'lodash';
 import Cookies from 'js-cookie';
 import { mouseTrap } from 'react-mousetrap';
 import { useQuery } from 'react-query';
@@ -16,9 +17,7 @@ import { YBIntroDialog } from './YBIntroDialog';
 
 
 import { RBAC_RUNTIME_FLAG, isRbacEnabled, setIsRbacEnabled } from '../redesign/features/rbac/common/RbacUtils';
-import { api } from '../redesign/features/universe/universe-form/utils/api';
-import { fetchUserPermissions, getAllAvailablePermissions } from '../redesign/features/rbac/api';
-import { hasNecessaryPerm } from '../redesign/features/rbac/common/RbacValidator';
+import { fetchUserPermissions, getAllAvailablePermissions, getApiRoutePermMapList, getRBACEnabledStatus } from '../redesign/features/rbac/api';
 import { Action, Resource } from '../redesign/features/rbac';
 
 
@@ -26,24 +25,40 @@ const RBACAuthenticatedArea = (props) => {
 
   const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
 
-
-  const [runtimeConfigLoaded, setRuntimeConfigLoaded] = useState(false);
-
   const rbacEnabled = isRbacEnabled();
 
-  const { isLoading: isRuntimConfigLoading } = useQuery(['runtime_configs'], () => api.fetchRunTimeConfigs(), {
-    onSuccess: (res) => {
-      const rbacKey = res.configEntries?.find(
-        (c) => c.key === RBAC_RUNTIME_FLAG
-      );
-      setIsRbacEnabled(rbacKey?.value === 'true');
-      setRuntimeConfigLoaded(true);
-    },
-    onError: (resp) => {
-      setIsRbacEnabled(resp?.response?.status === 401);
-      setRuntimeConfigLoaded(true);
+  const [isFeatureFlagLoaded, setIsFeatureFlagLoaded] = useState(false);
+
+  const { isLoading: isRbacStatusLoading } = useQuery(['rbac_status'], () => getRBACEnabledStatus(),
+    {
+      onSuccess: (resp) => {
+
+        const rbac_flag = resp.data.find(flag => flag.key === RBAC_RUNTIME_FLAG);
+
+        if (rbac_flag) {
+          setIsRbacEnabled(rbac_flag.value === 'true');
+        }
+        else {
+          setIsRbacEnabled(false);
+        }
+      },
+      onError: () => {
+        setIsRbacEnabled(false);
+      },
+      onSettled: () => {
+        setIsFeatureFlagLoaded(true);
+      }
     }
+  );
+
+  const { isLoading: apiPermMapLoading } = useQuery('apiRoutePermMap', () => getApiRoutePermMapList(), {
+    select: data => data.data,
+    onSuccess: (data) => {
+      window.api_perm_map = data;
+    },
+    enabled: rbacEnabled
   });
+
 
   const { isLoading: isPermissionsListLoading } = useQuery('permissions', () => getAllAvailablePermissions(), {
     select: data => data.data,
@@ -59,10 +74,7 @@ const RBACAuthenticatedArea = (props) => {
     onSuccess: (data) => {
       window.rbac_permissions = data;
 
-      if (!hasNecessaryPerm({ //if the user is connect only user, then redirect him to profile page
-        permissionRequired: [Action.READ],
-        resourceType: Resource.DEFAULT
-      })) {
+      if (find(data, { actions: [Action.READ], resourceType: Resource.UNIVERSE }) === undefined) {
         browserHistory.push('/profile');
       };
     },
@@ -72,7 +84,7 @@ const RBACAuthenticatedArea = (props) => {
     enabled: rbacEnabled
   });
 
-  if (isLoading || isPermissionsListLoading || isRuntimConfigLoading || !runtimeConfigLoaded) return <YBLoading />;
+  if (isLoading || isPermissionsListLoading || isRbacStatusLoading || apiPermMapLoading || !isFeatureFlagLoaded) return <YBLoading />;
 
   return (
     <AuthenticatedComponentContainer>

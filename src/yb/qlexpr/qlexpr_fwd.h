@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "yb/common/value.fwd.h"
+
 namespace yb::qlexpr {
 
 class IndexInfo;

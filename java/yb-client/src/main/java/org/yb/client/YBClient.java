@@ -386,6 +386,11 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public ListLiveTabletServersResponse listLiveTabletServers() throws Exception {
+    Deferred<ListLiveTabletServersResponse> d = asyncClient.listLiveTabletServers();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * Get the list of all the masters.
    * @return a list of masters

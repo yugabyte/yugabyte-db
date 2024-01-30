@@ -189,6 +189,8 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
 
+extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
+
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
 extern void ReplicationSlotsShmemInit(void);

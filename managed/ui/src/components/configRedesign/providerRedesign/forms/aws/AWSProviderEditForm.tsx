@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
@@ -86,6 +86,8 @@ import {
   YBProviderMutation
 } from '../../types';
 import { toast } from 'react-toastify';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface AWSProviderEditFormProps {
   editProvider: EditProvider;
@@ -445,15 +447,20 @@ export const AWSProviderEditForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <YBButton
-                    btnIcon="fa fa-plus"
-                    btnText="Add Region"
-                    btnClass="btn btn-default"
-                    btnType="button"
-                    onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
-                    data-testid={`${FORM_NAME}-AddRegionButton`}
-                  />
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
+                    isControl
+                  >
+                    <YBButton
+                      btnIcon="fa fa-plus"
+                      btnText="Add Region"
+                      btnClass="btn btn-default"
+                      btnType="button"
+                      onClick={showAddRegionFormModal}
+                      disabled={isFormDisabled}
+                      data-testid={`${FORM_NAME}-AddRegionButton`}
+                    />
+                  </RbacValidator>
                 ) : null
               }
             >
@@ -718,7 +725,7 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -778,18 +785,18 @@ const constructProviderPayload = async (
               [ProviderCode.AWS]: {
                 ...(existingRegion
                   ? {
-                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
-                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
-                      }),
-                      ...(existingRegion.details.cloudInfo.aws.arch && {
-                        arch: existingRegion.details.cloudInfo.aws.arch
-                      })
-                    }
+                    ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                      ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                    }),
+                    ...(existingRegion.details.cloudInfo.aws.arch && {
+                      arch: existingRegion.details.cloudInfo.aws.arch
+                    })
+                  }
                   : regionFormValues.ybImage
-                  ? {
+                    ? {
                       ybImage: regionFormValues.ybImage
                     }
-                  : {
+                    : {
                       arch:
                         providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
                     }),

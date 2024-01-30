@@ -1641,15 +1641,14 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 
 Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
     ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-    bool is_compaction) {
+    tserver::FlushTabletsRequestPB_Operation operation) {
   tserver::FlushTabletsRequestPB req;
   tserver::FlushTabletsResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(10s * kTimeMultiplier);
 
   req.set_dest_uuid(ts->uuid());
-  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
-                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  req.set_operation(operation);
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }

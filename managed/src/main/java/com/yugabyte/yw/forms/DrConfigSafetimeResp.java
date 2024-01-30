@@ -21,15 +21,20 @@ public class DrConfigSafetimeResp {
     private final long safetimeEpochUs;
     private final long safetimeLagUs;
     private final long safetimeSkewUs;
+    private final long estimatedDataLossMs;
 
-    public NamespaceSafetime(NamespaceSafeTimePB namespaceSafeTimePB) {
+    public NamespaceSafetime(NamespaceSafeTimePB namespaceSafeTimePB, long estimatedDataLossMs) {
       this.namespaceId = namespaceSafeTimePB.getNamespaceId();
       this.namespaceName = namespaceSafeTimePB.getNamespaceName();
       this.safetimeEpochUs =
-          namespaceSafeTimePB.getSafeTimeHt()
-              >> XClusterConfigTaskBase.LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK;
+          computeSafetimeEpochUsFromSafeTimeHt(namespaceSafeTimePB.getSafeTimeHt());
       this.safetimeLagUs = namespaceSafeTimePB.getSafeTimeLag();
       this.safetimeSkewUs = namespaceSafeTimePB.getSafeTimeSkew();
+      this.estimatedDataLossMs = estimatedDataLossMs;
+    }
+
+    public static long computeSafetimeEpochUsFromSafeTimeHt(long safeTimeHt) {
+      return safeTimeHt >> XClusterConfigTaskBase.LOGICAL_CLOCK_NUM_BITS_IN_HYBRID_CLOCK;
     }
   }
 }

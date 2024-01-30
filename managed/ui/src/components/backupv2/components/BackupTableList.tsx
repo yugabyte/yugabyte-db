@@ -24,9 +24,10 @@ import Timer from '../../universes/images/timer.svg';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { IncrementalBackupProps } from './BackupDetails';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import './BackupTableList.scss';
+import { find } from 'lodash';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export enum BackupTypes {
   FULL_BACKUP = 'FULL BACKUP',
@@ -81,10 +82,7 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
             <>
               {!hideRestore && (
                 <RbacValidator
-                  accessRequiredOn={{
-                    onResource: 'CUSTOMER_ID',
-                    ...UserPermissionMap.restoreBackup
-                  }}
+                  customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
                   isControl
                   overrideStyle={{ display: 'inline-flex' }}
                   popOverOverrides={{ zIndex: 10000 }}
@@ -393,10 +391,7 @@ const IncrementalBackupCard = ({
           )}
         {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
           <RbacValidator
-            accessRequiredOn={{
-              onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.restoreBackup
-            }}
+            customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
             isControl
             popOverOverrides={{ zIndex: 10000 }}
             overrideStyle={{ display: 'inline-flex' }}

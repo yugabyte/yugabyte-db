@@ -336,7 +336,7 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
   })
   public Result retrieveOidcAuthToken(UUID customerUUID, UUID userUuid, Http.Request request) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
@@ -434,12 +434,24 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
   })
-  @AuthzPath
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
   public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
     if (UserType.ldap == user.getUserType()) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
     }
+
+    if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only the User can change his/her own password.");
+    }
+
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(request, UserRegisterFormData.class);
 
@@ -492,7 +504,13 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserProfileFormData",
         paramType = "body")
   })
-  @AuthzPath
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
   public Result updateProfile(UUID customerUUID, UUID userUUID, Http.Request request) {
 
     Users user = Users.getOrBadRequest(customerUUID, userUUID);

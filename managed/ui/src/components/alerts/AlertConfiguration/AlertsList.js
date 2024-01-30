@@ -5,10 +5,10 @@
 // This file will hold all the configuration list of alerts.
 
 import { useEffect, useRef, useState } from 'react';
+import { find } from 'lodash';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -29,8 +29,14 @@ import {
   NO_DESTINATION
 } from './AlertsFilter';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import {
+  RbacValidator,
+  customPermValidateFunction,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { ControlComp } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 
 /**
  * This is the header for YB Panel Item.
@@ -47,9 +53,7 @@ const header = (
   updateFilters,
   clearAllFilters
 ) => {
-  const canCreatePolicy = hasNecessaryPerm({
-    ...UserPermissionMap.createAlertsConfig
-  });
+  const canCreatePolicy = hasNecessaryPerm(ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS);
   return (
     <>
       <Row className="pills-container">
@@ -76,31 +80,42 @@ const header = (
                   id="bg-nested-dropdown"
                   bsStyle="danger"
                   pullRight
-                  disabled={!canCreatePolicy}
                 >
-                  <MenuItem
-                    className="alert-config-list"
-                    onClick={() => {
-                      handleMetricsCall('UNIVERSE');
-                      onCreateAlert(true);
-                      enablePlatformAlert(false);
-                      setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
-                    }}
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
+                    isControl
                   >
-                    <i className="fa fa-globe"></i> Universe Alert
-                  </MenuItem>
+                    <MenuItem
+                      className="alert-config-list"
+                      onClick={() => {
+                        handleMetricsCall('UNIVERSE');
+                        onCreateAlert(true);
+                        enablePlatformAlert(false);
+                        setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
+                      }}
+                      data-testid="Create-Universe-Alert"
+                    >
+                      <i className="fa fa-globe"></i> Universe Alert
+                    </MenuItem>
+                  </RbacValidator>
 
-                  <MenuItem
-                    className="alert-config-list"
-                    onClick={() => {
-                      handleMetricsCall('PLATFORM');
-                      onCreateAlert(true);
-                      enablePlatformAlert(true);
-                      setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
-                    }}
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
+                    isControl
                   >
-                    <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
-                  </MenuItem>
+                    <MenuItem
+                      className="alert-config-list"
+                      onClick={() => {
+                        handleMetricsCall('PLATFORM');
+                        onCreateAlert(true);
+                        enablePlatformAlert(true);
+                        setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
+                      }}
+                      data-testid="Create-Platform-Alert"
+                    >
+                      <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
+                    </MenuItem>
+                  </RbacValidator>
                 </DropdownButton>
               )}
             </FlexShrink>
@@ -280,9 +295,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-            value: destination.uuid,
-            label: destination.name
-          }
+              value: destination.uuid,
+              label: destination.name
+            }
           : null;
       })
       .filter((res) => res !== null);
@@ -300,8 +315,8 @@ export const AlertsList = (props) => {
     const currentDestination = destination[0]?.value
       ? destination[0]?.value
       : row.defaultDestination
-        ? '<default>'
-        : '<empty>';
+      ? '<default>'
+      : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -356,6 +371,16 @@ export const AlertsList = (props) => {
 
   const formatAlertTargets = (cell) => {
     if (cell.all) return 'All';
+    if (
+      !customPermValidateFunction((userPermissions) => {
+        return (
+          find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
+          undefined
+        );
+      })
+    ) {
+      return ControlComp({ children: <span>No Universe Perm</span> });
+    }
     const targetUniverse = cell.uuids
       .map((uuid) => {
         return universes.data.find((destination) => destination.universeUUID === uuid);
@@ -456,13 +481,8 @@ export const AlertsList = (props) => {
   // This method will handle all the required actions for the particular row.
   const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
   const formatConfigActions = (cell, row, rowIndex, sizePerPage, totalRecords, currentPage) => {
-
-    const canEditAlerts = hasNecessaryPerm({
-      ...UserPermissionMap.editAlertsConfig
-    });
-    const canDeleteAlerts = hasNecessaryPerm({
-      ...UserPermissionMap.deleteAlertsConfig
-    });
+    const canEditAlerts = hasNecessaryPerm(ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS);
+    const canDeleteAlerts = hasNecessaryPerm(ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS);
 
     return (
       <>
@@ -475,9 +495,7 @@ export const AlertsList = (props) => {
           pullRight
         >
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.editAlertsConfig
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -495,9 +513,7 @@ export const AlertsList = (props) => {
 
           {!row.active && !isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.editAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -513,9 +529,7 @@ export const AlertsList = (props) => {
 
           {row.active && !isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.editAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -533,16 +547,17 @@ export const AlertsList = (props) => {
 
           {!isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.deleteAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
-              <MenuItem onClick={() => {
-                if (!canDeleteAlerts) return;
-                showDeleteModal(row?.uuid);
-              }} disabled={!canDeleteAlerts}>
+              <MenuItem
+                onClick={() => {
+                  if (!canDeleteAlerts) return;
+                  showDeleteModal(row?.uuid);
+                }}
+                disabled={!canDeleteAlerts}
+              >
                 <i className="fa fa-trash"></i> Delete Alert
               </MenuItem>
             </RbacValidator>
@@ -550,9 +565,7 @@ export const AlertsList = (props) => {
 
           {!isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.sendTestAlert
-              }}
+              accessRequiredOn={ApiPermissionMap.SEND_TEST_ALERT}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -561,7 +574,7 @@ export const AlertsList = (props) => {
               </MenuItem>
             </RbacValidator>
           ) : null}
-        </DropdownButton >
+        </DropdownButton>
         <YBConfirmModal
           name="delete-alert-config"
           title="Confirm Delete"
@@ -692,20 +705,16 @@ export const AlertsList = (props) => {
     });
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
-    return <YBLoading />;
-  }
+  // if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
+  //   return <YBLoading />;
+  // }
 
   const clearAllFilters = () => {
     setFilters({});
   };
 
   return (
-    <RbacValidator
-      accessRequiredOn={{
-        ...UserPermissionMap.readAlertsConfig
-      }}
-    >
+    <RbacValidator accessRequiredOn={ApiPermissionMap.GET_ALERT_CONFIGURATIONS}>
       <YBPanelItem
         header={header(
           isReadOnly,
@@ -719,118 +728,119 @@ export const AlertsList = (props) => {
           updateFilters,
           clearAllFilters
         )}
-        body={<Row>
-          {filterVisible && (
-            <Col lg={2} className="filters">
-              <AlertListsWithFilter
-                metrics={metrics}
-                alertDestinationList={alertDestinationList}
-                updateFilters={updateFilters}
-                universeList={alertUniverseList}
-                alertsFilters={filters}
-              />
+        body={
+          <Row>
+            {filterVisible && (
+              <Col lg={2} className="filters">
+                <AlertListsWithFilter
+                  metrics={metrics}
+                  alertDestinationList={alertDestinationList}
+                  updateFilters={updateFilters}
+                  universeList={alertUniverseList}
+                  alertsFilters={filters}
+                />
+              </Col>
+            )}
+            <Col lg={filterVisible ? 10 : 12} className={filterVisible && 'leftBorder'}>
+              {isAlertListLoading && <YBLoading />}
+              <BootstrapTable
+                className="alert-list-table middle-aligned-table"
+                data={alertList}
+                options={{
+                  ...options,
+                  sizePerPage,
+                  onSizePerPageList: setSizePerPage
+                }}
+                pagination
+                condensed
+                ref={bootstrapTableRef}
+                maxHeight="500px"
+              >
+                <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+                <TableHeaderColumn
+                  dataField="name"
+                  dataSort
+                  columnClassName="no-border name-column"
+                  dataFormat={formatName}
+                  className="no-border"
+                  width="20%"
+                >
+                  Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="target"
+                  dataSort
+                  sortFunc={targetSortFunc}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                  dataFormat={formatAlertTargets}
+                  width={filterVisible ? '8%' : '10%'}
+                >
+                  Target Universes
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="thresholds"
+                  dataSort
+                  sortFunc={thresholdSortFunc}
+                  dataFormat={formatThresholds}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                  width={filterVisible ? '8%' : '10%'}
+                >
+                  Severity
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="destinationUUID"
+                  dataSort
+                  sortFunc={destinationsSortFunc}
+                  dataFormat={formatRoutes}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                  width="15%"
+                >
+                  Destination
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="createTime"
+                  dataSort
+                  dataFormat={formatCreatedTime}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                  width={filterVisible ? '10%' : '15%'}
+                >
+                  Created
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="template"
+                  dataSort
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                  width="20%"
+                  dataFormat={(cell) => formatString(cell)}
+                >
+                  Metric Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="configActions"
+                  dataFormat={(cell, row, _, rowIndex) =>
+                    formatConfigActions(
+                      cell,
+                      row,
+                      rowIndex,
+                      sizePerPage,
+                      alertList.length,
+                      options.page
+                    )
+                  }
+                  columnClassName="yb-actions-cell"
+                  className="yb-actions-cell"
+                  width="5%"
+                >
+                  Actions
+                </TableHeaderColumn>
+              </BootstrapTable>
             </Col>
-          )}
-          <Col lg={filterVisible ? 10 : 12} className={filterVisible && 'leftBorder'}>
-            {isAlertListLoading && <YBLoading />}
-            <BootstrapTable
-              className="alert-list-table middle-aligned-table"
-              data={alertList}
-              options={{
-                ...options,
-                sizePerPage,
-                onSizePerPageList: setSizePerPage
-              }}
-              pagination
-              condensed
-              ref={bootstrapTableRef}
-              maxHeight="500px"
-            >
-              <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-              <TableHeaderColumn
-                dataField="name"
-                dataSort
-                columnClassName="no-border name-column"
-                dataFormat={formatName}
-                className="no-border"
-                width="20%"
-              >
-                Name
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="target"
-                dataSort
-                sortFunc={targetSortFunc}
-                columnClassName="no-border name-column"
-                className="no-border"
-                dataFormat={formatAlertTargets}
-                width={filterVisible ? '8%' : '10%'}
-              >
-                Target Universes
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="thresholds"
-                dataSort
-                sortFunc={thresholdSortFunc}
-                dataFormat={formatThresholds}
-                columnClassName="no-border name-column"
-                className="no-border"
-                width={filterVisible ? '8%' : '10%'}
-              >
-                Severity
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="destinationUUID"
-                dataSort
-                sortFunc={destinationsSortFunc}
-                dataFormat={formatRoutes}
-                columnClassName="no-border name-column"
-                className="no-border"
-                width="15%"
-              >
-                Destination
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="createTime"
-                dataSort
-                dataFormat={formatCreatedTime}
-                columnClassName="no-border name-column"
-                className="no-border"
-                width={filterVisible ? '10%' : '15%'}
-              >
-                Created
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="template"
-                dataSort
-                columnClassName="no-border name-column"
-                className="no-border"
-                width="20%"
-                dataFormat={(cell) => formatString(cell)}
-              >
-                Metric Name
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="configActions"
-                dataFormat={(cell, row, _, rowIndex) =>
-                  formatConfigActions(
-                    cell,
-                    row,
-                    rowIndex,
-                    sizePerPage,
-                    alertList.length,
-                    options.page
-                  )
-                }
-                columnClassName="yb-actions-cell"
-                className="yb-actions-cell"
-                width="5%"
-              >
-                Actions
-              </TableHeaderColumn>
-            </BootstrapTable>
-          </Col>
-        </Row>
+          </Row>
         }
         noBackground
       />

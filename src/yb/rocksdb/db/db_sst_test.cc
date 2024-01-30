@@ -27,8 +27,16 @@
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/path_util.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+
+DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
+DECLARE_uint64(rocksdb_max_sst_write_retries);
+DECLARE_bool(TEST_simulate_fully_zeroed_file);
 
 namespace rocksdb {
 
@@ -914,6 +922,204 @@ TEST_F(DBTest, SSTsWithLdbSuffixHandling) {
     ASSERT_NE("NOT_FOUND", Get(Key(k)));
   }
   Destroy(options);
+}
+
+class SstTailZerosCheckTest : public DBTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_check_sst_file_tail_for_zeros) =
+        kSstFileTailSizeToCheck;
+
+    auto& sync_point = *yb::SyncPoint::GetInstance();
+    sync_point.SetCallBack("CheckFileTailForZeros:Start", [this](void* arg) {
+      std::vector<std::string> db_files;
+      ASSERT_OK(env_->GetChildren(dbname_, &db_files));
+      for (const auto& db_file : db_files) {
+        uint64_t file_number;
+        FileType file_type;
+        if (!ParseFileName(db_file, &file_number, &file_type)) {
+          continue;
+        }
+        if (file_type != corrupt_file_type) {
+          continue;
+        }
+        const auto file_path = yb::JoinPathSegments(dbname_, db_file);
+        if (corrupt_files.contains(file_path)) {
+          LOG(INFO) << "Do not corrupt " << file_path << " again";
+          continue;
+        }
+        if (bytes_to_corrupt > 0 && corrupt_files_limit != 0) {
+          if (corrupt_files_limit > 0) {
+            --corrupt_files_limit;
+          }
+          ASSERT_OK(CorruptFile(
+              file_path, /* offset = */ -bytes_to_corrupt, bytes_to_corrupt,
+              yb::CorruptionType::kZero));
+        }
+        // Still proceed with no-op corruption when bytes_to_corrupt == 0 and insert file path
+        // into corrupt_files, so we don't try to corrupt it again for test purposes.
+        corrupt_files.insert(file_path);
+      }
+    });
+    sync_point.EnableProcessing();
+  }
+
+  Options GetOptions() {
+    Options options = CurrentOptions();
+    options.num_levels = 2;
+    options.disable_auto_compactions = true;
+    options.compression = kSnappyCompression;
+    options.compaction_style = kCompactionStyleUniversal;
+    options.compaction_options_universal.allow_trivial_move = false;
+
+    auto stats = rocksdb::CreateDBStatisticsForTests();
+    options.statistics = stats;
+    options.info_log_level = InfoLogLevel::INFO_LEVEL;
+    options.info_log = std::make_shared<yb::YBRocksDBLogger>(options.log_prefix);
+    return options;
+  }
+
+  Status GenAndFlushFiles(int num_files) {
+    constexpr auto kNumKeysPerFile = 100;
+
+    for (int i = 0; i < num_files; i++) {
+      for (int j = 0; j < kNumKeysPerFile; j++) {
+        auto val = RandomString(&rnd, 100);
+        CHECK_OK(Put(Key(num_keys_written++), val));
+      }
+      RETURN_NOT_OK(Flush());
+    }
+    return Status::OK();
+  }
+
+  void DestroyAndReopen(const Options& options) {
+    num_keys_written = 0;
+
+    corrupt_file_type = FileType::kTableSBlockFile;
+    bytes_to_corrupt = 0;
+
+    corrupt_files.clear();
+    corrupt_files_limit = -1;
+    return DBHolder::DestroyAndReopen(options);
+  }
+
+  Result<int> CountKeys() {
+    int num_keys = 0;
+    std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
+    for (iter->SeekToFirst(); VERIFY_RESULT(iter->CheckedValid()); iter->Next()) {
+      num_keys++;
+    }
+    return num_keys;
+  }
+
+  static constexpr auto kSstFileTailSizeToCheck = 1536;
+
+  Random rnd{301};
+  int num_keys_written = 0;
+
+  uint64_t bytes_to_corrupt = 0;
+  FileType corrupt_file_type = FileType::kTableSBlockFile;
+
+  std::unordered_set<std::string> corrupt_files;
+  int corrupt_files_limit = -1; // -1 - no limit.
+};
+
+TEST_F_EX(DBTest, SstTailZerosCheckFlush, SstTailZerosCheckTest) {
+  auto options = GetOptions();
+  DestroyAndReopen(options);
+
+  // Should be able to detect corruption during Flush.
+  bytes_to_corrupt = kSstFileTailSizeToCheck;
+  ASSERT_NOK(GenAndFlushFiles(/* num_files = */ 1));
+
+  DestroyAndReopen(options);
+  // Should not be able to detect corruption during Flush.
+  bytes_to_corrupt = kSstFileTailSizeToCheck - 1;
+  ASSERT_OK(GenAndFlushFiles(/* num_files = */ 2));
+  ASSERT_EQ("2", FilesPerLevel(0));
+  // Compaction should fail.
+  ASSERT_NOK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+}
+
+TEST_F_EX(DBTest, SstTailZerosCheckFlushRetries, SstTailZerosCheckTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_sst_write_retries) = 1;
+
+  auto options = GetOptions();
+
+  for (auto corrupt_file_type_value : {kTableSBlockFile, kTableFile}) {
+    DestroyAndReopen(options);
+
+    bytes_to_corrupt = kSstFileTailSizeToCheck;
+    corrupt_file_type = corrupt_file_type_value;
+
+    // Should be able to flush both after retry.
+    ASSERT_OK(GenAndFlushFiles(/* num_files = */ 2));
+    ASSERT_EQ("2", FilesPerLevel(0));
+    ASSERT_EQ(2, corrupt_files.size());
+    ASSERT_EQ(num_keys_written, ASSERT_RESULT(CountKeys()));
+  }
+}
+
+TEST_F_EX(DBTest, SstTailZerosCheckCompaction, SstTailZerosCheckTest) {
+  auto options = GetOptions();
+  for (auto compaction_output_bytes_to_corrupt :
+     {kSstFileTailSizeToCheck, kSstFileTailSizeToCheck - 1}) {
+    DestroyAndReopen(options);
+
+    // Do not corrupt flushed files.
+    bytes_to_corrupt = 0;
+    ASSERT_OK(GenAndFlushFiles(/* num_files = */ 2));
+    ASSERT_EQ("2", FilesPerLevel(0));
+
+    // Corrupt compaction output file.
+    bytes_to_corrupt = compaction_output_bytes_to_corrupt;
+
+    if (compaction_output_bytes_to_corrupt >= kSstFileTailSizeToCheck) {
+      // Should be able to detect corruption and fail.
+      ASSERT_NOK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+      ASSERT_EQ("2", FilesPerLevel(0));
+    } else {
+      // Should not be able to detect corruption.
+      ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+      ASSERT_EQ("0,1", FilesPerLevel(0));
+
+      bytes_to_corrupt = 0;
+      ASSERT_OK(GenAndFlushFiles(/* num_files = */ 1));
+      ASSERT_EQ("1,1", FilesPerLevel(0));
+
+      // Subsequent compaction should fail.
+      ASSERT_NOK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+      ASSERT_EQ("1,1", FilesPerLevel(0));
+    }
+  }
+}
+
+TEST_F_EX(DBTest, SstTailZerosCheckCompactionRetries, SstTailZerosCheckTest) {
+  FLAGS_rocksdb_max_sst_write_retries = 1;
+
+  auto options = GetOptions();
+
+  for (auto corrupt_file_type_value : {kTableSBlockFile, kTableFile}) {
+    DestroyAndReopen(options);
+
+    corrupt_file_type = corrupt_file_type_value;
+
+    // Do not corrupt flushed files.
+    bytes_to_corrupt = 0;
+    ASSERT_OK(GenAndFlushFiles(/* num_files = */ 2));
+    ASSERT_EQ("2", FilesPerLevel(0));
+    ASSERT_EQ(2, corrupt_files.size()) << yb::AsString(corrupt_files);
+
+    // Corrupt compaction output file once.
+    bytes_to_corrupt = kSstFileTailSizeToCheck;
+    corrupt_files_limit = 1;
+
+    // Should be able to compact after retry.
+    ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
+    ASSERT_EQ("0,1", FilesPerLevel(0));
+    ASSERT_EQ(3, corrupt_files.size()) << yb::AsString(corrupt_files);
+    ASSERT_EQ(num_keys_written, ASSERT_RESULT(CountKeys()));
+  }
 }
 
 }  // namespace rocksdb

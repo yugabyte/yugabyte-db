@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,8 +56,9 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null);
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null, isFirstTry);
   }
 
   @Override
@@ -108,7 +110,7 @@ public class ResizeNode extends UpgradeTaskBase {
             List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
             LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
             for (NodeDetails node : clusterNodes) {
-              if (isInstanceChanging(node, userIntent)) {
+              if (isInstanceChanging(node, userIntent, currentIntent)) {
                 instanceChangingNodes.add(node);
               } else if (isModifyingDevice(node, userIntent, currentIntent)) {
                 justModifyDeviceNodes.add(node);
@@ -264,12 +266,18 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private boolean isInstanceChanging(
-      NodeDetails node, UniverseDefinitionTaskParams.UserIntent newIntent) {
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
     if (taskParams().isForceResizeNode()) {
       return true;
     }
     String currentInstanceType = node.cloudInfo.instance_type;
-    return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node));
+    Integer newCgroupSize = newIntent.getCGroupSize(node);
+    Integer oldCgroupSize = currentIntent.getCGroupSize(node);
+
+    return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node))
+        || !Objects.equals(oldCgroupSize, newCgroupSize);
   }
 
   private boolean isModifyingDevice(
@@ -331,12 +339,15 @@ public class ResizeNode extends UpgradeTaskBase {
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
             String currentInstanceType = node.cloudInfo.instance_type;
             DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
+            Integer newCgroupSize = newIntent.getCGroupSize(node);
+            Integer oldCgroupSize = currentIntent.getCGroupSize(node);
             createResizeNodeTasks(
                 Collections.singletonList(node),
                 newInstanceType,
                 newDeviceInfo,
                 currentInstanceType,
-                currentDeviceInfo);
+                currentDeviceInfo,
+                !Objects.equals(oldCgroupSize, newCgroupSize));
           }
         });
   }
@@ -353,15 +364,19 @@ public class ResizeNode extends UpgradeTaskBase {
       String newInstanceType,
       DeviceInfo newDeviceInfo,
       String currentInstanceType,
-      DeviceInfo currentDeviceInfo) {
+      DeviceInfo currentDeviceInfo,
+      boolean cgroupSizeChanging) {
     // Todo: Add preflight checks here
 
     // Change instance type
-    if (!newInstanceType.equals(currentInstanceType) || taskParams().isForceResizeNode()) {
+    if (!newInstanceType.equals(currentInstanceType)
+        || taskParams().isForceResizeNode()
+        || cgroupSizeChanging) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
-            && node.cloudInfo.instance_type.equals(newInstanceType)) {
+            && node.cloudInfo.instance_type.equals(newInstanceType)
+            && !cgroupSizeChanging) {
           log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
         }
@@ -402,6 +417,7 @@ public class ResizeNode extends UpgradeTaskBase {
     params.force = taskParams().isForceResizeNode();
     params.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     params.placementUuid = node.placementUuid;
+    params.cgroupSize = getCGroupSize(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);

@@ -11,8 +11,8 @@ import { FC } from 'react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton } from '../../redesign/components';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 type CACertsEmptyProps = {
   onUpload: () => void;
@@ -54,9 +54,7 @@ export const CACertsEmpty: FC<CACertsEmptyProps> = ({ onUpload }) => {
       <Grid item>{UPLOAD_ICON}</Grid>
       <Grid item>
         <RbacValidator
-          accessRequiredOn={{
-            ...UserPermissionMap.createCACerts
-          }}
+          accessRequiredOn={ApiPermissionMap.CREATE_CA_CERT}
           isControl
         >
           <YBButton variant="primary" onClick={() => onUpload()} data-testid="uploadCACertBut">

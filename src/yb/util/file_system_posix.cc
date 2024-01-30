@@ -60,6 +60,11 @@
 #endif
 #endif // __linux__
 
+DEFINE_RUNTIME_uint64(rocksdb_check_sst_file_tail_for_zeros, 0,
+    "Size of just written SST data file tail to be checked for being zeros. Check is not performed "
+    "if flag value is zero.");
+TAG_FLAG(rocksdb_check_sst_file_tail_for_zeros, advanced);
+
 DECLARE_bool(never_fsync);
 
 namespace {
@@ -322,8 +327,17 @@ Status PosixWritableFile::Close() {
     // trim the extra space preallocated at the end of the file
     // NOTE(ljin): we probably don't want to surface failure as an IOError,
     // but it will be nice to log these errors.
-    int dummy __attribute__((unused));
-    dummy = ftruncate(fd_, filesize_);
+    if (FLAGS_rocksdb_check_sst_file_tail_for_zeros > 0) {
+      LOG(INFO) << filename_ << " block_size: " << block_size
+                << " last_allocated_block: " << last_allocated_block
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+                << " allow_fallocate_: " << allow_fallocate_
+#endif  // ROCKSDB_FALLOCATE_PRESENT
+                << " filesize_: " << filesize_;
+    }
+    if (ftruncate(fd_, filesize_) != 0) {
+      LOG(ERROR) << STATUS_IO_ERROR(filename_, errno) << " filesize_: " << filesize_;
+    }
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     // in some file systems, ftruncate only trims trailing space if the
     // new file size is smaller than the current size. Calling fallocate
@@ -338,8 +352,13 @@ Status PosixWritableFile::Close() {
     // correctness.
     IOSTATS_TIMER_GUARD(allocate_nanos);
     if (allow_fallocate_) {
-      fallocate(fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
-                block_size * last_allocated_block - filesize_);
+      if (fallocate(
+              fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, filesize_,
+              block_size * last_allocated_block - filesize_) != 0) {
+        LOG(ERROR) << STATUS_IO_ERROR(filename_, errno) << " block_size: " << block_size
+                   << " last_allocated_block: " << last_allocated_block
+                   << " filesize_: " << filesize_;
+      }
     }
 #endif
   }

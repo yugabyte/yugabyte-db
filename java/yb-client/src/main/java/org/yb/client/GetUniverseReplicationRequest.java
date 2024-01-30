@@ -33,8 +33,8 @@ public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationRe
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.GetUniverseReplicationRequestPB.Builder builder =
-      MasterReplicationOuterClass.GetUniverseReplicationRequestPB.newBuilder().setProducerId(
-          replicationGroupName);
+        MasterReplicationOuterClass.GetUniverseReplicationRequestPB.newBuilder()
+            .setReplicationGroupId(replicationGroupName);
 
     return toChannelBuffer(header, builder.build());
   }

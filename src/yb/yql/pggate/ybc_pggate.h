@@ -728,6 +728,27 @@ YBCStatus YBCGetTableKeyRanges(
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
 
+//--------------------------------------------------------------------------------------------------
+// Replication Slots.
+
+YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        YBCPgOid database_oid,
+                                        YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+
+YBCStatus YBCPgListReplicationSlots(
+    YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
+
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active);
+
+YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
+                                      YBCPgStatement *handle);
+YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
+
+// Get a new OID from the OID allocator of database db_oid.
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

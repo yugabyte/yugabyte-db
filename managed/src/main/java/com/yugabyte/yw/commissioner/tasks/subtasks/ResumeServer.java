@@ -22,8 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 public class ResumeServer extends NodeTaskBase {
 
   @Inject
-  protected ResumeServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected ResumeServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
