@@ -181,6 +181,8 @@ bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime re
          HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at;
 }
 
+// Returns the suitable TxnSnapshotId instead of SnapshotInfoPB as the snapshot might still be in
+// creating state.
 Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
     const SnapshotScheduleInfoPB& schedule, HybridTime restore_at) {
   if (schedule.snapshots().empty()) {
@@ -203,7 +205,7 @@ Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
         restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.get().id()),
         HybridTime::FromPB(earliest_snapshot.get().entry().snapshot_hybrid_time()));
   }
-  // Return the id of the oldest valid snapshot created before the restore_at time.
+  // Return the id of the oldest valid snapshot created after the restore_at time.
   auto it = std::find_if(
       snapshots.begin(), snapshots.end(), [&restore_at](const SnapshotInfoPB& snapshot) {
         return SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at);
@@ -733,7 +735,31 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
-  Result<TxnSnapshotId> SuitableSnapshotId(
+  Result<SnapshotInfoPB> WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline) {
+    while (CoarseMonoClock::now() < deadline) {
+      ListSnapshotsResponsePB resp;
+
+      RETURN_NOT_OK_PREPEND(
+          ListSnapshots(snapshot_id, false, {}, &resp), "Failed to list snapshots");
+      if (resp.snapshots().size() != 1) {
+        return STATUS_FORMAT(
+            IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
+      }
+
+      if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+        if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
+          return resp.snapshots()[0];
+        }
+        return STATUS_FORMAT(
+            IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
+      }
+      std::this_thread::sleep_for(100ms);
+    }
+    return STATUS_FORMAT(TimedOut, "Timed out completing a snapshot $0", snapshot_id);
+  }
+
+  Result<SnapshotInfoPB> GetSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline) {
     while (CoarseMonoClock::now() < deadline) {
@@ -745,18 +771,20 @@ class MasterSnapshotCoordinator::Impl {
       }
       auto snapshot_result = FindSnapshotSuitableForRestoreAt(resp.schedules()[0], restore_at);
       if (snapshot_result.ok()) {
-        return *snapshot_result;
-      } else if (!snapshot_result.status().IsNotFound()) {
-        return snapshot_result;
+        return WaitForSnapshotToComplete(*snapshot_result, restore_at, deadline);
       }
-      auto snapshot_id = CreateForSchedule(schedule_id, leader_term, deadline);
-      if (!snapshot_id.ok() &&
-          MasterError(snapshot_id.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+      if (!snapshot_result.status().IsNotFound()) {
+        return snapshot_result.status();
+      }
+      snapshot_result = CreateForSchedule(schedule_id, leader_term, deadline);
+      if (snapshot_result.ok()) {
+        return WaitForSnapshotToComplete(*snapshot_result, restore_at, deadline);
+      }
+      if (MasterError(snapshot_result.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
         continue;
       }
-      return snapshot_id;
+      return snapshot_result.status();
     }
-
     return STATUS_FORMAT(
         TimedOut, "Timed out getting a suitable snapshot id from schedule $0", schedule_id);
   }
@@ -764,36 +792,9 @@ class MasterSnapshotCoordinator::Impl {
   Status RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at,
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
-    auto snapshot_id =
-        VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, leader_term, deadline));
-
-    bool suitable_snapshot_is_complete = false;
-    while (CoarseMonoClock::now() < deadline) {
-      ListSnapshotsResponsePB resp;
-
-      RETURN_NOT_OK_PREPEND(ListSnapshots(snapshot_id, false, {}, &resp),
-                            "Failed to list snapshots");
-      if (resp.snapshots().size() != 1) {
-        return STATUS_FORMAT(
-            IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
-      }
-
-      if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
-        if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
-          suitable_snapshot_is_complete = true;
-          break;
-        }
-        return STATUS_FORMAT(
-            IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
-      }
-      std::this_thread::sleep_for(100ms);
-    }
-
-    if (!suitable_snapshot_is_complete) {
-      return STATUS_FORMAT(
-          TimedOut, "Timed out completing a snapshot $0", snapshot_id);
-    }
-
+    auto snapshot =
+        VERIFY_RESULT(GetSuitableSnapshot(schedule_id, restore_at, leader_term, deadline));
+    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
@@ -2262,6 +2263,17 @@ docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
 Result<SnapshotSchedulesToObjectIdsMap>
     MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type) {
   return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
+}
+
+Result<SnapshotInfoPB> MasterSnapshotCoordinator::GetSuitableSnapshot(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
+    CoarseTimePoint deadline) {
+  return impl_->GetSuitableSnapshot(schedule_id, restore_at, leader_term, deadline);
+}
+
+Result<SnapshotInfoPB> MasterSnapshotCoordinator::WaitForSnapshotToComplete(
+    const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline) {
+  return impl_->WaitForSnapshotToComplete(snapshot_id, restore_at, deadline);
 }
 
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(

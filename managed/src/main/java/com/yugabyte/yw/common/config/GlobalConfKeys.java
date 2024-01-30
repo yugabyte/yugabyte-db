@@ -1186,4 +1186,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " isBootstrapRequired rpc",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOidcAutoCreateUser =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_enable_auto_create_users",
+          ScopeType.GLOBAL,
+          "Auto create user on SSO login",
+          "Enable user creation on OIDC login",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

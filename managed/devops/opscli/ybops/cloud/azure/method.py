@@ -11,7 +11,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 import logging
 import json
 import glob
@@ -363,3 +363,16 @@ class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AzureQueryCurrentHostMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AzureQueryCurrentHostMethod, self).__init__(base_command, "current-host")
+        # We do not need cloud credentials to query metadata.
+        self.need_validation = False
+
+    def callback(self, args):
+        try:
+            print(json.dumps(self.cloud.get_current_host_info(args)))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps(get_exception_message(ye)))

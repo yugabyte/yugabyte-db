@@ -656,6 +656,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
 
+  unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats)
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
 

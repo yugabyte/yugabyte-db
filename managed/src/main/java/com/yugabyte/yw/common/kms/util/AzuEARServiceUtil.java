@@ -13,8 +13,6 @@ package com.yugabyte.yw.common.kms.util;
 
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.exception.ResourceNotFoundException;
-import com.azure.identity.ClientSecretCredential;
-import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.security.keyvault.keys.KeyClient;
 import com.azure.security.keyvault.keys.KeyClientBuilder;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
@@ -27,6 +25,7 @@ import com.azure.security.keyvault.keys.models.KeyOperation;
 import com.azure.security.keyvault.keys.models.KeyProperties;
 import com.azure.security.keyvault.keys.models.KeyVaultKey;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.cloud.azu.AZUCloudImpl;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
@@ -96,24 +95,17 @@ public class AzuEARServiceUtil {
    */
   public TokenCredential getCredentials(ObjectNode authConfig) {
     String clientId = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.CLIENT_ID.fieldName);
+    String tenantId = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.TENANT_ID.fieldName);
     String clientSecret =
         getConfigFieldValue(authConfig, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName);
-    String tenantId = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.TENANT_ID.fieldName);
 
-    if (clientId == null || clientSecret == null || tenantId == null) {
-      String errMsg = "Cannot get credentials. clientId, clientSecret, or tenantId is null.";
+    if (StringUtils.isEmpty(clientId) || StringUtils.isEmpty(tenantId)) {
+      String errMsg = "Cannot get credentials. clientId or tenantId is null/empty.";
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
 
-    ClientSecretCredential clientSecretCredential =
-        new ClientSecretCredentialBuilder()
-            .clientId(clientId)
-            .clientSecret(clientSecret)
-            .tenantId(tenantId)
-            .build();
-
-    return clientSecretCredential;
+    return AZUCloudImpl.getCredsOrFallbackToDefault(clientId, clientSecret, tenantId);
   }
 
   /**
@@ -476,7 +468,6 @@ public class AzuEARServiceUtil {
     List<String> fieldsList =
         Arrays.asList(
             AzuKmsAuthConfigField.CLIENT_ID.fieldName,
-            AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
             AzuKmsAuthConfigField.TENANT_ID.fieldName,
             AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
             AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
@@ -500,8 +491,8 @@ public class AzuEARServiceUtil {
   public void validateKMSProviderConfigFormData(ObjectNode formData) throws Exception {
     if (!checkFieldsExist(formData)) {
       throw new Exception(
-          "Invalid CLIENT_ID, CLIENT_SECRET, TENANT_ID, "
-              + "AZU_VAULT_URL, AZU_KEY_NAME, AZU_KEY_ALGORITHM, or AZU_KEY_SIZE");
+          "Invalid CLIENT_ID, TENANT_ID, AZU_VAULT_URL, AZU_KEY_NAME, AZU_KEY_ALGORITHM, or"
+              + " AZU_KEY_SIZE");
     }
 
     KeyClient keyClient = getKeyClient(formData);

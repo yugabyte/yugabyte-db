@@ -20,7 +20,9 @@ import { Optional } from '../../../redesign/helpers/types';
 const useSelectStyles = makeStyles((theme) => ({
   optionLabel: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+
+    marginRight: theme.spacing(1)
   },
   optionPillContainer: {
     display: 'flex',
@@ -90,6 +92,7 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
       <YBReactSelectField
         options={groupedStorageConfigOptions}
         stylesOverride={storageConfigSelectStylesOverride}
+        accessoryContainerWidthPx={180}
         components={{
           SingleValue: SingleValue,
           Option: Option

@@ -83,10 +83,15 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
 :runnois;
 
+-- In case preliminary check might happen, pushdown should be avoided.
+\set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
+:explain :query; :query;
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
 EXPLAIN (COSTS OFF) SELECT DISTINCT int_8 FROM ybaggtest;
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM pg_type WHERE oid = 21 AND oid < 0;
 
 --
 -- Test NULL rows are handled properly by COUNT.

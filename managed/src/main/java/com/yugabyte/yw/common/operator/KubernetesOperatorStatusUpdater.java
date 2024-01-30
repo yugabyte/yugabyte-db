@@ -184,7 +184,9 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       action.setStatus(Actions.Status.QUEUED);
       ybUniverse.setStatus(ybuStatus);
       String eventStr =
-          String.format("Queued task %s on universe %s", taskName, universe.getName());
+          String.format(
+              "Queued task %s on universe resource: %s, namespace: %s",
+              taskName, universeName.name, universeName.namespace);
       this.updateUniverseStatus(client, ybUniverse, universe, universeName, eventStr);
     } catch (Exception e) {
       log.warn("Error in creating Kubernetes Operator Universe status", e);
@@ -294,7 +296,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
 
       // Update Swamper Targets configMap
-      String configMapName = ybUniverse.getMetadata().getName() + "-prometheus-targets";
+      String configMapName =
+          YBUniverseReconciler.getYbaUniverseName(ybUniverse) + "-prometheus-targets";
       // TODO (@anijhawan) should call the swamperHelper target function but we are in static
       // context here.
       if (u != null) {

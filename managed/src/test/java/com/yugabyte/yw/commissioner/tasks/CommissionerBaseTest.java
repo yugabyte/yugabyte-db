@@ -344,6 +344,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+    return waitForTask(taskUUID, 100);
+  }
+
+  public static TaskInfo waitForTask(UUID taskUUID, long sleepDuration)
+      throws InterruptedException {
     int numRetries = 0;
     TaskInfo taskInfo = null;
     while (numRetries < MAX_RETRY_COUNT) {
@@ -362,7 +367,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         }
       } catch (Exception e) {
       }
-      Thread.sleep(100);
+      Thread.sleep(sleepDuration);
       numRetries++;
     }
 

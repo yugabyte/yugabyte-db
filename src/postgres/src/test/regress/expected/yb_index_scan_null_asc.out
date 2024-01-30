@@ -22,9 +22,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
          Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a = t2.x)
-(5 rows)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
@@ -35,9 +36,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
          Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)
-(5 rows)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
@@ -48,9 +50,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
          Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
-(5 rows)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
@@ -61,9 +64,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
          Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
          Index Cond: ((b = t2.y) AND (a = t2.x))
-(5 rows)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
@@ -74,10 +78,11 @@ DEBUG:  skipping a scan due to unsatisfiable condition
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
          Storage Table Read Requests: 3
+         Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)
          Filter: (ROW(a, b) <= ROW(t2.x, t2.y))
-(6 rows)
+(7 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
@@ -135,8 +140,10 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (a = ANY ('{NULL,1}'::integer[]))
    Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 2
    Storage Index Read Requests: 1
-(4 rows)
+   Storage Index Rows Scanned: 2
+(6 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */
 SELECT a FROM nulltest t1 WHERE a IN (null, 1);
@@ -154,8 +161,10 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (a = ANY ('{NULL,1}'::integer[]))
    Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 2
    Storage Index Read Requests: 1
-(4 rows)
+   Storage Index Rows Scanned: 2
+(6 rows)
 
 /*+ IndexScan(t1) */
 SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
@@ -174,8 +183,10 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Index Cond: (a <= 2)
    Filter: (ROW(a, b) <= ROW(2, NULL::integer))
    Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 2
    Storage Index Read Requests: 1
-(5 rows)
+   Storage Index Rows Scanned: 2
+(7 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */
 SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
@@ -194,8 +205,10 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Index Cond: (ROW(a, b) <= ROW(2, NULL::integer))
    Rows Removed by Index Recheck: 2
    Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 4
    Storage Index Read Requests: 1
-(5 rows)
+   Storage Index Rows Scanned: 4
+(7 rows)
 
 -- Should return nulls
 /*+ IndexScan(t1) */
@@ -214,8 +227,10 @@ SELECT a FROM nulltest t1 WHERE a IS NULL;
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
    Index Cond: (a IS NULL)
    Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 2
    Storage Index Read Requests: 1
-(4 rows)
+   Storage Index Rows Scanned: 2
+(6 rows)
 
 RESET client_min_messages;
 \unset YB_DISABLE_ERROR_PREFIX

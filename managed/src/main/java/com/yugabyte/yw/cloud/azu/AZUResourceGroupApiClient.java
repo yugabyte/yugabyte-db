@@ -3,14 +3,11 @@ package com.yugabyte.yw.cloud.azu;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.azure.core.credential.TokenCredential;
 import com.azure.core.management.AzureEnvironment;
 import com.azure.core.management.SubResource;
 import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.Context;
-import com.azure.identity.ClientSecretCredential;
-import com.azure.identity.ClientSecretCredentialBuilder;
-import com.azure.identity.EnvironmentCredential;
-import com.azure.identity.EnvironmentCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
@@ -23,9 +20,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Data
 public class AZUResourceGroupApiClient {
 
   private AzureResourceManager azureResourceManager;
@@ -123,21 +122,12 @@ public class AZUResourceGroupApiClient {
   }
 
   private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {
-    ClientSecretCredential clientSecretCredential =
-        new ClientSecretCredentialBuilder()
-            .clientId(azCloudInfo.getAzuClientId())
-            .clientSecret(azCloudInfo.getAzuClientSecret())
-            .tenantId(azCloudInfo.getAzuTenantId())
-            .build();
     AzureProfile azureProfile =
         new AzureProfile(
             azCloudInfo.getAzuTenantId(),
             azCloudInfo.getAzuSubscriptionId(),
             AzureEnvironment.AZURE);
-    EnvironmentCredential credential =
-        new EnvironmentCredentialBuilder()
-            .authorityHost(azureProfile.getEnvironment().getActiveDirectoryEndpoint())
-            .build();
+    TokenCredential credential = AZUCloudImpl.getCredsOrFallbackToDefault(azCloudInfo);
     AzureResourceManager.Authenticated authenticated =
         AzureResourceManager.authenticate(credential, azureProfile);
     String subscriptionId = authenticated.subscriptions().list().iterator().next().subscriptionId();

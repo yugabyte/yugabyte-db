@@ -761,8 +761,11 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/* Operator to hash the outer side of this clause
-							   with. */
+	Oid hashOp;				/*
+							 * Operator to hash the outer side of this clause
+							 * with. The inner side must be the left input of
+							 * this op.
+							 */
 	int innerHashAttNo;		/* Attno of inner side variable. */
 	Expr *outerParamExpr;	/* Outer expression of this clause. */
 	Expr *orig_expr;

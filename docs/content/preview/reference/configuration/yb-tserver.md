@@ -1204,6 +1204,32 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Concurrency control flags
+
+To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+
+##### --enable_wait_queues
+
+When set to true, enables in-memory wait queues, deadlock detection, and wait-on-conflict semantics in all YSQL traffic.
+
+Default: `true`
+
+##### --disable_deadlock_detection
+
+When set to true, disables deadlock detection. If `enable_wait_queues=false`, this flag has no effect as deadlock detection is not running anyways.
+
+Default: `false`
+
+{{< warning title="Warning">}}
+Use of this flag can potentially result in deadlocks that can't be resolved by YSQL. Use this flag only if the application layer can guarantee deadlock avoidance.
+{{< /warning >}}
+
+##### --wait_queue_poll_interval_ms
+
+If `enable_wait_queues=true`, this controls the rate at which each tablet's wait queue polls transaction coordinators for the status of transactions which are blocking contentious resources.
+
+Default: `100`
+
 ## Metric export flags
 
 ##### --export_help_and_type_in_prometheus_metrics
