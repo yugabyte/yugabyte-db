@@ -64,8 +64,6 @@ class XClusterOutboundReplicationGroup
 
   Result<SysXClusterOutboundReplicationGroupEntryPB> GetMetadata() const EXCLUDES(mutex_);
 
-  SysXClusterOutboundReplicationGroupEntryPB GetMetadata() const;
-
   Result<std::vector<NamespaceId>> AddNamespaces(
       const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names,
       CoarseTimePoint deadline) EXCLUDES(mutex_);
