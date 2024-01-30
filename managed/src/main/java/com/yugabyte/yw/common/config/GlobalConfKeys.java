@@ -919,6 +919,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " concurrent provider tasks are completed ",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> KubernetesOperatorCustomerUUID =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.customer_uuid",
+          ScopeType.GLOBAL,
+          "Customer UUID to use with Kubernentes Operator",
+          "Customer UUID to use with Kubernentes Operator, do not change once set",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.enabled",

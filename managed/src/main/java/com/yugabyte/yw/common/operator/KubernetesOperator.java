@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
@@ -51,6 +52,7 @@ public class KubernetesOperator {
   @Inject private YBReconcilerFactory reconcilerFactory;
 
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private OperatorUtils operatorUtils;
 
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
@@ -223,11 +225,12 @@ public class KubernetesOperator {
                           namespace,
                           commissioner,
                           taskExecutor,
-                          supportBundleUtil);
+                          supportBundleUtil,
+                          operatorUtils);
 
                   StorageConfigReconciler scReconciler =
                       new StorageConfigReconciler(
-                          ybStorageConfigIndexInformer, scClient, ccs, namespace);
+                          ybStorageConfigIndexInformer, scClient, ccs, namespace, operatorUtils);
 
                   BackupReconciler backupReconciler =
                       new BackupReconciler(
@@ -236,7 +239,8 @@ public class KubernetesOperator {
                           backupHelper,
                           formFactory,
                           namespace,
-                          ybStorageConfigIndexInformer);
+                          ybStorageConfigIndexInformer,
+                          operatorUtils);
 
                   RestoreJobReconciler restoreJobReconciler =
                       new RestoreJobReconciler(
@@ -245,7 +249,8 @@ public class KubernetesOperator {
                           restoreJobClient,
                           backupHelper,
                           formFactory,
-                          namespace);
+                          namespace,
+                          operatorUtils);
 
                   Future<Void> startedInformersFuture =
                       informerFactory.startAllRegisteredInformers();
