@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -108,6 +109,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
     Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
+    OperatorUtils operatorUtils = new OperatorUtils(confGetter);
     ybUniverseReconciler =
         new YBUniverseReconciler(
             client,
@@ -120,7 +122,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             null,
             kubernetesStatusUpdator,
             confGetter,
-            customerTaskManager);
+            customerTaskManager,
+            operatorUtils);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults

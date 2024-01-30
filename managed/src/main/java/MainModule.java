@@ -74,6 +74,7 @@ import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
@@ -218,6 +219,7 @@ public class MainModule extends AbstractModule {
     bind(RoleUtil.class).asEagerSingleton();
     bind(RoleBindingUtil.class).asEagerSingleton();
     bind(PrometheusConfigManager.class).asEagerSingleton();
+    bind(OperatorUtils.class).asEagerSingleton();
     bind(PrometheusConfigHelper.class).asEagerSingleton();
     bind(YbClientConfigFactory.class).asEagerSingleton();
     bind(OperatorStatusUpdaterFactory.class).asEagerSingleton();
