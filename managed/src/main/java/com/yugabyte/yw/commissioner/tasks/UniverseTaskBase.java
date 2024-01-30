@@ -2770,6 +2770,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               while (tableUUIDIter.hasNext()) {
                 BackupTableParams perTableParam =
                     new BackupTableParams(bP, tableUUIDIter.next(), tableNameIter.next());
+                perTableParam.tableByTableBackup = true;
                 flatParamsList.add(perTableParam);
               }
             });
