@@ -6,7 +6,7 @@ export const CONFIG_ROUTE_PREFIX = 'config';
 export const ConfigTabKey = {
   INFRA: 'infra',
   BACKUP: 'backup',
-  BACKUP_NEW: 'backupNew',
+  BACKUP_NEW: 'newBackupConfig',
   SECURITY: 'security'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
