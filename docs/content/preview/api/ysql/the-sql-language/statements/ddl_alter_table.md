@@ -93,11 +93,6 @@ Tables can be moved to the default tablespace using:
 ALTER TABLE table_name SET TABLESPACE pg_default;
 ```
 
-#### ALTER TABLE ALL IN *tablespace* SET TABLESPACE *tablespace_name*
-
-The `ALL IN TABLESPACE` form will move all tables in the current database into another tablespace. 
-
-
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.
