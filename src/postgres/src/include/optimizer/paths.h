@@ -15,7 +15,7 @@
 #define PATHS_H
 
 #include "nodes/relation.h"
-
+#include "pg_yb_utils.h"
 
 /*
  * allpaths.c
@@ -58,6 +58,8 @@ extern void generate_gather_paths(PlannerInfo *root, RelOptInfo *rel,
 					  bool override_rows);
 extern int compute_parallel_worker(RelOptInfo *rel, double heap_pages,
 						double index_pages, int max_workers);
+extern int yb_compute_parallel_worker(RelOptInfo *rel,
+						   YbTableDistribution yb_dist, int max_workers);
 extern void create_partial_bitmap_paths(PlannerInfo *root, RelOptInfo *rel,
 							Path *bitmapqual);
 extern void generate_partitionwise_join_paths(PlannerInfo *root,

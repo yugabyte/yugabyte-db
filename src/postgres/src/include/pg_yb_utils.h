@@ -707,6 +707,15 @@ YbTableProperties YbGetTableProperties(Relation rel);
 YbTableProperties YbGetTablePropertiesById(Oid relid);
 YbTableProperties YbTryGetTableProperties(Relation rel);
 
+typedef enum YbTableDistribution
+{
+	YB_SYSTEM,
+	YB_COLOCATED,
+	YB_HASH_SHARDED,
+	YB_RANGE_SHARDED
+} YbTableDistribution;
+YbTableDistribution YbGetTableDistribution(Oid relid);
+
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */

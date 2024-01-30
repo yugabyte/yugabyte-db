@@ -136,7 +136,7 @@ double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
 double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
 double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
-/* 
+/*
  * Following parameters are used in the newer cost model that aims to model the
  * pggate and DocDB storage layer and LSM index lookup more precisely.
  */
@@ -5681,8 +5681,8 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	{
 		int max_results_per_page = yb_fetch_size_limit / result_width;
 		num_result_pages = ceil(result_tuples / max_results_per_page);
-		result_page_size_mb = 
-			fmin(result_tuples, max_results_per_page) * 
+		result_page_size_mb =
+			fmin(result_tuples, max_results_per_page) *
 			result_width / MEGA;
 	}
 	else
@@ -6068,8 +6068,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (partial_path)
 	{
-		path->path.parallel_workers = compute_parallel_worker(
-			baserel, -1, -1, max_parallel_workers_per_gather);
+		if (baserel->is_yb_relation)
+		{
+			Oid rel_oid = is_primary_index ? baserel_oid :
+											 path->indexinfo->indexoid;
+			path->path.parallel_workers = yb_compute_parallel_worker(
+				baserel, YbGetTableDistribution(rel_oid),
+				max_parallel_workers_per_gather);
+		}
+		else
+			path->path.parallel_workers = compute_parallel_worker(
+				baserel, -1, -1, max_parallel_workers_per_gather);
 
 		/*
 		 * Fall out if workers can't be assigned for parallel scan, because in
