@@ -3269,6 +3269,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/xcluster", "XCluster",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
+  cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
   server->RegisterPathHandler(
       "/tasks", "Tasks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
@@ -3292,7 +3293,6 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/xcluster-config", "XCluster Config JSON",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
 
   // JSON Endpoints
   cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
