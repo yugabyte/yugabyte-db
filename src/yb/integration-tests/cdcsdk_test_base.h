@@ -208,14 +208,12 @@ class CDCSDKTestBase : public YBTest {
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
   // TODO(#19260): Support customizing the CDCRecordType.
   Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
-    CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
-    CDCRecordType record_type = CDCRecordType::CHANGE
-  );
-  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
-      const std::string& replication_slot_name,
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+      const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
+  Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT);
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,

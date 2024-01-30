@@ -128,9 +128,6 @@ DEFINE_test_flag(
 DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, false, true,
     "Enable new record types in CDC streams");
 
-DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
-                            "Enable support for CDC Consistent Snapshot Streams");
-
 DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
     "When enabled, allows adding a replication slot name to an existing CDC stream via the yb-admin"
     " ysql_backfill_change_data_stream_with_replication_slot command."
@@ -140,6 +137,7 @@ DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 

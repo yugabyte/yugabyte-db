@@ -82,6 +82,7 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
 namespace tserver {
@@ -707,11 +708,28 @@ Status PgClientSession::CreateReplicationSlot(
   options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
   options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::EXPLICIT));
 
+  std::optional<CDCSDKSnapshotOption> snapshot_option;
+  if (FLAGS_yb_enable_cdc_consistent_snapshot_streams) {
+    switch (req.snapshot_action()) {
+      case REPLICATION_SLOT_NOEXPORT_SNAPSHOT:
+        snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
+        break;
+      case REPLICATION_SLOT_USE_SNAPSHOT:
+        snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT;
+        break;
+      case REPLICATION_SLOT_UNKNOWN_SNAPSHOT:
+        // Crash in debug and return InvalidArgument in release mode.
+        RSTATUS_DCHECK(false, InvalidArgument, "invalid snapshot_action UNKNOWN");
+      default:
+        return STATUS_FORMAT(InvalidArgument, "invalid snapshot_action $0", req.snapshot_action());
+    }
+  }
+
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
-      std::nullopt, context->GetClientDeadline()));
+      snapshot_option, context->GetClientDeadline()));
   *resp->mutable_stream_id() = stream_result.ToString();
   return Status::OK();
 }

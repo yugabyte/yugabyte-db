@@ -72,7 +72,8 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(NameStr(*name), false,
-						  temporary ? RS_TEMPORARY : RS_PERSISTENT);
+						  temporary ? RS_TEMPORARY : RS_PERSISTENT,
+						  CRS_NOEXPORT_SNAPSHOT);
 
 	values[0] = NameGetDatum(&MyReplicationSlot->data.name);
 	nulls[0] = false;
@@ -114,7 +115,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("pg_create_logical_replication_slot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
@@ -168,9 +169,15 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	 * this transaction fails. We'll make it persistent at the end. Temporary
 	 * slots can be created as temporary from beginning as they get dropped on
 	 * error as well.
+	 *
+	 * YB Note: We use CRS_NOEXPORT_SNAPSHOT here since it is the only supported
+	 * mechanism via this function in PG. It is evident from the
+	 * CreateInitDecodingContext call below where `need_full_snapshot` is passed
+	 * as false indicating that no snapshot should be built.
 	 */
 	ReplicationSlotCreate(NameStr(*name), true,
-						  temporary ? RS_TEMPORARY : RS_EPHEMERAL);
+						  temporary ? RS_TEMPORARY : RS_EPHEMERAL,
+						  CRS_NOEXPORT_SNAPSHOT);
 
 	memset(nulls, 0, sizeof(nulls));
 
