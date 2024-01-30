@@ -130,7 +130,6 @@ static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
 static void accumulate_append_subpath(Path *path,
 									  List **subpaths,
 									  List **special_subpaths);
-static Path *get_singleton_append_subpath(Path *path);
 static void set_dummy_rel_pathlist(RelOptInfo *rel);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								  Index rti, RangeTblEntry *rte);
@@ -2163,7 +2162,7 @@ accumulate_append_subpath(Path *path, List **subpaths, List **special_subpaths)
  *
  * Note: 'path' must not be a parallel-aware path.
  */
-static Path *
+Path *
 get_singleton_append_subpath(Path *path)
 {
 	Assert(!path->parallel_aware);

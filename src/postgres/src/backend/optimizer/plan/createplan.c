@@ -3138,6 +3138,51 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 }
 
 /*
+ * yb_fetch_subpaths
+ *
+ * Helper function for yb_single_row_update_or_delete_path to fetch the
+ * - projection and index subpaths of an UPDATE path
+ * - index subpath of a DELETE path
+ *
+ */
+static void
+yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
+				  ProjectionPath **projection_path)
+{
+	Path *subpath = path->subpath;
+	*index_path = NULL;
+	*projection_path = NULL;
+
+	/*
+	 * This function only supports UPDATE/DELETE.
+	 */
+	Assert(path->operation == CMD_UPDATE || path->operation == CMD_DELETE);
+
+	/*
+	 * If subpath is an AppendPath with a single child, get that child path.
+	 */
+	subpath = get_singleton_append_subpath(subpath);
+
+	/*
+	 * The index path is the subpath of the projection for UPDATE, whereas
+	 * for DELETE that's not the case.
+	 */
+	if (path->operation == CMD_UPDATE)
+	{
+		/*
+		 * UPDATE contains projection for SET values on top of index scan.
+		 */
+		if (!IsA(subpath, ProjectionPath))
+			return;
+		*projection_path = (ProjectionPath *) subpath;
+		*index_path = (IndexPath *) (*projection_path)->subpath;
+	}
+	else
+		*index_path = (IndexPath *) subpath;
+	return;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3193,8 +3238,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	Oid relid;
 	Relation relation;
 	TupleDesc tupDesc;
-	Path *subpath = path->subpath;
 	IndexPath *index_path;
+	ProjectionPath *projection_path;
 	Bitmapset *primary_key_attrs = NULL;
 	ListCell *values;
 	ListCell *subpath_tlist_values;
@@ -3232,7 +3277,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
 	{
 		RelOptInfo *rel = root->simple_rel_array[rti];
-		if (rel != NULL)
+		/* Ignore NULL or non-leaf partitioned rels. */
+		if (rel != NULL && !IS_PARTITIONED_REL(rel))
 		{
 			if (relInfo == NULL)
 			{
@@ -3280,28 +3326,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	tupDesc = RelationGetDescr(relation);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
-	index_path = (IndexPath *) subpath;
+	yb_fetch_subpaths(path, &index_path, &projection_path);
+	if (!index_path)
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	if (path->operation == CMD_UPDATE)
 	{
-		ProjectionPath *projection_path;
-
-		/*
-		 * UPDATE contains projection for SET values on top of index scan.
-		 */
-		if (!IsA(subpath, ProjectionPath))
-		{
-			RelationClose(relation);
-			return false;
-		}
-		projection_path = (ProjectionPath *) subpath;
-
-		/*
-		 * The index path is the subpath of the projection for UPDATE, whereas for DELETE
-		 * the index path is the direct subpath of the ModifyTablePath.
-		 */
-		index_path = (IndexPath *) projection_path->subpath;
-
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
 
 		/*
@@ -3310,61 +3343,51 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 * then return false.
 		 */
 		int update_col_index = 0;
-		foreach(values, build_path_tlist(root, subpath))
+		foreach (values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
 
-			/* Ignore unspecified columns. */
+			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
 			{
 				Var *var = castNode(Var, tle->expr);
-				/*
-				 * Column set to itself (unset) or ybctid pseudo-column
-				 * (added for YB scan in rewrite handler).
-				 */
 				if (var->varattno == InvalidAttrNumber ||
-					var->varattno == tle->resno ||
+					var->varattno == TableOidAttributeNumber ||
 					(var->varattno == YBTupleIdAttributeNumber &&
-						var->varcollid == InvalidOid))
+					 var->varcollid == InvalidOid))
 				{
 					continue;
 				}
 			}
-			/* The semantic of target list in the UPDATE path has changed in
-			 * PG15. It no longer contains all the attributes in the relation,
-			 * instead just contains the attributes being updated and the junk
-			 * columns. The semantics of resno has changed as well. Previously,
-			 * it used to represent the attribute number, now it is just a
-			 * consecutive number. Now, root->update_colnos represents the
-			 * att_nums of attributes being updated. See preprocess_targetlist
-			 * and extract_update_targetlist_colnos for more details.  */
-			Assert(root->update_colnos->length > update_col_index);
-
-			/* Setting tle resno to attribute number. */
-			int resno = tle->resno =
-				root->update_colnos->elements[update_col_index].int_value;
-			update_col_index++;
 
 			/*
-			 * Verify if the path target matches a table column.
+			 * Verify if the path target matches a table column being modified.
 			 *
-			 * While resno is always expected to be greater than zero, it is
-			 * possible that planner adds extra expressions. In particular,
-			 * we've seen a RowExpr when a view was updated.
+			 * It is possible that planner adds extra expressions. In
+			 * particular, we've seen a RowExpr when a view was updated.
 			 *
 			 * We are not sure how to handle those, so we fallback to regular
 			 * update.
 			 *
-			 * Note, this check happens after the unspecified/pseudo-column
-			 * check, it is expected that pseudo-columns go after regular
-			 * tables columns listed in the tuple descriptor.
 			 */
-			if (resno <= 0 || resno > tupDesc->natts)
+			if (update_col_index == list_length(root->update_colnos))
 			{
-				elog(DEBUG1, "Target expression out of range: %d", resno);
+				elog(DEBUG1, "Target expression out of range: %d", update_col_index);
 				RelationClose(relation);
 				return false;
 			}
+
+			/*
+			 * It is expected that root->update_colnos and
+			 * projection_path->pathtarget contain the updated columns in the
+			 * same order.
+			 *
+			 * Store attribute number in tle->resno, overriding the sequential
+			 * number, as the attribute number is required in YBCExecuteUpdate
+			 * for ybPushdownTlist.
+			 */
+			int resno = tle->resno =
+				list_nth_int(root->update_colnos, update_col_index++);
 
 			/* Updates involving primary key columns are not single-row. */
 			if (bms_is_member(resno - attr_offset, primary_key_attrs))
