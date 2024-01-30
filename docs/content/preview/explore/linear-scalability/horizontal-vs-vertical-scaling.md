@@ -1,11 +1,9 @@
 ---
 title: Horizontal vs Vertical Scaling
-headerTitle: Horizontal vs Vertical Scaling
-linkTitle: Horizontal vs Vertical
+headerTitle: Horizontal vs vertical scaling
+linkTitle: Horizontal vs vertical
 description: Differences between horizontal and vertical scaling
 headcontent: Understand the differences between horizontal and vertical scaling
-aliases:
-  - /explore/linear-scalability/sharding-rebalancing
 menu:
   preview:
     identifier: scalability-horizontal-vs-vertical

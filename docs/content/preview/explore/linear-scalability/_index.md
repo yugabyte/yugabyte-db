@@ -37,15 +37,15 @@ Being able to scale seamlessly is as important as being able to scale. Scaling n
 
 ## Ways to scale
 
-There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. In vertical scaling you add more CPUs/RAM and storage to the existing nodes of your cluster whereas in horizontal scaling, you add more nodes of the same type to your cluster. Horizontal scaling is the most common type of scaling in YugabyteDB. As YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
+There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. In vertical scaling, you enhance the capabilities of your existing nodes by increasing CPU, memory, storage, and so on. With horizontal scaling, you add more nodes of the same type to your cluster. Horizontal scaling is the most common type of scaling in YugabyteDB. As YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
 {{<tip>}}
-To learn more about the pros and cons of the two types of scaling, see [Horizontal vs Vertical scaling](./horizontal-vs-vertical-scaling).
+To learn more about the pros and cons of the two types of scaling, see [Horizontal vs vertical scaling](./horizontal-vs-vertical-scaling).
 {{</tip>}}
 
 ## How scaling works
 
-It is important to understand what happens inside YugabyteDB to get an idea of the effort and estimate the timeline needed to scale your systems. There are a few basic concepts that enable YugabyteDB to scale. Let's go over them quickly.
+To get a better idea of the effort and time you will need to scale your systems, it's helpful to understand a few basic concepts that describe how YugabyteDB scales. Let's go over them quickly.
 
 ### Sharding
 
@@ -80,7 +80,7 @@ For best results, keep steady state resource usage under 60%, and take strong ac
 [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
 
 {{<tip>}}
-To learn more about the various metrics than you can monitor, see [Observability](../observability)
+To learn more about the various metrics than you can monitor, see [Observability](../observability).
 {{</tip>}}
 
 ## Learn more
