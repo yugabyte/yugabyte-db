@@ -667,6 +667,19 @@ DefineIndex(Oid relationId,
 		}
 	}
 
+	if (IsYugaByteEnabled() &&
+		stmt->tableSpace &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary indexes in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespace for temporary index")));
+	}
+
 	/*
 	 * Select tablespace to use.  If not specified, use default tablespace
 	 * (which may in turn default to database's default).

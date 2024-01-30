@@ -244,6 +244,9 @@ CREATE TEMPORARY TABLE temptest (a INT);
 -- Fail, cannot set tablespaces for temp tables
 ALTER TABLE temptest SET TABLESPACE regress_tblspace;
 ERROR:  cannot set tablespaces for temporary tables
+-- Fail, cannot set tablespace for temp indexes
+CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespace for temporary index
 DROP TABLE temptest;
 -- Fail, cannot set tablespaces for temp tables
 CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
