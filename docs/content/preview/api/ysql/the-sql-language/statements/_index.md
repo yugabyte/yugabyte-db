@@ -51,6 +51,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE SERVER`](ddl_create_server) | Create a foreign server |
 | [`CREATE TABLE`](ddl_create_table) | Create an empty table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a table from the results of a executing a `SELECT` |
+| [`CREATE TABLESPACE`](ddl_create_tablespace)                     | Create a tablespace                                       |
 | [`CREATE TRIGGER`](ddl_create_trigger) | Create a trigger |
 | [`CREATE TYPE`](ddl_create_type) | Create a type |
 | [`CREATE USER MAPPING`](ddl_create_user_mapping) | Create a user mapping |
@@ -73,6 +74,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP SERVER`](ddl_drop_server) | Drop a foreign server |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
+| [`DROP TABLESPACE`](ddl_drop_tablespace) | Delete a tablespace from the cluster |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
 | [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) | Import a foreign schema |
