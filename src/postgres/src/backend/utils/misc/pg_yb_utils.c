@@ -97,7 +97,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
 
@@ -3393,7 +3393,7 @@ bool IsYbFdwUser(Oid member) {
 
 void YBSetParentDeathSignal()
 {
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 	char* pdeathsig_str = getenv("YB_PG_PDEATHSIG");
 	if (pdeathsig_str)
 	{
