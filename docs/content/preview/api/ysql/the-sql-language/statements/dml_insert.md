@@ -103,7 +103,7 @@ When using `ON CONFLICT DO NOTHING`, the `conflict_target` is optional. If omitt
 
 ### *conflict_action*
 
-`conflict_action` clause specifies an action that happens when you use `ON CONFLICT`. The action includes `DO NOTHING`, or `DO UPDATE`. `DO UPDATE` clause specifies the `UPDATE` action to be executed on conflicted rows.
+`conflict_action` clause specifies an action that happens instead of a unique constraint violation if that is hit when you use `ON CONFLICT`. The action includes `DO NOTHING`, or `DO UPDATE`. `DO UPDATE` clause specifies the `UPDATE` action to be executed on conflicted rows.
 
 `SET` and `WHERE` clauses in `ON CONFLICT DO UPDATE` clause can access the existing row using the table's name (or an alias), and the rows proposed for insertion using the special `excluded` table. 
 
