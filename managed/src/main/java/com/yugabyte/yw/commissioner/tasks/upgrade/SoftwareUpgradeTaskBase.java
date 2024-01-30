@@ -249,6 +249,8 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
       createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
+    createLocaleCheckTask().setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
     addBasicPrecheckTasks();
   }
 
