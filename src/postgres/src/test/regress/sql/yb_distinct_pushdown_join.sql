@@ -109,3 +109,24 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
 DROP INDEX irv;
 
 DROP TABLE t;
+
+-- Regression test case for GitHub issue #20827
+
+CREATE TABLE t1 (col_int_key int, pad int, primary key(col_int_key asc, pad asc));
+INSERT INTO t1 (select 3, i from generate_series(1, 1000) i);
+INSERT INTO t1 (select 4, i from generate_series(1, 1000) i);
+ANALYZE t1;
+
+CREATE TABLE t2 (pk int, col_int int, primary key(pk asc));
+INSERT INTO t2 (SELECT i, i FROM generate_series(1, 1000) i);
+ANALYZE t2;
+
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+
+DROP TABLE t1;
+DROP TABLE t2;
