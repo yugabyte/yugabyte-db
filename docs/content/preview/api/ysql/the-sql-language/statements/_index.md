@@ -25,6 +25,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`ALTER DOMAIN`](ddl_alter_domain) | Change domain definition |
 | [`ALTER FOREIGN DATA WRAPPER`](ddl_alter_foreign_data_wrapper) | Change foreign data wrapper definition |
 | [`ALTER FOREIGN TABLE`](ddl_alter_foreign_table) | Change foreign table definition |
+| [`ALTER INDEX`](ddl_alter_index) | Change index definition |
+| [`ALTER MATERIALIZED VIEW`](ddl_alter_matview) | Change materialized view definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
 | [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
 | [`ALTER SCHEMA`](ddl_alter_schema) | Change schema definition |
