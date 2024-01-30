@@ -25,7 +25,7 @@ When deploying a universe, YBA uses the provider configuration settings to creat
 | I want to deploy YugbayteDB universes to | Create provider |
 | :--- | :--- |
 | Cloud provider | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
-| Kubernetes | [Kubernetes](kubernetes/) |
+| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzugcp/)<br>[OpenShift](openshift/) |
 | Private cloud | [On-premises](on-premises/) |
 
 {{<index/block>}}

@@ -12,6 +12,7 @@ menu:
     parent: configure-yugabyte-platform
     weight: 5
 type: docs
+private: true
 ---
 
 For an overview of how to configure database nodes, select one of the following cloud providers:

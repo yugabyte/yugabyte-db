@@ -27,6 +27,8 @@ Creating an on-premises provider requires the following steps:
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
 1. [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
 
+![Configure on-prem provider](/images/yb-platform/config/yba-onprem-config-flow.png)
+
 ## Configure the on-premises provider
 
 Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
