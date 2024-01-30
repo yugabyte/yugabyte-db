@@ -2189,8 +2189,10 @@ void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
 
 Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
                                            const PgOid database_oid,
+                                           YBCPgReplicationSlotSnapshotAction snapshot_action,
                                            PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(
+      pg_session_, slot_name, database_oid, snapshot_action);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }

@@ -1831,12 +1831,28 @@ YBCValidatePlacement(const char *placement_info)
 /*  Replication Slot Functions. */
 
 void
-YBCCreateReplicationSlot(const char *slot_name)
+YBCCreateReplicationSlot(const char *slot_name,
+						 CRSSnapshotAction snapshot_action)
 {
 	YBCPgStatement handle;
 
+	YBCPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
+	switch (snapshot_action)
+	{
+		case CRS_NOEXPORT_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT;
+			break;
+		case CRS_USE_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
+			break;
+		case CRS_EXPORT_SNAPSHOT:
+			/* We return an 'Unsupported' error earlier. */
+			pg_unreachable();
+	}
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 MyDatabaseId,
+												 repl_slot_snapshot_action,
 												 &handle));
 
 	YBCStatus status = YBCPgExecCreateReplicationSlot(handle);
