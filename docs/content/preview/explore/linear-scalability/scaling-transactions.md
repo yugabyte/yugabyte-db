@@ -18,14 +18,14 @@ Getting a transaction to work correctly on a distributed database involves multi
 
 ## How transactions work
 
-In the simplest explanation, the node the client connects to acts as the transaction manager. This transaction manager acquires the necessary locks, talks to the leaders for the keys involved in the transaction, communicates with the transaction [status tablet](../../architecture/transactions/transactional-io-path/#create-a-transaction-record), and then the transaction is committed to the leader and replicated to the respective followers.
+A node the client connects to acts as the transaction manager. This transaction manager acquires the necessary locks, talks to the leaders for the keys involved in the transaction, communicates with the transaction [status tablet](../../architecture/transactions/transactional-io-path/#create-a-transaction-record), and then the transaction is committed to the leader and replicated to the respective followers.
 
-In the following illustration, you can see that as the connection is to `NODE-2` the transaction manager is created on that node. This manager coordinates the transaction involving keys belonging to `T2` and `T3`.
+In the following illustration, you can see that as the connection is to `NODE-2`, the transaction manager is created on that node. This manager coordinates the transaction involving keys belonging to `T2` and `T3`.
 
 ![How does a transaction work](/images/explore/scalability/scaling-transactions-working.png)
 
 {{<tip>}}
-To understand how transactions work in detail, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/)
+To understand how transactions work in detail, see [Transactional I/O path](../../../architecture/transactions/transactional-io-path/).
 {{</tip>}}
 
 ## OLTP benchmark
