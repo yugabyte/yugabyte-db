@@ -25,7 +25,8 @@ Creating an on-premises provider requires the following steps:
 1. Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
 1. [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs while setting up the provider, and the regions where the nodes are located.
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
-1. [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
+1. If required, [manually provision the VMs](../on-premises-script/) with the YugabyteDB database software. If your SSH user has password-less sudo access to the nodes, you can skip this step, as YBA will be able to automatically provision the nodes.
+1. [Add the compute instances](#add-instances) that the provider will use for deploying YugabyteDB universes to the pool of nodes.
 
 ![Configure on-prem provider](/images/yb-platform/config/yba-onprem-config-flow.png)
 

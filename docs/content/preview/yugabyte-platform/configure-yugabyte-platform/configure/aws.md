@@ -1,4 +1,4 @@
----
+<!---
 title: Configure YugabyteDB Anywhere on AWS
 headerTitle: Overview
 linkTitle: Overview
@@ -13,7 +13,7 @@ menu:
     weight: 5
 type: docs
 private: true
----
+--->
 
 For an overview of how to configure database nodes, select one of the following cloud providers:
 
