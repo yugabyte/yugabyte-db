@@ -648,6 +648,23 @@ GetNewObjectId(void)
 		return result;
 	}
 
+	const bool ysql_enable_pg_per_database_oid_allocator =
+		*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
+
+	if (ysql_enable_pg_per_database_oid_allocator &&
+		IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
+	{
+		/*
+		 * As of 2023-10-16, docdb does not allow OID wraparound so we do not
+		 * need to handle OID wraparound here.
+		 */
+		YBCStatus status = YBCGetNewObjectId(YbDatabaseIdForNewObjectId,
+											 &result);
+		LWLockRelease(OidGenLock);
+		HandleYBStatus(status);
+		return result;
+	}
+
 	/*
 	 * Check for wraparound of the OID counter.  We *must* not return 0
 	 * (InvalidOid), and in normal operation we mustn't return anything below
@@ -685,7 +702,8 @@ GetNewObjectId(void)
 	/* If we run out of logged for use oids then we must log more */
 	if (ShmemVariableCache->oidCount == 0)
 	{
-		if (IsYugaByteEnabled())
+		if (IsYugaByteEnabled() &&
+			!ysql_enable_pg_per_database_oid_allocator)
 		{
 			Oid begin_oid = InvalidOid;
 			Oid end_oid   = InvalidOid;

@@ -1103,7 +1103,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               : UUID.fromString(primaryCluster.userIntent.provider);
       KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
   }
@@ -1137,7 +1137,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.command = command;
       KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
   }

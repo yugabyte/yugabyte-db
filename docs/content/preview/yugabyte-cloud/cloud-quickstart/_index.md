@@ -28,9 +28,13 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 
 <!-- Following sections are duplicated in quick-start-yugabytdb-managed -->
 
-If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
+### What's next
 
-If you've run the tutorial and want to try more advanced deployments, [request a free trial](../managed-freetrial/).
+- [Run a product lab](../managed-labs/) - explore core features of YugabyteDB running a demo application on globally distributed test clusters in real time.
+
+- [Request a free trial](../managed-freetrial/) - to try more advanced deployments, run a POC, or benchmark, request a free trial.
+
+If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
 
 ## Create your Sandbox cluster
 

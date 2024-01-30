@@ -26,6 +26,11 @@
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 
+/* YB includes. */
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
+#include "utils/uuid.h"
+
 /*
  * Helper function for creating a new physical replication slot with
  * given arguments. Note that this function doesn't release the created
@@ -73,6 +78,11 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
 	Datum		result;
+
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("YSQL only supports logical replication slots")));
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
@@ -135,30 +145,33 @@ create_logical_replication_slot(char *name, char *plugin,
 	ReplicationSlotCreate(name, true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL, two_phase);
 
-	/*
-	 * Create logical decoding context to find start point or, if we don't
-	 * need it, to 1) bump slot's restart_lsn and xmin 2) check plugin sanity.
-	 *
-	 * Note: when !find_startpoint this is still important, because it's at
-	 * this point that the output plugin is validated.
-	 */
-	ctx = CreateInitDecodingContext(plugin, NIL,
-									false,	/* just catalogs is OK */
-									restart_lsn,
-									XL_ROUTINE(.page_read = read_local_xlog_page,
-											   .segment_open = wal_segment_open,
-											   .segment_close = wal_segment_close),
-									NULL, NULL, NULL);
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * Create logical decoding context to find start point or, if we don't
+		 * need it, to 1) bump slot's restart_lsn and xmin 2) check plugin sanity.
+		 *
+		 * Note: when !find_startpoint this is still important, because it's at
+		 * this point that the output plugin is validated.
+		 */
+		ctx = CreateInitDecodingContext(plugin, NIL,
+										false,	/* just catalogs is OK */
+										restart_lsn,
+										XL_ROUTINE(.page_read = read_local_xlog_page,
+												   .segment_open = wal_segment_open,
+												   .segment_close = wal_segment_close),
+										NULL, NULL, NULL);
 
-	/*
-	 * If caller needs us to determine the decoding start point, do so now.
-	 * This might take a while.
-	 */
-	if (find_startpoint)
-		DecodingContextFindStartpoint(ctx);
+		/*
+		 * If caller needs us to determine the decoding start point, do so now.
+		 * This might take a while.
+		 */
+		if (find_startpoint)
+			DecodingContextFindStartpoint(ctx);
 
-	/* don't need the decoding context anymore */
-	FreeDecodingContext(ctx);
+		/* don't need the decoding context anymore */
+		FreeDecodingContext(ctx);
+	}
 }
 
 /*
@@ -167,6 +180,13 @@ create_logical_replication_slot(char *name, char *plugin,
 Datum
 pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pg_create_logical_replication_slot is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
 	Name		name = PG_GETARG_NAME(0);
 	Name		plugin = PG_GETARG_NAME(1);
 	bool		temporary = PG_GETARG_BOOL(2);
@@ -180,6 +200,30 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 
+	if (IsYugaByteEnabled())
+	{
+		if (temporary)
+			ereport(ERROR, 
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Temporary replication slot is not yet supported"),
+					 errhint("See https://github.com/yugabyte/yugabyte-db/"
+							 "issues/19263. React with thumbs up to raise its "
+							 "priority")));
+	
+		/*
+		 * Validate output plugin requirement early so that we can avoid the
+		 * expensive call to yb-master.
+		 *
+		 * This is different from PG where the validation is done after creating
+		 * the replication slot on disk which is cleaned up in case of errors.
+		 */
+		if (plugin == NULL || strcmp(NameStr(*plugin), YB_OUTPUT_PLUGIN) != 0)
+			ereport(ERROR, 
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid output plugin"),
+					 errdetail("Only 'yboutput' plugin is supported")));
+	}
+
 	CheckSlotPermissions();
 
 	CheckLogicalDecodingRequirements();
@@ -191,18 +235,30 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 									InvalidXLogRecPtr,
 									true);
 
-	values[0] = NameGetDatum(&MyReplicationSlot->data.name);
-	values[1] = LSNGetDatum(MyReplicationSlot->data.confirmed_flush);
-
 	memset(nulls, 0, sizeof(nulls));
+
+	if (IsYugaByteEnabled())
+	{
+		values[0] = NameGetDatum(name);
+		/* Send lsn as NULL */
+		nulls[1] = true;
+	}
+	else
+	{
+		values[0] = NameGetDatum(&MyReplicationSlot->data.name);
+		values[1] = LSNGetDatum(MyReplicationSlot->data.confirmed_flush);
+	}
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);
 
-	/* ok, slot is now fully created, mark it as persistent if needed */
-	if (!temporary)
-		ReplicationSlotPersist();
-	ReplicationSlotRelease();
+	if (!IsYugaByteEnabled())
+	{
+		/* ok, slot is now fully created, mark it as persistent if needed */
+		if (!temporary)
+			ReplicationSlotPersist();
+		ReplicationSlotRelease();
+	}
 
 	PG_RETURN_DATUM(result);
 }
@@ -214,6 +270,13 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 Datum
 pg_drop_replication_slot(PG_FUNCTION_ARGS)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pg_drop_replication_slot is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
 	Name		name = PG_GETARG_NAME(0);
 
 	CheckSlotPermissions();
@@ -232,9 +295,21 @@ Datum
 pg_get_replication_slots(PG_FUNCTION_ARGS)
 {
 #define PG_GET_REPLICATION_SLOTS_COLS 14
+/* YB specific fields in pg_get_replication_slots */
+#define YB_PG_GET_REPLICATION_SLOTS_COLS 1
+
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pg_get_replication_slots is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	XLogRecPtr	currlsn;
 	int			slotno;
+
+	int			yb_totalslots;
 
 	/*
 	 * We don't require any special permission to see this function's data
@@ -246,23 +321,63 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 	currlsn = GetXLogWriteRecPtr();
 
+	YBCReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t yb_numreplicationslots = 0;
+
+	/*
+	 * Fetch the replication slots from yb-master.
+	 *
+	 * For YSQL, the source of truth is yb-master and the
+	 * ReplicationSlotCtl->replication_slots array just acts as a cache.
+	 */
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
+
+	yb_totalslots = (IsYugaByteEnabled()) ? yb_numreplicationslots :
+										 max_replication_slots;
+
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
-	for (slotno = 0; slotno < max_replication_slots; slotno++)
+	for (slotno = 0; slotno < yb_totalslots; slotno++)
 	{
 		ReplicationSlot *slot = &ReplicationSlotCtl->replication_slots[slotno];
 		ReplicationSlot slot_contents;
-		Datum		values[PG_GET_REPLICATION_SLOTS_COLS];
-		bool		nulls[PG_GET_REPLICATION_SLOTS_COLS];
+		Datum		values[PG_GET_REPLICATION_SLOTS_COLS +
+						   YB_PG_GET_REPLICATION_SLOTS_COLS];
+		bool		nulls[PG_GET_REPLICATION_SLOTS_COLS +
+						  YB_PG_GET_REPLICATION_SLOTS_COLS];
 		WALAvailability walstate;
 		int			i;
 
-		if (!slot->in_use)
-			continue;
+		const char	*yb_stream_id;
+		bool		yb_stream_active;
 
-		/* Copy slot contents while holding spinlock, then examine at leisure */
-		SpinLockAcquire(&slot->mutex);
-		slot_contents = *slot;
-		SpinLockRelease(&slot->mutex);
+		if (IsYugaByteEnabled())
+		{
+			YBCReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+
+			slot_contents.data.database = slot->database_oid;
+			namestrcpy(&slot_contents.data.name, slot->slot_name);
+			namestrcpy(&slot_contents.data.plugin, YB_OUTPUT_PLUGIN);
+			yb_stream_id = slot->stream_id;
+			yb_stream_active = slot->active;
+
+			/* Fill in the dummy values. */
+			slot_contents.data.xmin = InvalidXLogRecPtr;
+			slot_contents.data.catalog_xmin = InvalidXLogRecPtr;
+			slot_contents.data.restart_lsn = InvalidXLogRecPtr;
+			slot_contents.data.confirmed_flush = InvalidXLogRecPtr;
+			slot_contents.active_pid = 0;
+			slot_contents.data.persistency = RS_PERSISTENT;
+			slot_contents.data.invalidated_at = InvalidXLogRecPtr;
+			slot_contents.data.two_phase_at = InvalidXLogRecPtr;
+		}
+		else
+		{
+			/* Copy slot contents while holding spinlock, then examine at leisure */
+			SpinLockAcquire(&slot->mutex);
+			slot_contents = *slot;
+			SpinLockRelease(&slot->mutex);
+		}
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
@@ -286,7 +401,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			values[i++] = ObjectIdGetDatum(slot_contents.data.database);
 
 		values[i++] = BoolGetDatum(slot_contents.data.persistency == RS_TEMPORARY);
-		values[i++] = BoolGetDatum(slot_contents.active_pid != 0);
+
+		if (IsYugaByteEnabled())
+			values[i++] = BoolGetDatum(yb_stream_active);
+		else
+			values[i++] = BoolGetDatum(slot_contents.active_pid != 0);
 
 		if (slot_contents.active_pid != 0)
 			values[i++] = Int32GetDatum(slot_contents.active_pid);
@@ -404,6 +523,14 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		values[i++] = BoolGetDatum(slot_contents.data.two_phase);
 
 		Assert(i == PG_GET_REPLICATION_SLOTS_COLS);
+
+		if (IsYugaByteEnabled())
+			values[i++] = CStringGetTextDatum(yb_stream_id);
+		else
+			nulls[i++] = true;
+
+		Assert(i == (PG_GET_REPLICATION_SLOTS_COLS +
+					 YB_PG_GET_REPLICATION_SLOTS_COLS));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
 							 values, nulls);

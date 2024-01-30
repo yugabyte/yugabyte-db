@@ -259,6 +259,9 @@ class PgApiImpl {
                      PgOid *begin_oid,
                      PgOid *end_oid);
 
+  // Allocate a new object id from the oid allocator of database db_oid.
+  Status GetNewObjectId(PgOid db_oid, PgOid *new_oid);
+
   Status GetCatalogMasterVersion(uint64_t *version);
 
   Status CancelTransaction(const unsigned char* transaction_id);
@@ -702,6 +705,25 @@ class PgApiImpl {
 
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+
+  //------------------------------------------------------------------------------------------------
+  // Replication Slots Functions.
+
+  // Create Replication Slot.
+  Status NewCreateReplicationSlot(const char *slot_name,
+                                  const PgOid database_oid,
+                                  PgStatement **handle);
+  Status ExecCreateReplicationSlot(PgStatement *handle);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
+
+  // Drop Replication Slot.
+  Status NewDropReplicationSlot(const char *slot_name,
+                                PgStatement **handle);
+  Status ExecDropReplicationSlot(PgStatement *handle);
 
  private:
   class Interrupter;

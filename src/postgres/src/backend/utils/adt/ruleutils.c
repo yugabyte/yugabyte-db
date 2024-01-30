@@ -1383,7 +1383,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (!isConstraint)
 			appendStringInfo(&buf, "CREATE %sINDEX %s%s ON %s%s USING %s (",
 							 idxrec->indisunique ? "UNIQUE " : "",
-							 useNonconcurrently ? "NONCONCURRENTLY " : "",
+							 useNonconcurrently || includeYbMetadata ? "NONCONCURRENTLY " : "",
 							 quote_identifier(NameStr(idxrelrec->relname)),
 							 idxrelrec->relkind == RELKIND_PARTITIONED_INDEX
 							 && !inherits ? "ONLY " : "",

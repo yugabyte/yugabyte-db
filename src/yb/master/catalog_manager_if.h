@@ -278,7 +278,9 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
-  virtual XClusterManager* GetXClusterManager() = 0;
+  virtual XClusterManagerIf* GetXClusterManager() = 0;
+
+  virtual XClusterManager* GetXClusterManagerImpl() = 0;
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 

@@ -77,7 +77,7 @@ public class UpgradeUniverseHandler {
   public UUID restartUniverse(
       RestartTaskParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
@@ -148,11 +148,13 @@ public class UpgradeUniverseHandler {
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
-        && taskType.equals(TaskType.SoftwareUpgrade)
         && CommonUtils.isReleaseEqualOrAfter(
             Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
         && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
-      taskType = TaskType.SoftwareUpgradeYB;
+      taskType =
+          taskType.equals(TaskType.SoftwareUpgrade)
+              ? TaskType.SoftwareUpgradeYB
+              : TaskType.SoftwareKubernetesUpgradeYB;
     }
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
@@ -174,12 +176,13 @@ public class UpgradeUniverseHandler {
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
     // TODO(vbansal): Add validations for finalize based on universe state.
     // Will add them in subsequent diffs.
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.RollbackKubernetesUpgrade
+            : TaskType.RollbackUpgrade;
     return submitUpgradeTask(
-        TaskType.RollbackUpgrade,
-        CustomerTask.TaskType.RollbackUpgrade,
-        requestParams,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
 
   public UUID upgradeGFlags(
@@ -206,7 +209,7 @@ public class UpgradeUniverseHandler {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       // Gflags upgrade does not change universe version. Check for current version of helm chart.
@@ -230,7 +233,7 @@ public class UpgradeUniverseHandler {
         && requestParams.getReadOnlyClusters().size() == 0) {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     return submitUpgradeTask(
         TaskType.KubernetesOverridesUpgrade,
         CustomerTask.TaskType.KubernetesOverridesUpgrade,
@@ -249,7 +252,7 @@ public class UpgradeUniverseHandler {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
@@ -280,7 +283,7 @@ public class UpgradeUniverseHandler {
 
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
@@ -296,7 +299,7 @@ public class UpgradeUniverseHandler {
   public UUID thirdpartySoftwareUpgrade(
       ThirdpartySoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     return submitUpgradeTask(
         TaskType.ThirdpartySoftwareUpgrade,
         CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
@@ -310,7 +313,7 @@ public class UpgradeUniverseHandler {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
     return submitUpgradeTask(
         TaskType.ModifyAuditLoggingConfig,
@@ -326,7 +329,7 @@ public class UpgradeUniverseHandler {
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     requestParams.allowInsecure =
         !(requestParams.enableNodeToNodeEncrypt || requestParams.enableClientToNodeEncrypt);
 
@@ -407,7 +410,7 @@ public class UpgradeUniverseHandler {
   public UUID upgradeVMImage(
       VMImageUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
     return submitUpgradeTask(
         TaskType.VMImageUpgrade,
         CustomerTask.TaskType.VMImageUpgrade,
@@ -419,7 +422,7 @@ public class UpgradeUniverseHandler {
   public UUID upgradeSystemd(
       SystemdUpgradeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     return submitUpgradeTask(
         TaskType.SystemdUpgrade,
@@ -432,7 +435,7 @@ public class UpgradeUniverseHandler {
   public UUID rebootUniverse(
       UpgradeTaskParams requestParams, Customer customer, Universe universe) {
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     return submitUpgradeTask(
         TaskType.RebootUniverse,

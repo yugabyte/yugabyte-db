@@ -49,8 +49,18 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    verifyParams();
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+
+    if (EncryptionInTransitUtil.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
+      throw new IllegalArgumentException("Root certificate is null");
+    }
+
+    if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+        && taskParams().getClientRootCA() == null) {
+      throw new IllegalArgumentException("Client root certificate is null");
+    }
   }
 
   @Override
@@ -69,19 +79,6 @@ public class TlsToggle extends UpgradeTaskBase {
           // Round 2 gflags upgrade
           createRound2GFlagUpdateTasks(nodes);
         });
-  }
-
-  private void verifyParams() {
-    taskParams().verifyParams(getUniverse());
-
-    if (EncryptionInTransitUtil.isRootCARequired(taskParams()) && taskParams().rootCA == null) {
-      throw new IllegalArgumentException("Root certificate is null");
-    }
-
-    if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-        && taskParams().getClientRootCA() == null) {
-      throw new IllegalArgumentException("Client root certificate is null");
-    }
   }
 
   private void createRound1GFlagUpdateTasks(Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
@@ -262,7 +259,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -282,7 +279,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 

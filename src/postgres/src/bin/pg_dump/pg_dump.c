@@ -16895,11 +16895,21 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 */
 		if (is_unique_index_constraint)
 		{
-			static const char index_def_prefix[] = "CREATE UNIQUE INDEX ";
-			Assert(strncmp(indxinfo->indexdef, index_def_prefix,
-						   strlen(index_def_prefix)) == 0);
-			appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n\n",
-							  index_def_prefix, &indxinfo->indexdef[20]);
+			if (dopt->include_yb_metadata)
+			{
+				/*
+				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
+				 */
+				appendPQExpBuffer(q, "%s;\n\n", indxinfo->indexdef);
+			}
+			else
+			{
+				static const char index_def_prefix[] = "CREATE UNIQUE INDEX ";
+				Assert(strncmp(indxinfo->indexdef, index_def_prefix,
+							   strlen(index_def_prefix)) == 0);
+				appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n\n",
+								  index_def_prefix, &indxinfo->indexdef[20]);
+			}
 		}
 
 		appendPQExpBuffer(q, "ALTER %sTABLE ONLY %s\n", foreign,

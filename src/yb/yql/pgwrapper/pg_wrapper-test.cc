@@ -22,11 +22,13 @@
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/client/client.h"
@@ -96,7 +98,7 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
                         bool regular_only = false) {
     if (!table_id.empty() && !namespace_name.empty()) {
       FAIL() << "Only one of table_id and namespace_name should be specified: "
-             << EXPR_VALUE_FOR_LOG(table_id) << ", " << EXPR_VALUE_FOR_LOG(namespace_name);
+             << YB_EXPR_TO_STREAM_COMMA_SEPARATED(table_id, namespace_name);
     }
     RpcController rpc;
     auto master_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();

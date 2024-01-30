@@ -23,10 +23,10 @@ DECLARE_int32(tablet_replicas_per_core_limit);
 namespace yb::master {
 
 struct AggregatedClusterInfo {
-  // Total memory reserved for tablet replica overheads across all tservers in the cluster. Only
-  // set if every tserver in the cluster provides a value in its heartbeat.
+  // Total memory reserved for tablet replica overheads across all TServers in the cluster. Only
+  // set if every TServer in the cluster provides a value in its heartbeat.
   std::optional<int64_t> total_memory;
-  // Total cores across all tservers in the cluster. Only set if every tserver in the cluster
+  // Total cores across all TServers in the cluster. Only set if every TServer in the cluster
   // provides a value in its heartbeat.
   std::optional<int64_t> total_cores;
   int64_t total_live_replicas;
@@ -37,7 +37,10 @@ struct TabletReplicaPerResourceLimits {
   std::optional<int64_t> per_core;
 };
 
-AggregatedClusterInfo ComputeAggregatedClusterInfo(const TSDescriptorVector& ts_descs);
+// Computes the amount of memory, cores, and live tablet replicas on the TServers with the given
+// placement_uuid.
+AggregatedClusterInfo ComputeAggregatedClusterInfo(
+    const TSDescriptorVector& ts_descs, const std::string& placement_uuid);
 
 int64_t ComputeTabletReplicaLimit(
     const AggregatedClusterInfo& cluster_info, const TabletReplicaPerResourceLimits& limits);

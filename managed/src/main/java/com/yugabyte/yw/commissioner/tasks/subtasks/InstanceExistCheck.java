@@ -14,8 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 public class InstanceExistCheck extends NodeTaskBase {
 
   @Inject
-  protected InstanceExistCheck(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected InstanceExistCheck(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override

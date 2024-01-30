@@ -49,3 +49,5 @@ DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
+
+DECLARE_bool(enable_yb_auh);

@@ -21,6 +21,8 @@ import { ConfirmEditRoleModal } from './ConfirmEditRoleModal';
 
 import { EditViews, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { RoleType } from '../IRoles';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
 import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
@@ -111,7 +113,13 @@ export const EditRole = () => {
         toggleEditRoleConfirmModal(true);
       }}
       hideSave={currentView === EditViews.USERS}
-      disableSave={currentRole?.roleType === RoleType.SYSTEM}
+      disableSave={
+        currentRole?.roleType === RoleType.SYSTEM ||
+        !hasNecessaryPerm({
+          ...ApiPermissionMap.MODIFY_RBAC_ROLE,
+          onResource: { ROLE: currentRole?.roleUUID }
+        })
+      }
     >
       <Box className={classes.root}>
         <div className={classes.header}>
@@ -123,18 +131,27 @@ export const EditRole = () => {
             />
             {t('title')}
           </div>
-          <YBButton
-            variant="secondary"
-            size="large"
-            data-testid={`rbac-resource-delete-role`}
-            startIcon={<Delete />}
-            disabled={currentRole?.roleType === RoleType.SYSTEM}
-            onClick={() => {
-              toggleDeleteModal(true);
+          <RbacValidator
+            customValidateFunction={() => {
+              return hasNecessaryPerm({
+                ...ApiPermissionMap.DELETE_RBAC_ROLE,
+                onResource: { ROLE: currentRole?.roleUUID }
+              }) && currentRole?.roleType !== RoleType.SYSTEM;
             }}
+            isControl
           >
-            {t('title', { keyPrefix: 'rbac.roles.delete' })}
-          </YBButton>
+            <YBButton
+              variant="secondary"
+              size="large"
+              data-testid={`rbac-resource-delete-role`}
+              startIcon={<Delete />}
+              onClick={() => {
+                toggleDeleteModal(true);
+              }}
+            >
+              {t('title', { keyPrefix: 'rbac.roles.delete' })}
+            </YBButton>
+          </RbacValidator>
         </div>
         <Grid container className={classes.addPadding}>
           <Grid item className={classes.menuContainer}>

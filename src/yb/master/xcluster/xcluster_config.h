@@ -47,6 +47,8 @@ class XClusterConfig {
 
   Result<uint32_t> GetVersion() const EXCLUDES(mutex_);
 
+  void DumpState(std::ostream* out) const EXCLUDES(mutex_);
+
   Result<SysXClusterConfigEntryPB> GetXClusterConfigEntryPB() const EXCLUDES(mutex_);
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const
@@ -66,7 +68,7 @@ class XClusterConfig {
 
   mutable std::shared_mutex mutex_;
 
-  std::shared_ptr<XClusterConfigInfo> xcluster_config_info_ GUARDED_BY(mutex_);
+  std::unique_ptr<XClusterConfigInfo> xcluster_config_info_ GUARDED_BY(mutex_);
 };
 
 }  // namespace master

@@ -105,7 +105,13 @@ class Master : public tserver::DbServerBase {
 
   CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
 
+  XClusterManagerIf* xcluster_manager() const;
+
+  XClusterManager* xcluster_manager_impl() const;
+
   FlushManager* flush_manager() const { return flush_manager_.get(); }
+
+  TestAsyncRpcManager* test_async_rpc_manager() const { return test_async_rpc_manager_.get(); }
 
   YsqlBackendsManager* ysql_backends_manager() const {
     return ysql_backends_manager_.get();
@@ -241,6 +247,8 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;
+
+  std::unique_ptr<TestAsyncRpcManager> test_async_rpc_manager_;
 
   // For initializing the catalog manager.
   std::unique_ptr<ThreadPool> init_pool_;

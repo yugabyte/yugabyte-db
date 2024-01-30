@@ -33,11 +33,14 @@ service PgClientService {
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
+  rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
+      returns (PgCreateReplicationSlotResponsePB);
   rpc CreateSequencesDataTable(PgCreateSequencesDataTableRequestPB)
       returns (PgCreateSequencesDataTableResponsePB);
   rpc CreateTable(PgCreateTableRequestPB) returns (PgCreateTableResponsePB);
   rpc CreateTablegroup(PgCreateTablegroupRequestPB) returns (PgCreateTablegroupResponsePB);
   rpc DropDatabase(PgDropDatabaseRequestPB) returns (PgDropDatabaseResponsePB);
+  rpc DropReplicationSlot(PgDropReplicationSlotRequestPB) returns (PgDropReplicationSlotResponsePB);
   rpc DropTable(PgDropTableRequestPB) returns (PgDropTableResponsePB);
   rpc DropTablegroup(PgDropTablegroupRequestPB) returns (PgDropTablegroupResponsePB);
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
@@ -45,9 +48,13 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
+      returns (PgGetReplicationSlotStatusResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
+      returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
       returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
@@ -85,6 +92,9 @@ service PgClientService {
       returns (PgGetActiveTransactionListResponsePB);
 
   rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
+      returns (PgGetNewObjectIdResponsePB);
 
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
@@ -168,6 +178,17 @@ message PgCreateDatabaseResponsePB {
 message PgCreateSequencesDataTableRequestPB {
 }
 
+message PgCreateReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  uint32 database_oid = 2;
+  string replication_slot_name = 3;
+}
+
+message PgCreateReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+  bytes stream_id = 2;
+}
+
 message PgCreateSequencesDataTableResponsePB {
   AppStatusPB status = 1;
 }
@@ -246,6 +267,15 @@ message PgDropDatabaseRequestPB {
 }
 
 message PgDropDatabaseResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgDropReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  string replication_slot_name = 2;
+}
+
+message PgDropReplicationSlotResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -341,6 +371,21 @@ message PgGetLockStatusResponsePB {
   map<string, TransactionList> transactions_by_node = 3;
 }
 
+message PgGetReplicationSlotStatusRequestPB {
+  string replication_slot_name = 1;
+}
+
+enum ReplicationSlotStatus {
+  ACTIVE = 0;
+  INACTIVE = 1;
+}
+
+message PgGetReplicationSlotStatusResponsePB {
+  AppStatusPB status = 1;
+
+  ReplicationSlotStatus replication_slot_status = 2;
+}
+
 message PgListLiveTabletServersRequestPB {
   bool primary_only = 1;
 }
@@ -371,6 +416,20 @@ message PgGetIndexBackfillProgressResponsePB {
 message PgListLiveTabletServersResponsePB {
   AppStatusPB status = 1;
   repeated PgLiveTabletServerPB servers = 2;
+}
+
+message PgListReplicationSlotsRequestPB {}
+
+message PgReplicationSlotInfoPB {
+  string slot_name = 1;
+  bytes stream_id = 2;
+  uint32 database_oid = 3;
+  ReplicationSlotStatus replication_slot_status = 4;
+}
+
+message PgListReplicationSlotsResponsePB {
+  AppStatusPB status = 1;
+  repeated PgReplicationSlotInfoPB replication_slots = 2;
 }
 
 message PgOpenTableRequestPB {
@@ -726,4 +785,13 @@ message PgGetTableKeyRangesRequestPB {
 
 message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgGetNewObjectIdRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetNewObjectIdResponsePB {
+  AppStatusPB status = 1;
+  uint32 new_oid = 2;
 }

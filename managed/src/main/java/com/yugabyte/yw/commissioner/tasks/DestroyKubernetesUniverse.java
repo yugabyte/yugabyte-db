@@ -20,7 +20,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -44,16 +45,16 @@ import lombok.extern.slf4j.Slf4j;
 public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   private final XClusterUniverseService xClusterUniverseService;
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   public DestroyKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
-      KubernetesOperatorStatusUpdater kubernetesStatus) {
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService);
     this.xClusterUniverseService = xClusterUniverseService;
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   @Override

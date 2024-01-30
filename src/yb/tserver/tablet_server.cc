@@ -98,12 +98,14 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::make_shared;
@@ -231,6 +233,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
     "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
+DEFINE_UNKNOWN_int32(check_pg_object_id_allocators_interval_secs, 3600 * 3,
+    "Interval at which the TS check pg object id allocators for dropped databases.");
+TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
+
 namespace yb {
 namespace tserver {
 
@@ -310,7 +316,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
@@ -614,7 +620,8 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-      &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
+      messenger(), permanent_uuid(), &options(),
+      XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
@@ -663,6 +670,10 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(maintenance_manager_->Init());
 
   google::FlushLogFiles(google::INFO); // Flush the startup messages.
+
+  if (FLAGS_enable_ysql) {
+    ScheduleCheckObjectIdAllocators();
+  }
 
   return Status::OK();
 }
@@ -1287,6 +1298,50 @@ Status TabletServer::SetCDCServiceEnabled() {
 
 void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+}
+
+Result<std::unordered_set<uint32_t>> TabletServer::GetPgDatabaseOids() {
+  LOG(INFO) << "Read pg_database to get the set of database oids";
+  std::unordered_set<uint32_t> db_oids;
+  auto conn = VERIFY_RESULT(pgwrapper::PGConnBuilder({
+    .host = PgDeriveSocketDir(pgsql_proxy_bind_address()),
+    .port = pgsql_proxy_bind_address().port(),
+    .dbname = "template1",
+    .user = "postgres",
+    .password = UInt64ToString(GetSharedMemoryPostgresAuthKey()),
+  }).Connect());
+
+  auto res = VERIFY_RESULT(conn.Fetch("SELECT oid FROM pg_database"));
+  auto lines = PQntuples(res.get());
+  for (int i = 0; i != lines; ++i) {
+    const auto oid = VERIFY_RESULT(pgwrapper::GetValue<pgwrapper::PGOid>(res.get(), i, 0));
+    db_oids.insert(oid);
+  }
+  LOG(INFO) << "Successfully read " << db_oids.size() << " database oids from pg_database";
+  return db_oids;
+}
+
+void TabletServer::ScheduleCheckObjectIdAllocators() {
+  messenger()->scheduler().Schedule(
+      [this](const Status& status) {
+        if (!status.ok()) {
+          LOG(INFO) << status;
+          return;
+        }
+        Result<std::unordered_set<uint32_t>> db_oids = GetPgDatabaseOids();
+        if (db_oids.ok()) {
+          auto pg_client_service = pg_client_service_.lock();
+          if (pg_client_service) {
+            pg_client_service->CheckObjectIdAllocators(*db_oids);
+          } else {
+            LOG(WARNING) << "Could not call CheckObjectIdAllocators";
+          }
+        } else {
+          LOG(WARNING) << "Could not get the set of database oids: " << ResultToStatus(db_oids);
+        }
+        ScheduleCheckObjectIdAllocators();
+      },
+      std::chrono::seconds(FLAGS_check_pg_object_id_allocators_interval_secs));
 }
 
 }  // namespace tserver

@@ -20,6 +20,9 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_state_table.h"
+
+#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -90,7 +93,21 @@ DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
                  "being used to test pg_locks behavior when split happens after fetching involved "
                  "tablet(s) locations.");
 
+DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
+                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
+                 "production environment. In unit test we use this flag to force allocation of "
+                 "large Postgres OIDs.");
+
+DEFINE_RUNTIME_uint64(ysql_cdc_active_replication_slot_window_ms, 60000,
+                      "Determines the window in milliseconds in which if a client has consumed the "
+                      "changes of a ReplicationSlot across any tablet, then it is considered to be "
+                      "actively used. ReplicationSlots which haven't been used in this interval are"
+                      "considered to be inactive.");
+TAG_FLAG(ysql_cdc_active_replication_slot_window_ms, advanced);
+
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
+
 
 namespace yb::tserver {
 namespace {
@@ -332,17 +349,19 @@ class PgClientServiceImpl::Impl {
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
-      rpc::Scheduler* scheduler,
+      rpc::Messenger* messenger,
       const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter,
       MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker)
+      const std::shared_ptr<MemTracker>& parent_mem_tracker,
+      const std::string& permanent_uuid,
+      const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
-        check_expired_sessions_(scheduler),
+        check_expired_sessions_(&messenger->scheduler()),
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
@@ -351,9 +370,16 @@ class PgClientServiceImpl::Impl {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
+    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+        "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
+        permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
+    cdc_state_client_init_->Start();
+    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_.get());
   }
 
   ~Impl() {
+    cdc_state_table_.reset();
+    cdc_state_client_init_->Shutdown();
     check_expired_sessions_.Shutdown();
   }
 
@@ -454,6 +480,47 @@ class PgClientServiceImpl::Impl {
     resp->set_end_oid(end_oid);
 
     return Status::OK();
+  }
+
+  Status GetNewObjectId(
+      const PgGetNewObjectIdRequestPB& req,
+      PgGetNewObjectIdResponsePB* resp,
+      rpc::RpcContext* context) {
+    // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
+    // Given there are multiple Postgres nodes, each node should prefetch
+    // in smaller chunks.
+    constexpr int32_t kYbOidPrefetch = 256;
+    auto db_oid = req.db_oid();
+    std::lock_guard lock(mutex_);
+    auto& oid_chunk = reserved_oids_map_[db_oid];
+    if (oid_chunk.oid_count == 0) {
+      const uint32_t next_oid = oid_chunk.next_oid +
+          static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
+      uint32_t begin_oid, end_oid;
+      RETURN_NOT_OK(client().ReservePgsqlOids(
+          GetPgsqlNamespaceId(db_oid), next_oid, kYbOidPrefetch, &begin_oid, &end_oid));
+      oid_chunk.next_oid = begin_oid;
+      oid_chunk.oid_count = end_oid - begin_oid;
+      VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
+              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid;
+    }
+    uint32 new_oid = oid_chunk.next_oid;
+    oid_chunk.next_oid++;
+    oid_chunk.oid_count--;
+    resp->set_new_oid(new_oid);
+    return Status::OK();
+  }
+
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+    std::lock_guard lock(mutex_);
+    for (auto it = reserved_oids_map_.begin(); it != reserved_oids_map_.end();) {
+      if (db_oids.count(it->first) == 0) {
+        LOG(INFO) << "Erase PG object id allocator of database: " << it->first;
+        it = reserved_oids_map_.erase(it);
+      } else {
+        it++;
+      }
+    }
   }
 
   Status GetCatalogMasterVersion(
@@ -847,6 +914,94 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ListReplicationSlots(
+      const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
+    Status iteration_status;
+    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+    SCHECK(
+        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+        iteration_status);
+
+    for (auto entry_result : range_result) {
+      auto stream_id = entry_result->key.stream_id;
+      auto active_time = entry_result->active_time;
+      // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
+      // yet by the client. So treat it is as an inactive case.
+      if (!active_time) {
+        continue;
+      }
+
+      if (stream_to_latest_active_time.contains(stream_id)) {
+        stream_to_latest_active_time[stream_id] =
+            std::max(stream_to_latest_active_time[stream_id], *active_time);
+      } else {
+        stream_to_latest_active_time[stream_id] = *active_time;
+      }
+    }
+
+    auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+    auto current_time = GetCurrentTimeMicros();
+    for (const auto& stream : streams) {
+      auto stream_id = xrepl::StreamId::FromString(stream.stream_id);
+      RSTATUS_DCHECK(
+          stream_id.ok(),
+          IllegalState, "Received invalid stream_id: $0 from ListCDCSDKStreams", stream.stream_id);
+
+      auto replication_slot = resp->mutable_replication_slots()->Add();
+      stream.ToPB(replication_slot);
+      auto is_stream_active =
+          current_time - stream_to_latest_active_time[*stream_id] <=
+          1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+      replication_slot->set_replication_slot_status(
+          (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+    }
+    return Status::OK();
+  }
+
+  Status GetReplicationSlotStatus(
+      const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
+      rpc::RpcContext* context) {
+    // Get the stream_id for the replication slot.
+    xrepl::StreamId stream_id = xrepl::StreamId::Nil();
+    RETURN_NOT_OK(
+        client().GetCDCStream(ReplicationSlotName(req.replication_slot_name()), &stream_id));
+
+    // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
+    Status iteration_status;
+    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+    SCHECK(
+        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+        iteration_status);
+
+    // Find the latest active time for the stream across all tablets.
+    uint64_t last_activity_time_micros = 0;
+    for (auto entry_result : range_result) {
+      if (entry_result->key.stream_id != stream_id) {
+        continue;
+      }
+
+      auto active_time = entry_result->active_time;
+
+      // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
+      // yet by the client. So treat it is as an inactive case.
+      if (!active_time) {
+        continue;
+      }
+
+      last_activity_time_micros = std::max(last_activity_time_micros, *active_time);
+    }
+
+    auto is_stream_active = GetCurrentTimeMicros() - last_activity_time_micros <=
+                            1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+    resp->set_replication_slot_status(
+        (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+    return Status::OK();
+  }
+
   Status GetIndexBackfillProgress(
       const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
       rpc::RpcContext* context) {
@@ -1215,6 +1370,12 @@ class PgClientServiceImpl::Impl {
   PgTableCache table_cache_;
   rw_spinlock mutex_;
 
+  struct OidPrefetchChunk {
+    uint32_t next_oid = kPgFirstNormalObjectId;
+    uint32_t oid_count = 0;
+  };
+  std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
+
   boost::multi_index_container<
       SessionInfoPtr,
       boost::multi_index::indexed_by<
@@ -1242,6 +1403,9 @@ class PgClientServiceImpl::Impl {
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
 
+  std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
+  std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
+
   const std::optional<XClusterContext> xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
@@ -1263,13 +1427,16 @@ PgClientServiceImpl::PgClientServiceImpl(
     TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity,
-    rpc::Scheduler* scheduler,
+    rpc::Messenger* messenger,
+    const std::string& permanent_uuid,
+    const server::ServerBaseOptions* tablet_server_opts,
     const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
-          tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker)) {}
+          tablet_server, client_future, clock, std::move(transaction_pool_provider), messenger,
+          xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker,
+          permanent_uuid, tablet_server_opts)) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 
@@ -1280,6 +1447,10 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+void PgClientServiceImpl::CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+  impl_->CheckObjectIdAllocators(db_oids);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {

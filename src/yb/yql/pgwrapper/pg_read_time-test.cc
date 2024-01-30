@@ -284,4 +284,37 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   ASSERT_OK(ResetMaxBatchSize(&conn));
 }
 
+// Test the session configuration parameter yb_read_time which reads the data as of a point in time
+// in the past.
+// 1. Create a table t and insert 10 rows.
+// 2. Mark the current time t1.
+// 3. Delete 4 rows.
+// 4. Check "SELECT count(*) from t" is equal to 6 (as of current time).
+// 5. SET yb_read_time TO t1
+// 6. Check "SELECT count(*) from t" is equal to 10 (as of t1).
+// 7. SET yb_read_time TO 0
+// 8. Check "SELECT count(*) from t" is equal to 6 (as of current time).
+TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
+  LOG(INFO) << "Inserting 10 rows into table t";
+  ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,10) AS i"));
+  auto count = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT count(*) FROM t"));
+  ASSERT_EQ(count, 10);
+  auto t1 = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  LOG(INFO) << "Deleting 4 rows from table t";
+  ASSERT_OK(conn.Execute("DELETE FROM t WHERE k>6"));
+  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+  LOG(INFO) << "Setting yb_read_time to " << t1;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 10);
+  LOG(INFO) << "Setting yb_read_time to 0";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  count = ASSERT_RESULT(conn.FetchValue<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+}
+
 } // namespace yb::pgwrapper

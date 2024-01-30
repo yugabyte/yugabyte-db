@@ -420,8 +420,10 @@ create_backup() {
   FIND_OPTIONS+=( $(printf " -o -path '%s'"  "**/data/keys/**" "**/data/provision/**" \
               "**/data/licenses/**"  "**/data/yb-platform/keys/**" "**/data/yb-platform/certs/**" \
               "**/swamper_rules/**" "**/swamper_targets/**" "**/prometheus/rules/**"  \
-              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" \
-              "**/${VERSION_METADATA_BACKUP}" "${include_releases_flag}") )
+              "**/prometheus/targets/**" "**/data/yb-platform/node-agent/certs/**" \
+              "**/data/node-agent/certs/**" "**/provision/**/provision_instance.py" \
+              "**/${PLATFORM_DUMP_FNAME}" "**/${VERSION_METADATA_BACKUP}" \
+              "${include_releases_flag}") )
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -635,8 +637,7 @@ restore_backup() {
     modify_service prometheus stop
     # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
-    # snapshot_dir="${destination}/'${prom_snapshot:2}'*"
-    run_sudo_cmd "mv ${destination}/'${prom_snapshot:2}'* ${PROMETHEUS_DATA_DIR}"
+    run_sudo_cmd "mv ${destination}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
     if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
       backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
       if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then

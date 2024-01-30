@@ -35,9 +35,8 @@ import play.libs.Json;
 public class AnsibleCreateServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleCreateServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleCreateServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.
@@ -148,7 +147,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
         destroyParams.instanceType = params.instanceType;
         AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
         task.initialize(destroyParams);
-        task.setUserTaskUUID(userTaskUUID);
+        task.setUserTaskUUID(getUserTaskUUID());
         task.run();
         return true;
       }

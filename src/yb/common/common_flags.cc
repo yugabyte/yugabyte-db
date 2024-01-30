@@ -72,12 +72,10 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, ddl_rollback_enabled, false,
     "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
     "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
-DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
-                 "Enable the per database catalog version mode, a DDL statement is assumed to "
-                 "only affect the current database and will only increment catalog version for "
-                 "the current database. For an old cluster that is upgraded, this gflag should "
-                 "only be turned on after pg_yb_catalog_version is upgraded to one row per "
-                 "database.");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_db_catalog_version_mode, false,
+    "Enable the per database catalog version mode, a DDL statement that only "
+    "affects the current database will only increment catalog version for "
+    "the current database.");
 
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
@@ -98,6 +96,11 @@ DEFINE_UNKNOWN_int64(rpc_throttle_threshold_bytes, 1_MB,
     "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
     "Throttling is disabled if negative value is specified. The value must be at least 16 and less "
     "than the strictly enforced consensus_max_batch_size_bytes.");
+
+DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
+    "If true, enable per-database PG new object identifier allocator.");
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
 namespace {
 

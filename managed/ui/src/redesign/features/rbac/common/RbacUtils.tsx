@@ -56,6 +56,7 @@ export const getRbacEnabledVal = () => {
 
 export const clearRbacCreds = () => {
   localStorage.removeItem(rbac_identifier);
+  delete (window as any).rbac_permissions;
 };
 
 export const resourceOrderByRelevance = [

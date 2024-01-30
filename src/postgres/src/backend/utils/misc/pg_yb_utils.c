@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -482,12 +483,12 @@ YBSavepointsEnabled()
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
- *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * --FLAGS_ysql_enable_db_catalog_version_mode=true
  *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
- * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
- * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * --FLAGS_ysql_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_ysql_enable_db_catalog_version_mode is set to
  * true before the table pg_yb_catalog_version is updated to have one row per
  * database.
  * This function does not consider going from per-database catalog version
@@ -505,7 +506,7 @@ YBIsDBCatalogVersionMode()
 	if (cached_gflag == -1)
 	{
 		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+			"FLAGS_ysql_enable_db_catalog_version_mode", false);
 	}
 
 	/*
@@ -527,7 +528,7 @@ YBIsDBCatalogVersionMode()
 	}
 
 	/*
-	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * At this point, we know that FLAGS_ysql_enable_db_catalog_version_mode is
 	 * turned on. However in case of YSQL upgrade we may not be ready to enable
 	 * per-db catalog version mode yet. Note that we only provide support where
 	 * we go from global catalog version mode to per-db catalog version mode,
@@ -595,7 +596,7 @@ static bool
 YBCanEnableDBCatalogVersionMode()
 {
 	/*
-	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * Even when FLAGS_ysql_enable_db_catalog_version_mode is turned on we
 	 * cannot simply enable per-database catalog mode if the table
 	 * pg_yb_catalog_version does not have one row for each database.
 	 * Consider YSQL upgrade, it happens after cluster software upgrade and
@@ -752,6 +753,22 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 		return;
 	}
 	*not_found = false;
+	HandleYBStatus(status);
+}
+
+extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
+											   bool *already_present)
+{
+	if (!status)
+		return;
+
+	if (YBCStatusIsAlreadyPresent(status))
+	{
+		*already_present = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*already_present = false;
 	HandleYBStatus(status);
 }
 
@@ -3731,6 +3748,43 @@ bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource 
 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 	yb_xcluster_consistency_level = *((int*)extra);
+}
+
+bool
+check_yb_read_time(char **newval, void **extra, GucSource source)
+{
+	/* Read time should be convertable to unsigned long long */
+	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
+	char read_time_string[23];
+	sprintf(read_time_string, "%llu", read_time_ull);
+	if (strcmp(*newval, read_time_string))
+	{
+		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+							" i.e. 1694673026673528");
+		return false;
+	}
+	/* Read time should not be set to a timestamp in the future */
+	struct timeval now_tv;
+	gettimeofday(&now_tv, NULL);
+	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
+	if(read_time_ull > now_micro_sec)
+	{
+		GUC_check_errdetail("Provided timestamp is in the future.");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time(const char* newval, void *extra) 
+{
+	yb_read_time = strtoull(newval, NULL, 0);
+	ereport(NOTICE,
+			(errmsg("yb_read_time should be set with caution."),
+			 errdetail("No DDL operations should be performed while it is set and "
+			 		   "it should not be set to a timestamp before a DDL "
+					   "operation has been performed. It doesn't have well defined semantics"
+					   " for normal transactions and is only to be used after consultation")));
 }
 
 void YBCheckServerAccessIsAllowed() {

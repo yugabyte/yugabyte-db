@@ -36,7 +36,7 @@ class ScanChoices {
   ScanChoices(const ScanChoices&) = delete;
   void operator=(const ScanChoices&) = delete;
 
-    virtual ~ScanChoices() = default;
+  virtual ~ScanChoices() = default;
 
   // Returns false if there are still target keys we need to scan, and true if we are done.
   virtual bool Finished() const = 0;
@@ -48,7 +48,7 @@ class ScanChoices {
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
-      const dockv::KeyBytes& lower_doc_key, const dockv::KeyBytes& upper_doc_key);
+      const qlexpr::ScanBounds& bounds);
 
   static ScanChoicesPtr CreateEmpty();
 };

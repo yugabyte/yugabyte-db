@@ -19,7 +19,7 @@ namespace master {
 
 // Send the "Flush Tablets" request to the specified Tablet Server.
 // Keeps retrying until we get an "ok" response.
-class AsyncFlushTablets : public RetrySpecificTSRpcTask {
+class AsyncFlushTablets : public RetrySpecificTSRpcTaskWithTable {
  public:
   AsyncFlushTablets(Master* master,
                     ThreadPool* callback_pool,

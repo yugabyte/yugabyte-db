@@ -102,6 +102,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -912,6 +913,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of live tablet servers.
+   * @return a deferred object that yields a list of live tablet servers
+   */
+  public Deferred<ListLiveTabletServersResponse> listLiveTabletServers() {
+    checkIsClosed();
+    ListLiveTabletServersRequest rpc = new ListLiveTabletServersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the list of all the masters.
    * @return a deferred object that yields a list of masters
    */
@@ -1178,12 +1190,12 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<IsSetupUniverseReplicationDoneResponse> isSetupUniverseReplicationDone(
-    String producerId) {
+    String replicationGroupId) {
     checkIsClosed();
     IsSetupUniverseReplicationDoneRequest request =
       new IsSetupUniverseReplicationDoneRequest(
         this.masterTable,
-        producerId);
+        replicationGroupId);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -2839,7 +2851,6 @@ public class AsyncYBClient implements AutoCloseable {
         return existingClient;
       }
       newClient = new TabletClient(AsyncYBClient.this, uuid);
-      newClient.setDisconnectListener(this::handleDisconnect);
       clientBootstrap =
         bootstrap.clone().handler(new ChannelInitializer<SocketChannel>() {
         @Override
@@ -2856,9 +2867,13 @@ public class AsyncYBClient implements AutoCloseable {
                 TimeUnit.MILLISECONDS));
           }
           channel.pipeline().addLast("yb-handler", newClient);
+          channel.closeFuture().addListener(
+            f -> AsyncYBClient.this.handleClose(newClient, channel));
         }
       });
+
       ip2client.put(hostport, newClient);  // This is guaranteed to return null.
+      LOG.debug("Created client for {}", hostport);
     }
     InetSocketAddress remoteAddress = new InetSocketAddress(host, port);
     ChannelFuture channelFuture;
@@ -2870,7 +2885,10 @@ public class AsyncYBClient implements AutoCloseable {
     }
     channelFuture.addListener((FutureListener<Void>) future -> {
       if (!channelFuture.isSuccess()) {
+        LOG.debug("Client {} connection failed", hostport);
         newClient.doCleanup(channelFuture.channel());
+      } else {
+        LOG.debug("Client {} connected", hostport);
       }
     });
     this.client2tablets.put(newClient, new ArrayList<RemoteTablet>());
@@ -2947,6 +2965,7 @@ public class AsyncYBClient implements AutoCloseable {
       // without hold the lock while we iterate over the data structure.
       ip2client_copy = new HashMap<String, TabletClient>(ip2client);
     }
+    LOG.debug("Disconnecting clients: {}", String.join(", ", ip2client_copy.keySet()));
 
     for (TabletClient ts : ip2client_copy.values()) {
       deferreds.add(ts.shutdown());
@@ -3100,8 +3119,7 @@ public class AsyncYBClient implements AutoCloseable {
     // 'table' for a user one.
     return MASTER_TABLE_NAME_PLACEHOLDER == tableId;
   }
-
-  private void handleDisconnect(TabletClient client, Channel channel) {
+  private void handleClose(TabletClient client, Channel channel) {
     try {
       SocketAddress remote = channel.remoteAddress();
       // At this point Netty gives us no easy way to access the
@@ -3110,6 +3128,9 @@ public class AsyncYBClient implements AutoCloseable {
       if (remote == null) {
         remote = slowSearchClientIP(client);
       }
+
+      String hostport = TabletClient.getHostPort(remote);
+      LOG.debug("Handling client {} close event", hostport);
 
       // Prevent the client from buffering requests while we invalidate
       // everything we have about it.

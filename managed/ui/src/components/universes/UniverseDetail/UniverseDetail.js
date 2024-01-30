@@ -54,8 +54,8 @@ import { EnableYSQLModal } from '../../../redesign/features/universe/universe-ac
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
@@ -472,14 +472,11 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tasks')}
           >
             <UniverseTaskList
-              universe={universe}
-              tasks={tasks}
-              isCommunityEdition={!!customer.INSECURE_apiToken}
-              fetchCustomerTasks={this.props.fetchCustomerTasks}
-              refreshUniverseData={this.getUniverseInfo}
-              abortCurrentTask={this.props.abortCurrentTask}
+              universeUuid={currentUniverse.data.universeUUID}
+              abortTask={this.props.abortCurrentTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
+              refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
           </Tab.Pane>
@@ -615,7 +612,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.updateUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -647,7 +644,7 @@ class UniverseDetail extends Component {
                             isControl
                             accessRequiredOn={{
                               onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
+                              ...ApiPermissionMap.MODIFY_UNIVERSE
                             }}
                           >
                             <YBMenuItem
@@ -665,7 +662,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.updateUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -687,7 +684,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.updateUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -714,7 +711,7 @@ class UniverseDetail extends Component {
                             isControl
                             accessRequiredOn={{
                               onResource: uuid,
-                              ...UserPermissionMap.readUniverse
+                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                             }}
                           >
                             <YBMenuItem
@@ -735,7 +732,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.readUniverse
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
                         >
                           <YBMenuItem
@@ -755,7 +752,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.readUniverse
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
                         >
                           <YBMenuItem
@@ -775,7 +772,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.updateUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -793,7 +790,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.readUniverse
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                           }}
                         >
                           <YBMenuItem
@@ -813,7 +810,10 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && isConfigureYSQLEnabled && (
                         <RbacValidator
-                          accessRequiredOn={{ ...UserPermissionMap.editUniverse, onResource: uuid }}
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                           isControl
                         >
                           <YBMenuItem
@@ -828,7 +828,10 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && isConfigureYCQLEnabled && (
                         <RbacValidator
-                          accessRequiredOn={{ ...UserPermissionMap.editUniverse, onResource: uuid }}
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                           isControl
                         >
                           <YBMenuItem
@@ -846,7 +849,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.updateUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -869,7 +872,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.readUniverse
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                           }}
                         >
                           <YBMenuItem
@@ -898,7 +901,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.readUniverse
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
                           }}
                         >
                           <UniverseAppsModal
@@ -927,8 +930,8 @@ class UniverseDetail extends Component {
                             <RbacValidator
                               isControl
                               accessRequiredOn={{
-                                onResource: 'CUSTOMER_ID',
-                                ...UserPermissionMap.listSupportBundle
+                                onResource: uuid,
+                                ...ApiPermissionMap.GET_SUPPORT_BUNDLE
                               }}
                             >
                               <UniverseSupportBundle
@@ -954,7 +957,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.editUniverse
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
                           }}
                         >
                           <YBMenuItem
@@ -1003,7 +1006,7 @@ class UniverseDetail extends Component {
                             isControl
                             accessRequiredOn={{
                               onResource: uuid,
-                              ...UserPermissionMap.pauseResumeUniverse
+                              ...ApiPermissionMap.RESUME_UNIVERSE
                             }}
                           >
                             <YBMenuItem
@@ -1028,7 +1031,7 @@ class UniverseDetail extends Component {
                         isControl
                         accessRequiredOn={{
                           onResource: uuid,
-                          ...UserPermissionMap.deleteUniverse
+                          ...ApiPermissionMap.DELETE_UNIVERSE
                         }}
                       >
                         <YBMenuItem
