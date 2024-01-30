@@ -146,6 +146,11 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type);
 
+  Result<SnapshotInfoPB> GetSuitableSnapshot(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
+      CoarseTimePoint deadline);
+  Result<SnapshotInfoPB> WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline);
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 
   // Returns true if there are one or more non-deleted

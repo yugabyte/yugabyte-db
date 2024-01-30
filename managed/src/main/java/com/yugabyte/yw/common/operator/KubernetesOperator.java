@@ -31,6 +31,7 @@ import io.yugabyte.operator.v1alpha1.SupportBundle;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +77,7 @@ public class KubernetesOperator {
                 LOG.info("Initiating the Kubernetes Operator objects");
                 // Configuring client to watch the correct namesace here.
                 Config config = new Config();
-                if (namespace.trim().isEmpty()) {
+                if (StringUtils.isNotBlank(namespace)) {
                   config.setNamespace(namespace);
                 } else {
                   config.setNamespace(null);
@@ -99,7 +100,7 @@ public class KubernetesOperator {
                   SharedIndexInformer<SupportBundle> ybSupportBundleIndexInformer;
                   long resyncPeriodInMillis = 10 * 60 * 1000L;
                   SharedInformerFactory informerFactory = client.informers();
-                  if (!namespace.trim().isEmpty()) {
+                  if (StringUtils.isNotBlank(namespace)) {
 
                     // Listen to only one namespace.
                     ybSoftwareReleaseIndexInformer =
