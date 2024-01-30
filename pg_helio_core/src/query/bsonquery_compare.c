@@ -42,11 +42,14 @@ PG_FUNCTION_INFO_V1(bsonquery_lte);
 Datum
 bsonquery_compare(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValidIgnore;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValidIgnore);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_INT32(compareResult);
 }
 
@@ -54,11 +57,14 @@ bsonquery_compare(PG_FUNCTION_ARGS)
 Datum
 bsonquery_equal(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult == 0);
 }
 
@@ -66,11 +72,14 @@ bsonquery_equal(PG_FUNCTION_ARGS)
 Datum
 bsonquery_not_equal(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult != 0);
 }
 
@@ -78,11 +87,14 @@ bsonquery_not_equal(PG_FUNCTION_ARGS)
 Datum
 bsonquery_gt(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult > 0);
 }
 
@@ -90,11 +102,14 @@ bsonquery_gt(PG_FUNCTION_ARGS)
 Datum
 bsonquery_gte(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult >= 0);
 }
 
@@ -102,11 +117,14 @@ bsonquery_gte(PG_FUNCTION_ARGS)
 Datum
 bsonquery_lt(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult < 0);
 }
 
@@ -114,11 +132,14 @@ bsonquery_lt(PG_FUNCTION_ARGS)
 Datum
 bsonquery_lte(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	bool isComparisonValid;
 	int compareResult = ComparePgbsonQuery(leftBson, rightBson, &isComparisonValid);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(isComparisonValid && compareResult <= 0);
 }
 

@@ -54,10 +54,13 @@ PG_FUNCTION_INFO_V1(bson_unique_index_equal);
 Datum
 extension_bson_compare(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
+
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_INT32(compareResult);
 }
 
@@ -65,11 +68,13 @@ extension_bson_compare(PG_FUNCTION_ARGS)
 Datum
 extension_bson_equal(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult == 0);
 }
 
@@ -77,11 +82,13 @@ extension_bson_equal(PG_FUNCTION_ARGS)
 Datum
 extension_bson_not_equal(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult != 0);
 }
 
@@ -89,11 +96,13 @@ extension_bson_not_equal(PG_FUNCTION_ARGS)
 Datum
 extension_bson_lt(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult < 0);
 }
 
@@ -101,11 +110,13 @@ extension_bson_lt(PG_FUNCTION_ARGS)
 Datum
 extension_bson_lte(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult <= 0);
 }
 
@@ -113,11 +124,13 @@ extension_bson_lte(PG_FUNCTION_ARGS)
 Datum
 extension_bson_gt(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult > 0);
 }
 
@@ -125,11 +138,13 @@ extension_bson_gt(PG_FUNCTION_ARGS)
 Datum
 extension_bson_gte(PG_FUNCTION_ARGS)
 {
-	pgbson *leftBson = PG_GETARG_PGBSON(0);
-	pgbson *rightBson = PG_GETARG_PGBSON(1);
+	pgbson *leftBson = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *rightBson = PG_GETARG_PGBSON_PACKED(1);
 
 	int compareResult = ComparePgbson(leftBson, rightBson);
 
+	PG_FREE_IF_COPY(leftBson, 0);
+	PG_FREE_IF_COPY(rightBson, 1);
 	PG_RETURN_BOOL(compareResult >= 0);
 }
 

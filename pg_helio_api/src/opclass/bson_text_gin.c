@@ -149,7 +149,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_text_meta_qual);
 Datum
 rum_bson_single_path_extract_tsvector(PG_FUNCTION_ARGS)
 {
-	pgbson *bson = PG_GETARG_PGBSON(0);
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
 	int32_t *nentries = (int32_t *) PG_GETARG_POINTER(1);
 
 	if (!PG_HAS_OPCLASS_OPTIONS())
@@ -174,6 +174,8 @@ rum_bson_single_path_extract_tsvector(PG_FUNCTION_ARGS)
 									PG_GETARG_DATUM(2),
 									PG_GETARG_DATUM(3),
 									PG_GETARG_DATUM(4));
+
+	PG_FREE_IF_COPY(bson, 0);
 	PG_RETURN_DATUM(result);
 }
 

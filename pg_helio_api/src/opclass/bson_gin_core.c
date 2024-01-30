@@ -681,6 +681,7 @@ GinBsonExtractQueryUniqueIndexTerms(PG_FUNCTION_ARGS)
 	bool addRootTerm = false;
 	GenerateTerms(query, &context, addRootTerm);
 	*nentries = context.totalTermCount;
+
 	return context.terms.entries;
 }
 

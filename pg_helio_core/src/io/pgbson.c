@@ -202,8 +202,8 @@ const char *
 PgbsonToJsonForLogging(const pgbson *bsonDocument)
 {
 	bson_t bson;
-	if (!bson_init_static(&bson, (uint8_t *) VARDATA(bsonDocument),
-						  (uint32_t) VARSIZE(bsonDocument) - VARHDRSZ))
+	if (!bson_init_static(&bson, (uint8_t *) VARDATA_ANY(bsonDocument),
+						  (uint32_t) VARSIZE_ANY_EXHDR(bsonDocument)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg("invalid input syntax for BSON")));

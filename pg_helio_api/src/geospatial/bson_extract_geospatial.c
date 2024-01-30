@@ -36,7 +36,7 @@ PG_FUNCTION_INFO_V1(pgmongo_bson_validate_geography);
 Datum
 pgmongo_bson_extract_geometry(PG_FUNCTION_ARGS)
 {
-	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
 	text *path = PG_GETARG_TEXT_P(1);
 	StringView pathView = CreateStringViewFromText(path);
 	Datum geometryDatum = BsonExtractGeometryStrict(document, &pathView);
@@ -44,6 +44,8 @@ pgmongo_bson_extract_geometry(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_NULL();
 	}
+
+	PG_FREE_IF_COPY(document, 0);
 	PG_RETURN_DATUM(geometryDatum);
 }
 

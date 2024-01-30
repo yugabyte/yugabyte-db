@@ -430,7 +430,10 @@ bson_expression_get(PG_FUNCTION_ARGS)
 	EvaluateAggregationExpressionDataToWriter(state, document, path, &writer,
 											  variableContext, isNullOnEmpty);
 
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_RETURN_POINTER(returnedBson);
 }
 
 
@@ -453,9 +456,9 @@ bson_expression_get(PG_FUNCTION_ARGS)
 Datum
 bson_expression_map(PG_FUNCTION_ARGS)
 {
-	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
 	char *srcArrayName = text_to_cstring(PG_GETARG_TEXT_P(1));
-	pgbson *expression = PG_GETARG_PGBSON(2);
+	pgbson *expression = PG_GETARG_PGBSON_PACKED(2);
 	bool isNullOnEmpty = PG_GETARG_BOOL(3);
 	ExpressionVariableContext *variableContext = NULL;
 	pgbsonelement expressionElement;
@@ -545,7 +548,10 @@ bson_expression_map(PG_FUNCTION_ARGS)
 	}
 	PgbsonWriterEndArray(&writer, &arrayWriter);
 
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_RETURN_POINTER(returnedBson);
 }
 
 

@@ -74,7 +74,7 @@ extern bool EnableIndexTermTruncation;
 Datum
 gin_bson_single_path_extract_value(PG_FUNCTION_ARGS)
 {
-	pgbson *bson = PG_GETARG_PGBSON(0);
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
 	int32_t *nentries = (int32_t *) PG_GETARG_POINTER(1);
 
 	if (!PG_HAS_OPCLASS_OPTIONS())
@@ -89,6 +89,8 @@ gin_bson_single_path_extract_value(PG_FUNCTION_ARGS)
 	GenerateSinglePathTermsCore(bson, &context, options);
 
 	*nentries = context.totalTermCount;
+
+	PG_FREE_IF_COPY(bson, 0);
 	PG_RETURN_POINTER(context.terms.entries);
 }
 
@@ -104,7 +106,7 @@ gin_bson_single_path_extract_value(PG_FUNCTION_ARGS)
 Datum
 gin_bson_wildcard_project_extract_value(PG_FUNCTION_ARGS)
 {
-	pgbson *bson = PG_GETARG_PGBSON(0);
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
 	int32_t *nentries = (int32_t *) PG_GETARG_POINTER(1);
 	GenerateTermsContext context = { 0 };
 	if (!PG_HAS_OPCLASS_OPTIONS())
@@ -117,6 +119,8 @@ gin_bson_wildcard_project_extract_value(PG_FUNCTION_ARGS)
 
 	GenerateWildcardPathTermsCore(bson, &context, options);
 	*nentries = context.totalTermCount;
+
+	PG_FREE_IF_COPY(bson, 0);
 	PG_RETURN_POINTER(context.terms.entries);
 }
 
@@ -207,10 +211,10 @@ Datum
 gin_bson_compare_partial(PG_FUNCTION_ARGS)
 {
 	/* 0 will be the value we passed in for the extract query */
-	bytea *queryValue = PG_GETARG_BYTEA_P(0);
+	bytea *queryValue = PG_GETARG_BYTEA_PP(0);
 
 	/* 1 is the value in the index we want to compare against. */
-	bytea *compareValue = PG_GETARG_BYTEA_P(1);
+	bytea *compareValue = PG_GETARG_BYTEA_PP(1);
 	StrategyNumber strategy = PG_GETARG_UINT16(2);
 	Pointer extraData = PG_GETARG_POINTER(3);
 
@@ -234,6 +238,8 @@ gin_bson_compare_partial(PG_FUNCTION_ARGS)
 
 	int res = GinBsonComparePartialCore(strategy, &queryIndexTerm, &compareIndexTerm,
 										extraData);
+
+	PG_FREE_IF_COPY(compareValue, 1);
 	PG_RETURN_INT32(res);
 }
 

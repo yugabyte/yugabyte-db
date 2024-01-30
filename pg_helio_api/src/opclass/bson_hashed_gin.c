@@ -133,7 +133,7 @@ gin_bson_hashed_extract_query(PG_FUNCTION_ARGS)
 Datum
 gin_bson_hashed_extract_value(PG_FUNCTION_ARGS)
 {
-	pgbson *bson = PG_GETARG_PGBSON(0);
+	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
 	int32_t *nentries = (int32_t *) PG_GETARG_POINTER(1);
 
 	if (!PG_HAS_OPCLASS_OPTIONS())
@@ -175,6 +175,8 @@ gin_bson_hashed_extract_value(PG_FUNCTION_ARGS)
 
 	/* we should get the hash and return it */
 	entries[0] = Int64GetDatum(BsonValueHash(&traverseState.bsonValue, 0));
+
+	PG_FREE_IF_COPY(bson, 0);
 	PG_RETURN_POINTER(entries);
 }
 

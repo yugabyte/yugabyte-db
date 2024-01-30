@@ -33,8 +33,18 @@ typedef struct
 
 #define DatumGetPgBson(n) ((pgbson *) PG_DETOAST_DATUM(n))
 #define PG_GETARG_PGBSON(n) (DatumGetPgBson(PG_GETARG_DATUM(n)))
-#define PG_GETARG_MAYBE_NULL_PGBSON(n) PG_ARGISNULL(n) ? NULL : \
-	((pgbson *) PG_DETOAST_DATUM(PG_GETARG_DATUM(n)))
+#define PG_GETARG_MAYBE_NULL_PGBSON(n) PG_ARGISNULL(n) ? NULL : PG_GETARG_PGBSON(n)
+
+/*
+ * Use this macro in general when you need the performance of not copying
+ * small tuples. This will avoid copies for small tuples,
+ * but also will keep a variable VARSIZE. to detoast this, you will need
+ * VARSIZE_ANY or VARDATA_ANY
+ */
+#define DatumGetPgBsonPacked(n) ((pgbson *) PG_DETOAST_DATUM_PACKED(n))
+#define PG_GETARG_PGBSON_PACKED(n) (DatumGetPgBsonPacked(PG_GETARG_DATUM(n)))
+#define PG_GETARG_MAYBE_NULL_PGBSON_PACKED(n) PG_ARGISNULL(n) ? NULL : \
+	PG_GETARG_PGBSON_PACKED(n)
 
 /* basic type functions */
 bool PgbsonEquals(const pgbson *left, const pgbson *right);

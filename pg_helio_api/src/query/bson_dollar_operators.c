@@ -1404,10 +1404,14 @@ bson_dollar_text(PG_FUNCTION_ARGS)
 Datum
 command_bson_orderby(PG_FUNCTION_ARGS)
 {
-	pgbson *document = PG_GETARG_PGBSON(0);
-	pgbson *filter = PG_GETARG_PGBSON(1);
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *filter = PG_GETARG_PGBSON_PACKED(1);
 	bool validateSort = true;
-	return BsonOrderby(document, filter, validateSort);
+	Datum returnedBson = BsonOrderby(document, filter, validateSort);
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_FREE_IF_COPY(filter, 1);
+	PG_RETURN_DATUM(returnedBson);
 }
 
 
@@ -1488,7 +1492,7 @@ BsonOrderby(pgbson *document, pgbson *filter, bool validateSort)
 								&state.orderByValue);
 	}
 
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	return PointerGetDatum(PgbsonWriterGetPgbson(&writer));
 }
 
 
