@@ -520,6 +520,8 @@ public enum TaskType {
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
+  CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 
