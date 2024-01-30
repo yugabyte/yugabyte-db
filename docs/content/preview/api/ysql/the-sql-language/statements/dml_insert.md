@@ -82,8 +82,7 @@ The `RETURNING` clause causes the `INSERT` statement to compute and return value
 
 This is useful for obtaining values that were supplied by defaults, such as a serial sequence number. Any expression using the table's columns is allowed. 
 
-`RETURNING` column list is identical to that of the output list of `SELECT`. 
-
+`RETURNING` column list syntax is identical to that of the column list of `SELECT`. 
 
 ### *column_values*
 
