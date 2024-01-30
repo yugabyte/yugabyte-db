@@ -359,20 +359,43 @@ EXPLAIN output for querying the table from `eu-west-2`:
 (2 rows)
 ```
 
-## Alter tablespace of tables and indexes
+## Alter tablespace of tables, indexes and materialized views
 
-Both tables and indexes can be moved to different tablespaces. The tablespace change will immediately reflect in the config of the table/index, however the tablet move by the load balancer happens in the background. 
-While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
+The tablespace of a table, index, or materialized view can be altered after the object has been created. Let’s say we have a single-zone table in `us-east-1a`:
 
 ```sql
-yugabyte=# ALTER TABLE multi_region_table SET TABLESPACE eu_west_tablespace;
+yugabyte=# CREATE TABLE critical_table (id INTEGER, field text)
+yugabyte-#   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
+```
+
+To check the placement of the tablets for this table, first navigate to the YB-Master UI, then click on “Tables” on the left:
+
+![YB-Master UI: Tables page](/images/explore/tablespaces/1_tables.png)
+
+Then, click on `critical_table`:
+
+![YB-Master UI: critical_table page](/images/explore/tablespaces/2_critical_table_initial.png)
+
+We can see the assigned placement policy under “Replication info” here. Under “RaftConfig”, we see that the replicas were placed on 127.0.0.1, 127.0.0.6, and 127.0.0.7. Clicking on “Tablet Servers” in the sidebar, we see that these are the three nodes in us-east-1a, as we would expect.
+
+Now, let’s say we want to make this table resilient to single-zone failures. We can accomplish this by altering its tablespace to the multi-zone `us_east_region_tablespace`, where it will have replicas in the us-east-1a, us-east-1b, and us-east-1c regions:
+
+```sql
+yugabyte=# ALTER TABLE critical_table SET TABLESPACE us_east_region_tablespace;
 ```
 
 ```output
-NOTICE:  Data movement for table multi_region_table is successfully initiated.
+NOTICE:  Data movement for table single_zone_table is successfully initiated.
 DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
-ALTER TABLE
 ```
+
+Now we can see the replication info for our table has changed:
+
+![YB-Master UI: critical_table page 2](/images/explore/tablespaces/4_critical_table_final.png)
+
+The RaftConfig has also changed to match the new tablespace:
+
+![YB-Master UI: critical_table raft config](/images/explore/tablespaces/5_critical_table_raft_config_final.png)
 
 
 ## What's next?
