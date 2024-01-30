@@ -88,14 +88,6 @@ This is useful for obtaining values that were supplied by defaults, such as a se
 
 ### *conflict_target*
 
-Specifies which conflicts ON CONFLICT takes the alternative action on by choosing arbiter indexes. 
-Either performs unique index inference, or names a constraint explicitly. 
-
-For ON CONFLICT DO NOTHING, it is optional to specify a conflict_target; when omitted, conflicts with all usable constraints (and unique indexes) are handled. 
-
-For ON CONFLICT DO UPDATE, a conflict_target must be provided.
-
-
 Specify which arbiter index to use to match rows for `ON CONFLICT`.
 `ON CONFLICT` either checks a unique index, or specifies a constraint explicitly.
 When using `ON CONFLICT DO UPDATE`, the `conflict_target` is required.
