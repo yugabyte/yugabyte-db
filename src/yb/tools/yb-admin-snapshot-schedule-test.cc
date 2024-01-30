@@ -5341,5 +5341,28 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, BeforeCreateFinishes,
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, DBNameInRestoreSnapshotSchedule) {
+  ASSERT_OK(PrepareCommon());
+  std::string db_name = "test_db_name";
+  std::string table_name = "test_table";
+  ASSERT_OK(ASSERT_RESULT(PgConnect()).ExecuteFormat("CREATE DATABASE $0", db_name));
+  auto schedule_id = ASSERT_RESULT(
+      CreateSnapshotScheduleAndWaitSnapshot("ysql." + db_name, kInterval, kRetention));
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (1, 1)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (2, 2)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (3, 3)", table_name));
+  Timestamp pre_transaction_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (4, 4)", table_name));
+
+  auto out = ASSERT_RESULT(CallJsonAdmin(
+        "restore_snapshot_schedule", schedule_id, pre_transaction_time.ToFormattedString(),
+        "--timeout_ms", std::to_string(600000 * kTimeMultiplier)));
+
+  std::string out_db_name = ASSERT_RESULT(Get(out, "db_restored")).get().GetString();
+  ASSERT_EQ(out_db_name, db_name);
+}
+
 }  // namespace tools
 }  // namespace yb
