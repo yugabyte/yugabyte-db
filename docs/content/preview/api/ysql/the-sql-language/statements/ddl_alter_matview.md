@@ -46,17 +46,17 @@ Asynchronously change the tablespace of an existing materialized view.
 The tablespace change will immediately reflect in the config of the materialized view, however the tablet move by the load balancer happens in the background. 
 While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
 
-{{< note title="Note" >}}
 
-This is a BETA feature, and we do not recommend running this command on a production database. You will see a warning when running the command, but you can ignore it. Here is an example below:
+##### Example
 
 ```sql
 yugabyte=# ALTER MATERIALIZED VIEW mv SET TABLESPACE mv_tblspace2;
+```
+
+```output
 yugabyte=# NOTICE:  Data movement for table mv is successfully initiated.
 yugabyte=# DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 ```
-
-{{< /note >}}
 
 ## See also
 

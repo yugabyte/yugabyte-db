@@ -338,15 +338,13 @@ Both tables and indexes can be moved to different tablespaces. The tablespace ch
 While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
 
 ```sql
-ALTER TABLE multi_region_table SET TABLESPACE eu_west_tablespace;
+yugabyte=# ALTER TABLE multi_region_table SET TABLESPACE eu_west_tablespace;
 ```
 
 ```output
-WARNING:  'tablespace_alteration' is a beta feature!
-LINE 1: ALTER TABLE multi_region_table SET TABLESPACE eu_west_...
-                                       ^
-HINT:  To suppress this warning, set the 'ysql_beta_feature_tablespace_alteration' yb-tserver gflag to true.
-(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+NOTICE:  Data movement for table multi_region_table is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER TABLE
 ```
 
 
