@@ -41,8 +41,6 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration. Create a Google Cloud Platform (GCP) provider configuration if your target cloud is GCP.
 
-A provider configuration describes your cloud environment (such as its service account, regions and availability zones, NTP server, certificates that may be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
-
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create instances on GCP using the following:
@@ -53,11 +51,11 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
 
 - Provision those VMs with YugabyteDB software.
 
-Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account for the provisioning step above, and for subsequent management, as described in [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/gcp/).
-
 ## Prerequisites
 
 - Cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
+
+For more information on setting up a GCP service account, refer to [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/gcp/).
 
 ### GCP instance templates
 
@@ -98,16 +96,6 @@ Note that not all template customizations are honored by YugabyteDB Anywhere whe
 
 Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list of all currently configured GCP providers.
 
-### View and edit providers
-
-To view a provider, select it in the list of GCP Configs to display the **Overview**.
-
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
-
-To view the universes created using the provider, select **Universes**.
-
-To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
-
 ### Create a provider
 
 To create a GCP provider:
@@ -123,6 +111,16 @@ To create a GCP provider:
 This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
 Now you are ready to create a YugabyteDB universe on GCP.
+
+### View and edit providers
+
+To view a provider, select it in the list of GCP Configs to display the **Overview**.
+
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+
+To view the universes created using the provider, select **Universes**.
+
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ## Provider settings
 

@@ -40,9 +40,7 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
-
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+Before you can deploy universes to VMware Tanzu using YugabyteDB Anywhere, you must create a provider configuration.
 
 ## Prerequisites
 
@@ -52,7 +50,7 @@ Before you start, ensure that you have created the [kubeconfig file](../kubernet
 
 To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
 
-This lists all currently configured VMWare Tanzu providers.
+This lists all currently configured VMware Tanzu providers.
 
 To create a TKG provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 

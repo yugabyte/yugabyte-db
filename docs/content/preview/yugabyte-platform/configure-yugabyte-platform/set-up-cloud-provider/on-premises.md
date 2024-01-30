@@ -14,32 +14,22 @@ menu:
 type: docs
 ---
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must create a provider configuration.
 
-A provider configuration describes your cloud environment (such as its regions and availability zones, NTP server, certificates that may be used to SSH to VMs, whether YugabyteDB database software will be manually installed by the user or auto-provisioned by YugabyteDB Anywhere, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs and add them to the provider's free pool of nodes.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision or can you manually provision the YugabyteDB database software and create universes from these database nodes.
+After VM instances are added, you can have YugabyteDB Anywhere auto-provision or you can manually provision the YugabyteDB database software and create universes from these database nodes.
 
 Creating an on-premises provider requires the following steps:
 
-- Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
-- [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs while setting up the provider, and the regions where the nodes are located.
-- Specify the compute [instance types](#add-instance-types) that will be used in this provider.
-- [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
+1. Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
+1. [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs while setting up the provider, and the regions where the nodes are located.
+1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+1. [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
 
 ## Configure the on-premises provider
 
 Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
-
-### View and edit providers
-
-To view a provider, select it in the list of On Prem Configs to display the **Overview**.
-
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
-
-To view the universes created using the provider, select **Universes**.
-
-To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ### Create a provider
 
@@ -54,6 +44,16 @@ To create an on-premises provider:
 1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
 
 After the provider is created, configure the provider hardware. Refer to [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes).
+
+### View and edit providers
+
+To view a provider, select it in the list of On Prem Configs to display the **Overview**.
+
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+
+To view the universes created using the provider, select **Universes**.
+
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ## Provider settings
 
@@ -77,7 +77,7 @@ To add regions for the provider, do the following:
 
 ### SSH Key Pairs
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because YugabyteDB Anywhere needs SSH access to the nodes to provision them with YugabyteDB. Unless you plan to provision the database nodes manually, the SSH user needs to have password-free sudo permissions to complete a few tasks.
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 

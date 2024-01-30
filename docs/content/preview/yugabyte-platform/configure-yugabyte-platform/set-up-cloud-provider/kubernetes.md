@@ -39,9 +39,7 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
-
-A provider configuration describes your Kubernetes environment. The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+Before you can deploy universes to Kubernetes using YugabyteDB Anywhere, you must create a provider configuration.
 
 ## Prerequisites
 
@@ -54,7 +52,7 @@ Before you create a Kubernetes provider, perform the following:
 
 This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
 
-If YugabyteDB Anywhere is deployed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
+If YugabyteDB Anywhere is installed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
 
 ### Service account
 

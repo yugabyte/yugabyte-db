@@ -40,8 +40,6 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration. Create a Microsoft Azure provider configuration if your target cloud is Azure.
 
-A provider configuration describes your cloud environment (its resource group, regions and availability zones, NTP server, certificates that may be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
-
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create VMs on Azure using the following:
@@ -65,19 +63,11 @@ You need to add the following Azure cloud provider credentials via YugabyteDB An
 
 YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
+For more information on setting up an Azure account and resource groups, refer to [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/azure/).
+
 ## Configure Azure
 
 Navigate to **Configs > Infrastructure > Microsoft Azure** to see a list of all currently configured Azure providers.
-
-### View and edit providers
-
-To view a provider, select it in the list of AZU Configs to display the **Overview**.
-
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
-
-To view the universes created using the provider, select **Universes**.
-
-To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ### Create a provider
 
@@ -96,6 +86,16 @@ This process includes configuring a network, subnetworks in all available region
 When the configuration is completed, you can see all the resources managed by YugabyteDB Anywhere in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
 If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+
+### View and edit providers
+
+To view a provider, select it in the list of AZU Configs to display the **Overview**.
+
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+
+To view the universes created using the provider, select **Universes**.
+
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ## Provider settings
 

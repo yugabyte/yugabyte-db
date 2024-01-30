@@ -18,15 +18,13 @@ A provider configuration describes your cloud environment (such as its security 
 
 When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe, including the following:
 
-- Create VMs in the specified regions and availability zones (this can be a subset of those specified in the provider configuration)
-- Deploy a Linux image
-- Provision those VMs with YugabyteDB software
+- Create VMs using a specified Linux image, in the specified regions and availability zones (this can be a subset of those specified in the provider configuration)
 
-Note: YugabyteDB Anywhere needs network connectivity to the VMs (via VPCs), security groups for the provisioning step above, and for subsequent management, as described in Cloud prerequisites.
+- Provision those VMs with YugabyteDB software
 
 | I want to deploy YugbayteDB universes to | Create provider |
 | :--- | :--- |
-| Cloud provider | [AWS](aws/)<br>[Google Cloud](google/)<br>[Azure](azure/) |
+| Cloud provider | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
 | Kubernetes | [Kubernetes](kubernetes/) |
 | Private cloud | [On-premises](on-premises/) |
 

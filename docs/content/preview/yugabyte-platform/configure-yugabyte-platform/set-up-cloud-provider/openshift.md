@@ -39,9 +39,7 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
-
-A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+Before you can deploy universes to OpenShift using YugabyteDB Anywhere, you must create a provider configuration.
 
 ## Prerequisites
 

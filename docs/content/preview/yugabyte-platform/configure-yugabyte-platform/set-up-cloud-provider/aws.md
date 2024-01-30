@@ -41,8 +41,6 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration. Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS.
 
-A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, certificates that may be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
-
 When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create VMs on AWS using the following:
@@ -51,8 +49,6 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
   - a Linux image
 
 - Provision those VMs with YugabyteDB software
-
-Note: YugabyteDB Anywhere needs network connectivity to the VMs (via VPCs), security groups for the provisioning step above, and for subsequent management, as described in [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/aws/).
 
 ## Prerequisites
 
@@ -65,16 +61,6 @@ For more information on setting up an AWS service account and security groups, r
 ## Configure AWS
 
 Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of all currently configured AWS providers.
-
-### View and edit providers
-
-To view a provider, select it in the list of AWS Configs to display the **Overview**.
-
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
-
-To view the universes created using the provider, select **Universes**.
-
-To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ### Create a provider
 
@@ -89,6 +75,16 @@ To create an AWS provider:
 1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
 
 This process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
+
+### View and edit providers
+
+To view a provider, select it in the list of AWS Configs to display the **Overview**.
+
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+
+To view the universes created using the provider, select **Universes**.
+
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
 
 ## Provider settings
 
