@@ -695,6 +695,16 @@ create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name \
 
 server_type = text_literal ;
 
+
+(* 'CREATE' 'TABLESPACE' *)
+create_tablespace = 'CREATE' 'TABLESPACE' tablespace_name
+                 [ 'WITH' '(' ( 'tablespace_option' '=' value { ',' 'tablespace_option' '=' value }) ')'];
+
+(* 'DROP' 'TABLESPACE' *)
+drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
+
+
+
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'  \
