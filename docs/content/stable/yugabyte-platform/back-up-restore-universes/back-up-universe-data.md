@@ -96,13 +96,24 @@ To configure throttle parameters:
 
 1. Click **Save**.
 
-## Identifying backup components
+## Access backups in storage
 
-When restoring a YugabyteDB database from your [backup storage](../configure-backup-storage/) (S3, Azure, or GCP bucket), it is important to identify the set of folders that make up a complete backup. The following sections describe how to identify backup components to achieve a good backup.
+You can manually access and review backups by navigating to the backup storage location. To obtain the location of a backup, display the **Backup Details** and click **Copy Location** for the database or keyspace. If your backup includes incremental backups, click the arrow for the increment of interest to display the databases or keyspaces.
 
-### Path components of a backup
+The copied location provides the full path to the backup.
 
-Following is sample path component set and its description in a table to aid in identifying a complete backup.
+YugabyteDB Anywhere universe backups are stored using the following folder structure:
+
+```output
+<storage-address>
+   /<universe-uuid>
+     /<backup-series-name>-<backup-series-uuid>
+       /<backup-type>
+         /<creation-time>
+           /<backup-name>_<backup-uuid>
+```
+
+For example:
 
 ```output
 s3://user_bucket/some/sub/folders
@@ -113,25 +124,19 @@ s3://user_bucket/some/sub/folders
            /multi-table-postgres_40522fc46c69404893392b7d92039b9e
 ```
 
-| Components | Description |
-| :--------- | :---------- |
-| Backup location | Location configured in YugabyteDB Anywhere (YBA). Alternate sub-folders in the S3 bucket may be included in the backup location definitions, and used to disambiguate multiple clusters managed by one YBA (For example, s3://user_bucket/east1, and s3://user_bucket/east2 as 2 locations sharing different folders in the same bucket (user_bucket), but used by east1 or east2 clusters, respectively). |
-| Universe UUID | A YBA component which guarantees that universes with identical human-created names sharing a bucket are not subject to collision. |
-| Backup Series Name and UUID | A human-readable backup series name and YBA generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder if the human-readable portions collide. |
-| Full (or Incremental) | Indicates if further sub-folder(s) contain Full or Incremental backups. |
-| Creation time | The time when Full or Incremental backup started. |
-| The backup | A folder that includes files (metadata and success) and subfolders (tablet components). |
+| Component | Description |
+| :-------- | :---------- |
+| Storage address | The address of the backup storage as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
+| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder or any of its contents. |
+| Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
+| Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
+| Creation time | The time the backup was started. |
+| Backup name and UUID | The name of the backup and YBA-generated UUID. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
 
-### Folders required for restore
+A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
-The path components must remain unchanged for restore to work. The backup location _may_ be a different bucket name, but rest of the path components must match, for example, `s3://user_bucket/some/sub/folders/…` changed to `s3://new_user_bucket/some/sub/folders/…` retaining the sub-folders.
+Although you can move a backup from its location, for a successful restore, none of the sub-components and folder names can be modified (from the universe UUID folder on down).
 
-A "Backup set" consists of a successful Full Backup, and one or more consecutive successful Incremental Backup(s), and may be used to restore a database at the point in time of Full Backup and/or the time(s) of "good" Incremental Backups, as long as the chain of "good" Incrementals is unbroken. The creation time component is beneficial to identify Incremental(s) occurring after a Full Backup.
-
-When YBA writes a backup to a bucket, the last step after all parallel tasks complete is writing a "success" file to the backup folder which qualifies as a good backup. A Full or Incremental backup without a success file should not be assumed good, and an older backup should be used for restore instead.
+When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 
 ![Success file metadata](/images/yp/success-file-backup.png)
-
-### Finding backup folders
-
-In some cases, the bucket name may be difficult to determine from the backup location (For example, `s3://backups.my_domain.com/folder`). For this and other cases where the location is not obvious, navigate to your universe and select **Backups** to expand it, and then click **Copy Location**.
