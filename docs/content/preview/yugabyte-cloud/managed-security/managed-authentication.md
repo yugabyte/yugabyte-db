@@ -26,7 +26,7 @@ The available social logins include Google, GitHub, and LinkedIn. All three are 
 
 To manage the social logins available to your account users, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, then click **Edit Configuration** to display the **Login Methods** dialog.
+1. Navigate to **Security > Access Control > Authentication** and click **Edit Configuration** to display the **Login Methods** dialog.
 1. Enable the social logins you want to use.
 1. Click **Save Changes**.
 
