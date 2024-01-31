@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -1200,6 +1201,21 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @JsonIgnore
+  public Map<NodeDetails, ProxyConfig> getNodeProxyConfigMap() {
+    Map<NodeDetails, ProxyConfig> nodeProxyConfigMap = new HashMap<>();
+    getNodes().stream()
+        .forEach(
+            nD ->
+                nodeProxyConfigMap.put(
+                    nD,
+                    getUniverseDetails()
+                        .getClusterByUuid(nD.placementUuid)
+                        .userIntent
+                        .getProxyConfig(nD.getAzUuid())));
+    return nodeProxyConfigMap;
   }
 
   @PostRemove

@@ -634,7 +634,9 @@ public enum TaskType {
 
   CheckForClusterServers(CheckClusterConsistency.class),
 
-  CheckLeaderlessTablets(CheckLeaderlessTablets.class);
+  CheckLeaderlessTablets(CheckLeaderlessTablets.class),
+
+  UpdateProxyConfig(com.yugabyte.yw.commissioner.tasks.upgrade.UpdateProxyConfig.class);
 
   private final Class<? extends ITask> taskClass;
 
