@@ -47,7 +47,7 @@ class ApiService {
 
   private getCustomerId(): string {
     const customerId = localStorage.getItem('customerId');
-    return customerId || '';
+    return customerId ?? '';
   }
 
   findUniverseByName = (universeName: string): Promise<string[]> => {
@@ -65,7 +65,7 @@ class ApiService {
   };
 
   fetchRunTimeConfigs = (
-    includeInherited: boolean = false,
+    includeInherited = false,
     scope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE
   ): Promise<RunTimeConfig> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${scope}?includeInherited=${includeInherited}`;
