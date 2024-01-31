@@ -18,11 +18,11 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "incremental": true,
     "noImplicitAny": true,
     "noUnusedLocals": false,
     "noImplicitReturns": true,
     "noImplicitThis": true,
+    "suppressImplicitAnyIndexErrors": true,
     "strictNullChecks": true,
     "jsx": "react-jsx",
     "sourceMap": true,
@@ -33,6 +33,7 @@
     "src/custom.d.ts"
   ],
   "exclude": [
+    "dist",
     "node_modules"
   ]
 }
