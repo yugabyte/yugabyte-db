@@ -57,6 +57,7 @@ For YSQL, you can allow YugabyteDB Anywhere to back up your data with the user a
 To view detailed information about an existing backup, click on the backup (row) in the **Backups** list to open **Backup Details**.
 
 The **Backup Details** include the storage address of your backup. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace. If your backup includes incremental backups, click the arrow for the increment of interest to display the databases or keyspaces.
+If you want to [manually verify or access a backup](#access-backups-in-storage), you can use this address to access the backup where it is stored.
 
 To access a list of all backups from all universes, including deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
 
