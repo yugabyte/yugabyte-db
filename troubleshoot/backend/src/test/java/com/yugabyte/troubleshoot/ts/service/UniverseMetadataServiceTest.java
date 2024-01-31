@@ -78,6 +78,8 @@ public class UniverseMetadataServiceTest {
         .setApiToken("test_token")
         .setMetricsUrl("http://localhost:9090")
         .setPlatformUrl("http://localhost:9000")
-        .setMetricsScrapePeriodSec(10);
+        .setMetricsScrapePeriodSec(10)
+        .setDataMountPoints(ImmutableList.of("/mnt/d[0-9]+"))
+        .setOtherMountPoints(ImmutableList.of("/"));
   }
 }

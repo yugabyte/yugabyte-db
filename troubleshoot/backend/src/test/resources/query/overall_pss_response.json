@@ -7,11 +7,13 @@
       "title": "Query Latency",
       "xaxis": {
         "type": "date",
+        "alias": {},
         "ticksuffix": null,
         "tickformat": null
       },
       "yaxis": {
         "type": null,
+        "alias": {},
         "ticksuffix": "&nbsp;µs",
         "tickformat": null
       }
@@ -53,7 +55,7 @@
         ],
         "labels": {
           "queryId": "1",
-          "universeUuid": "ca938bda-0db0-493f-904a-fd835fdabcd2"
+          "universeUuid": "<universe_uuid>"
         }
       },
       {
@@ -92,85 +94,7 @@
         ],
         "labels": {
           "queryId": "1",
-          "universeUuid": "ca938bda-0db0-493f-904a-fd835fdabcd2"
-        }
-      },
-      {
-        "name": "P90",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "type": null,
-        "x": [
-          1706271600000,
-          1706272800000,
-          1706274000000,
-          1706275200000,
-          1706276400000,
-          1706277600000,
-          1706278800000,
-          1706280000000,
-          1706281200000,
-          1706282400000,
-          1706283600000
-        ],
-        "y": [
-          "217.5",
-          "197.5",
-          "177.5",
-          "157.5",
-          "137.5",
-          "117.5",
-          "97.5",
-          "77.5",
-          "57.5",
-          "37.5",
-          "17.5"
-        ],
-        "labels": {
-          "queryId": "1",
-          "universeUuid": "ca938bda-0db0-493f-904a-fd835fdabcd2"
-        }
-      },
-      {
-        "name": "P99",
-        "instanceName": null,
-        "tableName": null,
-        "tableId": null,
-        "namespaceName": null,
-        "namespaceId": null,
-        "type": null,
-        "x": [
-          1706271600000,
-          1706272800000,
-          1706274000000,
-          1706275200000,
-          1706276400000,
-          1706277600000,
-          1706278800000,
-          1706280000000,
-          1706281200000,
-          1706282400000,
-          1706283600000
-        ],
-        "y": [
-          "261.0",
-          "237.0",
-          "213.0",
-          "189.0",
-          "165.0",
-          "141.0",
-          "117.0",
-          "93.0",
-          "69.0",
-          "45.0",
-          "21.0"
-        ],
-        "labels": {
-          "queryId": "1",
-          "universeUuid": "ca938bda-0db0-493f-904a-fd835fdabcd2"
+          "universeUuid": "<universe_uuid>"
         }
       },
       {
@@ -209,7 +133,85 @@
         ],
         "labels": {
           "queryId": "1",
-          "universeUuid": "ca938bda-0db0-493f-904a-fd835fdabcd2"
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P90",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "217.5",
+          "197.5",
+          "177.5",
+          "157.5",
+          "137.5",
+          "117.5",
+          "97.5",
+          "77.5",
+          "57.5",
+          "37.5",
+          "17.5"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
+        }
+      },
+      {
+        "name": "P99",
+        "instanceName": null,
+        "tableName": null,
+        "tableId": null,
+        "namespaceName": null,
+        "namespaceId": null,
+        "type": null,
+        "x": [
+          1706271600000,
+          1706272800000,
+          1706274000000,
+          1706275200000,
+          1706276400000,
+          1706277600000,
+          1706278800000,
+          1706280000000,
+          1706281200000,
+          1706282400000,
+          1706283600000
+        ],
+        "y": [
+          "261.0",
+          "237.0",
+          "213.0",
+          "189.0",
+          "165.0",
+          "141.0",
+          "117.0",
+          "93.0",
+          "69.0",
+          "45.0",
+          "21.0"
+        ],
+        "labels": {
+          "queryId": "1",
+          "universeUuid": "<universe_uuid>"
         }
       }
     ]
