@@ -214,7 +214,6 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               width="15%"
               dataFormat={formatUpdatedAt}
               columnClassName={'yb-table-cell yb-table-cell-align'}
-              dataSort
             >
               <span className={helperClasses.columnName}>{'Time since heartbeat'}</span>
             </TableHeaderColumn>
@@ -222,7 +221,6 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               dataFormat={formatState}
               width="10%"
               columnClassName={'yb-table-cell yb-table-cell-align'}
-              dataSort
             >
               <span className={helperClasses.columnName}>{'Agent Status'}</span>
             </TableHeaderColumn>
@@ -230,7 +228,6 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
               width="15%"
               dataFormat={formatVersion}
               columnClassName={'yb-table-cell yb-table-cell-align'}
-              dataSort
             >
               <span className={helperClasses.columnName}>{'Version'}</span>
             </TableHeaderColumn>
