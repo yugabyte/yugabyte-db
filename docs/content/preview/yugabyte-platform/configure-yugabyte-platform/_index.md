@@ -31,18 +31,6 @@ When deploying a universe, YBA uses the provider configuration settings to creat
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="supported-os-and-arch/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Node prerequisites</div>
-      </div>
-      <div class="body">
-        Operating systems and architectures supported by YBA for deploying YugabyteDB universes.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-admin-user/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
