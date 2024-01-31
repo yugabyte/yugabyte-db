@@ -255,7 +255,10 @@ public class UserTaskDetails {
     RollbackAutoFlags,
 
     // Validate configurations.
-    ValidateConfigurations
+    ValidateConfigurations,
+
+    // Update Proxy Config
+    UpdateProxyConfig
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -595,6 +598,10 @@ public class UserTaskDetails {
       case ValidateConfigurations:
         title = "Validating configurations";
         description = "Validating configurations before proceeding";
+        break;
+      case UpdateProxyConfig:
+        title = "Updating Proxy config";
+        description = "Updating Proxy Config for Universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

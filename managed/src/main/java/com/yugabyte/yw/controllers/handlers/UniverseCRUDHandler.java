@@ -96,6 +96,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,6 +233,16 @@ public class UniverseCRUDHandler {
       }
     }
     return true;
+  }
+
+  private boolean proxyConfigChanged(
+      UserIntent newIntent, UserIntent currentIntent, NodeDetails node) {
+    if (!Objects.equals(
+        newIntent.getProxyConfig(node.getAzUuid()),
+        currentIntent.getProxyConfig(node.getAzUuid()))) {
+      return true;
+    }
+    return false;
   }
 
   private Cluster getClusterFromTaskParams(UniverseConfigureTaskParams taskParams) {
@@ -2072,6 +2083,132 @@ public class UniverseCRUDHandler {
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
+
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
+        && !updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No changes that could be applied by EditUniverse");
+    }
+    for (Cluster newCluster : taskParams.clusters) {
+      Cluster curCluster = universe.getCluster(newCluster.uuid);
+      UserIntent newIntent = newCluster.userIntent;
+      UserIntent curIntent = curCluster.userIntent;
+      Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
+      for (NodeDetails nodeDetails : nodeDetailsSet) {
+        if (nodeDetails.state != NodeState.ToBeAdded
+            && nodeDetails.state != NodeState.ToBeRemoved) {
+          String newInstanceType = newIntent.getInstanceTypeForNode(nodeDetails);
+          String curInstanceType = curIntent.getInstanceTypeForNode(nodeDetails);
+          // Verifying that instance type was not changed for existing nodes.
+          if (!Objects.equals(newInstanceType, curInstanceType)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change instance type for existing node "
+                        + "%s through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName, curInstanceType, newInstanceType));
+          }
+          DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(nodeDetails);
+          DeviceInfo curDeviceInfo = curIntent.getDeviceInfoForNode(nodeDetails);
+
+          // Verifying that device info is unchanged for existing nodes
+          Map<String, Function<DeviceInfo, Object>> mappings =
+              Map.of(
+                  "num of volumes", d -> d.numVolumes,
+                  "throughput", d -> d.throughput,
+                  "diskIops", d -> d.diskIops,
+                  "storage type", d -> d.storageType);
+          if (curIntent.providerType != Common.CloudType.kubernetes) {
+            mappings = new HashMap<>(mappings);
+            mappings.put("volume size", d -> d.volumeSize); // We can edit volume size for k8s.
+          }
+          verifyDeviceUnchanged(newDeviceInfo, curDeviceInfo, mappings, nodeDetails.nodeName);
+          Map<String, String> curMasterGFlags =
+              GFlagsUtil.getGFlagsForNode(
+                  nodeDetails,
+                  UniverseTaskBase.ServerType.MASTER,
+                  curCluster,
+                  universeDetails.clusters);
+          Map<String, String> curTserverGFlags =
+              GFlagsUtil.getGFlagsForNode(
+                  nodeDetails,
+                  UniverseTaskBase.ServerType.TSERVER,
+                  curCluster,
+                  universeDetails.clusters);
+          List<Cluster> newClusters = new ArrayList<>();
+          newClusters.add(newCluster); // There is only one cluster in update taskParams.
+          universe.getUniverseDetails().clusters.stream()
+              .filter(c -> !c.uuid.equals(newCluster.uuid))
+              .forEach(newClusters::add);
+          Map<String, String> newMasterGFlags =
+              GFlagsUtil.getGFlagsForNode(
+                  nodeDetails, UniverseTaskBase.ServerType.MASTER, newCluster, newClusters);
+          Map<String, String> newTserverGFlags =
+              GFlagsUtil.getGFlagsForNode(
+                  nodeDetails, UniverseTaskBase.ServerType.TSERVER, newCluster, newClusters);
+          if (!Objects.equals(curMasterGFlags, newMasterGFlags)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change master gflags for existing node %s"
+                        + " through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+          }
+          if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change tserver gflags for existing node %s"
+                        + " through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+          }
+
+          if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change systemd setting for existing node %s"
+                        + " through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName, curIntent.useSystemd, newIntent.useSystemd));
+          }
+          if (proxyConfigChanged(newIntent, curIntent, nodeDetails)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change proxy config for existing node %s" + " through EditUniverse",
+                    nodeDetails.nodeName));
+          }
+        }
+      }
+      Set<NodeDetails> toBeAdded =
+          nodeDetailsSet.stream()
+              .filter(nD -> nD.state.equals(NodeState.ToBeAdded))
+              .collect(Collectors.toSet());
+      if (CollectionUtils.isNotEmpty(toBeAdded)) {
+        newCluster.validateProxyConfig(newIntent, toBeAdded);
+      }
+    }
+  }
+
+  private void verifyDeviceUnchanged(
+      DeviceInfo newDeviceInfo,
+      DeviceInfo curDeviceInfo,
+      Map<String, Function<DeviceInfo, Object>> mappings,
+      String nodeName) {
+    mappings.forEach(
+        (key, func) -> {
+          Object curVal = func.apply(curDeviceInfo);
+          Object newVal = func.apply(newDeviceInfo);
+          if (!Objects.equals(curVal, newVal)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change %s for existing node %s through EditUniverse: from %s to %s",
+                    key, nodeName, curVal, newVal));
+          }
+        });
   }
 
   // This method enforces the user tags provided in runtime config.
