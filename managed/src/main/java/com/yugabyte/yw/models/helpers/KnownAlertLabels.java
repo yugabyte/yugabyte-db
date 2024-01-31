@@ -48,8 +48,9 @@ public enum KnownAlertLabels {
   NODE_ADDRESS,
   NODE_IDENTIFIER,
   PARENT_TASK_TYPE,
+  YBA_VERSION,
 
-  YBA_VERSION;
+  DB_VERSION;
 
   public String labelName() {
     return name().toLowerCase();
