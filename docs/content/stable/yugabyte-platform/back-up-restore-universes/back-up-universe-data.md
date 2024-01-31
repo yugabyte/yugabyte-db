@@ -96,7 +96,7 @@ To configure throttle parameters:
 
 1. Click **Save**.
 
-## Identifying good backups
+## Identifying backup components
 
 When restoring a YugabyteDB database from your backup storage (S3, Azure, or GCP bucket), it is important to identify the set of folders that make up a complete backup. The following sections describe how to identify backup components to achieve a good backup.
 
