@@ -131,39 +131,24 @@ ERROR:  column number must be in range from 1 to 32767
 LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
                                            ^
 ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
-ERROR:  ALTER INDEX not supported yet
-LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
+ERROR:  cannot alter statistics on non-expression column "a" of index "attmp_idx"
+HINT:  Alter statistics on table column instead.
 ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
-ERROR:  ALTER INDEX not supported yet
-LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 \d+ attmp_idx
                         Index "public.attmp_idx"
  Column |       Type       | Key? | Definition | Storage | Stats target
 --------+------------------+------+------------+---------+--------------
  a      | integer          | yes  | a          | plain   |
- expr   | double precision | yes  | (d + e)    | plain   |
+ expr   | double precision | yes  | (d + e)    | plain   | 1000
  b      | name             | yes  | b          | plain   |
 lsm, for table "public.attmp"
 
 ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
-ERROR:  ALTER INDEX not supported yet
-LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
+ERROR:  cannot alter statistics on non-expression column "b" of index "attmp_idx"
+HINT:  Alter statistics on table column instead.
 ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
-ERROR:  ALTER INDEX not supported yet
-LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
+ERROR:  column number 4 of relation "attmp_idx" does not exist
 ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
-ERROR:  ALTER INDEX not supported yet
-LINE 1: ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1130. React with thumbs up to raise its priority
 DROP TABLE attmp;
 --
 -- rename - check on both non-temp and temp tables
