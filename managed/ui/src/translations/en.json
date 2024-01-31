@@ -608,6 +608,10 @@
           "failToFetchUniverse": "Error fetching details for the universe with the UUID: {{universeUuid}}",
           "failToFetchDrConfig": "Error fetching details for the DR config with the UUID: {{drConfigUuid}}"
         },
+        "backupStorageConfig": {
+          "currentStorageConfigInfo": "<bold>{{storageConfigName}}</bold> will be used as the storage config for this operation. To use a different storage config, edit the DR config.",
+          "missingStorageConfigInfo": "There is no storage config associated with this DR config. Please add one by editing the DR config."
+        },
         "enableDrPrompt": {
           "featureDescription": "Enable <bold>Active-Active Single-Master Disaster Recovery</bold> (DR) for near-zero recovery point objective (RPO) & recovery time objective (RTO) in the event of a universe outage.",
           "actionButton": "Configure & Enable Disaster Recovery",
@@ -778,7 +782,7 @@
               "selectDatabases": {
                 "instruction": "Select the databases to enable disaster recovery for",
                 "validateButton": "Validate Table Selection",
-                "submitButton": "Next: Configure Full Copy",
+                "submitButton": "Next: Confirm Full Copy",
                 "pitrSetUpNote": "<bold>Note!</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
@@ -828,24 +832,16 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "maxAcceptableReplicationLag": {
-              "sectionHeader": "Max Acceptable Replication Lag",
-              "info": "The lowest alert threshold for replication lag on the DR primary is taken to be the 'max acceptable lag'. Updating the max acceptable replication lag will update the corresponding alert threshold. If the update causes the replication lag alert's threshold to be greater than another from the same universe, then the alert with the lower threshold will be used as the new max acceptable replication lag.",
-              "fieldLabel": "Max Acceptable Replication Lag"
-            },
-            "duration": {
-              "second": "Second",
-              "minute": "Minute",
-              "hour": "Hour"
+            "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+            "backupStorageConfig": {
+              "label": "Backup Storage Config"
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
-              "taskFailure": "Edit DR configuration task failed.",
-              "backupStorageConfigRequired": "Please select a backup storage config."
+              "backupStorageConfigRequired": "Required."
             },
             "success": {
-              "requestSuccess": "Editing DR configuration...",
-              "taskSuccess": "Edit DR configuration task succeeded."
+              "requestSuccess": "DR config updated."
             }
           },
           "editTargetModal": {
@@ -853,7 +849,7 @@
             "step": {
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
-                "nextButton": "Next: Configure Full Copy",
+                "nextButton": "Next: Confirm Full Copy",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
@@ -861,8 +857,7 @@
               "configureBootstrap": {
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
                 "backupStorageConfig": {
-                  "label": "Backup Storage Config",
-                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                  "label": "Backup Storage Config"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
@@ -883,14 +878,13 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure Full Copy",
+                "nextButton": "Next: Confirm Full Copy",
                 "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a fully copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
                 "backupStorageConfig": {
-                  "label": "Backup Storage Config",
-                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                  "label": "Backup Storage Config"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
@@ -1005,14 +999,30 @@
           }
         },
         "restartReplicationModal": {
-          "title": "Restart Replication",
+          "title": {
+            "xCluster": "Restart Replication",
+            "dr": "Create a New Full Copy of the DR Primary"
+          },
           "step": {
             "selectTables": {
-              "instruction": "1. Select the tables you want to restart replication for.",
-              "submitButton": "Next: Configure Full Copy"
+              "instruction": {
+                "xClusterYsql": "1. Select the databases you want to restart replication for",
+                "xClusterYcql": "1. Select the tables you want to restart replication for",
+                "dr": "1. Select the databases you want to create a full copy for"
+              },
+              "submitButton": {
+                "xCluster": "Next: Configure Full Copy",
+                "dr": "Next: Confirm Full Copy"
+              }
             },
             "configureBootstrap": {
-              "instruction": "2. Configure Full Copy.",
+              "instruction": {
+                "xCluster": "2. Configure Full Copy.",
+                "dr": "2. Confirm Full Copy"
+              },
+              "infoText": {
+                "dr": "Creating a full copy of the DR primary requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding."
+              },
               "submitButton": "Create a New Full Copy"
             }
           },
