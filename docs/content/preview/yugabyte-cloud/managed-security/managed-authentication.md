@@ -76,7 +76,7 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 
 To configure federated authentication in YugabyteDB Managed, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose the Microsoft Entra ID identity provider.
 1. Enter your Entra application client ID and secret.
 1. Click **Enable**.
@@ -120,7 +120,7 @@ For more information, refer to [App integrations](https://help.okta.com/oie/en-u
 
 To configure federated authentication in YugabyteDB Managed, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose Okta identity provider.
 1. Enter the client ID and secret of the Okta application you created.
 1. Enter the Okta domain for your application.
@@ -175,7 +175,7 @@ For more information, refer to the [PingOne for Enterprise](https://docs.pingide
 
 To configure federated authentication in YugabyteDB Managed, do the following:
 
-1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose PingOne identity provider.
 1. Enter the client ID and secret of the PingOne application you created.
 1. Enter the Authorization URL for your application.
