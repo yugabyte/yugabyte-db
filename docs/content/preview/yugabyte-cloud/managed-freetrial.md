@@ -39,6 +39,6 @@ After the free trial begins, you can use your credits to create dedicated cluste
 - Partition by region
 - Read replicas
 
-Create a [billing profile](../cloud-admin/cloud-billing-profile/) and add a payment method any time. You won't be charged until your credits are used.
+Choose a plan any time. You won't be charged until your credits are used.
 
 Only one free trial can be applied to an account.

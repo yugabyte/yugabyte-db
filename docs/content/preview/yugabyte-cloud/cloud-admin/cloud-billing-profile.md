@@ -2,7 +2,7 @@
 title: Billing and invoices
 linkTitle: Manage billing
 description: Manage your YugabyteDB Managed billing profile and payment methods and view invoices.
-headcontent: Manage your billing profile and payment method
+headcontent: Manage your plan and payment, and review invoices and usage
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-billing-profile
@@ -11,21 +11,21 @@ menu:
 type: docs
 ---
 
-Review your usage and charges, and manage your billing profile and payment methods using the **Usage & Billing** page.
+Review your usage and charges, manage your plan, and manage your billing information using the **Usage & Billing** page.
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your YugabyteDB Managed clusters.
+- Charges by the minute for your YugabyteDB Managed clusters, at rates based on your plan.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Usage & Billing** page.
 
 **Invoices are sent to the email provided in the Billing Profile**.
 
-For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
+For information on YugabyteDB Managed plans and add ons, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
 
 ![Usage & Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
-The **Usage & Billing** page has the following tabs: **Usage**, **Profile and Payment Methods**, and **Invoices**.
+The **Usage & Billing** page has the following tabs: **Usage**, **Plan**, **Invoices**, and **Billing Information**.
 
 ## Usage
 
@@ -36,37 +36,11 @@ Use this section to review your usage by cluster over time. You can view cumulat
 - cloud backup storage
 - data transfer
 
-## Profile and Payment Methods
+## Plan
 
-Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
+Use this section to subscribe to a plan, or manage and review your plan details, including any add-ons.
 
-Credit cards are self service. For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.
-
-If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
-
-### Add or edit your Billing Profile
-
-To add or change your billing profile:
-
-1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
-1. Edit your contact information.
-1. If you are creating your billing profile, enter your credit card details. For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.
-1. Click **Save**.
-
-### Manage credit cards
-
-To add a credit card:
-
-1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
-1. Enter your credit card details.
-1. To use the card as the default for payment, choose **Set as default credit card**.
-1. Click **Save**.
-
-To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
-
-### View credits
-
-The **Credits** section displays any credits applied to your account, including the expiration date, name, amount used, and amount remaining. Credits are automatically applied to the next invoice.
+To make changes to your plan, click **Manage Plan**.
 
 ## Invoices
 
@@ -141,8 +115,40 @@ To download the invoice as a PDF, click **Download Invoice**.
 **Summary by Usage** shows detailed costs for each cluster. Click a cluster to view usage details for each dimension, including:
 
 - The instance minutes, price, and amount.
-- Data storage usage, overage in GB-hours, price, and amount.
-- Backup storage usage, overage in GB-hours, price, and amount.
-- Data transfer usage, overages in GB, price, and amount.
+- Data storage usage in GB-hours, price, and amount.
+- Backup storage usage in GB-hours, price, and amount.
+- Data transfer usage in GB, price, and amount.
 
 For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs/).
+
+## Billing Information
+
+Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
+
+Credit cards are self service. For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.
+
+If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
+
+### Add or edit your Billing Profile
+
+To add or change your billing profile:
+
+1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
+1. Edit your contact information.
+1. If you are creating your billing profile, enter your credit card details. For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.
+1. Click **Save**.
+
+### Manage credit cards
+
+To add a credit card:
+
+1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
+1. Enter your credit card details.
+1. To use the card as the default for payment, choose **Set as default credit card**.
+1. Click **Save**.
+
+To delete a card, click the **Delete** icon, then click **Confirm**. You cannot delete the default card.
+
+### View credits and discounts
+
+The **Credits and Discounts** section displays any credits applied to your account, including the end date, days left, amount used, and amount remaining. Credits are automatically applied to the next invoice.
