@@ -135,6 +135,10 @@ html {
     max-width: 66px;
     height: auto;
   }
+
+  > i[class^="fa-"] {
+    font-size: 50px;
+  }
 }
 
 .heading-content {
