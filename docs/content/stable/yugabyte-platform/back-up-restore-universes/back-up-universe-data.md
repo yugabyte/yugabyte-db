@@ -98,7 +98,7 @@ To configure throttle parameters:
 
 ## Identifying backup components
 
-When restoring a YugabyteDB database from your backup storage (S3, Azure, or GCP bucket), it is important to identify the set of folders that make up a complete backup. The following sections describe how to identify backup components to achieve a good backup.
+When restoring a YugabyteDB database from your [backup storage](../configure-backup-storage/) (S3, Azure, or GCP bucket), it is important to identify the set of folders that make up a complete backup. The following sections describe how to identify backup components to achieve a good backup.
 
 ### Path components of a backup
 
@@ -115,7 +115,7 @@ s3://user_bucket/some/sub/folders
 
 | Components | Description |
 | :--------- | :---------- |
-| Backup location | Location configured in YugabyteDB Anywhere (YBA). Alternate sub-folders within the S3 bucket may be included in the backup location definitions, and used to disambiguate multiple clusters managed by one YBA (For example, s3://user_bucket/east1, and s3://user_bucket/east2 as 2 locations sharing different folders in the same bucket (user_bucket), but used by east1 or east2 clusters, respectively). |
+| Backup location | Location configured in YugabyteDB Anywhere (YBA). Alternate sub-folders in the S3 bucket may be included in the backup location definitions, and used to disambiguate multiple clusters managed by one YBA (For example, s3://user_bucket/east1, and s3://user_bucket/east2 as 2 locations sharing different folders in the same bucket (user_bucket), but used by east1 or east2 clusters, respectively). |
 | Universe UUID | A YBA component which guarantees that universes with identical human-created names sharing a bucket are not subject to collision. |
 | Backup Series Name and UUID | A human-readable backup series name and YBA generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder if the human-readable portions collide. |
 | Full (or Incremental) | Indicates if further sub-folder(s) contain Full or Incremental backups. |
