@@ -218,8 +218,6 @@ static const MongoIndexSupport MongoIndexSupportedList[] =
 static const int NumberOfMongoIndexTypes = sizeof(MongoIndexSupportedList) /
 										   sizeof(MongoIndexSupport);
 
-
-extern bool EnableIndexTermTruncation;
 extern bool EnableExtendedIndexFilters;
 extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
@@ -1699,8 +1697,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			*(indexDef->coarsestIndexedLevel) = BsonValueAsInt32(bson_iter_value(
 																	 &indexDefDocIter));
 		}
-		else if (strcmp(indexDefDocKey, "enableLargeIndexKeys") == 0 &&
-				 EnableIndexTermTruncation)
+		else if (strcmp(indexDefDocKey, "enableLargeIndexKeys") == 0)
 		{
 			const bson_value_t *value = bson_iter_value(&indexDefDocIter);
 			indexDef->enableLargeIndexKeys = BsonValueAsBool(value);
@@ -1791,11 +1788,29 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 							errmsg(
 								"enableLargeIndexKeys not supported with wildcard indexes.")));
 		}
-		if (indexDef->key->hasHashedIndexes || indexDef->key->hasTextIndexes)
+		if (indexDef->key->hasHashedIndexes ||
+			indexDef->key->hasTextIndexes ||
+			indexDef->key->has2dIndex ||
+			indexDef->key->has2dsphereIndex ||
+			indexDef->key->hasCosmosIndexes)
 		{
 			ereport(ERROR, (errcode(MongoCannotCreateIndex),
 							errmsg(
-								"enableLargeIndexKeys not supported with hash or text indexes.")));
+								"enableLargeIndexKeys is only supported with regular indexes.")));
+		}
+
+		if (indexDef->expireAfterSeconds != NULL)
+		{
+			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+							errmsg(
+								"enableLargeIndexKeys not supported with TTL indexes.")));
+		}
+
+		if (indexDef->unique != BoolIndexOption_Undefined)
+		{
+			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+							errmsg(
+								"Cannot specify unique with enableLargeIndexKeys.")));
 		}
 	}
 

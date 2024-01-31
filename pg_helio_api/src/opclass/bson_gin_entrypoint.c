@@ -63,8 +63,6 @@ static Size FillWildcardProjectPathSpec(const char *prefix, void *buffer);
 
 extern Datum gin_bson_exclusion_pre_consistent(PG_FUNCTION_ARGS);
 
-extern bool EnableIndexTermTruncation;
-
 /*
  * gin_bson_single_path_extract_value is run on the insert/update path and collects the terms
  * that will be indexed for indexes for a single path definition. the method provides the bson document as an input, and

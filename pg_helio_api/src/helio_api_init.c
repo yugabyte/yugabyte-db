@@ -488,13 +488,6 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.enableIndexTermTruncation", prefix),
-		gettext_noop(
-			"Whether to enable the feature for index term truncation"),
-		NULL, &EnableIndexTermTruncation, DEFAULT_ENABLE_INDEX_TERM_TRUNCATION,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		psprintf("%s.forceIndexTermTruncation", prefix),
 		gettext_noop(
 			"Whether to force the feature for index term truncation"),
