@@ -67,7 +67,7 @@ To scale a single-region cluster:
 
 1. Enter the number of nodes, vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the cluster.
 
-    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly costs for the cluster are estimated automatically.
 
 1. Click **Confirm and Save Changes** when you are done.
 
@@ -94,7 +94,7 @@ To scale nodes in a replicate-across-regions cluster:
 
     The same number of nodes and node sizes apply across all regions.
 
-    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly costs for the cluster are estimated automatically.
 
 1. Optionally, set or change the [Preferred region](../../cloud-basics/create-clusters/create-clusters-multisync/#preferred-region).
 
@@ -127,7 +127,7 @@ To scale a partition-by-region cluster:
 
 1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for each region.
 
-    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly costs for the cluster are estimated automatically.
 
 1. Click **Confirm and Save Changes** when you are done.
 

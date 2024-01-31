@@ -27,6 +27,8 @@ The following best practices are recommended for production clusters.
 
 ## In depth
 
+Note that the availability of some features depends on your plan. See [Pricing plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/) for plan details.
+
 ### Topology
 
 A YugabyteDB cluster typically consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes in a single availability zone, across multiple zones in a single region, and across regions. With more advanced topologies, you can place multiple clusters across multiple regions. The [topology](../create-clusters-topology/) you choose depends on your requirements for latency, availability, and geo-distribution.
@@ -203,7 +205,7 @@ If you identify a performance problem or regression with an update, set an exclu
 
 YugabyteDB Managed provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
 
-YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Backup storage costs](../../cloud-admin/cloud-billing-costs/#backup-storage-costs).
+YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
 ### Security
 
@@ -231,7 +233,7 @@ For more information on users and roles in YugabyteDB Managed, refer to [Databas
 
 The biggest factor in the price of a cluster is the number vCPUs.
 
-Cluster charges are based on the total number of vCPUs used and how long they have been running. Cluster per-hour charges include [free allowances](../../cloud-admin/cloud-billing-costs/) for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost.
+Cluster charges are based on the total number of vCPUs used and how long they have been running. The rate is determined by your [pricing plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/).
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 

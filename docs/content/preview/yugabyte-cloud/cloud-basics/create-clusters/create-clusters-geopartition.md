@@ -103,7 +103,7 @@ To add additional regions to the cluster, click **Add Region**.
 
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster).
 
-Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly costs for the cluster are estimated automatically.
 
 {{% includeMarkdown "network-access.md" %}}
 

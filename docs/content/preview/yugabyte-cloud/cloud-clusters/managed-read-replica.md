@@ -72,7 +72,7 @@ To add or edit read-replicas:
 
     Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected region.
 
-    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly costs for the cluster are estimated automatically.
 
 1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
 

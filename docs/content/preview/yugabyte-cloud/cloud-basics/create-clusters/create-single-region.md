@@ -83,7 +83,7 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#single-region-clusters).
 
-Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly costs for the cluster are estimated automatically.
 
 #### Configure VPC
 

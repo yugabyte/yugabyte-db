@@ -1,10 +1,10 @@
 ---
-title: Billing and Invoicing
+title: Plan, billing, and invoicing
 headerTitle: Billing
 linkTitle: Billing
-description: Billing and Invoicing.
+description: Manage plans, billing, and invoicing.
 image: /images/section_icons/explore/administer.png
-headcontent: Manage billing and payment methods, and review invoices and usage
+headcontent: Manage your plan and payment, and review invoices and usage
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -13,7 +13,7 @@ menu:
 type: indexpage
 ---
 
-Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You review your usage, manage your billing profile and payment methods, and review invoices from the **Usage & Billing** page.
+Review your usage and plan details, manage your billing information, and review invoices from the **Usage & Billing** page.
 
 <div class="row">
 
@@ -24,7 +24,7 @@ Before you can add Dedicated clusters, you need to create a billing profile and 
         <div class="title">Manage billing</div>
       </div>
       <div class="body">
-        Manage your billing profile and payment methods, as well as view your running costs and past invoices.
+        Manage your billing profile and payment methods, view usage, and view invoices.
       </div>
     </a>
   </div>

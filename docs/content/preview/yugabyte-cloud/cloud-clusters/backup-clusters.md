@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+YugabyteDB Managed can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
 {{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Managed" >}}
 
