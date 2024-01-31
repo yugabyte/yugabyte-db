@@ -34,11 +34,11 @@ If you revoke a social login that is already in use, users using that social log
 
 ## Federated authentication
 
-Using federated authentication, you can use an IdP to manage access to your YugabyteDB Managed account.
+Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Managed account.
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently, YugabyteDB Managed supports Microsoft Entra ID<!--, PingOne,--> and Okta for Enterprise IdPs, and the OIDC protocol.
+Currently, YugabyteDB Managed supports the Microsoft Entra ID<!--, PingOne,--> and Okta enterprise IdPs, exclusively using the OIDC (OpenID Connect) protocol.
 
 ### Prerequisites
 
