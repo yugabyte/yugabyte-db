@@ -87,13 +87,16 @@ public class UniverseMetricProvider implements MetricsProvider {
             universe.getUniverseDetails().updateInProgress
                 ? universe.getUniverseDetails().updatingTask
                 : null;
+        String dbVersion =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
         universeGroup.metric(
             createUniverseMetric(
                     customer,
                     universe,
                     PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
                     taskType != null ? taskType.getCode() : 0)
-                .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion));
+                .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion)
+                .setLabel(KnownAlertLabels.DB_VERSION, dbVersion));
         universeGroup.metric(
             createUniverseMetric(
                 customer,

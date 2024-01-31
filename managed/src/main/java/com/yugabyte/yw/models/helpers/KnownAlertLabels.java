@@ -34,8 +34,9 @@ public enum KnownAlertLabels {
   MESSAGE,
   MAINTENANCE_WINDOW_UUIDS,
   ALERT_EXPRESSION,
+  YBA_VERSION,
 
-  YBA_VERSION;
+  DB_VERSION;
 
   public String labelName() {
     return name().toLowerCase();
