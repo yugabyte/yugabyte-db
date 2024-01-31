@@ -8,16 +8,12 @@ import java.util.UUID;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Release metadata required to create a new release")
-public class CreateRelease {
-  @Constraints.Required public String version;
-  @Constraints.Required public String yb_type;
-  @Constraints.Required public String release_type;
-
+public class UpdateRelease {
   public static class Artifact {
     public UUID package_file_id;
     public String package_url;
     @Constraints.Required public ReleaseArtifact.Platform platform;
-    public PublicCloudConstants.Architecture architecture;
+    @Constraints.Required public PublicCloudConstants.Architecture architecture;
     public String sha256;
   }
 
@@ -26,6 +22,5 @@ public class CreateRelease {
   public String release_date;
   public String release_notes;
   public String release_tag;
-
-  public UUID release_uuid;
+  public String state;
 }
