@@ -119,6 +119,11 @@
  */
 #define HIDDEN_COLUMNS_SIZE 4
 
+/*
+ * Width of YBCTID with UUID
+ */
+#define YBCTID_UUID_WIDTH 33
+
 #define MEGA 1048576
 
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
@@ -5839,6 +5844,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	int 		num_result_pages;
 	int 		num_nexts;
 	int 		num_seeks;
+	int			docdb_result_width;
 
 	if (!enable_seqscan)
 	{
@@ -5849,6 +5855,11 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	/* DocDB costs */
 	/* Compute tuple width */
 	tuple_width = yb_get_relation_data_width(baserel, reloid);
+
+	/* TODO: Temporary fix for #20892 to unblock internal testing */
+	docdb_result_width = path->pathtarget->width;
+	if (docdb_result_width == 0)
+		docdb_result_width = YBCTID_UUID_WIDTH;
 
 	/* Block fetch cost from disk */
 	num_blocks = ceil(baserel->tuples * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -5901,7 +5912,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-											   path->pathtarget->width);
+											   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
@@ -5912,7 +5923,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 				  (num_nexts * per_next_cost);
 
 	total_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												  path->pathtarget->width);
+												  docdb_result_width);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -6056,11 +6067,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	bool		previous_column_had_upper_bound;
 	int			max_nexts_to_avoid_seek = 2;
 	int			num_result_pages;
+	int			docdb_result_width;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
+
+	/* TODO: Temporary fix for #20892 to unblock internal testing */
+	docdb_result_width = path->path.pathtarget->width;
+	if (docdb_result_width == 0)
+		docdb_result_width = YBCTID_UUID_WIDTH;
 
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
@@ -6378,7 +6395,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-										 	   path->path.pathtarget->width);
+										 	   docdb_result_width);
 
 	/* Add seeks and nexts for result pages */
 	num_seeks += num_result_pages;
@@ -6522,7 +6539,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
 
 	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												path->path.pathtarget->width);
+												docdb_result_width);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
