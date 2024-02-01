@@ -14,16 +14,18 @@ type: docs
 
 Planned switchover is the process of switching write access from the DR primary to the DR replica without losing any data (zero RPO). Planned switchover is typically performed during a maintenance window.
 
-Switchover can be used by enterprises when performing regular business continuity or disaster recovery testing. Switchover is also used for failback after a [Failover](../disaster-recovery-failover/); that is, switching traffic back to the former DR primary after it is brought back online.
+Switchover can be used by enterprises when performing regular business continuity or disaster recovery testing. Switchover can also used for failback purposes. That is, after a [Failover followed by a Repair DR](../disaster-recovery-failover/), you can use switchover to switch traffic back to the original DR primary after it is brought back online.
 
 ## Perform switchover
 
-First, confirm there is no lag between the DR primary and replica. You can monitor lag on the **Disaster Recovery** tab.
+First, confirm there is no excessive lag between the DR primary and replica. You can monitor lag on the **Disaster Recovery** tab.
 
-If lag exceeds `log_min_seconds_to_retain` seconds, and WALs have been garbage collected, switchover will be unsuccessful. In that case, you can do one of the following:
+If the DR config has any tables that don't have a status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
 
 - Perform a full copy from the DR primary to the DR replica.
 - [Unplanned Failover](../disaster-recovery-failover/).
+
+Verify that the list of tables in the DR primary's database(s) match the list of tables in the DR replica's database(s). Switchover will fail if there is a mismatch in this list.
 
 Use the following steps to perform a planned switchover:
 

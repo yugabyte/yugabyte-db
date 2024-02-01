@@ -12,14 +12,17 @@ menu:
 type: docs
 ---
 
-When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes have to be performed at the SQL level on both the DR primary and replica, and updated in the DR configuration.
+When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
+
+- performed at the SQL level on both the DR primary and replica, and then
+- updated at the YBA level in the DR configuration.
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
 
 | Change to database on DR primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
 | CREATE TABLE | CREATE TABLE | Add the table to replication |
-| DROP TABLE   | DROP TABLE   | |
+| DROP TABLE   | DROP TABLE   | Remove the table from replication before executing the DROP TABLE on the database. |
 | CREATE INDEX | CREATE INDEX | [Resynchronize](#resynchronize-yba) |
 | DROP INDEX   | DROP INDEX   | [Resynchronize](#resynchronize-yba) |
 | CREATE TABLE foo PARTITION OF bar | Same as CREATE TABLE | |
@@ -28,7 +31,7 @@ Use the following guidance when managing tables and indexes in universes with DR
 
 ## Best practices
 
-- If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
+If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
 
 ## Add a table to DR
 
@@ -55,7 +58,7 @@ Note the following:
 
 - If the newly added table already has data, then adding the table can trigger a full copy of that entire database from DR primary to replica.
 
-- You should always set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
+- It is recommended that you set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
 
 - This operation also automatically adds any associated index tables of this table to the DR configuration.
 

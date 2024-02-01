@@ -3,7 +3,7 @@ title: Configure disaster recovery for a YugabyteDB Anywhere universe
 headerTitle: Disaster recovery
 linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
-headContent: Fail over to a backup universe in case of unplanned outages
+headContent: Fail over to a replica universe in case of unplanned outages
 image: /images/section_icons/manage/enterprise/upgrade_universe.png
 menu:
   stable_yugabyte-platform:
@@ -14,11 +14,16 @@ type: indexpage
 showRightNav: true
 ---
 
-Use disaster recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover for business continuity and disaster recovery testing or failback after a failover.
+Use disaster recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing and failback after a failover.
 
-A DR configuration consists of a primary universe, which serves both reads and writes, and a DR replica universe, which can also serve reads. Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a primary universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the universes.
+A DR configuration consists of the following:
 
-The recovery time objective (RTO) is very low, as it only depends on applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
+- a primary universe, which serves both reads and writes.
+- a DR replica universe, which can also serve reads.
+
+Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR Primary can be lost during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover, RPO is zero and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
+
+The recovery time objective (RTO) is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
@@ -33,7 +38,7 @@ DR further allows for the role of each universe to switch during planned switcho
         <div class="title">Set up Disaster Recovery</div>
       </div>
       <div class="body">
-        Designate a universe to act as DR replica.
+        Designate a universe to act as a DR replica.
       </div>
     </a>
   </div>
@@ -45,7 +50,7 @@ DR further allows for the role of each universe to switch during planned switcho
         <div class="title">Unplanned failover</div>
       </div>
       <div class="body">
-        Fail over to the DR replica in case of an outage.
+        Fail over to the DR replica in case of an unplanned outage.
       </div>
     </a>
   </div>
@@ -57,7 +62,7 @@ DR further allows for the role of each universe to switch during planned switcho
         <div class="title">Planned switchover</div>
       </div>
       <div class="body">
-        Switch over to the DR replica for testing or failback.
+        Switch over to the DR replica for planned testing and failback.
       </div>
     </a>
   </div>
@@ -85,7 +90,7 @@ DR further allows for the role of each universe to switch during planned switcho
     DETAIL:  There is 1 other session using the database.
     ```
 
-- DDL replication is not supported. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+- Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 ## DR vs xCluster replication
 

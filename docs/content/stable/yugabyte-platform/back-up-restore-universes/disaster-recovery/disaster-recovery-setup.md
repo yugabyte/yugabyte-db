@@ -19,11 +19,10 @@ Create two universes, the primary universe which will serve reads and writes, an
 Ensure the universes have the following characteristics:
 
 - Both universes have the same encryption in transit settings.
-- They reside in different regions.
-- They use the same backup configuration.
-- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition or a complete outage of the DR replica universe.
+- They can be backed up and restored using the same backup configuration.
+- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition or a temporary outage of the DR replica universe.
 
-Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer as the data must be copied to the DR replica before replication starts.
+Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
 On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary and automatically creates tables and objects and restores data on the DR replica from the DR primary.
 
@@ -31,8 +30,8 @@ After DR is configured, the DR replica will only be available for reads.
 
 ### Best practices
 
-- Keep CPU use below 65%.
-- Keep disk space use under 65%.
+- Monitor CPU and keep its  use below 65%.
+- Monitor disk space and keep its use under 65%.
 - Create the DR primary and DR replica universes with TLS enabled.
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both DR primary and replica.
 
@@ -41,6 +40,7 @@ After DR is configured, the DR replica will only be available for reads.
     The value depends on how long a network partition or DR replica outage can be tolerated, and the amount of WAL expected to be generated during that period.
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
+- Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
 
@@ -54,7 +54,7 @@ To set up disaster recovery for a universe, do the following:
 
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
+    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 1. Click **Validate Selection**.
 
@@ -100,11 +100,11 @@ The **Disaster Recovery** tab also lists all the tables in replication and their
 
 - To check if the replication has been properly configured for a table, check the status. If properly configured, the table's status is shown as _Operational_.
 
-    The status will be _Not Reported_ momentarily after the replication configuration is created until the source universe reports the replication lag for that table and Prometheus can successfully retrieve it. This should take about 10 seconds.
+    The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
     If the replication lag increases beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as _Warning_.
 
-    If the replication lag has increased to the extent that the replication cannot continue without bootstrapping of current data, the status is shown as _Error: the table's replication stream is broken_, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
+    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from primary to replica, the status is shown as _Error: the table's replication stream is broken_, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
 
     If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
 
@@ -124,6 +124,8 @@ To create an alert:
 1. Set **Target** to **Selected Universes** and select the DR primary.
 1. Set the conditions for the alert.
 1. Click **Save** when you are done.
+
+When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
