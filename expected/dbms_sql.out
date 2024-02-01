@@ -373,6 +373,20 @@ select * from foo;
 (3 rows)
 
 truncate foo;
+-- should not to crash, when bound array is null
+do $$
+declare
+  c int;
+  ca numeric[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'insert into foo values(:a, 10, 20)');
+
+  call dbms_sql.bind_array(c, 'a', ca);
+  raise notice 'inserted rows %d', dbms_sql.execute(c);
+end;
+$$;
+NOTICE:  inserted rows 0d
 do $$
 declare
   c int;

@@ -1278,7 +1278,7 @@ execute(CursorData *c)
 
 			MemoryContextReset(c->result_cxt);
 		}
-		else
+		else if (has_value)
 		{
 			int			rc;
 
