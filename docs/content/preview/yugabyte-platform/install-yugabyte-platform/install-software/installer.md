@@ -455,12 +455,10 @@ You can set the following YBA Installer configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. |
+| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`.<br>**Note**: You can't change this setting after installation. |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
-| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
-
-Note that you can't change the `installRoot` and `service_username` settings after installation.
+| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames.<br>**Note**: You can't change this setting after installation. |
 
 ### YBA configuration options
 
@@ -521,23 +519,21 @@ PostgreSQL configuration is divided into two different subsections:
 
 These options are mutually exclusive, and can be turned on or off using the _enabled_ option. Exactly one of these two sections must have enabled = true, while the other must have enabled = false.
 
-Note that you can't change the `useExisting` setting after installation.
-
 **Install options**
 
 | Option | Description |
 | :--- | :--- |
+| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL.<br>**Note**: You can't change this setting after installation. |
 | `port` | Port PostgreSQL is listening to. |
 | `restartSecond` | Wait time to restart PostgreSQL if the service crashes. |
 | `locale` | locale is used during initialization of the database. |
-| `ldap_enabled` | Boolean indicating whether LDAP is enabled. |
-
-Note that you can't change the `ldap_enabled` setting after installation.
+| `ldap_enabled` | Boolean indicating whether LDAP is enabled.<br>**Note**: You can't change this setting after installation. |
 
 **useExisting options**
 
 | Option | Description |
 | :--- | :--- |
+| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately.<br>**Note**: You can't change this setting after installation. |
 | `host` | IP address/domain name of the PostgreSQL server. |
 | `port` | Port PostgreSQL is running on. |
 | `username` and `password` | Used to authenticate with PostgreSQL. |
