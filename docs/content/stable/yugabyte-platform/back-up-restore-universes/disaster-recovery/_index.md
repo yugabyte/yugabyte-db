@@ -83,13 +83,13 @@ DR further allows for the role of each universe to switch during planned switcho
 
 ## Limitations
 
+- Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+
 - DR setup (and other operations that require making a full copy from primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
     This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
 
     To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
-
-- Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 ## DR vs xCluster replication
 

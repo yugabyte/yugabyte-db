@@ -19,7 +19,7 @@ When DDL changes are made to databases in replication for disaster recovery (DR)
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
 
-| Change to database on DR primary | On DR replica | In YBA |
+| DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
 | CREATE TABLE | CREATE TABLE | Add the table to replication |
 | DROP TABLE   | DROP TABLE   | Remove the table from replication before executing the DROP TABLE on the database. |
