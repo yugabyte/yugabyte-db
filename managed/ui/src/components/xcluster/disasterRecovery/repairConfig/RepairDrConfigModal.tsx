@@ -5,8 +5,9 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
+import { useSelector } from 'react-redux';
 
-import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
+import { YBModal, YBModalProps } from '../../../../redesign/components';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
@@ -23,22 +24,18 @@ import {
 import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
-import {
-  ReactSelectStorageConfigField,
-  StorageConfigOption
-} from '../../sharedComponents/ReactSelectStorageConfig';
+import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { ReactComponent as SelectedIcon } from '../../../../redesign/assets/circle-selected.svg';
 import { ReactComponent as UnselectedIcon } from '../../../../redesign/assets/circle-empty.svg';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { getXClusterConfig } from '../utils';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
-import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
 
 interface RepairDrConfigModalProps {
   drConfig: DrConfig;
@@ -129,6 +126,16 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const queryClient = useQueryClient();
   const formMethods = useForm<RepairDrConfigModalFormValues>();
 
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find(
+      (storageConfig) =>
+        storageConfig.configUUID === drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+    )?.configName ?? '';
   const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
     api.fetchUniverseList()
   );
@@ -305,7 +312,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
       return;
     }
 
-    const storageConfigUuid = formValues.storageConfig.value.uuid;
+    const storageConfigUuid = drConfig.bootstrapParams.backupRequestParams.storageConfigUUID;
     switch (formValues.repairType) {
       case RepairType.USE_EXISITING_TARGET_UNIVERSE:
         return restartConfigMutation.mutateAsync(storageConfigUuid);
@@ -313,12 +320,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         if (formValues.targetUniverse) {
           return replaceDrReplicaMutation.mutateAsync({
             primaryUniverseUuid: drConfig.primaryUniverseUuid ?? '',
-            drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID,
-            bootstrapParams: {
-              backupRequestParams: {
-                storageConfigUUID: storageConfigUuid
-              }
-            }
+            drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID
           });
         }
         return;
@@ -485,27 +487,22 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
           <Typography variant="body2">
             {t('option.useExistingTargetUniverse.backupStorageConfig.label')}
           </Typography>
-          <YBTooltip
-            title={
-              <Typography variant="body2">
-                <Trans
-                  i18nKey={`${TRANSLATION_KEY_PREFIX}.option.useExistingTargetUniverse.backupStorageConfig.tooltip`}
-                  components={{ paragraph: <p />, bold: <b /> }}
-                />
-              </Typography>
-            }
-          >
-            <InfoIcon className={classes.infoIcon} />
-          </YBTooltip>
         </div>
-        <ReactSelectStorageConfigField
-          control={formMethods.control}
-          name="storageConfig"
-          rules={{ required: t('error.fieldRequired') }}
-          isDisabled={isFormDisabled}
-          autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
-          maxWidth="100%"
-        />
+        {storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )}
       </Box>
     </YBModal>
   );

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -100,6 +101,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
   private Customer customer;
+  private OperatorUtils operatorUtils;
 
   private final Integer reconcileExceptionBackoffMS = 5000;
 
@@ -115,7 +117,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       TaskExecutor taskExecutor,
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
-      CustomerTaskManager customerTaskManager) {
+      CustomerTaskManager customerTaskManager,
+      OperatorUtils operatorUtils) {
     this(
         client,
         informerFactory,
@@ -127,7 +130,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         taskExecutor,
         kubernetesStatusUpdater,
         confGetter,
-        customerTaskManager);
+        customerTaskManager,
+        operatorUtils);
   }
 
   @VisibleForTesting
@@ -142,7 +146,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       TaskExecutor taskExecutor,
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
-      CustomerTaskManager customerTaskManager) {
+      CustomerTaskManager customerTaskManager,
+      OperatorUtils operatorUtils) {
+
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
     this.ybUniverseInformer = informerFactory.getSharedIndexInformer(YBUniverse.class, client);
@@ -160,6 +166,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.universeReadySet = ConcurrentHashMap.newKeySet();
     this.universeDeletionReferenceMap = new HashMap<>();
     this.universeTaskMap = new HashMap<>();
+    this.operatorUtils = operatorUtils;
   }
 
   private static String getWorkQueueKey(YBUniverse ybUniverse) {
@@ -278,17 +285,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private Customer getCustomer() throws Exception {
-    if (customer != null) {
-      return customer;
-    }
-    List<Customer> custList = Customer.getAll();
-    if (custList.size() != 1) {
-      throw new Exception("Customer list does not have exactly one customer.");
-    }
-    return customer = custList.get(0);
-  }
-
   /**
    * Tries to achieve the desired state for ybUniverse.
    *
@@ -305,7 +301,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         resourceNamespace);
 
     try {
-      Customer cust = getCustomer();
+      Customer cust = operatorUtils.getOperatorCustomer();
       // checking to see if the universe was deleted.
       if (action == OperatorWorkQueue.ResourceAction.DELETE
           || ybUniverse.getMetadata().getDeletionTimestamp() != null) {
@@ -602,7 +598,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     return (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides))
         || checkIfGFlagsChanged(u, currentUserIntent)
-        || currentUserIntent.numNodes != incomingIntent.numNodes
+        || shouldUpdateYbUniverse(currentUserIntent, incomingIntent)
         || !currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion);
   }
 
@@ -969,7 +965,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     userIntent.useTimeSync = ybUniverse.getSpec().getUseTimeSync();
     userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
     userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
-    userIntent.enableYEDIS = ybUniverse.getSpec().getEnableYEDIS();
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
     userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();

@@ -1144,6 +1144,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetUniverseKeyRegistryFromOtherMastersAsync();
 
   std::vector<std::string> GetMasterAddresses();
+  Result<std::vector<HostPort>> GetMasterAddressHostPorts();
 
   // Returns true if there is at-least one snapshot schedule on any database/keyspace
   // in the cluster.
@@ -2959,6 +2960,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
       const xcluster::ReplicationGroupId& replication_group_id,
       const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+      const std::vector<NamespaceId>& producer_namespace_ids,
+      const std::vector<NamespaceId>& consumer_namespace_ids,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, bool transactional);
 
   Result<scoped_refptr<UniverseReplicationBootstrapInfo>>

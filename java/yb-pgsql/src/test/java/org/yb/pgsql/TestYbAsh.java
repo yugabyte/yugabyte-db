@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 
 import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 import java.util.Map;
 
 import org.junit.Test;
@@ -30,7 +31,7 @@ import com.yugabyte.util.PSQLException;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestYbAsh extends BasePgSQLTest {
-  private static final int ASH_SAMPLING_INTERVAL = 1;
+  private static final int ASH_SAMPLING_INTERVAL = 1000;
 
   private static final int ASH_SAMPLE_SIZE = 500;
 
@@ -40,13 +41,12 @@ public class TestYbAsh extends BasePgSQLTest {
       int sampling_interval, int sample_size) throws Exception {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("TEST_yb_enable_ash", "true");
-    // convert ASH_SAMPLING_INTERVAL to milliseconds
-    flagMap.put("ysql_pg_conf_csv", "yb_ash_sampling_interval=" + sampling_interval * 1000 +
+    flagMap.put("ysql_pg_conf_csv", "yb_ash_sampling_interval=" + sampling_interval +
         ",yb_ash_sample_size=" + sample_size);
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
   }
 
-  private void executePgSleep(Statement statement, int seconds) throws Exception {
+  private void executePgSleep(Statement statement, long seconds) throws Exception {
     statement.execute("SELECT pg_sleep(" + seconds + ")");
   }
 
@@ -74,7 +74,7 @@ public class TestYbAsh extends BasePgSQLTest {
       String query = "SELECT COUNT(*) FROM " + ASH_VIEW + " JOIN pg_stat_statements "
           + "ON query_id = queryid WHERE query NOT LIKE '%" + ASH_VIEW + "%'";
       assertOneRow(statement, query, 0);
-      Thread.sleep(2 * ASH_SAMPLING_INTERVAL * 1000); // convert to milliseconds
+      Thread.sleep(2 * ASH_SAMPLING_INTERVAL);
       assertOneRow(statement, query, 0);
     }
   }
@@ -87,17 +87,14 @@ public class TestYbAsh extends BasePgSQLTest {
   public void testNonEmptyCircularBuffer() throws Exception {
     setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, ASH_SAMPLE_SIZE);
     try (Statement statement = connection.createStatement()) {
-      int sleep_time = 5 * ASH_SAMPLING_INTERVAL;
+      long sleep_time = TimeUnit.MILLISECONDS.toSeconds(5 * ASH_SAMPLING_INTERVAL);
       String wait_event_name = "PgSleep";
       executePgSleep(statement, sleep_time);
       // We should get atleast (sleep_time - 1) 'PgSleep' wait events, it is
       // possible that one sampling event occurs just before the sleep begins and then
       // 4 sampling events occur and one sampling event occurs after the sleep is over.
-      // Type of "count" is 64-bit int, so it has to be type casted to int.
-      // Since we are waiting for only a few seconds, the result should be pretty low
-      // and there shouldn't be any lossy conversion
-      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE wait_event='" + wait_event_name + "'").getLong(0).intValue();
+      long res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE wait_event='" + wait_event_name + "'").getLong(0);
       assertGreaterThanOrEqualTo(res, sleep_time - 1);
     }
   }
@@ -109,9 +106,28 @@ public class TestYbAsh extends BasePgSQLTest {
   public void testZeroSampleSize() throws Exception {
     setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, 0);
     try (Statement statement = connection.createStatement()) {
-      int sleep_time = 2 * ASH_SAMPLING_INTERVAL;
+      long sleep_time = TimeUnit.MILLISECONDS.toSeconds(2 * ASH_SAMPLING_INTERVAL);
       executePgSleep(statement, sleep_time);
       assertOneRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW, 0);
+    }
+  }
+
+  /**
+   * Verify that we are getting some tserver samples. We decrease the sampling
+   * interval so that we increase the probability of catching tserver samples
+   */
+  @Test
+  public void testTServerSamples() throws Exception {
+    setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+      for (int i = 0; i < 1000; ++i) {
+        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
+        statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
+      }
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE wait_event_component='TServer'").getLong(0).intValue();
+      assertGreaterThan(res, 0);
     }
   }
 }

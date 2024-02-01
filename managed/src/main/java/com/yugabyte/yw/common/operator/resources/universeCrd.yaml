@@ -92,11 +92,6 @@ spec:
                 x-kubernetes-validations:
                 - message: enableYSQL cannot be changed
                   rule: self == oldSelf
-              enableYEDIS:
-                type: boolean
-                x-kubernetes-validations:
-                - message: enableYEDIS cannot be changed
-                  rule: self == oldSelf
               enableNodeToNodeEncrypt:
                 type: boolean
                 x-kubernetes-validations:
