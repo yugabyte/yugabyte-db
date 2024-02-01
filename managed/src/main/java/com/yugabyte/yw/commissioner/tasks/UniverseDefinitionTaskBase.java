@@ -1949,6 +1949,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
+              createLocaleCheckTask();
             });
 
     return isNextFallThrough;
