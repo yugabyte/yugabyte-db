@@ -89,3 +89,41 @@ SELECT dbms_random.terminate();
  
 (1 row)
 
+SELECT dbms_random.string('u', 10);
+   string   
+------------
+ JTVYSOVZEW
+(1 row)
+
+SELECT dbms_random.string('l', 10);
+   string   
+------------
+ knadjpjaji
+(1 row)
+
+SELECT dbms_random.string('a', 10);
+   string   
+------------
+ XSPLgEQeBm
+(1 row)
+
+SELECT dbms_random.string('x', 10);
+   string   
+------------
+ 5H7G1H2ERS
+(1 row)
+
+SELECT dbms_random.string('p', 10);
+   string   
+------------
+ km:uKzx??E
+(1 row)
+
+SELECT dbms_random.string('uu', 10); -- error
+ERROR:  this first parameter value is more than 1 characters long
+SELECT dbms_random.string('w', 10);
+   string   
+------------
+ MJCOVPXTET
+(1 row)
+
