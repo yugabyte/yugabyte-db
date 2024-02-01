@@ -13,32 +13,6 @@ type: docs
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by YugabyteDB Anywhere.
 
-## Prerequisites
-
-Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
-
-### Supported operating systems and CPU architectures
-
-YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
-
-YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/#yugabytedb-anywhere). AlmaLinux OS 8 is used by default.
-
-#### Requirements for all OSes
-
-Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed. Be sure `python3` is added to your PATH.
-
-The host AMI must have `gtar` and `zipinfo` installed.
-
-If the node is running SELinux, the selinux, policycoreutils-python, and python3-libselinux packages must be installed.
-
-#### Oracle Linux and AlmaLinux notes
-
-YBA support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
-
-* Oracle Linux 8 uses the `firewall-cmd` client to set default target `ACCEPT`.
-* On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) is not supported.
-* Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and later versions.
-
 ## Prepare ports
 
 The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
