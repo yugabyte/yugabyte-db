@@ -572,7 +572,7 @@ activate_pex() {
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
-  trap "set +e rm -f $pex_lock" EXIT
+  trap "rm -f $pex_lock" EXIT
   # Create and activate virtualenv
   (
     flock 9 || log "Waiting for pex lock";
@@ -616,4 +616,4 @@ log_dir=$HOME/logs
 
 readonly virtualenv_dir=$yb_devops_home/$YB_VIRTUALENV_BASENAME
 readonly pex_venv_dir=$yb_devops_home/$YB_PEXVENV_BASENAME
-readonly pex_lock="${yb_devops_home}/pexlock"
+readonly pex_lock="/tmp/pexlock"
