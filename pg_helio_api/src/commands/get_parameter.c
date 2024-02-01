@@ -4,7 +4,6 @@
  * src/oss_backend/commands/administration/get_parameter.c
  *
  * Implementation of the getParameter command.
- * For referrence: https://www.mongodb.com/docs/upcoming/reference/command/getParameter/#getparameter
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
@@ -52,7 +51,7 @@ static pgbson * GetNoOptionFoundResponse(void);
 PG_FUNCTION_INFO_V1(command_get_parameter);
 
 /*
- * command_get_parameter implements getParameter mongodb command for user facing configuration
+ * command_get_parameter implements getParameter command for user facing configuration
  * parameters.
  *
  * There are multiple syntaxes for getPrameter command:

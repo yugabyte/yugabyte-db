@@ -4,7 +4,6 @@
  * src/bson/bson_expression_object_operators.c
  *
  * Object Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#object-expression-operators
  *
  *-------------------------------------------------------------------------
  */

@@ -4,7 +4,7 @@
  * include/utils/version_utils.h
  *
  * Utilities that Provide extension functions to handle version upgrade
- * scenarios for Pgmongo.
+ * scenarios.
  *
  *-------------------------------------------------------------------------
  */

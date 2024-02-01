@@ -4,7 +4,6 @@
  * src/bson/bson_expression_miscellaneous_operators.c
  *
  * Miscellaneous Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#miscellaneous-operators
  *
  *-------------------------------------------------------------------------
  */
@@ -97,7 +96,6 @@ HandleDollarMeta(pgbson *doc, const bson_value_t *operatorValue,
 	}
 	else if (StringViewEqualsCString(&valueView, "searchScore"))
 	{
-		/*https://www.mongodb.com/docs/manual/reference/operator/aggregation/meta/ */
 		rank = EvaluateMetaSearchScore(doc);
 	}
 	else

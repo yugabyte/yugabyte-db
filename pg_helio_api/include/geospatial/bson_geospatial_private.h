@@ -20,7 +20,6 @@
 
 /*
  * MongoDB use WGS84 as the default format for storing GeoJSON data.
- * https://www.mongodb.com/docs/manual/reference/glossary/#std-term-WGS84
  *
  * This is essentially the 4326 SRID (Spatial referrence ID) in PostGIS.
  * This is used to treat the geodetic data as WGS84.

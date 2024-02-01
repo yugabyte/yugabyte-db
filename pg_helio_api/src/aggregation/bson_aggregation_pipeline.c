@@ -92,8 +92,6 @@ typedef struct
 	bool preservesStableSortOrder;
 
 	/* Whether or not the stage supports collection agnostic queries
-	 * refer to https://www.mongodb.com/docs/manual/reference/operator/aggregation-pipeline/
-	 * for collection agnostic aggregate stages.
 	 */
 	bool canHandleAgnosticQueries;
 

@@ -4,7 +4,6 @@
  * src/commands/db_stats.c
  *
  * Implementation of the dbStats command.
- * https://www.mongodb.com/docs/manual/reference/command/dbStats/
  *-------------------------------------------------------------------------
  */
 #include <math.h>
@@ -38,7 +37,6 @@ PG_FUNCTION_INFO_V1(command_db_stats_worker);
 /*
  * Represents bson response that needs to be returned for a dbStats command
  * All sizes are in Bytes by default, but some sizes are scaled using the 'scale' input param.
- * For definitions of each param refer https://www.mongodb.com/docs/manual/reference/command/dbStats/
  */
 typedef struct
 {

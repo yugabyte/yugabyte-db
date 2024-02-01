@@ -19,7 +19,7 @@
  * computing scores vector returned from
  * a vector search query. This is used to
  * move required data across nodes via
- * PgMongoCustomScan.
+ * CustomScan.
  */
 typedef struct SearchQueryEvalData
 {
@@ -51,7 +51,7 @@ typedef struct SearchQueryEvalData
  * computing scores vector returned from
  * a vector search query. This is used to
  * move required data across nodes via
- * PgMongoCustomScan.
+ * CustomScan.
  */
 typedef struct SearchQueryEvalDataWorker
 {

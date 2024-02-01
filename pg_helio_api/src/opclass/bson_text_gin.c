@@ -106,8 +106,7 @@ GetDefaultLanguage(BsonGinTextPathOptions *options)
 /*
  * Track short ISO code language map to the full language name
  * The full language name will be accepted as is. For the list of
- * supported languages see
- * https://www.mongodb.com/docs/manual/reference/text-search-languages/#std-label-text-search-languages
+ * supported languages
  */
 static MongoLanguageExpression LanguageExpressions[] =
 {

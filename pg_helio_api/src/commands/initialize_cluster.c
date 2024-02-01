@@ -261,7 +261,8 @@ CreateIndexBuildsTable()
 
 	resetStringInfo(createStr);
 	appendStringInfo(createStr,
-					 "GRANT ALL ON TABLE helio_api_catalog.helio_index_queue TO helio_admin_role, pgmongo_role");
+					 "GRANT ALL ON TABLE helio_api_catalog.helio_index_queue TO helio_admin_role, %s",
+					 ApiAdminRole);
 	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
 								&isNull);
 

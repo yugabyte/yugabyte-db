@@ -4,7 +4,6 @@
  * src/aggregation/index_stats.c
  *
  * Implementation of the indexStats aggregation stage.
- * https://www.mongodb.com/docs/manual/reference/operator/aggregation/indexStats/
  *-------------------------------------------------------------------------
  */
 

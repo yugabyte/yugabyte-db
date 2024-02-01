@@ -3,7 +3,7 @@
  *
  * include/customscan/helio_custom_query_scan.h
  *
- *  Implementation of a custom scan plan for PGMongo.
+ *  Implementation of a custom scan plan.
  *
  *-------------------------------------------------------------------------
  */

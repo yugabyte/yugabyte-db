@@ -4,7 +4,6 @@
  * src/bson/bson_expression_string_operators.c
  *
  * String Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#string-expression-operators
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +21,7 @@
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"
 
-#define PGMONGO_PCRE2_INDEX_UNSET (~(size_t) 0)
+#define HELIO_PCRE2_INDEX_UNSET (~(size_t) 0)
 
 #define MAX_REGEX_OUTPUT_BUFFER_SIZE (64 * 1024 * 1024)
 
@@ -2485,7 +2484,7 @@ ConstructResultForDollarRegex(RegexData *regexData, bson_value_t *input,
 		currMatchStartID = outputVector[i];
 		currMatchEndID = outputVector[i + 1];
 
-		if (currMatchStartID == PGMONGO_PCRE2_INDEX_UNSET)
+		if (currMatchStartID == HELIO_PCRE2_INDEX_UNSET)
 		{
 			bson_value_t nullValue;
 			nullValue.value_type = BSON_TYPE_NULL;

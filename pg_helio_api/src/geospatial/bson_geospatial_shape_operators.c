@@ -117,7 +117,6 @@ DatumWithDefaultSRID(Datum datum)
  * 4- $center - Flat shape
  * 5- $centerSphere - Spherical shape
  *
- * For more details look at https://www.mongodb.com/docs/manual/geospatial-queries/#geospatial-models
  */
 const ShapeOperator *
 GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePointsOut)

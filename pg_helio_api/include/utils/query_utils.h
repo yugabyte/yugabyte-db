@@ -60,7 +60,7 @@ uint64 ExtensionExecuteCappedStatementWithArgsViaSPI(const char *query, int narg
  * Otherwise, i.e.: if this function didn't return yet, then there is still
  * a chance to cancel the query when rollbacking or aborting the current the
  * transaction / subtransaction since the abort handlers in
- * PgmongoTransactionCallback & PgmongoSubTransactionCallback will then try
+ * TransactionCallback & SubTransactionCallback will then try
  * cancelling the query. However, it is still not guaranteed that given query
  * will be rollbacked. This is because;
  *   i)  The transaction that we started over the libpq connection might got

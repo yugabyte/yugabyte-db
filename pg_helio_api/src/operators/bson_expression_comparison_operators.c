@@ -4,7 +4,6 @@
  * src/bson/bson_expression_comparison_operators.c
  *
  * Comparison Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#comparison-expression-operators
  *
  *-------------------------------------------------------------------------
  */

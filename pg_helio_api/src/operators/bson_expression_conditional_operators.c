@@ -4,7 +4,6 @@
  * src/bson/bson_expression_conditional_operators.c
  *
  * Conditional Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#conditional-expression-operators
  *
  *-------------------------------------------------------------------------
  */

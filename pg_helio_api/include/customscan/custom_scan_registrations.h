@@ -3,7 +3,7 @@
  *
  * include/customscan/custom_scan_registrations.h
  *
- *  Implementation of a custom scan plan for PGMongo.
+ *  Implementation of a custom scan plan.
  *
  *-------------------------------------------------------------------------
  */

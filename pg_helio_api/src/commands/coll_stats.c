@@ -4,7 +4,6 @@
  * src/oss_backend/commands/coll_stats.c
  *
  * Implementation of the collStats command.
- * https://www.mongodb.com/docs/manual/reference/command/collStats/
  *-------------------------------------------------------------------------
  */
 #include <math.h>
@@ -39,7 +38,6 @@ PG_FUNCTION_INFO_V1(command_coll_stats_aggregation);
 /*
  * Represents bson response that needs to be returned for a collStats command
  * All sizes are in Bytes by default, but some sizes are scaled using the 'scale' input param.
- * For definitions of each param refer https://www.mongodb.com/docs/manual/reference/command/collStats/
  */
 typedef struct
 {

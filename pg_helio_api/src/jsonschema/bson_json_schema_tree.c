@@ -667,7 +667,7 @@ GetJsonTypeEnumFromJsonTypeString(const char *jsonTypeStr)
 
 
 /*
- * Refer https://www.mongodb.com/docs/manual/reference/bson-types/ for list of bsonType
+ * Maps bson type to flags of strings.
  */
 static BsonTypeFlags
 GetBsonTypeEnumFromBsonTypeString(const char *bsonTypeStr)

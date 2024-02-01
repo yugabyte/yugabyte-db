@@ -4,7 +4,6 @@
  * src/bson/bson_expression_arithmetic_operators.c
  *
  * Arithmetic Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#arithmetic-expression-operators
  *
  *-------------------------------------------------------------------------
  */

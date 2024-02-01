@@ -4,7 +4,6 @@
  * src/bson/bson_expression_date_operators.c
  *
  * Object Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#date-expression-operators
  *
  *-------------------------------------------------------------------------
  */
@@ -514,8 +513,6 @@ HandleDollarDateToParts(pgbson *doc, const bson_value_t *operatorValue,
  * Since a $datToString is expressed as { "$dateToString": { date: <dateExpression>, [ format: <strExpression>, timezone: <tzExpression>, onNull: <expression> ] } }
  * We validate the input document and return the string with the specified timezone using the specified format if any.
  * If no format is specified the default format is: %Y-%m-%dT%H:%M:%S.%LZ
- *
- * The valid format specifiers are listed in: https://www.mongodb.com/docs/manual/reference/operator/aggregation/dateToString/#format-specifiers
  */
 void
 HandleDollarDateToString(pgbson *doc, const bson_value_t *operatorValue,

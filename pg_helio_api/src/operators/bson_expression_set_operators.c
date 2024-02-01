@@ -4,7 +4,6 @@
  * src/bson/bson_expression_set_operators.c
  *
  * Set Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#set-expression-operators
  *
  *-------------------------------------------------------------------------
  */

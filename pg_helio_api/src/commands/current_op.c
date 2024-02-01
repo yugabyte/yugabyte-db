@@ -5,7 +5,6 @@
  * src/oss_backend/commands/current_op.c
  *
  * Implementation of the current_op command.
- * https://www.mongodb.com/docs/manual/reference/command/currentOp/
  *-------------------------------------------------------------------------
  */
 #include <math.h>

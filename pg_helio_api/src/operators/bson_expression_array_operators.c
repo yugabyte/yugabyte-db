@@ -4,7 +4,6 @@
  * src/bson/bson_expression_array_operators.c
  *
  * Array Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#array-expression-operators
  *
  *-------------------------------------------------------------------------
  */

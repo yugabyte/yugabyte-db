@@ -454,7 +454,7 @@ InitApiConfigurations(char *prefix)
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableIndexBuildBackground", prefix),
-		gettext_noop("Enables support for Index Builds in background in pgmongo."),
+		gettext_noop("Enables support for Index Builds in background."),
 		NULL, &EnableIndexBuildBackground, DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 

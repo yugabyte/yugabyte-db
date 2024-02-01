@@ -4,7 +4,6 @@
  * src/bson/bson_expression_type_operators.c
  *
  * Type Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#type-expression-operators
  *
  *-------------------------------------------------------------------------
  */
@@ -151,7 +150,6 @@ HandleDollarType(pgbson *doc, const bson_value_t *operatorValue,
  * Evaluates the output of a $toBool expression.
  * Since a $toBool is expressed as { "$toBool": <expression> }
  * We evaluate the inner expression and then return a bool represeting its boolean representation per:
- * https://www.mongodb.com/docs/manual/reference/operator/aggregation/toBool/#behavior.
  */
 void
 HandleDollarToBool(pgbson *doc, const bson_value_t *operatorValue,

@@ -77,7 +77,7 @@ InitializeQueryPlanCache(void)
 	}
 
 	QueryPlanCacheContext = AllocSetContextCreate(CacheMemoryContext,
-												  "Pgmongo query cache context",
+												  "HelioDB query cache context",
 												  ALLOCSET_DEFAULT_SIZES);
 
 
@@ -89,7 +89,7 @@ InitializeQueryPlanCache(void)
 	info.hcxt = QueryPlanCacheContext;
 	int hashFlags = HASH_ELEM | HASH_BLOBS | HASH_CONTEXT;
 
-	QueryPlanHash = hash_create("Pgmongo query cache hash", 32, &info, hashFlags);
+	QueryPlanHash = hash_create("HelioDB query cache hash", 32, &info, hashFlags);
 
 	dlist_init(&QueryPlanLRUQueue);
 }

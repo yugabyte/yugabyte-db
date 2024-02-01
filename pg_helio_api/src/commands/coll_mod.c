@@ -4,7 +4,6 @@
  * src/oss_backend/commands/coll_mod.c
  *
  * Implementation of the collMod command.
- * https://www.mongodb.com/docs/manual/reference/command/collMod/
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>

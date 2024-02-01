@@ -4,7 +4,6 @@
  * src/bson/bson_expression_boolean_operators.c
  *
  * Boolean Operator expression implementations of BSON.
- * See also: https://www.mongodb.com/docs/manual/reference/operator/aggregation/#boolean-expression-operators
  *
  *-------------------------------------------------------------------------
  */
