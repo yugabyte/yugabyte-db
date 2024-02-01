@@ -612,6 +612,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts,
 			insertInnerIndex++;
 		}
 
+		paramListInfo->numParams = paramIndex;
 		Query *query = CreateInsertQuery(collection, valuesList);
 		uint64_t rowsProcessed = RunInsertQuery(query, paramListInfo);
 
