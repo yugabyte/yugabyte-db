@@ -31,7 +31,7 @@ The following page describes the steps to perform and verify a successful offlin
 | [Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
 | [Verify migration](#verify-migration) | Check if the offline migration is successful. |
 | [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -296,7 +296,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers (with the exception of UNIQUE indexes, to avoid any issues during import of schema because of foreign key dependencies on the index). You should complete the data import without creating indexes and triggers. After data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers (with the exception of UNIQUE indexes, to avoid any issues during import of schema because of foreign key dependencies on the index). You should complete the data import without creating indexes and triggers. After data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
 
 {{< /note >}}
 
@@ -337,7 +337,7 @@ Refer to [import data status](../../reference/data-migration/import-data/#import
 
 ### Import indexes and triggers
 
-Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
+Import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -347,7 +347,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-import-data true
+        --post-snapshot-import true
 ```
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.

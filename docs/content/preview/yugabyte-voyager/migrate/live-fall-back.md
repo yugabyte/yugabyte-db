@@ -310,7 +310,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
 
 {{< /note >}}
 
@@ -425,6 +425,23 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
+#### Import indexes and triggers
+
+After the snapshot import completes on the target by the [import data to target](#import-data-to-target) command, and voyager starts to catch up in CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric) for importing change events from the source to the target, import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
@@ -473,20 +490,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \
-            --post-import-data true
-    ```
-
-    Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -613,7 +617,7 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
-1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-1. yb-voyager provides limited support for data types during CDC of `export data from target` phase. For example, data types such as DECIMAL and Timestamp are not supported.
+- Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
+- SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
+- In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions after `2.20.1.1` (build 4).

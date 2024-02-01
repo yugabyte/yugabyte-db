@@ -43,10 +43,10 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
 | [Export data from source](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data to target](#import-data-to-target) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
 | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
 | [Initiate cutover](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
-| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#verify-migration) | Check if the live migration is successful. |
 | [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source and target). |
 
@@ -255,7 +255,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
 
 {{< /note >}}
 
@@ -369,6 +369,23 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
+#### Import indexes and triggers
+
+After the snapshot import completes on the target by the [import data to target](#import-data-to-target) command, and voyager starts to catch up in CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric) for importing change events from the source to the target, import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
@@ -409,22 +426,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-### Import indexes and triggers
-
-Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \
-        --post-import-data true
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.
 
 ### Verify migration
 

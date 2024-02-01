@@ -13,7 +13,7 @@ type: docs
 
 [Import the schema](../../../migrate/migrate-steps/#import-schema) to the YugabyteDB database.
 
-During migration, run the import schema command twice, first without the [--post-import-data](#arguments) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete.
+During migration, run the import schema command twice, first without the [--post-snapshot-import](#arguments) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete.
 
 {{< note title="For Oracle migrations" >}}
 
@@ -40,7 +40,7 @@ The valid *arguments* for import schema are described in the following table:
 | -h, --help | Command line help. |
 | --ignore-exist | Ignore if an object already exists on the target database. <br>Default: false<br>Example: `yb-voyager import schema ... --ignore-exist true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --object-type-list, --exclude-object-type-list  | Comma-separated list of objects to import (--object-type-list) or not (--exclude-object-type-list). You can provide only one of the arguments at a time. <br> Example: `yb-voyager import schema …. –object-type-list “TABLE,FUNCTION,VIEW"` <br> Accepted parameters: <ul><li>Oracle: TYPE, SEQUENCE, TABLE, PARTITION, INDEX, PACKAGE, TRIGGER, FUNCTION, PROCEDURE, MVIEW, SYNONYM </li><li>PostgreSQL: SCHEMA, COLLATION, EXTENSION, TYPE, DOMAIN, SEQUENCE, TABLE, INDEX, FUNCTION, AGGREGATE, PROCEDURE, VIEW, TRIGGER, MVIEW, RULE, COMMENT</li><li>MySQL: TABLE, PARTITION, INDEX, VIEW, TRIGGER, FUNCTION, PROCEDURE</li></ul>
-| --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --post-snapshot-import | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --start-clean | Starts a fresh schema import on the target YugabyteDB database for the schema present in the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -79,6 +79,6 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --target-db-password 'password' \
         --target-db-name target_db \
         --target-db-schema target_schema \
-        --post-import-data true \
+        --post-snapshot-import true \
         --refresh-mviews true
 ```
