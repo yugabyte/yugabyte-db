@@ -116,6 +116,7 @@ Your standby instance is now configured.
 To confirm communication between the active and standby, you can do the following:
 
 - Click **Make Active** on the standby (but don't promote it). You should see a list of available backups that you can restore from.
+
     ![Make Active](/images/yp/high-availability/ha-make-active.png)
 
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
@@ -127,6 +128,10 @@ To confirm communication between the active and standby, you can do the followin
     If releases are missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
 
 If the YBA instances are configured to use the HTTPS protocol and you are having problems, verify that certificates and ports are set up correctly. If the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the [runtime configuration](../manage-runtime-config/) `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+
+### Use a load balancer
+
+To set up a single URL for signing in to YBA that points to the current primary even after a switchover or failover, it is recommended to use an application load balancer. On the load balancer, set the health check URL for each instance to `https://<instance IP or DNS>/ha_leader`. Note that you may need to configure the support origin URL for your YBA instance to the Load Balancer URL.
 
 ## Promote a standby instance to active
 

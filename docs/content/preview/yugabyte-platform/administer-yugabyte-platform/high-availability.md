@@ -119,6 +119,7 @@ Your standby instance is now configured.
 To confirm communication between the active and standby, you can do the following:
 
 - Click **Make Active** on the standby (but don't promote it). You should see a list of available backups that you can restore from.
+
     ![Make Active](/images/yp/high-availability/ha-make-active.png)
 
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
