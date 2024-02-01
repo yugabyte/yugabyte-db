@@ -194,7 +194,7 @@ Node agent is used to run pre-flight checks on the node during various day-0 and
 
 In v2.18.6 and later, moving a node from one provider to another does not require unregistering the node agent, as node agents aren't linked to providers.
 
-To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#reconfigure-a-node-agent)
+To change the provider of a node, follow the procedure in [Reconfigure a node agent](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#reconfigure-a-node-agent).
 
 As long as the IP does not change, the node agent does not try to register again.
 
