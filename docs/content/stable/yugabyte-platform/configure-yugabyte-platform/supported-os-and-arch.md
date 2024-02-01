@@ -18,7 +18,7 @@ Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes wi
 
 YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
 
-YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/#yugabytedb-anywhere). AlmaLinux OS 9 is used by default.
+YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/). AlmaLinux OS 8 is used by default.
 
 ### Requirements for all OSes
 
