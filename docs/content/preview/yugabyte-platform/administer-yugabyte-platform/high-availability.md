@@ -104,6 +104,8 @@ After the active instance has been configured, you can configure one or more sta
 
     Note that you need to perform this step on the _active_ instance, and not the standby instance.
 
+    If you find you have connection problems, you may consider relaxing the certificate validation requirements as a workaround, by enabling the [runtime configuration](../manage-runtime-config/) `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+
 1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
 1. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
@@ -130,7 +132,9 @@ To confirm communication between the active and standby, you can do the followin
 
     If releases are missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
 
-If the YBA instances are configured to use the HTTPS protocol and you are having problems, verify that certificates and ports are set up correctly. If the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the [runtime configuration](../manage-runtime-config/) `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+### Use a load balancer
+
+To set up a single URL for signing in to YBA that points to the current primary even after a switchover or failover, it is recommended to use an application load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/ha_leader`. Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/).
 
 ## Promote a standby instance to active
 
