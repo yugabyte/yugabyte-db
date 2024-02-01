@@ -25,7 +25,7 @@ You should perform these actions in a specific order, depending on whether perfo
 | DROP TABLE   | DROP TABLE   | Remove the table from replication before executing the DROP TABLE on the database. |
 | CREATE INDEX | CREATE INDEX | [Resynchronize](#resynchronize-yba) |
 | DROP INDEX   | DROP INDEX   | [Resynchronize](#resynchronize-yba) |
-| CREATE TABLE foo PARTITION OF bar | Same as CREATE TABLE | |
+| CREATE TABLE foo PARTITION OF bar | Same as CREATE&nbsp;TABLE | |
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 

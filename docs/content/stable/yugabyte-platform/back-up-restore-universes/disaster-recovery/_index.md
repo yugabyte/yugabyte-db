@@ -95,7 +95,7 @@ DR further allows for the role of each universe to switch during planned switcho
 
 Under the hood, YBA DR uses xCluster replication. xCluster is a deployment topology that provides asynchronous replication across two universes. xCluster replication can be set up to move data from one universe to another in one direction (for example, from primary to replica), or in both directions (bi-directional replication).
 
-DR targets one specific and common xCluster deployment model: [active-active single-master](../../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+DR targets one specific and common xCluster deployment model: [active-active single-master](../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
 - Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
 
