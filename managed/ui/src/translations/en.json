@@ -1322,6 +1322,18 @@
         }
       }
     },
+    "advancedRestoreModal": {
+      "title": "Advanced Restore",
+      "generalConfig": {
+        "subTitle": "If you have more than one Yugabyte Platform installation you can use this form to restore a database/keyspace from a different Platform installation to this universe.",
+        "sectionTitle": "Provide details for the database/keyspace you are trying to restore:",
+        "selectDBType": "API type",
+        "backupLocation": "Backup location",
+        "storageConfig": "Backup config",
+        "databaseName": "Database Name",
+        "renameDatabase": "Rename databases in this backup before restoring (Optional)"
+      }
+    },
     "rbac": {
       "roles": {
         "create": {
