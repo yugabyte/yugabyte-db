@@ -27,7 +27,7 @@ The recovery time objective (RTO) is very low, and determined by how long it tak
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
-![Disaster recovery](/images/deploy/xcluster/xcluster-transactional.png)
+![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
 <div class="row">
 
@@ -83,46 +83,48 @@ DR further allows for the role of each universe to switch during planned switcho
 
 ## Limitations
 
-- If there are any connections open against the DR replica databases and DR is being set up for a DR primary database that already has some data, then DR setup will fail with an expected error. This is because setting up DR requires backing up the primary database and restoring the backup to the target database after cleaning up any pre-existing data on the target side. Close any connections to the DR replica database and retry the setup operation.
+- DR setup (and other operations that require making a full copy from primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
-    ```output
-    Error ERROR:  database "database_name" is being accessed by other users
-    DETAIL:  There is 1 other session using the database.
-    ```
+    This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
+
+    To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
 
 - Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 ## DR vs xCluster replication
 
-DR is a superset of xCluster functionality. xCluster focuses on moving data from a primary universe to a replica. DR adds higher-level orchestration workflows to make the end-to-end setup, switchover, and failover of a primary universe to a replica simpler. Note that a universe configured for DR can't be used for xCluster replication, and although DR uses xCluster replication, DR replications are not shown in the **xCluster Replication** tab.
+Under the hood, YBA DR uses xCluster replication. xCluster is a deployment topology that provides asynchronous replication across two universes. xCluster replication can be set up to move data from one universe to another in one direction (for example, from primary to replica), or in both directions (bi-directional replication).
 
-(When in transactional YSQL mode, you can perform setup, failover, and switchover manually using a combination of xCluster replication and yb-admin CLI commands. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+DR targets one specific and common xCluster deployment model: [active-active single-master](../../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+
+- Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
+
+- Single master means that the application writes to only one universe (the primary) at any moment in time.
+
+- Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
+
+- Transactional SQL means that the application is using SQL (and not CQL) and  write-ordering is guaranteed. Furthermore, transactions are guaranteed to be  atomic.
+
+DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of a primary universe to a replica simple and turnkey. This orchestration includes the following:
+
+- During setup, DR ensures that both clusters have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
+- During switchover, DR waits for the DR primary to drain before switching over.
+- During both switchover and failover, DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR Primary from read and write to read only.
+
+For all deployment models other than active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of DR.
+
+For example, use xCluster replication for the following:
+
+- Multi-master deployments, where you have two application instances, each one writing to a different universe.
+- Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
+- Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
+- CQL
+
+Note that a universe configured for DR cannot be used for xCluster replication, and vice versa. Although DR uses xCluster replication under the hood, DR replication configurations are hidden in the **xCluster Replication** tab (and visible only via the **Disaster Recovery** tab).
+
+(As an alternative to DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 
 For additional information on xCluster replication in YugabyteDB, see the following:
 
 - [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
-
-DR does have some limitations versus xCluster - DR handles a narrower set of scenarios, while xCluster is more flexible. Whether you use DR or xCluster will depend on your use case.
-
-### SQL applications
-
-| Application Behavior | Scenario | xCluster | Disaster Recovery |
-| :------------------- | :------- | :------- | :---------------- |
-| Uni-directional&nbsp;replication | No transactions or write-order guarantees | Yes | No |
-| | Transactions and/or write-order guarantees | Yes | Yes |
-| Bi-directional replication<br>For active/active applications writing to both sides | No transactions or write-order guarantees<ul><li>last writer wins semantics</li><li>application must handle inconsistencies</li></ul> | Yes | Yes, with special instructions for handling failovers (switchovers are irrelevant) |
-| | Transactions and/or write-order guarantees | No<sup>1</sup> | No<sup>1</sup> |
-
-<sup>1</sup>YugabyteDB doesn't support transactions and write-ordering for bi-directional SQL.
-
-### CQL applications
-
-| Application Behavior | Scenario | xCluster | Disaster&nbsp;Recovery |
-| :------------------- | :------- | :------- | :---------------- |
-| Uni-directional&nbsp;replication | No transactions or write-order guarantees | Yes | No (DR only supports SQL) |
-| | Transactions and/or write-order guarantees | N/A<sup>1</sup> | N/A<sup>1</sup> |
-| Bi-directional replication<br>For active/active applications<br>writing to both sides, with last writer wins semantics | | Yes | N/A<sup>2</sup> |
-
-<sup>1</sup>CQL doesn't support transactions.
-<sup>2</sup>Failover and switchover doesn't require any of the additional orchestration steps that DR provides.

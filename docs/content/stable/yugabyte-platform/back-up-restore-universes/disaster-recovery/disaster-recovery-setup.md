@@ -92,6 +92,18 @@ In addition, you can monitor the following metrics on the **Metrics** tab:
 
     The time elapsed in microseconds for replication between the first and the last tablet replica on the DR replica. This metric is available only on the DR replica.
 
+The following diagram illustrates these concepts.
+
+![Disaster recovery](/images/deploy/xcluster/xcluster-transactional.png)
+
+The diagram shows that although 3 writes have occurred on cluster A, and 2 of the 3 have been replicated, SQL reads on Cluster B only see 1 of the writes. They only see the first write because it's the only safe, consistent way to read the database.
+
+There are therefore several different key concepts:: replication lag, safe time, and safe time lag:
+
+- Replication lag is the network lag between any two communicating nodes. For example, Repl_Lag(T1) = 10 ms, Repl_Lag(T2) = 100 ms, Repl_Lag(T3) = 20 ms.
+- Safe time is the most recent time at which an SQL read against cluster B will be consistent. For example, 3:05:01 on 1/1/2024. After a failover, B will be restored to its state as of the safe time.
+- Safe time lag is difference between the current time and the safe time. In the example, the safe time lag is 100 msec.
+
 ### Tables
 
 The **Disaster Recovery** tab also lists all the tables in replication and their status on the **Tables** tab.
