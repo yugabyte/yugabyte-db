@@ -26,7 +26,7 @@ jobs:
           fi
           echo "Release train determined: $train"
           echo "::set-output name=yb_train::${train}"
-          
+
       - name: "Trigger Repository Dispatch - yugabyte/terraform-gcp-yugabyte"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -35,8 +35,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/terraform-aws-yugabyte"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -45,8 +45,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/terraform-azure-yugabyte"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -55,8 +55,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-            
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/azure-resource-manager"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -65,8 +65,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/gcp-deployment-manager"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -75,8 +75,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/aws-cloudformation"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -85,8 +85,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/homebrew-tap"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -95,8 +95,8 @@ jobs:
           --data '{"event_type": "update-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/utilities"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -105,8 +105,8 @@ jobs:
           --data '{"event_type": "build-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
-      
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
+
       - name: "Trigger Repository Dispatch - yugabyte/charts"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
@@ -115,7 +115,7 @@ jobs:
           --data '{"event_type": "update-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",
-                    "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
+                    "yb_release_train": "${{steps.yb_train.outputs.yb_train}}" } }'
 
       - name: "Trigger Repository Dispatch - yugabyte/yugabyte-db-action"
         run: |

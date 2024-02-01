@@ -597,9 +597,13 @@ POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  c
 POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/licenses/:lUUID                                      com.yugabyte.yw.controllers.CustomerLicenseController.delete(cUUID: java.util.UUID, lUUID: java.util.UUID, request: Request)
 
-# LDAP Mapping API
-GET /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.list(cUUID: java.util.UUID)
-PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.LdapDnToYbaRoleController.update(cUUID: java.util.UUID, request: Request)
+# OIDC/LDAP Group Mapping APIs
+GET /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.GroupMappingController.listLdapMappings(cUUID: java.util.UUID)
+PUT /customers/:cUUID/ldap_mappings                                            com.yugabyte.yw.controllers.GroupMappingController.updateLdapMappings(cUUID: java.util.UUID, request: Request)
+
+GET /customers/:cUUID/oidc_mappings                                            com.yugabyte.yw.controllers.GroupMappingController.listOidcMappings(cUUID: java.util.UUID)
+PUT /customers/:cUUID/oidc_mappings                                            com.yugabyte.yw.controllers.GroupMappingController.updateOidcMappings(cUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/oidc_mappings/:groupName                              com.yugabyte.yw.controllers.GroupMappingController.deleteOidcGroupMapping(cUUID: java.util.UUID, groupName: String, request: Request)
 
 # Configure DB APIs
 POST /customers/:cUUID/universes/:univUUID/configure/ycql                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.configureYCQL(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)

@@ -1001,10 +1001,26 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return the host (private_ip) and port of the current master leader in the universe or null if
-   *     not found
+   *     not found, catches Exceptions and returns null in case of exceptions.
    */
   @JsonIgnore
   public HostAndPort getMasterLeader() {
+    try {
+      return getMasterLeaderInternal();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader", e);
+      return null;
+    }
+  }
+
+  /**
+   * Find the current master leader in the universe
+   *
+   * @return the host (private_ip) and port of the current master leader in the universe or null if
+   *     not found, does not do any exception handling.
+   */
+  @JsonIgnore
+  private HostAndPort getMasterLeaderInternal() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService =
@@ -1033,13 +1049,20 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
-   *     string if not found
+   *     string if not found, returns empty string if master leader is missing due to an exception
    */
   @JsonIgnore
   public String getMasterLeaderHostText() {
-    final HostAndPort masterLeader = getMasterLeader();
-    if (masterLeader == null) return "";
-    return masterLeader.getHost();
+    try {
+      final HostAndPort masterLeader = getMasterLeader();
+      if (masterLeader == null) {
+        return "";
+      }
+      return masterLeader.getHost();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader host text", e);
+      return "";
+    }
   }
 
   public void updateUniverseSoftwareUpgradeState(

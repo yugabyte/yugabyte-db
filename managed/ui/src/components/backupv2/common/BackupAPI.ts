@@ -290,3 +290,9 @@ export function deleteIncrementalBackup(incrementalBackup: ICommonBackupInfo) {
     ]
   });
 }
+
+export const fetchStorageConfigs = () => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/configs`;
+  return axios.get<IStorageConfig[]>(requestUrl);
+};

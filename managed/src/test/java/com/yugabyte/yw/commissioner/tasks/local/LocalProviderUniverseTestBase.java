@@ -96,6 +96,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;
+import org.junit.rules.Timeout;
 import org.junit.runner.Description;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -120,15 +121,17 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/testing";
   protected static String YBC_VERSION;
-  public static String DB_VERSION = "2.20.0.2-b1";
+  public static String DB_VERSION = "2.20.1.3-b3";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.0.2/" + "yugabyte-2.20.0.2-b1-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/2.20.1.3/" + "yugabyte-2.20.1.3-b3-%s-%s.tar.gz";
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = false;
   private static List<String> toCleanDirectories = ImmutableList.of("yugabyte_backup");
 
   public static Map<String, String> GFLAGS = new HashMap<>();
+
+  @Rule public Timeout globalTimeout = Timeout.seconds(600);
 
   static {
     GFLAGS.put("load_balancer_max_over_replicated_tablets", "15");

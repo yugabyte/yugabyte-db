@@ -145,11 +145,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WaitForTabletLeaders() {
-    const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
-    for (const auto& tablet_id : ListTabletIdsForTable(cluster_.get(), table_->id())) {
-      RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster_.get(), tablet_id, deadline));
-    }
-    return Status::OK();
+    return WaitForTableLeaders(cluster_.get(), table_->id(), 10s * kTimeMultiplier);
   }
 
   YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,

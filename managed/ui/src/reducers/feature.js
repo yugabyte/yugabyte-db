@@ -32,7 +32,8 @@ const initialStateFeatureInTest = {
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
-  enableCACertRotation: true
+  enableCACertRotation: true,
+  enableNewAdvancedRestoreModal: false
 };
 
 const initialStateFeatureReleased = {

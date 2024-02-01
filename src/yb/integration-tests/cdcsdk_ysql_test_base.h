@@ -184,7 +184,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     int64 safe_hybrid_time = -1;
   };
 
-  Result<string> GetUniverseId(Cluster* cluster);
+  Result<string> GetUniverseId(PostgresMiniCluster* cluster);
 
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 
@@ -200,8 +200,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t term, const uint64_t index);
 
   Status WriteRowsToTwoTables(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, const char* const first_table_name,
-      const char* const second_table_name, uint32_t num_cols = 2);
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      const char* const first_table_name, const char* const second_table_name,
+      uint32_t num_cols = 2);
 
   void VerifyStreamDeletedFromCdcState(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -217,86 +218,94 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyTransactionParticipant(const TabletId& tablet_id, const OpId& opid);
 
-  Status DropDB(Cluster* cluster);
+  Status DropDB(PostgresMiniCluster* cluster);
 
-  Status TruncateTable(Cluster* cluster, const std::vector<string>& table_ids);
+  Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
   Status WriteRows(
-      uint32_t start, uint32_t end, Cluster* cluster,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(uint32_t start, uint32_t end, Cluster* cluster, uint32_t num_cols);
+  Status WriteRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols);
 
-  void DropTable(Cluster* cluster, const char* table_name = kTableName);
+  void DropTable(PostgresMiniCluster* cluster, const char* table_name = kTableName);
 
   Status WriteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t num_cols = 2,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols = 2,
       const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
       const bool trasaction_enabled = true);
 
-  Status CreateTableWithoutPK(Cluster* cluster);
+  Status CreateTableWithoutPK(PostgresMiniCluster* cluster);
 
   Status WriteAndUpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
       const std::multimap<uint32_t, uint32_t>& col_val_map, const std::string& table_id);
 
-  Status CreateColocatedObjects(Cluster* cluster);
+  Status CreateColocatedObjects(PostgresMiniCluster* cluster);
 
   Status AddColocatedTable(
-      Cluster* cluster, const TableName& table_name, const std::string& table_group_name = "tg1");
+      PostgresMiniCluster* cluster, const TableName& table_name,
+      const std::string& table_group_name = "tg1");
 
-  Status PopulateColocatedData(Cluster* cluster, int insert_count, bool transaction = false);
+  Status PopulateColocatedData(
+      PostgresMiniCluster* cluster, int insert_count, bool transaction = false);
 
   Status WriteEnumsRows(
-      uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix = "",
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
       string database_name = kNamespaceName, string table_name = kTableName,
       string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateNestedCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteNestedCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteNestedCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateRangeCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteRangeCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteRangeCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateRangeArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
-  Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
+  Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
-  Status UpdateRows(uint32_t key, uint32_t value, Cluster* cluster);
+  Status UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
-  Status UpdatePrimaryKey(uint32_t key, uint32_t value, Cluster* cluster);
+  Status UpdatePrimaryKey(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
   Status UpdateRows(
-      uint32_t key, const std::map<std::string, uint32_t>& col_val_map, Cluster* cluster);
+      uint32_t key, const std::map<std::string, uint32_t>& col_val_map,
+      PostgresMiniCluster* cluster);
 
   Status UpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map1,
       const std::map<std::string, uint32_t>& col_val_map2, uint32_t num_cols);
 
   Status UpdateDeleteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols);
 
-  Status DeleteRows(uint32_t key, Cluster* cluster);
+  Status DeleteRows(uint32_t key, PostgresMiniCluster* cluster);
 
-  Status SplitTablet(const TabletId& tablet_id, Cluster* cluster);
+  Status SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpCluster();
 

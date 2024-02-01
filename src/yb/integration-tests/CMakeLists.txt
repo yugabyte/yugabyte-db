@@ -66,6 +66,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
@@ -217,6 +218,7 @@ ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
+ADD_YB_TEST(xcluster/xcluster_db_scope-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
 ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)

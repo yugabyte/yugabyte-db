@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
@@ -650,6 +651,14 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     } finally {
       clearAbortOrPausePositions();
     }
+  }
+
+  public void setLeaderlessTabletsMock() {
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode resultJson = mapper.createObjectNode();
+    resultJson.set(CheckLeaderlessTablets.KEY, mapper.createArrayNode());
+    when(mockNodeUIApiHelper.getRequest(endsWith(CheckLeaderlessTablets.URL_SUFFIX)))
+        .thenReturn(resultJson);
   }
 
   public void setFollowerLagMock() {

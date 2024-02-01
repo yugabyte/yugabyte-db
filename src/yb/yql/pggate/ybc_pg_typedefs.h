@@ -574,6 +574,39 @@ typedef struct AshMetadata {
   uint8_t addr_family;
 } YBCAshMetadata;
 
+// Struct to store ASH samples in the circular buffer.
+typedef struct AshSample {
+  // Metadata of the sample.
+  // yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
+  // but the reason to not store them inside YBCAshMetadata is that these remain
+  // constant in PG for all the samples of a particular node. So we don't store it
+  // in YBCAshMetadata, which is stored in the procarray to save shared memory.
+  YBCAshMetadata metadata;
+
+  // UUID of the TServer where the query generated.
+  // This remains constant for PG samples on a node, but can differ for TServer
+  // samples as TServer can be processing requests from other nodes.
+  unsigned char yql_endpoint_tserver_uuid[16];
+
+  // A single query can generate multiple RPCs, this is used to differentiate
+  // those RPCs. This will always be 0 for PG samples
+  int64_t rpc_request_id;
+
+  // Auxiliary information about the sample.
+  char aux_info[16];
+
+  // 32-bit wait event code of the sample.
+  uint32_t wait_event_code;
+
+  // If a certain number of samples are available and we capture a portion of
+  // them, the sample weight is the reciprocal of the captured portion or 1,
+  // whichever is maximum.
+  double sample_weight;
+
+  // Timestamp when the sample was captured.
+  uint64_t sample_time;
+} YBCAshSample;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;
