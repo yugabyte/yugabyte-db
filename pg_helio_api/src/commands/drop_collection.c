@@ -15,6 +15,9 @@
 #include "utils/uuid.h"
 #include "lib/stringinfo.h"
 #include "access/xact.h"
+#include "utils/syscache.h"
+#include "nodes/makefuncs.h"
+#include "catalog/namespace.h"
 
 #include "utils/mongo_errors.h"
 #include "metadata/collection.h"
@@ -163,11 +166,25 @@ command_drop_collection(PG_FUNCTION_ARGS)
 
 	DeleteAllCollectionIndexRecords(collection->collectionId);
 
+	bool tableExists = false;
 	if (IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		tableExists = true;
+	}
+	else if (IsClusterVersionAtleastThis(1, 11, 0))
+	{
+		char *queueName = psprintf("%s_index_queue", ExtensionObjectPrefix);
+		RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, queueName, -1);
+		bool missingOk = true;
+		Oid oid = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
+		tableExists = SearchSysCacheExists1(RELOID, ObjectIdGetDatum(oid));
+	}
+
+	if (tableExists)
 	{
 		StringInfo deleteFromIndexQueueCommand = makeStringInfo();
 		appendStringInfo(deleteFromIndexQueueCommand,
-						 "DELETE FROM helio_api_catalog.helio_index_queue WHERE collection_id = $1");
+						 "DELETE FROM %s WHERE collection_id = $1", GetIndexQueueName());
 		isNull = false;
 
 		RunQueryWithCommutativeWrites(deleteFromIndexQueueCommand->data, 1,

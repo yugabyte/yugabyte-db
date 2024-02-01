@@ -142,10 +142,10 @@ Datum
 command_build_index_concurrently(PG_FUNCTION_ARGS)
 {
 	/* If the binary is in 1.12 and the schema in 1.11, we do not want proceed here.
-	 * GW already has a check (EnableIndexBuildBackground && IsAtLeastVersion1_12_0)
+	 * GW already has a check (EnableIndexBuildBackground && IsAtLeastVersion1_11_0)
 	 * to call create_indexes_background.
 	 */
-	if (!EnableIndexBuildBackground || !IsClusterVersionAtleastThis(1, 12, 0))
+	if (!EnableIndexBuildBackground || !IsClusterVersionAtleastThis(1, 11, 0))
 	{
 		PG_RETURN_VOID();
 	}
@@ -1087,10 +1087,10 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 	 */
 	const char *query =
 		FormatSqlQuery("WITH query AS (SELECT index_cmd_status::int4, comment, attempt"
-					   " FROM helio_api_catalog.helio_index_queue piq "
+					   " FROM %s piq "
 					   " WHERE cmd_type = $1 AND index_id =ANY($2)) "
 					   " SELECT COALESCE(%s.bson_array_agg(%s.row_get_bson(query), ''), '{ \"\": [] }'::%s) FROM query",
-					   ApiCatalogSchemaName,
+					   GetIndexQueueName(), ApiCatalogSchemaName,
 					   ApiCatalogSchemaName, FullBsonTypeName);
 
 	int argCount = 2;

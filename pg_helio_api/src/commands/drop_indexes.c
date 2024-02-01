@@ -880,8 +880,8 @@ CleanUpIndexBuildRequest(int indexId)
 	appendStringInfo(cmdStr,
 					 "SELECT citus_pid_for_gpid(iq.global_pid) AS pid, iq.global_pid AS global_pid, iq.start_time AS timestamp");
 	appendStringInfo(cmdStr,
-					 " FROM helio_api_catalog.helio_index_queue iq WHERE index_id = %d AND cmd_type = '%c'",
-					 indexId, CREATE_INDEX_COMMAND_TYPE);
+					 " FROM %s iq WHERE index_id = %d AND cmd_type = '%c'",
+					 GetIndexQueueName(), indexId, CREATE_INDEX_COMMAND_TYPE);
 
 	bool readOnly = true;
 	int numValues = 3;

@@ -1013,7 +1013,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								" iq.index_cmd_status AS status, "
 								" COALESCE(iq.comment::text, '') AS comment, "
 								" coll.database_name || '.' || coll.collection_name AS ns "
-								" FROM helio_api_catalog.helio_index_queue AS iq "
+								" FROM %s AS iq "
 								" JOIN %s.collection_indexes AS ci ON (iq.index_id = ci.index_id) "
 								" JOIN %s.collections AS coll ON (ci.collection_id = coll.collection_id) "
 								" WHERE iq.cmd_type = 'C' AND ( "
@@ -1025,7 +1025,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								"       SELECT distinct global_pid FROM citus_stat_activity WHERE global_pid IS NOT NULL "
 								"       ) "
 								"   ) "
-								" )", ApiInternalSchemaName,
+								" )", ApiInternalSchemaName, GetIndexQueueName(),
 					 ApiCatalogSchemaName, ApiCatalogSchemaName);
 
 	SPIParseOpenOptions parseOptions =

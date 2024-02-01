@@ -16,6 +16,9 @@
 #include <utils/builtins.h>
 #include <utils/expandedrecord.h>
 #include <utils/lsyscache.h>
+#include <utils/syscache.h>
+#include <nodes/makefuncs.h>
+#include <catalog/namespace.h>
 
 #include <miscadmin.h>
 #include "api_hooks.h"
@@ -1249,9 +1252,10 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
 					   cmdType)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
-	const char *cmdStr = FormatSqlQuery("INSERT INTO helio_api_catalog.helio_index_queue "
+	const char *cmdStr = FormatSqlQuery("INSERT INTO %s "
 										"(index_cmd, index_id, collection_id, index_cmd_status, cmd_type) "
-										"VALUES ($1, $2, $3, $4, $5) ");
+										"VALUES ($1, $2, $3, $4, $5) ",
+										GetIndexQueueName());
 
 	int argCount = 5;
 	Oid argTypes[5];
@@ -1315,8 +1319,8 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	appendStringInfo(cmdStr,
 					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time");
 	appendStringInfo(cmdStr,
-					 " FROM helio_api_catalog.helio_index_queue iq WHERE cmd_type = '%c'",
-					 cmdType);
+					 " FROM %s iq WHERE cmd_type = '%c'",
+					 GetIndexQueueName(), cmdType);
 	appendStringInfo(cmdStr, " AND iq.collection_id = " UINT64_FORMAT, collectionId);
 	appendStringInfo(cmdStr, " AND (index_cmd_status != %d", IndexCmdStatus_Inprogress);
 	appendStringInfo(cmdStr, " OR (index_cmd_status = %d", IndexCmdStatus_Inprogress);
@@ -1383,7 +1387,8 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	appendStringInfo(cmdStr,
 					 "SELECT array_agg(a.collection_id) FROM (");
 	appendStringInfo(cmdStr,
-					 "SELECT collection_id FROM helio_api_catalog.helio_index_queue iq WHERE cmd_type = $1");
+					 "SELECT collection_id FROM %s iq WHERE cmd_type = $1",
+					 GetIndexQueueName());
 
 	if (excludeCollectionIds != NIL)
 	{
@@ -1467,7 +1472,7 @@ RemoveRequestFromIndexQueue(int indexId, char cmdType)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
 	const char *cmdStr = FormatSqlQuery(
-		"DELETE FROM helio_api_catalog.helio_index_queue WHERE index_id = $1 AND cmd_type = $2;");
+		"DELETE FROM %s WHERE index_id = $1 AND cmd_type = $2;", GetIndexQueueName());
 
 	int argCount = 2;
 	Oid argTypes[2];
@@ -1563,14 +1568,29 @@ IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)
 {
 	IndexCmdStatus status = IndexCmdStatus_Unknown;
-	if (!IsClusterVersionAtleastThis(1, 12, 0))
+	bool tableExists = false;
+	if (IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		tableExists = true;
+	}
+	else if (IsClusterVersionAtleastThis(1, 11, 0))
+	{
+		char *queueName = psprintf("%s_index_queue", ExtensionObjectPrefix);
+		RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, queueName, -1);
+		bool missingOk = true;
+		Oid oid = RangeVarGetRelid(rangeVar, AccessShareLock, missingOk);
+		tableExists = SearchSysCacheExists1(RELOID, ObjectIdGetDatum(oid));
+	}
+
+	if (!tableExists)
 	{
 		return status;
 	}
 
 	const char *cmdStr =
-		FormatSqlQuery("SELECT index_cmd_status FROM helio_api_catalog.helio_index_queue"
-					   " WHERE index_id = $1 AND cmd_type = 'C';");
+		FormatSqlQuery(
+			"SELECT index_cmd_status FROM %s WHERE index_id = $1 AND cmd_type = 'C';",
+			GetIndexQueueName());
 	int argCount = 1;
 	Oid argTypes[1];
 	Datum argValues[1];
@@ -1680,6 +1700,22 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 	}
 
 	return textIndexes;
+}
+
+
+/*
+ * Returns the index queue name based on the cluster version.
+ */
+char *
+GetIndexQueueName(void)
+{
+	char *queueName = "helio_api_catalog.helio_index_queue";
+	if (!IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		queueName = psprintf("%s.%s_index_queue", ApiCatalogSchemaName,
+							 ExtensionObjectPrefix);
+	}
+	return queueName;
 }
 
 

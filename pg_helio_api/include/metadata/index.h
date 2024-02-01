@@ -250,6 +250,7 @@ IndexCmdRequest * GetRequestFromIndexQueue(char cmdType, uint64 collectionId);
 uint64 * GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds);
 void AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, char
 							cmd_type);
+char * GetIndexQueueName(void);
 
 /* Static utilities */
 
