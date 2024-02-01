@@ -19,8 +19,6 @@
 
 #include "postgres.h"
 
-#include "nodes/parsenodes.h"
-#include "nodes/primnodes.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 

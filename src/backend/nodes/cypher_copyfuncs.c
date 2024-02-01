@@ -19,10 +19,7 @@
 
 #include "postgres.h"
 
-#include "nodes/bitmapset.h"
 #include "nodes/extensible.h"
-#include "nodes/nodes.h"
-#include "utils/palloc.h"
 
 #include "nodes/cypher_copyfuncs.h"
 #include "nodes/cypher_nodes.h"

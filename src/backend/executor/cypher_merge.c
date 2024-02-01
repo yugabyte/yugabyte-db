@@ -19,22 +19,9 @@
 
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "access/table.h"
-#include "access/xact.h"
-#include "executor/tuptable.h"
-#include "nodes/execnodes.h"
-#include "nodes/extensible.h"
-#include "nodes/nodes.h"
-#include "nodes/plannodes.h"
-#include "utils/rel.h"
-
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
-#include "nodes/cypher_nodes.h"
-#include "utils/agtype.h"
-#include "utils/graphid.h"
 
 static void begin_cypher_merge(CustomScanState *node, EState *estate,
                                int eflags);

@@ -19,11 +19,6 @@
 
 #include "postgres.h"
 
-#include "nodes/extensible.h"
-#include "nodes/nodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/plannodes.h"
-
 #include "executor/cypher_executor.h"
 #include "optimizer/cypher_createplan.h"
 

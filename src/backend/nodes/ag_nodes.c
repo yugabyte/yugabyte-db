@@ -19,8 +19,6 @@
 
 #include "postgres.h"
 
-#include "nodes/extensible.h"
-
 #include "nodes/ag_nodes.h"
 #include "nodes/cypher_copyfuncs.h"
 #include "nodes/cypher_outfuncs.h"
