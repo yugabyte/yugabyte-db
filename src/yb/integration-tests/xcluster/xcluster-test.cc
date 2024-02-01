@@ -2301,7 +2301,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
     ASSERT_EQ(tablet_ids.size(), 1);
     auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
     old_ts->Shutdown();
-    const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
+    const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
     ASSERT_OK(WaitUntilTabletHasLeader(consumer_cluster(), *tablet_ids.begin(), deadline));
     decltype(old_ts) new_ts = nullptr;
     ASSERT_OK(WaitFor(

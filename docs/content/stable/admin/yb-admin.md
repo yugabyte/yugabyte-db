@@ -633,7 +633,7 @@ yb-admin \
 ./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     flush_table ysql.yugabyte table_name
-    
+
 ```
 ```output
 Flushed [yugabyte.table_name] tables.
@@ -2012,7 +2012,7 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 yb-admin \
     -master_addresses <master_addresses> \
     change_xcluster_role \
-    <role> 
+    <role>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
@@ -2036,7 +2036,7 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 yb-admin \
     -master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
-    [include_lag_and_skew] 
+    [include_lag_and_skew]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -2194,7 +2194,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
@@ -2474,14 +2474,14 @@ yb-admin \
 If the operation is successful you should see output similar to the following:
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 New AutoFlags were promoted. Config version: 2
 ```
 
 OR
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 No new AutoFlags to promote
 ```
 

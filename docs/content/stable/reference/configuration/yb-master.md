@@ -765,6 +765,14 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Advanced flags
+
+#### ysql_index_backfill_rpc_timeout_ms
+
+Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
+
+Default: 1 minute
+
 ## Admin UI
 
 The Admin UI for YB-Master is available at <http://localhost:7000>.

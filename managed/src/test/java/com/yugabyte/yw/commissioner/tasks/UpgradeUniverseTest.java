@@ -228,6 +228,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .thenReturn(successResponse);
 
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {

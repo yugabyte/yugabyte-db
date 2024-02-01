@@ -27,8 +27,8 @@ azure-mgmt-privatedns==1.0.0
 azure-mgmt-network==19.3.0
 azure-mgmt-resource==19.0.0
 boto==2.49.0
-boto3==1.17.73
-botocore==1.20.73
+boto3==1.34.23
+botocore==1.34.23
 deepdiff==5.5.0
 distro==1.5.0
 fabric==2.2.1

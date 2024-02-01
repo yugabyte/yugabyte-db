@@ -1,4 +1,4 @@
-import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
+import { ConfirmBootstrapStep } from './ConfirmBootstrapStep';
 import { FormStep } from './EditConfigTargetModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 
@@ -6,12 +6,14 @@ interface CurrentFormStepProps {
   currentFormStep: FormStep;
   isFormDisabled: boolean;
   sourceUniverseUUID: string;
+  storageConfigUuid: string;
 }
 
 export const CurrentFormStep = ({
   currentFormStep,
   isFormDisabled,
-  sourceUniverseUUID
+  sourceUniverseUUID,
+  storageConfigUuid
 }: CurrentFormStepProps) => {
   switch (currentFormStep) {
     case FormStep.SELECT_TARGET_UNIVERSE:
@@ -22,6 +24,6 @@ export const CurrentFormStep = ({
         />
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
+      return <ConfirmBootstrapStep storageConfigUuid={storageConfigUuid} />;
   }
 };

@@ -1013,4 +1013,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verify current cluster state (from db perspective) before running task",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.operation_timeout",
+          ScopeType.UNIVERSE,
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.enabled",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check enabled",
+          " Whether to run CheckLeaderlessTablets subtask before running universe tasks",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> leaderlessTabletsTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.timeout",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check timeout",
+          "Controls the max time out when performing the CheckLeaderlessTablets subtask",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

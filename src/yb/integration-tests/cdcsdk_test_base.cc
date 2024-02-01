@@ -104,16 +104,14 @@ std::unique_ptr<CDCServiceProxy> CDCSDKTestBase::GetCdcProxy() {
 
 // Create a test database to work on.
 Status CDCSDKTestBase::CreateDatabase(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    bool colocated) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, bool colocated) {
   auto conn = VERIFY_RESULT(cluster->Connect());
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE DATABASE $0$1", namespace_name, colocated ? " with colocation = true" : ""));
   return Status::OK();
 }
 
-Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
+Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
   auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
   auto port = cluster->mini_cluster_->AllocateFreePort();
   pgwrapper::PgProcessConf pg_process_conf =
@@ -187,11 +185,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
 }
 
 Result<YBTableName> CDCSDKTestBase::GetTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    bool verify_table_name,
-    bool exclude_system_tables) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    bool verify_table_name, bool exclude_system_tables) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 
@@ -230,18 +225,10 @@ Result<YBTableName> CDCSDKTestBase::GetTable(
 }
 
 Result<YBTableName> CDCSDKTestBase::CreateTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const uint32_t num_tablets,
-    const bool add_primary_key,
-    bool colocated,
-    const int table_oid,
-    const bool enum_value,
-    const std::string& enum_suffix,
-    const std::string& schema_name,
-    uint32_t num_cols,
-    const std::vector<string>& optional_cols_name) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const uint32_t num_tablets, const bool add_primary_key, bool colocated, const int table_oid,
+    const bool enum_value, const std::string& enum_suffix, const std::string& schema_name,
+    uint32_t num_cols, const std::vector<string>& optional_cols_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
 
   if (enum_value) {
@@ -302,11 +289,8 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 }
 
 Status CDCSDKTestBase::AddColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& add_column_name,
-    const std::string& enum_suffix,
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& add_column_name, const std::string& enum_suffix,
     const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
@@ -316,11 +300,8 @@ Status CDCSDKTestBase::AddColumn(
 }
 
 Status CDCSDKTestBase::DropColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& column_name,
-    const std::string& enum_suffix,
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& column_name, const std::string& enum_suffix,
     const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
@@ -329,13 +310,9 @@ Status CDCSDKTestBase::DropColumn(
 }
 
 Status CDCSDKTestBase::RenameColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& old_column_name,
-    const std::string& new_column_name,
-    const std::string& enum_suffix,
-    const std::string& schema_name) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& old_column_name, const std::string& new_column_name,
+    const std::string& enum_suffix, const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 RENAME COLUMN $2 TO $3", schema_name, table_name + enum_suffix,
@@ -354,11 +331,8 @@ Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_
 }
 
 Result<std::string> CDCSDKTestBase::GetTableId(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    bool verify_table_name,
-    bool exclude_system_tables) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    bool verify_table_name, bool exclude_system_tables) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 

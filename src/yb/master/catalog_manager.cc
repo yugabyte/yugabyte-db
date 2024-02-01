@@ -1684,6 +1684,18 @@ Status CatalogManager::GetUniverseKeyRegistryFromOtherMastersAsync() {
   return Status::OK();
 }
 
+Result<std::vector<HostPort>> CatalogManager::GetMasterAddressHostPorts() {
+  std::vector<HostPort> result;
+  consensus::ConsensusStatePB state;
+  RETURN_NOT_OK(GetCurrentConfig(&state));
+
+  for (const auto& peer : state.config().peers()) {
+    HostPortsFromPBs(peer.last_known_private_addr(), &result);
+    HostPortsFromPBs(peer.last_known_broadcast_addr(), &result);
+  }
+  return result;
+}
+
 std::vector<std::string> CatalogManager::GetMasterAddresses() {
   std::vector<std::string> result;
   consensus::ConsensusStatePB state;

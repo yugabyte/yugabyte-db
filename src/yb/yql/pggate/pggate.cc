@@ -2229,5 +2229,9 @@ Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
   return pg_stmt->Exec();
 }
 
+Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {
+  return pg_session_->ActiveSessionHistory();
+}
+
 } // namespace pggate
 } // namespace yb

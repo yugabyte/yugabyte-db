@@ -50,6 +50,7 @@ type EditTablesModalProps =
   | (CommonEditTablesModalProps & {
       isDrInterface: true;
       drConfigUuid: string;
+      storageConfigUuid: string;
     })
   | (CommonEditTablesModalProps & { isDrInterface: false });
 
@@ -104,16 +105,20 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
 
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
+      const bootstrapParams =
+        bootstrapRequiredTableUUIDs.length > 0
+          ? {
+              tables: bootstrapRequiredTableUUIDs,
+              backupRequestParams: {
+                storageConfigUUID: formValues.storageConfig?.value
+              }
+            }
+          : undefined;
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: formValues.tableUuids,
-            ...(formValues.storageConfig && {
-              bootstrapParams: {
-                backupRequestParams: { storageConfigUUID: formValues.storageConfig.value.uuid }
-              }
-            })
+            tables: formValues.tableUuids
           })
-        : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids);
+        : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
     },
     {
       onSuccess: (response) => {
@@ -415,6 +420,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         <CurrentFormStep
           currentFormStep={currentFormStep}
           isFormDisabled={isFormDisabled}
+          isDrInterface={props.isDrInterface}
+          storageConfigUuid={props.isDrInterface ? props.storageConfigUuid : undefined}
           tableSelectProps={{
             configAction: XClusterConfigAction.MANAGE_TABLE,
             isDrInterface: props.isDrInterface,

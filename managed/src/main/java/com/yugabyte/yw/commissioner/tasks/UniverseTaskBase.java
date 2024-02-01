@@ -110,6 +110,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
@@ -1369,6 +1370,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.memoryLimitKB = memoryLimitKB;
     params.nodeIpList =
         nodes.stream().map(node -> node.cloudInfo.private_ip).collect(Collectors.toList());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to check locale on the universe nodes */
+  public SubTaskGroup createLocaleCheckTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLocale");
+    CheckLocale task = createTask(CheckLocale.class);
+    CheckLocale.Params params = new CheckLocale.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -2926,6 +2939,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               while (tableUUIDIter.hasNext()) {
                 BackupTableParams perTableParam =
                     new BackupTableParams(bP, tableUUIDIter.next(), tableNameIter.next());
+                perTableParam.tableByTableBackup = true;
                 flatParamsList.add(perTableParam);
               }
             });

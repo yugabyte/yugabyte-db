@@ -83,7 +83,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // Return the table's ID. This is an internal identifier which uniquely
   // identifies a table. If the table is deleted and recreated with the same
   // name, the ID will distinguish the old table from the new.
-  const std::string& id() const;
+  const TableId& id() const;
 
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;

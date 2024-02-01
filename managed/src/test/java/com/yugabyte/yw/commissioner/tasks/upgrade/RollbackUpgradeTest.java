@@ -105,6 +105,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     rollbackUpgrade.setTaskUUID(UUID.randomUUID());
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
 
     updateDefaultUniverseTo5Nodes(true);
 

@@ -919,6 +919,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " concurrent provider tasks are completed ",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> KubernetesOperatorCustomerUUID =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.customer_uuid",
+          ScopeType.GLOBAL,
+          "Customer UUID to use with Kubernentes Operator",
+          "Customer UUID to use with Kubernentes Operator, do not change once set",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.enabled",
@@ -1186,4 +1194,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " isBootstrapRequired rpc",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOidcAutoCreateUser =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_enable_auto_create_users",
+          ScopeType.GLOBAL,
+          "Auto create user on SSO login",
+          "Enable user creation on OIDC login",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
