@@ -1,0 +1,2 @@
+org.yb.pgsql.TestPgBatchExecution
+org.yb.pgsql.TestPgRegressTypesNumeric
