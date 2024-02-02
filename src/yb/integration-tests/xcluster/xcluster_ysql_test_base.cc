@@ -262,7 +262,8 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     std::string tablegroup_clause = Format("TABLEGROUP $0", tablegroup_name.value());
     query += Format("$0$1", with_clause, tablegroup_clause);
   } else {
-    std::string colocated_clause = Format("colocation = $0", colocated);
+    std::string colocated_option = colocated ? "true" : "false";
+    std::string colocated_clause = Format("colocation = $0", colocated_option);
     std::string with_clause = colocation_id_string.empty()
                                   ? colocated_clause
                                   : Format("$0, $1", colocation_id_string, colocated_clause);
