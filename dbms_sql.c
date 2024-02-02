@@ -887,6 +887,7 @@ cursor_xact_cxt_deletion_callback(void *arg)
 	CursorData *cur = (CursorData *) arg;
 
 	cur->cursor_xact_cxt = NULL;
+	cur->result_cxt = NULL;
 	cur->tuples_cxt = NULL;
 
 	cur->processed = 0;
@@ -1570,10 +1571,7 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 	Oid			columnTypeId;
 	CastCacheData *ccast;
 
-	if (!c->executed)
-		ereport(ERROR,
-			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
-			     errmsg("cursor is not executed")));
+	Assert(c->executed);
 
 	if (!c->tupdesc)
 		ereport(ERROR,
@@ -1709,7 +1707,13 @@ dbms_sql_column_value(PG_FUNCTION_ARGS)
 
 	pos = PG_GETARG_INT32(1);
 
+	if (!c->executed)
+		ereport(ERROR,
+			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
+			     errmsg("cursor is not executed")));
+
 	oldcxt = MemoryContextSwitchTo(c->result_cxt);
+
 
 	/*
 	 * Setting of OUT field is little bit more complex, because although
@@ -1768,6 +1772,11 @@ dbms_sql_column_value_f(PG_FUNCTION_ARGS)
 			     errmsg("column position (number) is NULL")));
 
 	pos = PG_GETARG_INT32(1);
+
+	if (!c->executed)
+		ereport(ERROR,
+			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
+			     errmsg("cursor is not executed")));
 
 	oldcxt = MemoryContextSwitchTo(c->result_cxt);
 

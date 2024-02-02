@@ -121,6 +121,20 @@ begin
 end;
 $$;
 
+-- should not to crash, when we try to touch result without execute
+do $$
+  declare
+  c int;
+  a int[];
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select i from generate_series(1, 2) g(i)');
+  call dbms_sql.define_array(c, 1, a, 10, 1);
+  call dbms_sql.column_value(c, 1, a);
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+
 do $$
 declare
   c int;
