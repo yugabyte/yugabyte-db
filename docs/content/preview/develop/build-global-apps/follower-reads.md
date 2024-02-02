@@ -63,6 +63,11 @@ SET yb_follower_read_staleness_ms = 10000; -- 10s
 This is only for reads. All writes still go to the leader.
 {{</note>}}
 
+{{<note title="Impact of setting `yb_follower_read_staleness_ms` to a low value">}}
+You can set a small value for the max staleness such as `1000ms` or `2000ms`. The only downside is that it becomes more likely that such a read may have to be redirected to the leader if the follower still needs to catch up to the desired timestamp.
+It is not uncommon for followers to be up to 1-2 x `raft_heartbeat_interval_ms` (defaulting to 500ms, but a lot of x-region deployments increase this to 1500). 
+{{</note>}}
+
 ## Failover
 
 When the follower in a region fails, the application redirects its reads to the next closest follower/leader.
