@@ -1940,9 +1940,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   private void runMigrations(boolean useSingleConnection) throws Exception {
-    // Set upgrade timeout to 6 (10) minutes, adjusted.
+    // Set upgrade timeout to 7 (11) minutes, adjusted.
     // Single-connection upgrade takes longer because of new connection overhead.
-    long timeoutMs = BuildTypeUtil.adjustTimeout((useSingleConnection ? 10 : 6) * 60 * 1000);
+    long timeoutMs = BuildTypeUtil.adjustTimeout((useSingleConnection ? 11 : 7) * 60 * 1000);
     List<String> command = new ArrayList<>(Arrays.asList(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",

@@ -47,8 +47,10 @@ public class UniverseUpgradesManagementApiControllerImp
           universeGFlags.getReadReplicaGflags().getPerProcessGflags().getMasterGflags();
       Map<String, String> newTServerGFlags =
           universeGFlags.getReadReplicaGflags().getPerProcessGflags().getTserverGflags();
-      taskParams.getNonPrimaryClusters().get(0).userIntent.specificGFlags =
-          SpecificGFlags.construct(newMasterGFlags, newTServerGFlags);
+      if (!taskParams.getNonPrimaryClusters().isEmpty()) {
+        taskParams.getNonPrimaryClusters().get(0).userIntent.specificGFlags =
+            SpecificGFlags.construct(newMasterGFlags, newTServerGFlags);
+      }
     }
     // construct a GFlagsUpgradeParams that includes above universe details and
     // invoke v1 upgrade api UpgradeUniverseController.upgradeGFlags

@@ -47,16 +47,18 @@ export const K8NodeSpecField = ({
   const {
     data: providerRuntimeConfigs,
     refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
+  } = useQuery(
+    QUERY_KEY.fetchProviderRunTimeConfigs,
+    () => api.fetchRunTimeConfigs(true, provider?.uuid),
+    { enabled: !!provider?.uuid }
   );
 
   //update memory and cpu from provider runtime configs
   useEffect(() => {
     const getProviderRuntimeConfigs = async () => {
-      await providerConfigsRefetch();
-      const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeConfigs);
-      let nodeSpec = {
+      const providerRuntimeRefetch = await providerConfigsRefetch();
+      const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeRefetch?.data);
+      const nodeSpec = {
         memoryGib: memorySize,
         cpuCoreCount: CPUCores
       };

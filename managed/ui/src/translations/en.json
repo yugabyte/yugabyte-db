@@ -1071,7 +1071,7 @@
           "ModalKeyValue": "Config Value",
           "ModelEditConfigTitle": "Edit Configuration",
           "ModelResetConfigTitle": "Reset Configuration",
-          "ShowOverridenConfigs": "Show Overriden Configs",
+          "ShowOverridenConfigs": "Show Overridden Configs",
           "EditConfigWarningMessage": "Value not changed",
           "SelectProvider": "Select Provider:",
           "SelectUniverse": "Select Universe:",

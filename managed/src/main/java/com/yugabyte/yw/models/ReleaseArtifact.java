@@ -95,7 +95,7 @@ public class ReleaseArtifact extends Model {
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
       throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -123,7 +123,7 @@ public class ReleaseArtifact extends Model {
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
       throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -151,7 +151,7 @@ public class ReleaseArtifact extends Model {
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
       throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -180,7 +180,7 @@ public class ReleaseArtifact extends Model {
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
       throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
