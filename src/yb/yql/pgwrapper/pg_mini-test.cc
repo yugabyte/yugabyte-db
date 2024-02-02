@@ -884,6 +884,29 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
+TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
+  const std::string kDatabaseName = "testdb";
+  constexpr auto kNumRows = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocation=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int, primary key(k ASC)) with (colocation=true)"));
+
+  LOG(INFO) << "Loading data";
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series(1, $0) i", kNumRows));
+
+  ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 10"));
+  ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+  ASSERT_OK(conn.Execute("SET force_parallel_mode = TRUE"));
+
+  LOG(INFO) << "Starting scan";
+  auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
+}
+
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
   const std::string kDataTable = "data";
   const std::string kReferenceTable = "reference";
