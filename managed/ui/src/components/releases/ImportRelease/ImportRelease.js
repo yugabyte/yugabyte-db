@@ -11,6 +11,7 @@ import { YBFormInput, YBFormSelect } from '../../../components/common/forms/fiel
 import { YBModalForm } from '../../../components/common/forms';
 import { YBLoading } from '../../common/indicators';
 import { api } from '../../../redesign/helpers/api';
+import { isNonEmptyString } from '../../../utils/ObjectUtils';
 
 const getValidationSchema = (type) => {
   const shape = {
@@ -177,8 +178,13 @@ export const ImportRelease = (props) => {
       toast.success('Release imported successfully!.');
     },
     onError: (error) => {
-      const defaultErrorMessage = 'Import release failed';
-      toast.error(error?.response?.data?.error ?? defaultErrorMessage);
+      const defaultErrorMessage =
+        'Import release failed, please validate the input fields and try again.';
+      toast.error(
+        isNonEmptyString(error?.response?.data?.error)
+          ? error.response.data.error
+          : defaultErrorMessage
+      );
     }
   });
 
