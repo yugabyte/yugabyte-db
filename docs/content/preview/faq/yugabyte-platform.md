@@ -153,17 +153,17 @@ Node agent is an RPC service running on a YugabyteDB node, and is used to manage
 
 Installation depends on how the nodes are provisioned.
 
-Currently, there are 3 ways of provisioning a node depending on the level of access provided to YBA as follows:
+Currently, there are three ways to provision a node, depending on the level of access provided to YBA, as follows:
 
-* _Automatic provisioning_ where an ssh user with sudo access is given to YBA for the node (For example, the `ec2-user` for an AWS EC2 instance).
+* _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YBA (for example, the `ec2-user` for an AWS EC2 instance).
 
-* [_Assisted manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) via a script (`provision_instance.py`) where YBA doesn't have access to an ssh user with sudo access but the user can run a script interactively on YBA and provide the script with parameters for credentials for the ssh user with sudo access.
+* [_Assisted manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) via a script (`provision_instance.py`), where YBA doesn't have access to an SSH user with sudo access, but you can run the script interactively in YBA, providing parameters for credentials for the SSH user with sudo access.
 
-* [_Fully manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/) where neither YBA nor the user has access to an ssh user with sudo access. In this case, only a local (non-ssh) user is available with sudo access and the user has to follow manual steps to provision the node.
+* [_Fully manual provisioning_](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/), where neither you nor YBA has access to an SSH user with sudo access. In this case, only a local (non-SSH) user with sudo access is available, and you must follow a series of manual steps to provision the node.
 
-For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, agents are automatically installed on each universe node during provisioning using SSH.After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to enable the access for debugging.
+For cloud (AWS, GCP, and Azure) and automatic on-premises (sudo access provided) providers, agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
 
-For manually provisioned on-premises providers, node agent is installed on each node either using a script or manually as part of the manual provisioning process. For more information, refer to Manually provision on-premises nodes.
+For manually provisioned on-premises providers, node agent is installed on each node either using a script or manually as part of the manual provisioning process.
 
 ### Why does YBA prompt for SSH details if the node agent is installed manually and can replace SSH?
 
