@@ -486,3 +486,25 @@ create table rlp5_1 partition of rlp5 for values from (31) to (40);
 
 explain (costs off) select * from rlp where a = 1 or b = 'ab';
 -- YB_TODO: end
+
+-- YB_TODO: Remove after tracking yb_create_index
+CREATE TABLE test_include (c1 int, c2 int, c3 int);
+INSERT INTO test_include VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+UPDATE test_include SET c2 = 22 WHERE c1 = 2;
+SELECT * FROM test_include WHERE c1 = 2;
+DROP TABLE test_include;
+-- YB_TODO: end
+
+-- YB_TODO: Remove after tracking yb_pg_triggers
+CREATE TABLE min_updates_test (
+   f1  text,
+   f2 int,
+   f3 int);
+INSERT INTO min_updates_test VALUES ('a',1,2),('b','2',null);
+CREATE TRIGGER z_min_update
+BEFORE UPDATE ON min_updates_test
+FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
+UPDATE min_updates_test SET f1 = f1;
+SELECT * FROM min_updates_test ORDER BY f1;
+-- YB_TODO: end

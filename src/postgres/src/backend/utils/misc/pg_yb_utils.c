@@ -399,6 +399,14 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
+YbRelHasBRUpdateTrigger(Relation rel)
+{
+	Assert(IsYBRelation(rel));
+	TriggerDesc *trigdesc = rel->trigdesc;
+	return trigdesc ? trigdesc->trig_update_before_row : false;
+}
+
+bool
 YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database)
 {
 	bool colocated;
@@ -1364,7 +1372,8 @@ bool
 YbUseWholeRowJunkAttribute(Relation relation, Bitmapset *updatedCols,
 						   CmdType operation)
 {
-	Assert(IsYBRelation(relation));
+	if (!IsYBRelation(relation))
+		return false;
 
 	/*
 	 * 1. For tables with secondary indexes we need the (old) ybctid for
@@ -1398,19 +1407,25 @@ YbUseScanTupleInUpdate(Relation relation, Bitmapset *updatedCols)
 		return true;
 
 	/*
-	 * Old tuple is required for:
+	 * Scenarios when the new tuple must contain non-modified columns in UPDATE:
 	 *  - partitions: to check partition constraints and to perform
 	 * cross-partition update (deletion followed by insertion).
 	 *  - constraints: to check for constraint violation.
+	 *  - secondary index: index update works by deletion followed by
+	 * re-insertion, and a multi-column secondary index can contain some updated
+	 * and some non-updated columns.
+	 *  - BR update triggers: to correctly check for "extra updated" columns.
+	 *  - PK update: works by deletion followed by re-insertion, hence the old
+	 * tuple is required.
+	 *
+	 * In these cases, the non-modified columns in "new tuple" are populated
+	 * from the old scanned tuple.
 	 */
 	if (relation->rd_partkey != NULL || relation->rd_rel->relispartition ||
-		relation->rd_att->constr)
+		relation->rd_att->constr || YBRelHasSecondaryIndices(relation) ||
+		YbRelHasBRUpdateTrigger(relation))
 		return true;
 
-	/*
-	 * PK update works by deletion followed by re-insertion, hence the old
-	 * tuple is required.
-	 */
 	Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(relation);
 	bool is_pk_updated = bms_overlap(primary_key_bms, updatedCols);
 	return is_pk_updated;

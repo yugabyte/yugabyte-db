@@ -1748,6 +1748,7 @@ _readModifyTable(void)
 	READ_NODE_FIELD(no_update_index_list);
 	READ_BOOL_FIELD(no_row_trigger);
 	READ_BOOL_FIELD(ybUseScanTupleInUpdate);
+	READ_BOOL_FIELD(ybHasWholeRowAttribute);
 
 	READ_DONE();
 }

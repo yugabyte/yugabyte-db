@@ -8737,6 +8737,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	Relation relation = RelationIdGetRelation(rte->relid);
 	node->ybUseScanTupleInUpdate =
 		YbUseScanTupleInUpdate(relation, rte->updatedCols);
+	node->ybHasWholeRowAttribute =
+		YbUseWholeRowJunkAttribute(relation, rte->updatedCols, operation);
 	RelationClose(relation);
 	return node;
 }
