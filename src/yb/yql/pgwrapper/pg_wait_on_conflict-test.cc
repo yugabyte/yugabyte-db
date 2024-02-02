@@ -58,6 +58,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_uint64(wait_for_relock_unblocked_txn_keys_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
@@ -893,7 +894,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 
 class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   static constexpr int kClientStatementTimeoutSeconds = 60;
-
+ protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
@@ -907,39 +908,53 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   size_t NumTabletServers() override {
     return 1;
   }
+
+  void PerformConcurrentReads() {
+    constexpr int kNumReaders = 8;
+    constexpr int kNumTxnsPerReader = 100;
+
+    auto setup_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(setup_conn.Execute("INSERT INTO foo VALUES (1, 1)"));
+    TestThreadHolder thread_holder;
+    CountDownLatch finished_readers{kNumReaders};
+
+    for (int reader_idx = 0; reader_idx < kNumReaders; ++reader_idx) {
+      thread_holder.AddThreadFunctor([this, &finished_readers, &stop = thread_holder.stop_flag()] {
+        auto conn = ASSERT_RESULT(Connect());
+        for (int i = 0; i < kNumTxnsPerReader; ++i) {
+          if (stop) {
+            EXPECT_FALSE(true) << "Only completed " << i << " reads";
+            return;
+          }
+          ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+          ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+          ASSERT_OK(conn.CommitTransaction());
+        }
+        finished_readers.CountDown();
+        finished_readers.Wait();
+      });
+    }
+
+    finished_readers.WaitFor(60s * kTimeMultiplier);
+    finished_readers.Reset(0);
+    thread_holder.Stop();
+  }
 };
 
 TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReaders)) {
-  constexpr int kNumReaders = 8;
-  constexpr int kNumTxnsPerReader = 100;
+  PerformConcurrentReads();
+}
 
-  auto setup_conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(setup_conn.Execute("INSERT INTO foo VALUES (1, 1)"));
-  TestThreadHolder thread_holder;
-  CountDownLatch finished_readers{kNumReaders};
-
-  for (int reader_idx = 0; reader_idx < kNumReaders; ++reader_idx) {
-    thread_holder.AddThreadFunctor([this, &finished_readers, &stop = thread_holder.stop_flag()] {
-      auto conn = ASSERT_RESULT(Connect());
-      for (int i = 0; i < kNumTxnsPerReader; ++i) {
-        if (stop) {
-          EXPECT_FALSE(true) << "Only completed " << i << " reads";
-          return;
-        }
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-        ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
-        ASSERT_OK(conn.CommitTransaction());
-      }
-      finished_readers.CountDown();
-      finished_readers.Wait();
-    });
-  }
-
-  finished_readers.WaitFor(60s * kTimeMultiplier);
-  finished_readers.Reset(0);
-  thread_holder.Stop();
+// When a waiter fails to re-acquire the shared in-memory locks while being resumed from the thread
+// running ResumedWaiterRunner (which resumes waiters serially), it is scheduled for retry on the
+// Tablet Server's Scheduler which attempts to re-acquire the shared in-memory locks until the
+// request deadline passes. The below test simulates a contentious workload and helps assert the
+// above, particularly in tsan mode.
+TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnScheduler) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_relock_unblocked_txn_keys_ms) = 100;
+  PerformConcurrentReads();
 }
 
 TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {

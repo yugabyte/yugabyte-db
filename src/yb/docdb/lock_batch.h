@@ -58,6 +58,9 @@ class LockBatch {
   LockBatch() {}
   LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
             CoarseTimePoint deadline);
+  // Construct a LockBatch from the provided unlocked_batch instance. If successful, assumes
+  // ownership of UnlockedBatch::key_to_type_.
+  LockBatch(UnlockedBatch* unlocked_batch, CoarseTimePoint deadline);
   LockBatch(LockBatch&& other) { MoveFrom(&other); }
   LockBatch& operator=(LockBatch&& other) { MoveFrom(&other); return *this; }
   ~LockBatch();
@@ -87,7 +90,8 @@ class LockBatch {
  private:
   void MoveFrom(LockBatch* other);
 
-  // Initializes the LockBatch and locks the specified keys. Updates data_.status in case of error.
+  // Initializes the LockBatch and locks the specified keys. Updates data_.status and
+  // data_.shared_lock_manager in case of error and leaves data_.key_to_type unchanged.
   void Init(CoarseTimePoint deadline);
 
   void DoUnlock();
@@ -114,18 +118,19 @@ class LockBatch {
 };
 
 // A container which houses all data needed to re-lock the LockBatch which generated an
-// UnlockedBatch via LockBatch::Unlock(). Recreates a LockBatch with the same keys via Lock().
+// UnlockedBatch via LockBatch::Unlock().
 class UnlockedBatch {
  public:
   UnlockedBatch(LockBatchEntries&& key_to_type_, SharedLockManager* shared_lock_manager_);
 
   UnlockedBatch(UnlockedBatch&& other) { MoveFrom(&other); }
 
-  // Invalidates the provided UnlockedBatch instance and returns a new LockBatch which locks the
-  // keys specified in "unlocked". An rvalue is required for the UnlockedBatch argument to ensure
-  // that the caller does not expect the fields of "unlocked" to be in a valid state -- they will
-  // be moved into the returned LockBatch instance.
-  LockBatch Lock(CoarseTimePoint deadline) &&;
+  // Tries locking the keys specified in "key_to_type_". On success, clears the state in
+  // this->key_to_type_ (the caller is expected not to re-use the fields since they wouldn't
+  // be in a valid state). In case of failure, preserves the state of the fields, so that
+  // the caller can re-attempt locking. The status of the returned LockBatch must be checked
+  // before usage.
+  LockBatch TryLock(CoarseTimePoint deadline);
 
   UnlockedBatch& operator=(UnlockedBatch&& other) { MoveFrom(&other); return *this; }
 
@@ -137,6 +142,8 @@ class UnlockedBatch {
   LockBatchEntries key_to_type_;
 
   SharedLockManager* shared_lock_manager_ = nullptr;
+
+  friend class LockBatch;
 
   DISALLOW_COPY_AND_ASSIGN(UnlockedBatch);
 };

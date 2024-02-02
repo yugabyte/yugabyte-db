@@ -1744,7 +1744,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .post_split_compaction_added = ts_post_split_compaction_added_,
         .metadata_cache = metadata_cache,
         .get_min_xcluster_schema_version =
-            std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2)};
+            std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2),
+        .messenger = server_->messenger()};
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),

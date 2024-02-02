@@ -352,12 +352,17 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #ifndef NDEBUG
 #define DCHECK_ONLY_NOTNULL(expr) do { DCHECK_NOTNULL(expr); } while(false)
 #define DCHECK_BETWEEN(val, lower_bound, upper_bound) CHECK_BETWEEN(val, lower_bound, upper_bound)
+#define DCHECK_OK(s)  CHECK_OK(s)
 #else
 #define DCHECK_ONLY_NOTNULL(expr) do {} while(false)
 #define DCHECK_BETWEEN(val, lower_bound, upper_bound) \
   GLOG_MSVC_PUSH_DISABLE_WARNING(4127) \
   while (false) \
     GLOG_MSVC_POP_WARNING() CHECK_BETWEEN(val, lower_bound, upper_bound)
+#define DCHECK_OK(s) \
+  GLOG_MSVC_PUSH_DISABLE_WARNING(4127) \
+  while (false) \
+    GLOG_MSVC_POP_WARNING() CHECK_OK(s)
 #endif
 
 // Unlike plain LOG(FATAL), here the compiler always knows we're not returning.
