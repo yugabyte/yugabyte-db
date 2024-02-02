@@ -230,8 +230,12 @@ public class ImageBundleUtil {
         // Assumption both the primary & rr cluster uses the same provider.
         UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
         if (userIntent != null) {
+          CloudType cloudType = userIntent.providerType;
+          if (!cloudType.imageBundleSupported()) {
+            continue;
+          }
           UUID imageBundleUUID = userIntent.imageBundleUUID;
-          if (!imageBundleMap.containsKey(imageBundleUUID)) {
+          if (imageBundleUUID != null && !imageBundleMap.containsKey(imageBundleUUID)) {
             ImageBundle bundle = ImageBundle.get(imageBundleUUID);
             imageBundleMap.put(imageBundleUUID, bundle);
           }
