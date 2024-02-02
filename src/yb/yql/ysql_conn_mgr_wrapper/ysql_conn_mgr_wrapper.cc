@@ -76,12 +76,12 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
 
 namespace {
 
-bool ValidateEnableYsqlConnMgr(const char* flagname, bool value) {
-  if (!FLAGS_start_pgsql_proxy && !FLAGS_enable_ysql && value) {
-    LOG(ERROR) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
-    return false;
+void ValidateEnableYsqlConnMgr() {
+  if (FLAGS_enable_ysql_conn_mgr && !(FLAGS_start_pgsql_proxy || FLAGS_enable_ysql)) {
+    LOG(FATAL) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
+    return;
   }
-  return true;
+  return;
 }
 
 bool ValidateMaxClientConn(const char* flagname, uint32_t value) {
@@ -94,7 +94,8 @@ bool ValidateMaxClientConn(const char* flagname, uint32_t value) {
 
 } // namespace
 
-DEFINE_validator(enable_ysql_conn_mgr, &ValidateEnableYsqlConnMgr);
+REGISTER_CALLBACK(enable_ysql_conn_mgr, "ValidateEnableYsqlConnMgr",
+        &ValidateEnableYsqlConnMgr);
 DEFINE_validator(ysql_conn_mgr_max_client_connections, &ValidateMaxClientConn);
 
 namespace yb {
