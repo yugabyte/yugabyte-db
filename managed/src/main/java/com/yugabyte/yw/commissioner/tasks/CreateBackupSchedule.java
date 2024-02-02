@@ -62,48 +62,53 @@ public class CreateBackupSchedule extends UniverseTaskBase {
         !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
             && universe.isYbcEnabled()
             && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    try {
+      if (ybcBackup
+          && universe.isYbcEnabled()
+          && !universe
+              .getUniverseDetails()
+              .getYbcSoftwareVersion()
+              .equals(ybcManager.getStableYbcVersion())) {
 
-    if (ybcBackup
-        && universe.isYbcEnabled()
-        && !universe
+        if (universe
             .getUniverseDetails()
-            .getYbcSoftwareVersion()
-            .equals(ybcManager.getStableYbcVersion())) {
-
-      if (universe
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(Common.CloudType.kubernetes)) {
-        createUpgradeYbcTaskOnK8s(params().getUniverseUUID(), ybcManager.getStableYbcVersion())
-            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-      } else {
-        createUpgradeYbcTask(params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)) {
+          createUpgradeYbcTaskOnK8s(params().getUniverseUUID(), ybcManager.getStableYbcVersion())
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        } else {
+          createUpgradeYbcTask(params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        }
       }
-    }
-    createPreflightValidateBackupTask(
-            taskParams.storageConfigUUID,
-            taskParams.customerUUID,
-            taskParams.getUniverseUUID(),
-            ybcBackup)
-        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      createPreflightValidateBackupTask(
+              taskParams.storageConfigUUID,
+              taskParams.customerUUID,
+              taskParams.getUniverseUUID(),
+              ybcBackup)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
-    Schedule schedule =
-        Schedule.create(
-            taskParams.customerUUID,
-            taskParams.getUniverseUUID(),
-            taskParams,
-            TaskType.CreateBackup,
-            taskParams.schedulingFrequency,
-            taskParams.cronExpression,
-            taskParams.frequencyTimeUnit,
-            taskParams.scheduleName);
-    UUID scheduleUUID = schedule.getScheduleUUID();
-    log.info(
-        "Created backup schedule for customer {}, schedule uuid = {}.",
-        taskParams.customerUUID,
-        scheduleUUID);
+      getRunnableTask().runSubTasks();
+      Schedule schedule =
+          Schedule.create(
+              taskParams.customerUUID,
+              taskParams.getUniverseUUID(),
+              taskParams,
+              TaskType.CreateBackup,
+              taskParams.schedulingFrequency,
+              taskParams.cronExpression,
+              taskParams.frequencyTimeUnit,
+              taskParams.scheduleName);
+      UUID scheduleUUID = schedule.getScheduleUUID();
+      log.info(
+          "Created backup schedule for customer {}, schedule uuid = {}.",
+          taskParams.customerUUID,
+          scheduleUUID);
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      throw t;
+    }
   }
 }
