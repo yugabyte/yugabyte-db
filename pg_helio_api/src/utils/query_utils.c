@@ -12,6 +12,7 @@
 #include <miscadmin.h>
 #include <catalog/pg_type.h>
 #include <commands/dbcommands.h>
+#include <common/username.h>
 #include <executor/spi.h>
 #include <postmaster/postmaster.h>
 #include <storage/latch.h>
@@ -693,10 +694,16 @@ PGConnReportError(PGconn *conn, PGresult *result, int elevel)
 static char *
 GetLocalhostConnStr(void)
 {
+	const char *user_name;
+	const bool no_err = false;
+	user_name = GetUserNameFromId(GetAuthenticatedUserId(), no_err);
+
 	StringInfo localhostConnStr = makeStringInfo();
 	appendStringInfo(localhostConnStr,
-					 "%s port=%d dbname=%s application_name='PgmongoBackend'",
+					 "%s port=%d user=%s dbname=%s application_name='PgmongoBackend'",
 					 LocalhostConnectionString, PostPortNumber,
+					 user_name,
 					 get_database_name(MyDatabaseId));
+
 	return localhostConnStr->data;
 }
