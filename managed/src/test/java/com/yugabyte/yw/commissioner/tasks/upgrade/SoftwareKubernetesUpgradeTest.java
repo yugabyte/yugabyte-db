@@ -54,6 +54,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUpgrade,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -116,6 +117,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
       when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ignored) {
     }
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {
@@ -125,6 +128,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(

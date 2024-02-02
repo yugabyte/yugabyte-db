@@ -52,10 +52,9 @@ export const getNextPage = (restoreContext: RestoreContext): RestoreContext => {
 
 };
 
-const currentPageIsGeneralSettings = (restoreContext: RestoreContext): RestoreContext => {
+export const currentPageIsGeneralSettings = (restoreContext: RestoreContext): RestoreContext => {
 
     const { formData: { generalSettings } } = restoreContext;
-
     if (generalSettings?.renameKeyspace) {
         return {
             ...restoreContext,

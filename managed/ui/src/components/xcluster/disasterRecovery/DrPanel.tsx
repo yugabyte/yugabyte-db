@@ -43,6 +43,7 @@ import { DrBannerSection } from './DrBannerSection';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
+import { EditConfigModal } from './editConfig/EditConfigModal';
 
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
@@ -113,6 +114,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const [isFailoverModalOpen, setIsFailoverModalOpen] = useState<boolean>(false);
   const [isCreateConfigModalOpen, setIsCreateConfigModalOpen] = useState<boolean>(false);
   const [isDeleteConfigModalOpen, setIsDeleteConfigModalOpen] = useState<boolean>(false);
+  const [isEditConfigModalOpen, setIsEditConfigModalOpen] = useState<boolean>(false);
   const [isEditConfigTargetModalOpen, setIsEditTargetConfigModalOpen] = useState<boolean>(false);
   const [isEditTablesModalOpen, setIsEditTablesModalOpen] = useState<boolean>(false);
   const [isRepairConfigModalOpen, setIsRepairConfigModalOpen] = useState<boolean>(false);
@@ -265,6 +267,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const closeDeleteConfigModal = () => setIsDeleteConfigModalOpen(false);
   const openEditTablesModal = () => setIsEditTablesModalOpen(true);
   const closeEditTablesModal = () => setIsEditTablesModalOpen(false);
+  const openEditConfigModal = () => setIsEditConfigModalOpen(true);
+  const closeEditConfigModal = () => setIsEditConfigModalOpen(false);
   const openEditTargetConfigModal = () => setIsEditTargetConfigModalOpen(true);
   const closeEditTargetConfigModal = () => setIsEditTargetConfigModalOpen(false);
   const openRepairConfigModal = () => setIsRepairConfigModalOpen(true);
@@ -339,6 +343,22 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.editTables')}
                           preLabelElement={<i className="fa fa-table" />}
+                        />
+                      </MenuItem>
+                    </RbacValidator>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_EDIT}
+                      overrideStyle={{ display: 'block' }}
+                      isControl
+                    >
+                      <MenuItem
+                        eventKey={DrConfigActions.EDIT}
+                        onSelect={openEditConfigModal}
+                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT)}
+                      >
+                        <YBMenuItemLabel
+                          label={t('actionButton.actionMenu.editDrConfig')}
+                          preLabelElement={<i className="fa fa-gear" />}
                         />
                       </MenuItem>
                     </RbacValidator>
@@ -512,6 +532,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
           />
         )}
+        {isEditConfigModalOpen && (
+          <EditConfigModal
+            drConfig={drConfig}
+            modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
+          />
+        )}
         {isEditConfigTargetModalOpen && (
           <EditConfigTargetModal
             drConfig={drConfig}
@@ -523,6 +549,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
+            storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
             modalProps={{ open: isEditTablesModalOpen, onClose: closeEditTablesModal }}
           />
         )}
@@ -535,7 +562,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isRestartConfigModalOpen && (
           <RestartConfigModal
             isDrInterface={true}
-            drConfigUuid={drConfig.uuid}
+            drConfig={drConfig}
             configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}

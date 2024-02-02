@@ -133,6 +133,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromParts("1.1.1.1", 1234));
       setMockLiveTabletServers();
     } catch (Exception e) {
       fail();
@@ -144,6 +146,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
         mockClient, ImmutableList.of("10.0.0.4", "10.0.0.6"), Collections.emptyList());
 
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -159,6 +162,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -172,6 +176,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -183,6 +188,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -214,6 +220,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
@@ -249,6 +256,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -270,6 +278,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),

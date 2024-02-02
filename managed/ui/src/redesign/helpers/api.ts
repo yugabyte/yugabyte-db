@@ -193,16 +193,17 @@ export interface CreateDrConfigRequest {
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
 }
 
-export interface ReplaceDrReplicaRequest {
-  primaryUniverseUuid: string; // The current primary universe.
-  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
+export interface EditDrConfigRequest {
   bootstrapParams: {
-    backupRequestParams?: {
+    backupRequestParams: {
       storageConfigUUID: string;
     };
   };
+}
+
+export interface ReplaceDrReplicaRequest {
+  primaryUniverseUuid: string; // The current primary universe.
+  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
 }
 
 export interface DrSwitchoverRequest {
@@ -222,24 +223,10 @@ export interface DrFailoverRequest {
 
 export interface RestartDrConfigRequest {
   dbs: string[]; // Database uuids (from the source universe) to be restarted.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams?: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 class ApiService {
@@ -427,6 +414,14 @@ class ApiService {
     } else {
       return Promise.reject('Failed to fetch DR config. No DR config UUID provided.');
     }
+  };
+
+  editDrConfig = (
+    drConfigUuid: string,
+    editDrConfigRequest: EditDrConfigRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/edit`;
+    return axios.post<YBPTask>(requestUrl, editDrConfigRequest).then((response) => response.data);
   };
 
   deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {

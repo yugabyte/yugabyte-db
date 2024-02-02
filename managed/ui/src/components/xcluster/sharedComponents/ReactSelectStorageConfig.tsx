@@ -36,7 +36,6 @@ export interface StorageConfigOption {
   label: string;
   value: {
     name: string;
-    regions: any[];
     uuid: string;
   };
 }
@@ -78,8 +77,7 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
     return {
       value: {
         uuid: storageConfig.configUUID,
-        name: storageConfig.name,
-        regions: storageConfig.data?.REGION_LOCATIONS
+        name: storageConfig.name
       },
       label: storageConfig.configName
     };
@@ -103,7 +101,11 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
         <Typography variant="body2">
           <Trans
             i18nKey={`${TRANSLATION_KEY_PREFIX}.createBackupStorageConfigPrompt`}
-            components={{ createStorageConfigLink: <Link to={'/config/backup'} /> }}
+            components={{
+              createStorageConfigLink: (
+                <Link to={'/config/backup'} target="_blank" rel="noopener noreferrer" />
+              )
+            }}
           />
         </Typography>
       )}

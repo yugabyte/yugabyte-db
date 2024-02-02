@@ -213,7 +213,7 @@ export const KubernetesProviderLabel = {
 export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.MANAGED_SERVICE]: 'Managed Kubernetes Service',
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
-  [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
+  [KubernetesProviderType.TANZU]: 'VMware Tanzu'
 } as const;
 
 export const RegionOperationLabel = {

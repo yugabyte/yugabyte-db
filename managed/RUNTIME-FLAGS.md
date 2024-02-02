@@ -206,3 +206,5 @@
 | "Parallelism for Node Agent Reinstallation" | "yb.node_agent.reinstall_parallelism" | "UNIVERSE" | "Number of parallel node agent reinstallations at a time" | "Integer" |
 | "To perform sync of user-groups between the Universe DB nodes and LDAP Server" | "yb.security.ldap.ldap_universe_sync" | "UNIVERSE" | "If configured, this feature allows users to synchronise user groups configured on the upstream LDAP Server with user roles in YBDB nodes associated with the universe." | "Boolean" |
 | "Wait time for xcluster/DR replication setup and edit RPCs." | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
+| "Leaderless tablets check enabled" | "yb.checks.leaderless_tablets.enabled" | "UNIVERSE" | " Whether to run CheckLeaderlessTablets subtask before running universe tasks" | "Boolean" |
+| "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |

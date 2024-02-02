@@ -6,13 +6,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.Getter;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 @Getter
 public class MetricResponse {
   private Status status;
+  private String error;
   private Data data;
 
   @Getter
@@ -31,7 +31,7 @@ public class MetricResponse {
     }
 
     public List<Pair<Double, Double>> getValues() {
-      if (CollectionUtils.isEmpty(values)) {
+      if (values == null) {
         return null;
       }
       return values.stream()
@@ -41,10 +41,12 @@ public class MetricResponse {
     }
 
     private Pair<Double, Double> getValue(List<Object> value) {
-      if (CollectionUtils.isEmpty(value)) {
+      if (value == null) {
         return null;
       }
-      return new ImmutablePair<>((Double) value.get(0), Double.valueOf((String) value.get(1)));
+      return new ImmutablePair<>(
+          Double.parseDouble(String.valueOf(value.get(0))),
+          Double.parseDouble((String) value.get(1)));
     }
   }
 

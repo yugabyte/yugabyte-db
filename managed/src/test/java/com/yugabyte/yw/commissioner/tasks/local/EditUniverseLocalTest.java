@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -408,6 +410,45 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String error = getAllErrorsStr(taskInfo);
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
+  }
+
+  @Test
+  public void testLeaderlessTabletsBeforeEdit() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 3;
+    userIntent.replicationFactor = 3;
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    log.debug("Universe {}", Json.toJson(universe.getUniverseDetails()));
+    universe.getNodes().stream()
+        .limit(2)
+        .forEach(
+            n -> {
+              try {
+                localNodeManager.killProcess(n.getNodeName(), UniverseTaskBase.ServerType.TSERVER);
+              } catch (Exception e) {
+                throw new RuntimeException("Failed to kill process", e);
+              }
+            });
+    Thread.sleep(TimeUnit.SECONDS.toMillis(65));
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.numNodes += 1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(error, containsString("There are leaderless tablets"));
   }
 
   private NodeDetails silentlyRemoveNode(Universe universe, boolean isMaster, boolean isTserver) {

@@ -408,13 +408,10 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id,
-                     bool colocated,
-                     scoped_refptr<TasksTracker> tasks_tracker)
-    : table_id_(std::move(table_id)),
-      tasks_tracker_(tasks_tracker),
-      colocated_(colocated) {
-}
+TableInfo::TableInfo(TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)),
+      table_id_(std::move(table_id)),
+      colocated_(colocated) {}
 
 TableInfo::~TableInfo() {
 }
@@ -832,128 +829,9 @@ Status TableInfo::GetCreateTableErrorStatus() const {
 }
 
 std::size_t TableInfo::NumLBTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return std::count_if(pending_tasks_.begin(),
-                       pending_tasks_.end(),
-                       [](auto task) { return task->started_by_lb(); });
-}
-
-std::size_t TableInfo::NumTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_.size();
-}
-
-bool TableInfo::HasTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(pending_tasks_);
-  return !pending_tasks_.empty();
-}
-
-bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  for (auto task : pending_tasks_) {
-    if (task->type() == type) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void TableInfo::AddTask(std::shared_ptr<server::MonitoredTask> task) {
-  bool abort_task = false;
-  {
-    std::lock_guard l(lock_);
-    if (!closing_) {
-      pending_tasks_.insert(task);
-      if (tasks_tracker_) {
-        tasks_tracker_->AddTask(task);
-      }
-    } else {
-      abort_task = true;
-    }
-  }
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
-  }
-}
-
-bool TableInfo::RemoveTask(const std::shared_ptr<server::MonitoredTask>& task) {
-  bool result;
-  {
-    std::lock_guard l(lock_);
-    pending_tasks_.erase(task);
-    result = pending_tasks_.empty();
-  }
-  VLOG(1) << "Removed task " << task.get() << " " << task->description();
-  return result;
-}
-
-// Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
-// from the pending list.
-void TableInfo::AbortTasks() {
-  AbortTasksAndCloseIfRequested( /* close */ false);
-}
-
-void TableInfo::AbortTasksAndClose() {
-  AbortTasksAndCloseIfRequested( /* close */ true);
-}
-
-void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
-  std::vector<std::shared_ptr<server::MonitoredTask>> abort_tasks;
-  {
-    std::lock_guard l(lock_);
-    if (close) {
-      closing_ = true;
-    }
-    abort_tasks.reserve(pending_tasks_.size());
-    abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-  }
-  if (abort_tasks.empty()) {
-    return;
-  }
-  auto status = close ? STATUS(Expired, "Table closing") : STATUS(Aborted, "Table closing");
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  for (const auto& task : abort_tasks) {
-    VLOG_WITH_FUNC(1)
-        << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
-        << task->description();
-    task->AbortAndReturnPrevState(status);
-  }
-}
-
-void TableInfo::WaitTasksCompletion() {
-  const int kMaxWaitMs = 30000;
-  int wait_time_ms = 5;
-  while (1) {
-    std::vector<std::shared_ptr<server::MonitoredTask>> waiting_on_for_debug;
-    bool at_max_wait = wait_time_ms >= kMaxWaitMs;
-    {
-      SharedLock<decltype(lock_)> l(lock_);
-      if (pending_tasks_.empty()) {
-        break;
-      } else if (VLOG_IS_ON(1) || at_max_wait) {
-        waiting_on_for_debug.reserve(pending_tasks_.size());
-        waiting_on_for_debug.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-      }
-    }
-    for (const auto& task : waiting_on_for_debug) {
-      if (at_max_wait) {
-        LOG(WARNING) << "Long wait for aborting task " << task.get() << " " << task->description();
-      } else {
-        VLOG(1) << "Waiting for aborting task " << task.get() << " " << task->description();
-      }
-    }
-    base::SleepForMilliseconds(wait_time_ms);
-    wait_time_ms = std::min(wait_time_ms * 5 / 4, kMaxWaitMs);
-  }
-}
-
-std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_;
+  const auto tasks = GetTasks();
+  return std::count_if(
+      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumPartitions() const {

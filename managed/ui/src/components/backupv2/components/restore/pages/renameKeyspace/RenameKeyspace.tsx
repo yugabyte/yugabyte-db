@@ -170,7 +170,6 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
     },
     resolver: yupResolver(
       getValidationSchema(restoreContext[0], keyspacesAvailableInTargetUniverse, t),
-      { context: {} }
     )
   });
 

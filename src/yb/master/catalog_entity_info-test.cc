@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -116,6 +117,138 @@ TEST_F(CatalogEntityInfoTest, TestTabletInfoCommit) {
     ASSERT_EQ(SysTabletsEntryPB::RUNNING,
               read_lock->pb.state());
   }
+}
+
+class MockMonitoredTask : public server::MonitoredTask {
+ public:
+  explicit MockMonitoredTask(server::MonitoredTaskType type) : type_(type) {}
+  virtual ~MockMonitoredTask() {}
+
+  // Abort this task and return its value before it was successfully aborted. If the task entered
+  // a different terminal state before we were able to abort it, return that state.
+  server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override {
+    auto prev_state = state_.load();
+    state_ = server::MonitoredTaskState::kAborted;
+    return prev_state;
+  }
+  server::MonitoredTaskType type() const override { return type_; }
+  std::string type_name() const override { return "dummy"; }
+  std::string description() const override { return "dummy"; }
+
+  server::MonitoredTaskState State() const { return state_.load(); }
+
+  const server::MonitoredTaskType type_;
+};
+
+TEST_F(CatalogEntityInfoTest, TestTasks) {
+  scoped_refptr<TasksTracker> tasks_tracker(new TasksTracker);
+  CatalogEntityWithTasks entity(tasks_tracker);
+
+  ASSERT_EQ(entity.NumTasks(), 0);
+
+  const auto type1 = server::MonitoredTaskType::kAddServer;
+  const auto type2 = server::MonitoredTaskType::kAddTableToTablet;
+
+  auto task1 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type1));
+
+  entity.AddTask(task1);
+  ASSERT_TRUE(entity.HasTasks());
+  ASSERT_EQ(entity.NumTasks(), 1);
+  ASSERT_EQ(entity.HasTasks(type1), 1);
+  ASSERT_FALSE(entity.HasTasks(type2));
+  ASSERT_EQ(tasks_tracker->GetTasks().size(), 1);
+  ASSERT_TRUE(entity.GetTasks().contains(task1));
+
+  // Add more tasks.
+  auto task2 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type2));
+  auto task3 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type1));
+  entity.AddTask(task2);
+  entity.AddTask(task3);
+  ASSERT_TRUE(entity.HasTasks());
+  ASSERT_EQ(entity.NumTasks(), 3);
+  ASSERT_TRUE(entity.HasTasks(type1));
+  ASSERT_TRUE(entity.HasTasks(type2));
+  ASSERT_EQ(tasks_tracker->GetTasks().size(), 3);
+  ASSERT_TRUE(entity.GetTasks().contains(task1));
+  ASSERT_TRUE(entity.GetTasks().contains(task2));
+  ASSERT_TRUE(entity.GetTasks().contains(task3));
+
+  // Remove 1 task.
+  ASSERT_FALSE(entity.RemoveTask(task1));
+  // Remove is idempotent.
+  ASSERT_FALSE(entity.RemoveTask(task1));
+  ASSERT_TRUE(entity.HasTasks());
+  ASSERT_EQ(entity.NumTasks(), 2);
+  ASSERT_TRUE(entity.HasTasks(type1));
+  ASSERT_TRUE(entity.HasTasks(type2));
+  ASSERT_FALSE(entity.GetTasks().contains(task1));
+  ASSERT_TRUE(entity.GetTasks().contains(task2));
+  ASSERT_TRUE(entity.GetTasks().contains(task3));
+
+  // Abort all tasks but dont close.
+  entity.AbortTasks();
+  ASSERT_EQ(entity.NumTasks(), 2);
+  ASSERT_EQ(task2->state(), server::MonitoredTaskState::kAborted);
+  ASSERT_EQ(task3->state(), server::MonitoredTaskState::kAborted);
+  // Removed task should not get affected.
+  ASSERT_EQ(task1->state(), server::MonitoredTaskState::kWaiting);
+
+  const auto kDelay = MonoDelta::FromSeconds(2);
+  {
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&kDelay, &entity, &task2, &task3]() {
+      entity.RemoveTask(task2);
+      SleepFor(kDelay * 2);
+      entity.RemoveTask(task3);
+    });
+
+    auto start = MonoTime::Now();
+    // We should have waited for atleast kDelay before completion.
+    entity.WaitTasksCompletion();
+    auto elapsed = MonoTime::Now() - start;
+    ASSERT_GT(elapsed, kDelay);
+    ASSERT_EQ(entity.NumTasks(), 0);
+    ASSERT_FALSE(entity.HasTasks());
+
+    thread_holder.JoinAll();
+  }
+
+  // Enqueue more tasks.
+  auto task4 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type1));
+  auto task5 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type2));
+  entity.AddTask(task4);
+  entity.AddTask(task5);
+  ASSERT_EQ(entity.NumTasks(), 2);
+
+  // Abort all tasks and close.
+  entity.AbortTasksAndClose();
+  ASSERT_EQ(task4->state(), server::MonitoredTaskState::kAborted);
+  ASSERT_EQ(task5->state(), server::MonitoredTaskState::kAborted);
+
+  {
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&kDelay, &entity, &task4, &task5]() {
+      SleepFor(kDelay * 2);
+      entity.RemoveTask(task4);
+      entity.RemoveTask(task5);
+    });
+
+    auto start = MonoTime::Now();
+    // We should have waited for atleast kDelay before completion.
+    entity.WaitTasksCompletion();
+    auto elapsed = MonoTime::Now() - start;
+    ASSERT_GT(elapsed, kDelay);
+
+    thread_holder.JoinAll();
+  }
+
+  // We should no longer be able to add tasks.
+  auto task6 = std::shared_ptr<server::MonitoredTask>(new MockMonitoredTask(type1));
+  entity.AddTask(task6);
+  ASSERT_FALSE(entity.HasTasks());
+  ASSERT_EQ(task6->state(), server::MonitoredTaskState::kAborted);
+  entity.WaitTasksCompletion();
+  ASSERT_EQ(tasks_tracker->GetTasks().size(), 5);
 }
 
 } // namespace master

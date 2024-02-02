@@ -1088,6 +1088,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
     },
+    DR_CONFIG_EDIT: {
+        requestType: ApiRequestType.POST,
+        endpoint: 'dr_configs/$drUUID<[^/]+>/edit'
+    },
     DR_CONFIG_REPLACE_REPLICA: {
         requestType: ApiRequestType.POST,
         endpoint: '/dr_configs/$drUUID<[^/]+>/replace_replica'

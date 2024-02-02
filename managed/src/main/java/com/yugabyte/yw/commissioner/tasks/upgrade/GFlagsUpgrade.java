@@ -171,9 +171,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       }
       filteredClusterNodes.put(curCluster.uuid, new Pair<>(masterNodes, tServerNodes));
     }
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   @Override

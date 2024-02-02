@@ -4,6 +4,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -24,7 +25,6 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,6 +45,7 @@ public class SupportBundleReconciler
   private final TaskExecutor taskExecutor;
 
   private final SupportBundleUtil supportBundleUtil;
+  private final OperatorUtils operatorUtils;
 
   public SupportBundleReconciler(
       SharedIndexInformer<io.yugabyte.operator.v1alpha1.SupportBundle> informer,
@@ -56,7 +57,8 @@ public class SupportBundleReconciler
       String namespace,
       Commissioner commissioner,
       TaskExecutor taskExecutor,
-      SupportBundleUtil sbu) {
+      SupportBundleUtil sbu,
+      OperatorUtils operatorUtils) {
     this.resourceClient = resourceClient;
     this.informer = informer;
     this.lister = new Lister<>(informer.getIndexer());
@@ -64,6 +66,7 @@ public class SupportBundleReconciler
     this.commissioner = commissioner;
     this.taskExecutor = taskExecutor;
     this.supportBundleUtil = sbu;
+    this.operatorUtils = operatorUtils;
   }
 
   @Override
@@ -82,9 +85,13 @@ public class SupportBundleReconciler
     }
 
     log.trace("getting customer to create the support bundle");
-    List<Customer> custList = Customer.getAll();
-    Customer customer = custList.get(0);
-
+    Customer customer;
+    try {
+      customer = operatorUtils.getOperatorCustomer();
+    } catch (Exception e) {
+      log.error("failed to get customer", e);
+      return;
+    }
     // Format start and end dates.
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
     SupportBundleFormData bundleData = new SupportBundleFormData();

@@ -13,10 +13,12 @@ import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { DrConfig } from '../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+import { useSelector } from 'react-redux';
 
 interface InitiateFailoverrModalProps {
   drConfig: DrConfig;
@@ -81,6 +83,16 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const currentSafetimesQuery = useQuery(drConfigQueryKey.safetimes(drConfig.uuid), () =>
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find(
+      (storageConfig) =>
+        storageConfig.configUUID === drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+    )?.configName ?? '';
 
   const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
@@ -240,6 +252,21 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
             <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
           </div>
         </div>
+        {storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )}
       </div>
       <Box marginTop={2}>
         <Typography variant="body2">

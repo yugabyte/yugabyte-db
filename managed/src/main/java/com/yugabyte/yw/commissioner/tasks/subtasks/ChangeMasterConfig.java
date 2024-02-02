@@ -38,13 +38,13 @@ public class ChangeMasterConfig extends UniverseTaskBase {
   private static final int WAIT_FOR_CHANGE_COMPLETED_MAX_ERRORS = 5;
 
   private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
-  private final YbClientConfigFactory ybcClientConfigFactory;
+  private final YbClientConfigFactory ybClientConfigFactory;
 
   @Inject
   protected ChangeMasterConfig(
-      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybcConfigFactory) {
+      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybConfigFactory) {
     super(baseTaskDependencies);
-    this.ybcClientConfigFactory = ybcConfigFactory;
+    this.ybClientConfigFactory = ybConfigFactory;
   }
 
   // Create an enum specifying the operation type.
@@ -125,7 +125,7 @@ public class ChangeMasterConfig extends UniverseTaskBase {
             ? node.cloudInfo.secondary_private_ip
             : node.cloudInfo.private_ip;
     String certificate = universe.getCertificateNodetoNode();
-    YbClientConfig config = ybcClientConfigFactory.create(masterAddresses, certificate);
+    YbClientConfig config = ybClientConfigFactory.create(masterAddresses, certificate);
     // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
     // for a long time until it gives up if the node is already added or removed.
     // This optional check ensures that changeMasterConfig is not invoked if the operation is

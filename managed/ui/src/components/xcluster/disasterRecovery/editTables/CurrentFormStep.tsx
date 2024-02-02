@@ -10,7 +10,10 @@ import { FormStep } from './EditTablesModal';
 interface CurrentFormStepProps {
   currentFormStep: FormStep;
   isFormDisabled: boolean;
+  isDrInterface: boolean;
   tableSelectProps: TableSelectProps;
+
+  storageConfigUuid?: string;
 }
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editTablesModal';
@@ -33,7 +36,9 @@ const useStyles = makeStyles((theme) => ({
 export const CurrentFormStep = ({
   currentFormStep,
   isFormDisabled,
-  tableSelectProps
+  tableSelectProps,
+  isDrInterface,
+  storageConfigUuid
 }: CurrentFormStepProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
@@ -57,7 +62,13 @@ export const CurrentFormStep = ({
         </>
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
+      return (
+        <ConfigureBootstrapStep
+          isDrInterface={isDrInterface}
+          isFormDisabled={isFormDisabled}
+          storageConfigUuid={storageConfigUuid}
+        />
+      );
     default:
       return assertUnreachableCase(currentFormStep);
   }

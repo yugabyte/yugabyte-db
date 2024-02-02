@@ -286,6 +286,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         YBUniverseStatus ybUniverseStatus = getOrCreateUniverseStatus(ybUniverse);
         ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
         ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
+        ybUniverseStatus.setResourceUUID(u.getUniverseUUID().toString());
         ybUniverse.setStatus(ybUniverseStatus);
       }
       // Update the universe CR status.
@@ -549,7 +550,9 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   private YBUniverseStatus getOrCreateUniverseStatus(YBUniverse universe) {
     YBUniverseStatus status = universe.getStatus();
     if (status == null) {
-      log.debug("Creating new universe status for %s", universe.getMetadata().getName());
+      log.debug(
+          "Creating new universe status for %s, namespace %s",
+          universe.getMetadata().getName(), universe.getMetadata().getNamespace());
       status = new YBUniverseStatus();
     }
     return status;

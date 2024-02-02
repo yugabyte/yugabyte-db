@@ -30,7 +30,7 @@ fi
 rm -rf tmp
 popd
 
-# Call python script which takes the above generated openapi.yml file
+# Call python script which takes the above generated openapi.yaml file
 # and extracts specific APIs for Public
 ../devops/bin/run_in_virtualenv.sh pip install PyYAML==6.0.1
 ../devops/bin/run_in_virtualenv.sh python3 ./openapi_generate_public.py

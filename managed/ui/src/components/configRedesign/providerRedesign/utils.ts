@@ -55,7 +55,7 @@ export const getYBAHost = (hostInfo: HostInfo) => {
   if (!(typeof hostInfo.aws === 'string' || hostInfo.aws instanceof String)) {
     return YBAHost.AWS;
   }
-  if(!(typeof hostInfo.azu === 'string' || hostInfo.azu instanceof String)){
+  if (!(typeof hostInfo.azu === 'string' || hostInfo.azu instanceof String)) {
     return YBAHost.AZU;
   }
   return YBAHost.SELF_HOSTED;
@@ -64,7 +64,7 @@ export const getYBAHost = (hostInfo: HostInfo) => {
 export const getInfraProviderTab = (providerConfig: YBProvider) => {
   // Kubernetes providers are handled as a special case here because the UI
   // exposes 3 tabs for kubernetes providers.
-  // - VMWare Tanzu
+  // - VMware Tanzu
   // - Red Hat OpenShift
   // - Managed Kubernetes
   // Moreover, the deprecated kubernetes provider types are not given their own

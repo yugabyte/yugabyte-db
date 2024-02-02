@@ -147,17 +147,32 @@ class ReleaseUtil:
         - Replace $BUILD_ROOT with the actual build_root.
         - Replace $ARCH with the machine's arch (x86_64/aarch64)
         """
+        # Filter out lines that are platform specific
+        if old_value.startswith('Linux-only:') or old_value.startswith('Darwin-only:'):
+            if old_value.startswith('{}-only'.format(platform.system())):
+                new_value = old_value.split(':', maxsplit=1)[1]
+            else:
+                return ''
+        else:
+            new_value = old_value
         # Substitution for Java.
-        new_value = old_value.replace('${project.version}', self.java_project_version)
+        new_value = new_value.replace('${project.version}', self.java_project_version)
         # Substitution for thirdparty.
         thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
         if thirdparty_prefix_match:
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
         # Substitution for ARCH.
-        new_value = new_value.replace("$ARCH", platform.machine())
+        new_value = new_value.replace("${ARCH}", platform.machine())
         # Substitution for YBCOS.  This doesn't map cleanly yet.
-        new_value = new_value.replace("$YBOS",
-                                      {"aarch64": "el8", "x86_64": "linux"}[platform.machine()])
+        # we don't provide Mac native binaries for YBC yet, so just include the linux package
+        # of the appropriate arch.
+        new_value = new_value.replace("${YBCOS}",
+                                      {"aarch64-Linux": "el8",
+                                       "x86_64-Linux": "linux",
+                                       "arm64-Darwin": "el8",
+                                       "x86_64-Darwin": "linux"
+                                       }['-'.join([platform.machine(), platform.system()])]
+                                      )
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
         thirdparty_intrumentation = "uninstrumented"

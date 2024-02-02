@@ -1001,7 +1001,7 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   return disk_size_html.str();
 }
 
-void MasterPathHandlers::HandleCatalogManager(
+void MasterPathHandlers::HandleAllTables(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_tables) {
   std::stringstream* output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -1196,7 +1196,7 @@ void MasterPathHandlers::HandleCatalogManager(
   }
 }
 
-void MasterPathHandlers::HandleCatalogManagerJSON(
+void MasterPathHandlers::HandleAllTablesJSON(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -3208,135 +3208,109 @@ void MasterPathHandlers::HandleLoadBalancer(
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
-  bool is_styled = true;
-  bool is_on_nav_bar = true;
+  const bool is_styled = true;
+  const bool is_on_nav_bar = true;
 
   // The set of handlers visible on the nav bar.
-  server->RegisterPathHandler(
-    "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
-    is_on_nav_bar, "fa fa-home");
-  Webserver::PathHandlerCallback cb =
-      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
-                TServersViewType::kTServersDefaultView);
-  server->RegisterPathHandler(
-      "/tablet-servers", "Tablet Servers",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
-                 TServersViewType::kTServersClocksView);
-  server->RegisterPathHandler(
-      "/tablet-server-clocks", "Tablet Server Clocks",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false /* is_on_nav_bar */);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-      this, _1, _2, false /* only_user_tables */);
-  server->RegisterPathHandler(
-      "/tables", "Tables",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-table");
-  cb = std::bind(&MasterPathHandlers::HandleNamespacesHTML,
-      this, _1, _2, false /* only_user_namespaces */);
-  server->RegisterPathHandler(
-      "/namespaces", "Namespaces",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-table");
+  RegisterPathHandler(
+      server, "/", "Home", &MasterPathHandlers::RootHandler, is_styled, is_on_nav_bar,
+      "fa fa-home");
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tablet-servers", "Tablet Servers", is_styled, is_on_nav_bar, "fa fa-server",
+      &MasterPathHandlers::HandleTabletServers, TServersViewType::kTServersDefaultView);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tablet-server-clocks", "Tablet Server Clocks", is_styled, /*is_on_nav_bar=*/false,
+      /*icon=*/"", &MasterPathHandlers::HandleTabletServers, TServersViewType::kTServersClocksView);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tables", "Tables", is_styled, is_on_nav_bar, "fa fa-table",
+      &MasterPathHandlers::HandleAllTables, /*only_user_tables=*/false);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/namespaces", "Namespaces", is_styled, is_on_nav_bar, "fa fa-table",
+      &MasterPathHandlers::HandleNamespacesHTML, /*only_user_namespaces=*/false);
 
   // The set of handlers not currently visible on the nav bar.
-  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
-      is_styled, false);
-  server->RegisterPathHandler(
-      "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
-  server->RegisterPathHandler(
-      "/cluster-config", "Cluster Config",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfigJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/cluster-config", "Cluster Config JSON",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfig, this, _1, _2);
-  server->RegisterPathHandler(
-      "/xcluster-config", "XCluster Config",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleXCluster, this, _1, _2);
-  server->RegisterPathHandler(
-      "/xcluster", "XCluster",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/tasks", "Tasks",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/tablet-replication", "Tablet Replication Health",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandlePrettyLB, this, _1, _2);
-  server->RegisterPathHandler(
-      "/pretty-lb", "Load balancer Pretty Picture",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleLoadBalancer, this, _1, _2);
-  server->RegisterPathHandler(
-      "/load-distribution", "Load balancer View",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfigJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/xcluster-config", "XCluster Config JSON",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  RegisterLeaderOrRedirect(
+      server, "/table", /*alias=*/"", &MasterPathHandlers::HandleTablePage, is_styled);
+
+  RegisterPathHandler(server, "/masters", "Masters", &MasterPathHandlers::HandleMasters, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/cluster-config", "Cluster Config", &MasterPathHandlers::HandleGetClusterConfig,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/xcluster-config", "XCluster Config", &MasterPathHandlers::HandleGetXClusterConfig,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/xcluster", "XCluster", &MasterPathHandlers::HandleXCluster, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/tasks", "Tasks", &MasterPathHandlers::HandleTasksPage, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/tablet-replication", "Tablet Replication Health",
+      &MasterPathHandlers::HandleTabletReplicasPage, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/pretty-lb", "Load balancer Pretty Picture", &MasterPathHandlers::HandlePrettyLB,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
+      is_styled);
 
   // JSON Endpoints
-  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tablet-servers", "Tserver Statuses",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/health-check", "Cluster Health Check",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleGetReplicationStatus, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tablet-replication", "Tablet Replication Health",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleGetUnderReplicationStatus, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
-  server->RegisterPathHandler(
-      "/dump-entities", "Dump Entities",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleNamespacesJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/namespaces", "Namespaces",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/is-leader", "Leader Check",
-      std::bind(&MasterPathHandlers::HandleCheckIfLeader, this, _1, _2), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/masters", "Master Statuses",
-      std::bind(&MasterPathHandlers::HandleGetMastersStatus, this, _1, _2), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/version", "YB Version Information",
-      std::bind(&MasterPathHandlers::HandleVersionInfoDump, this, _1, _2), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleTablePageJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/table", "Table Info",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManagerJSON,
-      this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tables", "Tables",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-servers", "Tserver Statuses",
+      &MasterPathHandlers::HandleGetTserverStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/health-check", "Cluster Health Check",
+      &MasterPathHandlers::HandleHealthCheck);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-replication", "Tablet Replication Health",
+      &MasterPathHandlers::HandleGetReplicationStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
+      &MasterPathHandlers::HandleGetUnderReplicationStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/dump-entities", "Dump Entities", &MasterPathHandlers::HandleDumpEntities);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/namespaces", "Namespaces", &MasterPathHandlers::HandleNamespacesJSON);
+
+  RegisterPathHandler(
+      server, "/api/v1/is-leader", "Leader Check", &MasterPathHandlers::HandleCheckIfLeader);
+
+  RegisterPathHandler(
+      server, "/api/v1/masters", "Master Statuses", &MasterPathHandlers::HandleGetMastersStatus);
+
+  RegisterPathHandler(
+      server, "/api/v1/version", "YB Version Information",
+      &MasterPathHandlers::HandleVersionInfoDump);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/table", "Table Info", &MasterPathHandlers::HandleTablePageJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tables", "Tables", &MasterPathHandlers::HandleAllTablesJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/cluster-config", "Cluster Config JSON",
+      &MasterPathHandlers::HandleGetClusterConfigJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/xcluster-config", "XCluster Config JSON",
+      &MasterPathHandlers::HandleGetXClusterConfigJSON);
+
   return Status::OK();
 }
 

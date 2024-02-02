@@ -11,12 +11,14 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -2622,18 +2624,44 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Add basic precheck tasks: 1) Check that cluster composition matches the expected one 2) Check
+   * that there are no leaderless tablets
+   */
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      checkLeaderlessTablets();
+      verifyClustersConsistency();
+    }
+  }
+
+  /**
    * Verify that current cluster composition matches the expected one. (Check that we don't have
    * unexpected masters or tservers)
    */
   protected void verifyClustersConsistency() {
     if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.verifyClusterStateBeforeTask)) {
       TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("PrecheckCluster");
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
       CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
       task.initialize(params);
       // Add it to the task list.
       subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  protected void checkLeaderlessTablets() {
+    if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.leaderlessTabletsCheckEnabled)) {
+      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLeaderlessTables");
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      ServerSubTaskParams params = new ServerSubTaskParams();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+
+      CheckLeaderlessTablets checkLeaderlessTablets = createTask(CheckLeaderlessTablets.class);
+      checkLeaderlessTablets.initialize(params);
+      subTaskGroup.addSubTask(checkLeaderlessTablets);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
   }

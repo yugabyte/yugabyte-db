@@ -62,9 +62,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   @Override
