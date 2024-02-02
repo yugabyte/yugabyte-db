@@ -14,13 +14,13 @@ type: docs
 
 ## Deploy
 
-Following are the steps to deploy YugabyteDB Anywhere (YBA) and YugabyteDB on Nutanix AHV:
+The following steps describe how to deploy YugabyteDB Anywhere (YBA) and YugabyteDB using Nutanix AHV VMs:
 
 1. Choose an operating system from the [list of YBA supported operating systems](../../../yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/) for deploying YugabyteDB.
 
 1. [Create AHV VMs](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-vm-create-acropolis-pc-t.html) on Nutanix Prism with Network Interface Controller (NIC).
 
-1. [Create, add, and mount storage volume](https://portal.nutanix.com/page/documents/solutions/details?targetId=RA-2107-SAP-High-Availability-Using-Nutanix-Volumes:set-up-disks-using-nutanix-volumes-for-os-clustering.html) on the AHV VMs.
+1. [Create, add, and mount storage volumes](https://portal.nutanix.com/page/documents/solutions/details?targetId=RA-2107-SAP-High-Availability-Using-Nutanix-Volumes:set-up-disks-using-nutanix-volumes-for-os-clustering.html) on the AHV VMs.
 
 1. [Create and attach volume groups](https://portal.nutanix.com/page/documents/solutions/details?targetId=RA-2012-Informatica-PowerCenter-Grid:nutanix-volume-groups.html) to the AHV VMs.
 
