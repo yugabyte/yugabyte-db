@@ -207,16 +207,35 @@ CREATE DATABASE mydb WITH colocation = true;
 \c mydb;
 CREATE TABLE base (col int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
+CREATE UNIQUE INDEX mv_idx ON mv(col);
 SELECT * FROM mv;
 INSERT INTO base VALUES (1);
 REFRESH MATERIALIZED VIEW mv;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('mv'::regclass);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('mv_idx'::regclass);
 SELECT * FROM mv;
 INSERT INTO base VALUES (2);
-CREATE UNIQUE INDEX ON mv(col);
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
 DROP MATERIALIZED VIEW mv;
-SELECT * FROM mv;
+SELECT * FROM mv; -- should fail.
+CREATE MATERIALIZED VIEW mv WITH (COLOCATION=false) AS SELECT * FROM base;
+CREATE UNIQUE INDEX mv_idx ON mv(col);
+SELECT * FROM mv ORDER BY col;
+INSERT INTO base VALUES (3);
+REFRESH MATERIALIZED VIEW mv;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('mv'::regclass);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('mv_idx'::regclass);
+SELECT * FROM mv ORDER BY col;
+INSERT INTO base VALUES (4);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+SELECT * FROM mv ORDER BY col;
+DROP MATERIALIZED VIEW mv;
+SELECT * FROM mv; -- should fail.
 
 -- Tablegroup materialized view
 CREATE DATABASE testdb;
