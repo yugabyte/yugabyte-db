@@ -20,9 +20,6 @@
 #ifndef AG_GRAPHID_H
 #define AG_GRAPHID_H
 
-#include "postgres.h"
-
-#include "fmgr.h"
 #include "utils/fmgroids.h"
 #include "utils/syscache.h"
 
@@ -30,6 +27,7 @@
 #include "catalog/pg_type.h"
 
 typedef int64 graphid;
+
 #define F_GRAPHIDEQ F_INT8EQ
 
 #define LABEL_ID_MIN 1

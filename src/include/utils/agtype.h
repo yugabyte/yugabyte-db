@@ -31,16 +31,10 @@
 #ifndef AG_AGTYPE_H
 #define AG_AGTYPE_H
 
-#include "access/htup_details.h"
-#include "fmgr.h"
 #include "lib/stringinfo.h"
-#include "nodes/pg_list.h"
 #include "utils/array.h"
 #include "utils/numeric.h"
-#include "utils/syscache.h"
 
-#include "catalog/ag_namespace.h"
-#include "catalog/pg_type.h"
 #include "utils/graphid.h"
 
 /* Tokens used when sequentially processing an agtype value */

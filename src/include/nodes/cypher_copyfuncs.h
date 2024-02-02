@@ -20,10 +20,6 @@
 #ifndef AG_CYPHER_COPYFUNCS_H
 #define AG_CYPHER_COPYFUNCS_H
 
-#include "postgres.h"
-
-#include "nodes/nodes.h"
-
 /*
  * Functions that let AGE's ExtensibleNodes be compatible with
  * Postgres' copyObject. We assign each node to its copy function
@@ -31,22 +27,29 @@
  * macros in ag_nodes.c
  */
 
-void copy_ag_node(ExtensibleNode *newnode,
-                         const ExtensibleNode *oldnode);
+void copy_ag_node(ExtensibleNode *newnode, const ExtensibleNode *oldnode);
 
 // create data structures
-void copy_cypher_create_target_nodes(ExtensibleNode *newnode, const ExtensibleNode *from);
-void copy_cypher_create_path(ExtensibleNode *newnode, const ExtensibleNode *from);
-void copy_cypher_target_node(ExtensibleNode *newnode, const ExtensibleNode *from);
+void copy_cypher_create_target_nodes(ExtensibleNode *newnode,
+                                     const ExtensibleNode *from);
+void copy_cypher_create_path(ExtensibleNode *newnode,
+                             const ExtensibleNode *from);
+void copy_cypher_target_node(ExtensibleNode *newnode,
+                             const ExtensibleNode *from);
 
 // set/remove data structures
-void copy_cypher_update_information(ExtensibleNode *newnode, const ExtensibleNode *from);
-void copy_cypher_update_item(ExtensibleNode *newnode, const ExtensibleNode *from);
+void copy_cypher_update_information(ExtensibleNode *newnode,
+                                    const ExtensibleNode *from);
+void copy_cypher_update_item(ExtensibleNode *newnode,
+                             const ExtensibleNode *from);
 
 // delete data structures
-void copy_cypher_delete_information(ExtensibleNode *newnode, const ExtensibleNode *from);
-void copy_cypher_delete_item(ExtensibleNode *newnode, const ExtensibleNode *from);
+void copy_cypher_delete_information(ExtensibleNode *newnode,
+                                    const ExtensibleNode *from);
+void copy_cypher_delete_item(ExtensibleNode *newnode,
+                             const ExtensibleNode *from);
 
 // merge data structure
-void copy_cypher_merge_information(ExtensibleNode *newnode, const ExtensibleNode *from);
+void copy_cypher_merge_information(ExtensibleNode *newnode,
+                                   const ExtensibleNode *from);
 #endif

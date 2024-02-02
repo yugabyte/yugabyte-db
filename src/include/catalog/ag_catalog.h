@@ -23,7 +23,6 @@
 #include "postgres.h"
 
 #include "utils/agtype.h"
-#include "utils/graphid.h"
 
 void object_access_hook_init(void);
 void object_access_hook_fini(void);

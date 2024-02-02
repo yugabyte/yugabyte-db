@@ -20,10 +20,6 @@
 #ifndef AG_CYPHER_TRANSFORM_ENTITY_H
 #define AG_CYPHER_TRANSFORM_ENTITY_H
 
-#include "nodes/primnodes.h"
-#include "parser/parse_node.h"
-
-#include "nodes/cypher_nodes.h"
 #include "nodes/makefuncs.h"
 #include "parser/cypher_parse_node.h"
 

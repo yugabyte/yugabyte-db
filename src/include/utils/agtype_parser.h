@@ -32,8 +32,6 @@
 #ifndef AG_AGTYPE_PARSER_H
 #define AG_AGTYPE_PARSER_H
 
-#include "lib/stringinfo.h"
-
 typedef enum
 {
     AGTYPE_TOKEN_INVALID,

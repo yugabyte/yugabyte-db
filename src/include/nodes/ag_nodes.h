@@ -20,10 +20,7 @@
 #ifndef AG_AG_NODES_H
 #define AG_AG_NODES_H
 
-#include "postgres.h"
-
 #include "nodes/extensible.h"
-#include "nodes/nodes.h"
 
 // This list must match node_names and node_methods.
 typedef enum ag_node_tag

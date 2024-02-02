@@ -20,8 +20,6 @@
 #ifndef AG_AG_GRAPH_H
 #define AG_AG_GRAPH_H
 
-#include "postgres.h"
-
 #include "catalog/ag_catalog.h"
 
 #define Anum_ag_graph_oid 1

@@ -20,9 +20,6 @@
 #ifndef AG_CYPHER_PARSE_NODE_H
 #define AG_CYPHER_PARSE_NODE_H
 
-#include "nodes/primnodes.h"
-#include "parser/parse_node.h"
-
 #include "nodes/cypher_nodes.h"
 
 /*

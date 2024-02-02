@@ -20,11 +20,7 @@
 #ifndef AG_AG_LABEL_H
 #define AG_AG_LABEL_H
 
-#include "postgres.h"
-
 #include "nodes/execnodes.h"
-
-#include "catalog/ag_catalog.h"
 
 #define Anum_ag_label_vertex_table_id 1
 #define Anum_ag_label_vertex_table_properties 2

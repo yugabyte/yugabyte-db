@@ -20,8 +20,6 @@
 #ifndef AG_GRAPH_COMMANDS_H
 #define AG_GRAPH_COMMANDS_H
 
-#include "postgres.h"
-
 Datum create_graph(PG_FUNCTION_ARGS);
 
 #endif

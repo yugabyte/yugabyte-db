@@ -20,7 +20,6 @@
 #ifndef AG_AGE_GLOBAL_GRAPH_H
 #define AG_AGE_GLOBAL_GRAPH_H
 
-#include "utils/graphid.h"
 #include "utils/age_graphid_ds.h"
 
 /*

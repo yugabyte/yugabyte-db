@@ -20,12 +20,6 @@
 #ifndef AG_CYPHER_NODE_H
 #define AG_CYPHER_NODE_H
 
-#include "postgres.h"
-
-#include "nodes/extensible.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-
 #include "nodes/ag_nodes.h"
 
 /* cypher sub patterns */

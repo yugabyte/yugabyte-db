@@ -21,8 +21,6 @@
 #define AG_CYPHER_EXECUTOR_H
 
 #include "nodes/extensible.h"
-#include "nodes/nodes.h"
-#include "nodes/plannodes.h"
 
 #define DELETE_SCAN_STATE_NAME "Cypher Delete"
 #define SET_SCAN_STATE_NAME "Cypher Set"

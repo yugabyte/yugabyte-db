@@ -20,10 +20,6 @@
 #ifndef AG_CYPHER_CLAUSE_H
 #define AG_CYPHER_CLAUSE_H
 
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "parser/parse_node.h"
-
 #include "parser/cypher_parse_node.h"
 
 typedef struct cypher_clause cypher_clause;

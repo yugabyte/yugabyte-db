@@ -20,10 +20,7 @@
 #ifndef AG_CYPHER_READFUNCS_H
 #define AG_CYPHER_READFUNCS_H
 
-#include "postgres.h"
-
 #include "nodes/extensible.h"
-#include "nodes/nodes.h"
 
 /*
  * Deserialization functions for AGE's ExtensibleNodes. We assign

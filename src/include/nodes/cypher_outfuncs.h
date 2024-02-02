@@ -20,11 +20,6 @@
 #ifndef AG_CYPHER_OUTFUNCS_H
 #define AG_CYPHER_OUTFUNCS_H
 
-#include "postgres.h"
-
-#include "nodes/extensible.h"
-#include "nodes/nodes.h"
-
 /*
  * Serialization functions for AGE's ExtensibleNodes. We assign
  * each node to its serialized function in the DEFINE_NODE_METHODS

@@ -21,12 +21,6 @@
 #define AG_CYPHER_UTILS_H
 
 #include "access/heapam.h"
-#include "access/table.h"
-#include "access/tableam.h"
-#include "nodes/execnodes.h"
-#include "nodes/extensible.h"
-#include "nodes/nodes.h"
-#include "nodes/plannodes.h"
 
 #include "nodes/cypher_nodes.h"
 #include "utils/agtype.h"

@@ -27,7 +27,6 @@
 #ifndef AG_CYPHER_GRAM_H
 #define AG_CYPHER_GRAM_H
 
-#include "nodes/nodes.h"
 #include "nodes/pg_list.h"
 
 #include "parser/ag_scanner.h"
