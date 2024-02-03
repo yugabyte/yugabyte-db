@@ -129,7 +129,7 @@ Set the following option in your connection string builder:
 connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
 ```
 
-Alternatively you can add the following to your connection string:
+Alternatively, you can add the following to your connection string:
 
 ```csharp
 Server Compatibility Mode=NoTypeLoading;
