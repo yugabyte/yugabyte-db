@@ -27,8 +27,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Oracle 8         | {{<icon/yes>}} |                | |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |       |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
-| SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |     | {{<badge/ea>}} |
-| SUSE Linux Enterprise Server 15 SP5 | {{<icon/yes>}} |     | {{<badge/tp>}} |
+| SUSE Linux Enterprise Server 15 SP5 | {{<icon/yes>}} |     | {{<badge/ea>}} |
 | Ubuntu 18        | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0 |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
