@@ -5,7 +5,7 @@ description: Use Nutanix AHV with YugabyteDB and YugabyteDB Anywhere
 menu:
   preview_integrations:
     identifier: nutanix-ahv
-    parent: application-frameworks
+    parent: integrations-platforms
     weight: 571
 type: docs
 ---
@@ -30,7 +30,7 @@ The following steps describe how to deploy YugabyteDB Anywhere (YBA) and Yugabyt
 
 1. Create additional [AHV VMs](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-vm-create-acropolis-pc-t.html) to act as on-premises database nodes.
 
-1. Configure [on-premises database AHV VMs](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#advanced).
+1. Configure [on-premises database AHV VMs](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 
 1. [Provision on-premises](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) database VMs.
 
