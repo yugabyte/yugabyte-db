@@ -93,7 +93,7 @@ public class GrafanaGenTest extends FakeDBApplication {
     GrafanaGenTest metricGenTest = new GrafanaGenTest();
     String dashboardGenPath = args[0];
     try {
-      metricGenTest.startServer();
+      metricGenTest.startPlay();
       ObjectNode expectedDashboard = metricGenTest.getExpectedDashboard();
       ObjectNode currentDashboard = metricGenTest.getCurrentDashboard();
       boolean match = expectedDashboard.equals(currentDashboard);
@@ -105,7 +105,7 @@ public class GrafanaGenTest extends FakeDBApplication {
         MetricGrafanaGen.writeJSON(expectedDashboard, dashboardGenPath);
       }
     } finally {
-      metricGenTest.stopServer();
+      metricGenTest.stopPlay();
     }
   }
 }
