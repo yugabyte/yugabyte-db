@@ -26,9 +26,9 @@ import { XClusterConfigStatus } from '../constants';
 
 import { XClusterTableType } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
+import { DrConfig } from '../disasterRecovery/dtos';
 
 import styles from './RestartConfigModal.module.scss';
-import { DrConfig } from '../disasterRecovery/dtos';
 
 export interface RestartXClusterConfigFormValues {
   tableUUIDs: string[];
