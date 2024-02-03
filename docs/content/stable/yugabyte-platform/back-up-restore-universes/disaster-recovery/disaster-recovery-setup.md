@@ -96,15 +96,13 @@ Consider the following scenario.
 
 ![Disaster recovery metrics](/images/yb-platform/disaster-recovery/disaster-recovery-metrics.png)
 
-Take the following scenario:
-
 - Three transactions, T1, T2, and T3, are written to the DR primary at 0.001 ms, 0.002 ms, and 0.003 ms respectively.
 - The replication lag for the transactions are as follows: Repl_Lag(T1) = 10 ms, Repl_Lag(T2) = 100 ms, Repl_Lag(T3) = 20 ms.
 
 The state of the system at time t = 50 ms is as follows:
 
 - T1 and T3 have arrived at the DR replica. T2 is still in transit.
-- Although T3 has arrived, SQL reads on the DR replica only see T1 (T3 is hidden), because (due to T2 still being in transit, and T3 being written on the DR Primary _after_ T2) the only safe, consistent view of the database is to see T1 and hide T3.
+- Although T3 has arrived, SQL reads on the DR replica only see T1 (T3 is hidden), because (due to T2 still being in transit, and T3 being written on the DR primary _after_ T2) the only safe, consistent view of the database is to see T1 and hide T3.
 - Safe time is the time at which T1 was replicated, namely t = 0.001 ms.
 - Safe time lag is the difference between the current time and the safe time. As of t = 50 ms, the safe time lag is 49.999 ms (50 ms - 0.001 ms).
 
