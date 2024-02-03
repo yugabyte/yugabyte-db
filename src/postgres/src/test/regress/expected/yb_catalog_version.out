@@ -707,3 +707,29 @@ GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 -----------------+-----------------------
               42 |                    39
 (1 row)
+
+-- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
+CREATE TABLE base (t int);
+CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
+CREATE UNIQUE INDEX ON mv(t);
+:display_catalog_version;
+ current_version | last_breaking_version 
+-----------------+-----------------------
+              45 |                    39
+(1 row)
+
+-- nonconcurrent refreshes should bump catalog version.
+REFRESH MATERIALIZED VIEW mv;
+:display_catalog_version;
+ current_version | last_breaking_version 
+-----------------+-----------------------
+              46 |                    39
+(1 row)
+
+-- concurrent refreshes should not bump catalog version.
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+:display_catalog_version;
+ current_version | last_breaking_version 
+-----------------+-----------------------
+              46 |                    39
+(1 row)
