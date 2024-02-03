@@ -39,6 +39,6 @@ After the free trial begins, you can use your credits to create dedicated cluste
 ## Limitations
 
 - Only one free trial can be applied to an account.
-- The free trial is for the Professional plan. Enterprise-level features are not included.
+- The free trial features the Professional plan. Enterprise plan features are not included.
 - Not all regions are available during free trials.
 - After your trial ends, depending on your plan, you may lose access to some features.
