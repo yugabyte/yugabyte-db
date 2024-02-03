@@ -22,7 +22,7 @@ If the DR primary is terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **Disaster Recovery**.
 
 1. Note the **Potential data loss on failover** to understand the extent of possible data loss as a result of the outage, and determine if the extent of data loss is acceptable for your situation.
 
@@ -52,7 +52,7 @@ In both cases, repairing DR involves making a full copy of the databases through
 
 To repair DR, do the following:
 
-1. Navigate to your (new) primary universe and select **Disaster Recovery**.
+1. Navigate to your (new) DR primary universe and select **Disaster Recovery**.
 
 1. Click **Repair DR**.
 
@@ -64,4 +64,4 @@ To repair DR, do the following:
 
 1. Click **Initiate Repair**.
 
-If your eventual desired configuration is for the other universe (that is, the one you have added to DR to act as DR replica) to be the primary, follow the steps for [Planned switchover](../disaster-recovery-switchover/).
+If your eventual desired configuration is for the other universe (that is, the one you have added to DR to act as DR replica) to be the DR primary, follow the steps for [Planned switchover](../disaster-recovery-switchover/).

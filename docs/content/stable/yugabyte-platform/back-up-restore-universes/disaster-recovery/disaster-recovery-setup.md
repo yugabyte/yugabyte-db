@@ -14,7 +14,7 @@ type: docs
 
 ## Prerequisites
 
-Create two universes, the primary universe which will serve reads and writes, and the DR replica.
+Create two universes, the DR primary universe which will serve reads and writes, and the DR replica.
 
 Ensure the universes have the following characteristics:
 
@@ -46,7 +46,7 @@ After DR is configured, the DR replica will only be available for reads.
 
 To set up disaster recovery for a universe, do the following:
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **Disaster Recovery**.
 
 1. Click **Configure & Enable Disaster Recovery**.
 
@@ -86,22 +86,31 @@ In addition, you can monitor the following metrics on the **Metrics** tab:
 
 - Consumer Safe Time Lag
 
-    The time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the DR replica. This metric is available only on the DR replica.
+    The time elapsed in microseconds between the physical time and safe time. Safe time is the time (usually in the past) at which the database or tables can be read with full correctness and consistency. For example, even though the actual time may be 3:00:00, a query or read against the DR Replica database may be able to only return a result as of 2:59:59 (that is 1 second ago) due to network lag and/or out-of-order delivery of datagrams.
 
 - Consumer Safe Time Skew
 
-    The time elapsed in microseconds for replication between the most caught up tablet and the laggiest tablet on the DR replica. This metric is available only on the DR replica.
+    The time elapsed in microseconds for replication between the most caught up tablet and the tablet lags the most on the DR replica. This metric is available only on the DR replica.
 
 Consider the following scenario.
 
 ![Disaster recovery metrics](/images/yb-platform/disaster-recovery/disaster-recovery-metrics.png)
 
-Three transactions, T1, T2, and T3 are written to the primary; T1 and T3 have been replicated to the DR replica. SQL reads on the DR replica however only see T1, because it's the only safe, consistent way to read the database.
+Take the following scenario:
 
-- Suppose the replication lag for the transactions are as follows: Repl_Lag(T1) = 10 ms, Repl_Lag(T2) = 100 ms, Repl_Lag(T3) = 20 ms.
-- In the example, safe time would be the time T1 was replicated. After a failover, DR replica will be restored to its state as of the safe time.
-- Safe time lag is the difference between the current time and the safe time. In this example, the safe time lag is 100 ms.
-- In this example, the safe time skew is 90 ms (the difference between T1 and T3).
+- Three transactions, T1, T2, and T3, are written to the DR primary at 0.001 ms, 0.002 ms, and 0.003 ms respectively.
+- The replication lag for the transactions are as follows: Repl_Lag(T1) = 10 ms, Repl_Lag(T2) = 100 ms, Repl_Lag(T3) = 20 ms.
+
+The state of the system at time t = 50 ms is as follows:
+
+- T1 and T3 have arrived at the DR replica. T2 is still in transit.
+- Although T3 has arrived, SQL reads on the DR replica only see T1 (T3 is hidden), because (due to T2 still being in transit, and T3 being written on the DR Primary _after_ T2) the only safe, consistent view of the database is to see T1 and hide T3.
+- Safe time is the time at which T1 was replicated, namely t = 0.001 ms.
+- Safe time lag is the difference between the current time and the safe time. As of t = 50 ms, the safe time lag is 49.999 ms (50 ms - 0.001 ms).
+
+If a failover were to occur at this moment (t = 50 ms) the DR replica will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the DR Replica, and will be ignored when it arrives.
+
+In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T3).
 
 ### Tables
 
@@ -115,7 +124,7 @@ The **Disaster Recovery** tab also lists all the tables in replication and their
 
     If the replication lag increases beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as _Warning_.
 
-    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from primary to replica, the status is shown as _Error: the table's replication stream is broken_, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
+    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Error: the table's replication stream is broken_, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
 
     If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
 
@@ -146,7 +155,7 @@ Note that, although you don't need to create objects on the DR replica during in
 
 To add a database to DR, do the following:
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **Disaster Recovery**.
 
 1. Click **Actions > Select Databases and Tables**.
 
@@ -172,7 +181,7 @@ You can assign a different universe to act as the DR replica.
 
 To change the universe that is used as a DR replica, do the following:
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **Disaster Recovery**.
 
 1. Click **Actions** and choose **Change DR Replica Universe**.
 

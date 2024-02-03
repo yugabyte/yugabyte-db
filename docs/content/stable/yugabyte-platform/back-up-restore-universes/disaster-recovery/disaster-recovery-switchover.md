@@ -33,7 +33,7 @@ Use the following steps to perform a planned switchover:
 
 1. Stop the application traffic on the DR primary.
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **Disaster Recovery**.
 
 1. Click **Actions** and choose **Switchover**.
 

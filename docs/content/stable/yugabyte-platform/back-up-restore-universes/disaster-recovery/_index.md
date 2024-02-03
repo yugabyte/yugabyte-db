@@ -18,10 +18,10 @@ Use disaster recovery (DR) to recover from an unplanned outage (failover) or to 
 
 A DR configuration consists of the following:
 
-- a primary universe, which serves both reads and writes.
+- a DR primary universe, which serves both reads and writes.
 - a DR replica universe, which can also serve reads.
 
-Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR Primary can be lost during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover, RPO is zero and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
+Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR primary can be lost during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
 
 The recovery time objective (RTO) is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
@@ -29,73 +29,52 @@ DR further allows for the role of each universe to switch during planned switcho
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="disaster-recovery-setup/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Set up Disaster Recovery</div>
-      </div>
-      <div class="body">
-        Designate a universe to act as a DR replica.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Set up Disaster Recovery"
+    body="Designate a universe to act as a DR replica."
+    href="disaster-recovery-setup/"
+    icon="/images/section_icons/explore/fault_tolerance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="disaster-recovery-failover/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Unplanned failover</div>
-      </div>
-      <div class="body">
-        Fail over to the DR replica in case of an unplanned outage.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Unplanned failover"
+    body="Fail over to the DR replica in case of an unplanned outage."
+    href="disaster-recovery-failover/"
+    icon="/images/section_icons/explore/high_performance.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="disaster-recovery-switchover/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Planned switchover</div>
-      </div>
-      <div class="body">
-        Switch over to the DR replica for planned testing and failback.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Planned switchover"
+    body="Switch over to the DR replica for planned testing and failback."
+    href="disaster-recovery-switchover/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="disaster-recovery-tables/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
-        <div class="title">Add and remove tables and indexes</div>
-      </div>
-      <div class="body">
-        Perform DDL changes to databases in replication.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Add and remove tables and indexes"
+    body="Perform DDL changes to databases in replication."
+    href="disaster-recovery-tables/"
+    icon="/images/section_icons/architecture/concepts/replication.png">}}
 
-</div>
+{{</index/block>}}
 
 ## Limitations
 
 - Currently, DDL replication (that is, automatically handling SQL-level DDL changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
-- DR setup (and other operations that require making a full copy from primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
+- DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
     This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the DR replica.
 
     To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
 
-## DR vs xCluster replication
+## xCluster DR vs xCluster replication
 
-Under the hood, YBA DR uses xCluster replication. xCluster is a deployment topology that provides asynchronous replication across two universes. xCluster replication can be set up to move data from one universe to another in one direction (for example, from primary to replica), or in both directions (bi-directional replication).
+xCluster refers to all YugabyteDB deployments with two or more universes. xCluster has two major flavors:
 
-DR targets one specific and common xCluster deployment model: [active-active single-master](../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+- xCluster DR. Provides turnkey workflow orchestration for applications using transactional SQL in an active-active single-master manner, with only unidirectional replication configured at any moment in time. xCluster DR uses xCluster Replication under the hood, and adds workflow automation and orchestration, including switchover, failover, resynchronization to make another full copy, and so on.
+- xCluster Replication. Moves the data from one universe to another. Can be used for CQL, non-transactional SQL, bi-directional replication, and other deployment models not supported by xCluster DR.
+
+xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
 - Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
 
@@ -103,15 +82,15 @@ DR targets one specific and common xCluster deployment model: [active-active sin
 
 - Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
 
-- Transactional SQL means that the application is using SQL (and not CQL) and  write-ordering is guaranteed. Furthermore, transactions are guaranteed to be  atomic.
+- Transactional SQL means that the application is using SQL (and not CQL) and write-ordering is guaranteed. Furthermore, transactions are guaranteed to be atomic.
 
-DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of a primary universe to a replica simple and turnkey. This orchestration includes the following:
+xCluster DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of the DR primary to DR replica simple and turnkey. This orchestration includes the following:
 
-- During setup, DR ensures that both clusters have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
-- During switchover, DR waits for the DR primary to drain before switching over.
-- During both switchover and failover, DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR Primary from read and write to read only.
+- During setup, xCluster DR ensures that both clusters have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
+- During switchover, xCluster DR waits for the DR primary to drain before switching over.
+- During both switchover and failover, xCluster DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR primary from read and write to read only.
 
-For all deployment models other than active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of DR.
+For all deployment models other than active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
 
 For example, use xCluster replication for the following:
 
@@ -120,11 +99,11 @@ For example, use xCluster replication for the following:
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
 - CQL
 
-Note that a universe configured for DR cannot be used for xCluster replication, and vice versa. Although DR uses xCluster replication under the hood, DR replication configurations are hidden in the **xCluster Replication** tab (and visible only via the **Disaster Recovery** tab).
+Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication configurations are hidden in the **xCluster Replication** tab (and visible only via the **Disaster Recovery** tab).
 
-(As an alternative to DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 
-For additional information on xCluster replication in YugabyteDB, see the following:
+For more information on xCluster replication in YugabyteDB, see the following:
 
 - [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)

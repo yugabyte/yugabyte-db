@@ -21,11 +21,17 @@ You should perform these actions in a specific order, depending on whether perfo
 
 | DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
-| CREATE TABLE | CREATE TABLE | Add the table to replication |
-| DROP TABLE   | DROP TABLE   | Remove the table from replication before executing the DROP TABLE on the database. |
-| CREATE INDEX | CREATE INDEX | [Resynchronize](#resynchronize-yba) |
-| DROP INDEX   | DROP INDEX   | [Resynchronize](#resynchronize-yba) |
-| CREATE TABLE foo PARTITION OF bar | Same as CREATE&nbsp;TABLE | |
+| 1. CREATE TABLE | 2. CREATE TABLE | 3. Add the table to replication |
+| 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication. |
+| 1. CREATE INDEX | 2. CREATE INDEX | 3. [Resynchronize](#resynchronize-yba) |
+| 1. DROP INDEX   | 2. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
+| 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
+
+In addition, keep in mind the following:
+
+- If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
+- If you're using ALTER TABLE to add or drop columns, make sure you also do these operations on the DR Replica, and in the identical order.
+- If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 
@@ -43,11 +49,11 @@ Add tables to DR in the following sequence:
 
 1. Create the table on the DR primary (if it doesn't already exist).
 1. Create the table on the DR replica.
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
+    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and DR replica should be created with the same colocation ID if they already exist on both the DR primary and DR replica prior to DR setup.
 
 1. Click **Validate Selection**.
 1. If the validation is successful, click **Next: Configure Full Copy**.
@@ -70,14 +76,14 @@ When dropping a table, remove the table from DR before dropping the table in the
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Drop the table from both DR primary and replica databases separately.
 
 ## Add an index to DR
 
-Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You don't need to stop the writes on the primary.
+Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You don't need to stop the writes on the DR primary.
 
 CREATE INDEX may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
 
@@ -103,7 +109,7 @@ Remove indexes from replication in the following sequence:
 
 1. Drop the index on the DR replica.
 
-1. Drop the index on the primary.
+1. Drop the index on the DR primary.
 
 1. [Resynchronize YBA](#resynchronize-yba).
 
@@ -147,5 +153,5 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI as follows:
 
-1. Navigate to your primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **Disaster Recovery**.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
