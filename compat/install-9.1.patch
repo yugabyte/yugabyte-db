@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -786,10 +786,6 @@
+@@ -781,10 +781,6 @@
      RETURN ok( TRUE, descr );
  EXCEPTION WHEN OTHERS THEN
      -- There should have been no exception.
@@ -11,7 +11,7 @@
      RETURN ok( FALSE, descr ) || E'\n' || diag(
             '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
      );
-@@ -6667,10 +6663,6 @@
+@@ -6688,10 +6684,6 @@
                  -- Something went wrong. Record that fact.
                  errstate := SQLSTATE;
                  errmsg := SQLERRM;
@@ -22,7 +22,7 @@
              END;
  
              -- Always raise an exception to rollback any changes.
-@@ -7138,7 +7130,6 @@
+@@ -7159,7 +7151,6 @@
      RETURN ok( true, $3 );
  EXCEPTION
      WHEN datatype_mismatch THEN
@@ -30,7 +30,7 @@
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Number of columns or their types differ between the queries' ||
              CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
-@@ -7292,7 +7283,6 @@
+@@ -7313,7 +7304,6 @@
      RETURN ok( false, $3 );
  EXCEPTION
      WHEN datatype_mismatch THEN

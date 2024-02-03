@@ -13,7 +13,6 @@ EXTRA_CLEAN  = $(VERSION_FILES) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-
 EXTRA_CLEAN  += $(wildcard sql/*.orig) # These are files left behind by patch
 DOCS         = doc/pgtap.mmd
 PG_CONFIG   ?= pg_config
-MODULES      = src/pgtap
 
 #
 # Test configuration. This must be done BEFORE including PGXS

@@ -13,7 +13,7 @@ jobs:
       PGXN_PASSWORD: ${{ secrets.PGXN_PASSWORD }}
     steps:
     - name: Check out the repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Bundle the Release
       id: bundle
       run: pgxn-bundle

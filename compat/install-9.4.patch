@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -680,7 +680,7 @@
+@@ -675,7 +675,7 @@
             '      caught: no exception' ||
          E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
      );
@@ -9,7 +9,7 @@
      IF (errcode IS NULL OR SQLSTATE = errcode)
          AND ( errmsg IS NULL OR SQLERRM = errmsg)
      THEN
-@@ -784,7 +784,7 @@
+@@ -779,7 +779,7 @@
  BEGIN
      EXECUTE code;
      RETURN ok( TRUE, descr );
@@ -18,7 +18,7 @@
      -- There should have been no exception.
      GET STACKED DIAGNOSTICS
          detail  = PG_EXCEPTION_DETAIL,
-@@ -10219,233 +10219,6 @@
+@@ -10240,233 +10240,6 @@
      ), $2);
  $$ LANGUAGE SQL immutable;
  

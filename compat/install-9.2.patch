@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -789,12 +789,7 @@
+@@ -784,12 +784,7 @@
      GET STACKED DIAGNOSTICS
          detail  = PG_EXCEPTION_DETAIL,
          hint    = PG_EXCEPTION_HINT,
@@ -14,7 +14,7 @@
      RETURN ok( FALSE, descr ) || E'\n' || diag(
             '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
      );
-@@ -6675,12 +6670,7 @@
+@@ -6696,12 +6691,7 @@
                  GET STACKED DIAGNOSTICS
                      detail  = PG_EXCEPTION_DETAIL,
                      hint    = PG_EXCEPTION_HINT,

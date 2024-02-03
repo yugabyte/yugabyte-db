@@ -4,6 +4,14 @@ Revision history for pgTAP
 1.3.2
 --------------------------
 
+* Replaced the C `parse_type()` function added in v1.3.1 with a PL/pgSQL
+  function, eliminating the need for the the installing use to be a superuser.
+  Aliases still work for all data types passed to `col_type_is()` except for
+  intervals, which must be specified exactly as rendered by Postgres itself,
+  without aliasing. Thanks to @spencerbryson for the report (#328) and to
+  Erik Wienhold for the PL/pgSQL technique necessary to properly format
+  type strings (#315).
+
 1.3.1 2023-09-24T15:29:42Z
 --------------------------
 * Revamped the handling of data type declarations in `col_type_is()` to always

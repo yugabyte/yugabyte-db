@@ -4524,6 +4524,11 @@ pass the type as either "varchar(64)" or "character varying(64)". Example:
 
     SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'timespantz(3)' );
 
+The exception to this rule is interval types, which must be specified as
+rendered by PostgreSQL itself:
+
+    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'interval second(3)' );
+
 Types with case-sensitive names or special characters must be double-quoted:
 
     SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', '"myType"' );
@@ -8293,31 +8298,6 @@ included in the display. For example:
 Used internally by pgTAP to compare operators, but may be more generally
 useful.
 
-### `parse_type()` ###
-
-    SELECT * FROM parse_type( :text );
-
-**Parameters**
-
-`:text`
-: An SQL type declaration, optionally schema-qualified.
-
-Parses a string representing an SQL type declaration as used in a `CREATE TABLE`
-statement, optionally schema-qualified. Returns a record with two fields,
-`typid` and `typmod`, representing the OID and modifier for the type. These are
-the underlying values that define column data types, and which can be passed to
-the PostgreSQL core
-[`format_type()`](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-CATALOG)
-function to display the normalized string representation of the data type.
-Raises an error if the specify type does not exist or cannot be found in the
-search path.
-
-    try=% SELECT format_type(p.typid, p.typmod)
-    try-%   FROM parse_type('timestamp(4)') p;
-            format_type
-    --------------------------------
-    timestamp(4) without time zone
-
 ### `format_type_string()` ###
 
     SELECT format_type_string( :text );
@@ -8329,9 +8309,12 @@ search path.
 
 This function normalizes data type declarations for accurate comparison
 to table columns by `col_type_is()`. It's effectively the identical to
-the calling `format_type()` with the values returned by `parse_type()`,
-but returns a `NULL` on an invalid or missing type, rather than raising
-an error.
+the calling `format_type()` with the type OID and type modifier that define
+the column, but returns a `NULL` on an invalid or missing type, rather than
+raising an error. Types can be defined by their canonical names or their
+aliases, e.g., `character varying` or `varchar`. The exception is `interval`
+types, which must be specified exactly as Postgres renders them internally,
+e.g., `'interval(0)`, `interval second(0)`, or `interval day to second(4)`.
 
     try=# SELECT format_type_string('timestamp(3)');
         format_type_string

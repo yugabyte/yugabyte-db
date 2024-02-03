@@ -34,7 +34,7 @@ jobs:
       UPDATE_FROM:  "${{ matrix.update_from }}"
     steps:
       - run: pg-start ${{ matrix.version }}
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # Basic regression test.
       - run: pg-build-test
