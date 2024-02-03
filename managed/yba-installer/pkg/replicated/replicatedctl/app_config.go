@@ -181,29 +181,26 @@ func (ac *AppConfig) ExportYbaCtl() error {
 		}
 		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
 			if b, err := e.Bool(); err == nil {
-				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, b)
 				if err != nil {
-					return fmt.Errorf("Error setting boolean value at %s: %s", ybaCtlPath, err.Error())
+					return fmt.Errorf("Error setting boolean value at %s to %s", ybaCtlPath, err.Error())
+				}
+			} else if i, err := e.Int(); err == nil {
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, i)
+				if err != nil {
+					return fmt.Errorf("Error setting integer value at %s to %s", ybaCtlPath, err.Error())
 				}
 			} else {
-				i, err := e.Int()
-				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i))
-					if err != nil {
-						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
+				// Special handling of installRoot
+				if ybaCtlPath == "installRoot" {
+					if e.Value == "/opt/ybanywhere" {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
+					} else {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
 					}
-				} else {
-					// Special handling of installRoot
-					if ybaCtlPath == "installRoot" {
-						if e.Value == "/opt/ybanywhere" {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
-						} else {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
-						}
-						continue
-					}
-					common.SetYamlValue(common.InputFile(), ybaCtlPath, e.Value)
+					continue
 				}
+				common.SetYamlValue(common.InputFile(), ybaCtlPath, e.Value)
 			}
 		}
 	}
