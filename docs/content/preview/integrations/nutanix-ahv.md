@@ -37,5 +37,5 @@ The following steps describe how to deploy YugabyteDB Anywhere (YBA) and Yugabyt
 1. Create an [on-premises YBA universe](../../../yugabyte-platform/create-deployments/).
 
 {{< note title="Tip" >}}
-For high availability, create an [affinity rule](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-affinity-policies-pc-c.html) on the Prism side that hosts AHV nodes ( database nodes) on separate controller VMs.
+For high availability, create an [affinity rule](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-affinity-policies-pc-c.html) on the Prism side that hosts AHV nodes (database nodes) on separate controller VMs.
 {{< /note >}}
