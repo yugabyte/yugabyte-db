@@ -121,7 +121,7 @@ Copy the following code to the `Program.cs` file to set up YugbyteDB tables and 
 
 {{< warning title="Warning" >}}
 
-On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. It is recommended to turn this off to significantly reduce connection open execution time.
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. It is recommended to turn this behavior off to significantly reduce connection open execution time.
 
 Set the following option in your connection string builder:
 
