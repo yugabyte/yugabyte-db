@@ -117,6 +117,7 @@ const RepairType = {
 } as const;
 type RepairType = typeof RepairType[keyof typeof RepairType];
 
+const MODAL_NAME = 'RepairDrConfigModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.repairDrConfigModal';
 
 export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModalProps) => {
@@ -259,28 +260,54 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    universeListQuery.isError
+  ) {
+    const customErrorMessage = universeListQuery.isError
+      ? t('failedToFetchUniverseList', { keyPrefix: 'queryError' })
+      : t(
+          drConfig.primaryUniverseUuid
+            ? 'undefinedDrReplicaUniveresUuid'
+            : 'undefinedDrPrimaryUniveresUuid',
+          {
+            keyPrefix: 'clusterDetail.disasterRecovery.error'
+          }
+        );
     return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (universeListQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchUniverseList', { keyPrefix: 'queryError' })}
-      />
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
     );
   }
 
   if (universeListQuery.isLoading || universeListQuery.isIdle) {
-    return <YBLoading />;
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
   }
 
   const universeList = universeListQuery.data;
@@ -297,14 +324,26 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     const i18nKey = sourceUniverse ? 'failedToFindTargetUniverse' : 'failedToFindSourceUniverse';
     const universeUuid = sourceUniverse ? targetUniverseUuid : sourceUniverseUuid;
     return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error',
-          universeUuid: universeUuid
-        })}
-      />
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
+        {...modalProps}
+      >
+        <YBErrorIndicator
+          customErrorMessage={t(i18nKey, {
+            keyPrefix: 'clusterDetail.xCluster.error',
+            universeUuid: universeUuid
+          })}
+        />
+      </YBModal>
     );
   }
+
   const onSubmit: SubmitHandler<RepairDrConfigModalFormValues> = (formValues) => {
     if (!formValues.repairType) {
       // This shouldn't be reached.
@@ -365,9 +404,11 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const isFormDisabled = formMethods.formState.isSubmitting;
   return (
     <YBModal
-      title={t('title')}
+      title={modalTitle}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
+      cancelLabel={cancelLabel}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       onSubmit={formMethods.handleSubmit(onSubmit)}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={formMethods.formState.isSubmitting}
