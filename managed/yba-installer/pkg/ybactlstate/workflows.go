@@ -12,7 +12,7 @@ func (s State) ValidateReconfig() error {
 	if viper.GetString("installRoot") != s.RootInstall {
 		return fmt.Errorf("cannot change root install from %s", s.RootInstall)
 	}
-	if viper.GetBool("postgres.useExisting") != s.Postgres.UseExisting {
+	if viper.GetBool("postgres.useExisting.enabled") != s.Postgres.UseExisting {
 		return fmt.Errorf("cannot change postgres install type")
 	}
 
