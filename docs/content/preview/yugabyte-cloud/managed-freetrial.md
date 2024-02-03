@@ -1,7 +1,7 @@
 ---
-title: Request a free trial
-linkTitle: Request a free trial
-description: Request a free trial of YugabyteDB Managed to conduct POCs and performance testing.
+title: Start a free trial
+linkTitle: Start a free trial
+description: Start a free trial of YugabyteDB Managed to conduct POCs and performance testing.
 headcontent: Explore all YugabyteDB Managed features
 menu:
   preview_yugabyte-cloud:
@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), request a free trial. If you qualify, you will receive free credits towards creating Dedicated clusters and accessing other features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating Dedicated clusters and exploring other features in YugabyteDB Managed.
 
-To request a free trial:
+To start a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
