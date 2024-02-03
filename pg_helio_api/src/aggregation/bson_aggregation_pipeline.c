@@ -120,8 +120,6 @@ static Query * HandleAddFields(const bson_value_t *existingValue, Query *query,
 							   AggregationPipelineBuildContext *context);
 static Query * HandleCount(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
-static Query * HandleGroup(const bson_value_t *existingValue, Query *query,
-						   AggregationPipelineBuildContext *context);
 static Query * HandleLimit(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
 static Query * HandleProject(const bson_value_t *existingValue, Query *query,
@@ -3011,7 +3009,7 @@ AddSortedNGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
  * This is done because without this, sharded multi-node group by fails
  * due to a quirk in citus's worker query generation.
  */
-static Query *
+Query *
 HandleGroup(const bson_value_t *existingValue, Query *query,
 			AggregationPipelineBuildContext *context)
 {
@@ -3529,7 +3527,7 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	query->querySource = QSRC_ORIGINAL;
 	query->canSetTag = true;
 	context->collectionNameView = *collectionNameView;
-	context->namespaceName = CreateNamespaceName(DatumGetTextP(databaseDatum),
+	context->namespaceName = CreateNamespaceName(DatumGetTextPP(databaseDatum),
 												 collectionNameView);
 	Datum collectionNameDatum = PointerGetDatum(
 		cstring_to_text_with_len(collectionNameView->string, collectionNameView->length));
@@ -3569,6 +3567,19 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 
 	if (collection == NULL)
 	{
+		/* Here: Special case, if the database is config, try to see if we can create a base
+		 * table out of the system metadata.
+		 */
+		StringView databaseView = CreateStringViewFromText(DatumGetTextPP(databaseDatum));
+		if (StringViewEqualsCString(&databaseView, "config"))
+		{
+			Query *returnedQuery = GenerateConfigDatabaseQuery(context);
+			if (returnedQuery != NULL)
+			{
+				return returnedQuery;
+			}
+		}
+
 		rte->rtekind = RTE_FUNCTION;
 		rte->relid = InvalidOid;
 

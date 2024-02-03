@@ -92,6 +92,8 @@ Query * HandleMatch(const bson_value_t *existingValue, Query *query,
 Query * HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 									AggregationPipelineBuildContext *context,
 									const char *stageName, Oid functionOid);
+Query * HandleGroup(const bson_value_t *existingValue, Query *query,
+					AggregationPipelineBuildContext *context);
 
 /* Sub-Pipeline related aggregation stages */
 Query * HandleFacet(const bson_value_t *existingValue, Query *query,
@@ -120,6 +122,8 @@ Query * HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 								const StringView *lookupPath);
 
+/* Metadata based query generators */
+Query * GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context);
 
 /* Helper methods */
 

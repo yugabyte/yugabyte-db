@@ -1,4 +1,6 @@
 test: helio_test_helpers
+# Leave this running first since this validates global config database state.
+test: bson_aggregation_pipeline_config_database
 test: command_insert_one_basic_types
 test: command_create_indexes_non_concurrently commands_drop_indexes
 test: bson_update_document_tests commands_update
