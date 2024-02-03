@@ -19,7 +19,6 @@ import org.apache.pekko.stream.Materializer;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import org.junit.After;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.mockito.Mockito;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -29,12 +28,9 @@ import play.mvc.Http.Request;
 import play.mvc.Http.RequestBuilder;
 import play.mvc.Result;
 import play.test.Helpers;
-import play.test.WithServer;
+import play.test.WithApplication;
 
-public abstract class PlatformGuiceApplicationBaseTest extends WithServer {
-  /** The application's Pekko streams Materializer. */
-  protected Materializer mat;
-
+public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected HealthChecker mockHealthChecker;
   protected QueryAlerts mockQueryAlerts;
   protected AlertsGarbageCollector mockAlertsGarbageCollector;
@@ -66,11 +62,6 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithServer {
   @BeforeClass
   public static void clearMocks() {
     Mockito.framework().clearInlineMocks();
-  }
-
-  @Before
-  public void initMat() {
-    mat = app.asScala().materializer();
   }
 
   public Result doRequest(String method, String url) {
