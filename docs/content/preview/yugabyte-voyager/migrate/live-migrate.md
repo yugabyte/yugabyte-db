@@ -62,7 +62,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 Create a new database user, and assign the necessary user permissions.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
@@ -75,6 +75,18 @@ Create a new database user, and assign the necessary user permissions.
       RDS Oracle
     </a>
   </li>
+  <li>
+    <a href="#standalone-pg" class="nav-link" id="standalone-pg-tab" data-toggle="tab" role="tab" aria-controls="pg" aria-selected="true">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Standalone PostgreSQL
+    </a>
+  </li>
+    <li>
+    <a href="#rds-pg" class="nav-link" id="rds-pg-tab" data-toggle="tab" role="tab" aria-controls="pg" aria-selected="true">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      RDS PostgreSQL
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -83,6 +95,13 @@ Create a new database user, and assign the necessary user permissions.
   </div>
     <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
   {{% includeMarkdown "./rds-oracle.md" %}}
+  </div>
+  <div id="standalone-pg" class="tab-pane fade" role="tabpanel" aria-labelledby="standalone-pg-tab">
+  {{% includeMarkdown "./standalone-pg.md" %}}
+  </div>
+  </div>
+    <div id="rds-pg" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-pg-tab">
+  {{% includeMarkdown "./rds-pg.md" %}}
   </div>
 </div>
 

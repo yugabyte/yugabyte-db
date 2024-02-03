@@ -87,3 +87,21 @@ private=true
     ```
 
 1. Transfer ownership of the tables to <replication_group>.
+
+    ```sql
+    DO $$
+    DECLARE
+      cur_table text;
+    BEGIN
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      LOOP
+        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+      END LOOP;
+    END $$;
+    ```
+
+1. Grant `CREATE` privilege on the source database to ybvoyager:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; -- required to create publication.
+    ```
