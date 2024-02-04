@@ -2255,16 +2255,16 @@ missing triggers, like so:
 : Name of a schema in which to find functions.
 
 `:functions`
-: An array of function names.
+: An array of function and/or procedure names.
 
 `:description`
 : A short description of the test.
 
-This function tests that all of the functions in the named schema, or that are
-visible in the search path, are only the functions that *should* be there. If
-the `:schema` argument is omitted, functions will be sought in the search
-path, excluding `pg_catalog` and `information_schema` If the description is
-omitted, a generally useful default description will be generated. Example:
+This function tests that all of the functions or procedures in the named schema,
+or that are visible in the search path, are only the functions that *should* be
+there. If the `:schema` argument is omitted, functions will be sought in the
+search path, excluding `pg_catalog` and `information_schema` If the description
+is omitted, a generally useful default description will be generated. Example:
 
     SELECT functions_are(
         'myschema',
@@ -3727,7 +3727,7 @@ rule does *not* exist.
 : Name of a schema in which to find the function.
 
 `:function`
-: Name of a function.
+: Name of a function or procedure.
 
 `:args`
 : Array of data types of the function arguments.
@@ -3735,11 +3735,11 @@ rule does *not* exist.
 `:description`
 : A short description of the test.
 
-Checks to be sure that the given function exists in the named schema and with
-the specified argument data types. If `:schema` is omitted, `has_function()`
-will search for the function in the schemas defined in the search path. If
-`:args` is omitted, `has_function()` will see if the function exists without
-regard to its arguments. Some examples:
+Checks to be sure that the given function or procedure exists in the named
+schema and with the specified argument data types. If `:schema` is omitted,
+`has_function()` will search for the function in the schemas defined in the
+search path. If `:args` is omitted, `has_function()` will see if the function
+exists without regard to its arguments. Some examples:
 
     SELECT has_function(
         'pg_catalog',
@@ -3784,7 +3784,7 @@ future version of pgTAP.
 : Name of a schema in which not to find the function.
 
 `:function`
-: Name of a function.
+: Name of a function or procedure.
 
 `:args`
 : Array of data types of the function arguments.
@@ -3793,7 +3793,8 @@ future version of pgTAP.
 : A short description of the test.
 
 This function is the inverse of `has_function()`. The test passes if the
-specified function (optionally with the specified signature) does *not* exist.
+specified function or procedure (optionally with the specified signature) does
+*not* exist.
 
 ### `has_cast()` ###
 
@@ -5349,7 +5350,7 @@ future.
 : Schema in which to find the functions.
 
 `:functions`
-: Array of function names.
+: Array of function and/or procedure names.
 
 `:description`
 : A short description of the test.
@@ -5474,6 +5475,10 @@ signature will be checked (pass an empty array to specify a function with an
 empty signature). If the `:description` is omitted, a reasonable substitute
 will be created.
 
+Procedures can also be tested; they always return `void`:
+
+    SELECT function_returns( 'my_proc', 'void' );
+
 In the event of a failure, you'll useful diagnostics will tell you what went
 wrong, for example:
 
@@ -5505,7 +5510,7 @@ But then you check with `has_function()` first, right?
 : Schema in which to find the function.
 
 `:function`
-: Function name.
+: Function or proceudure name.
 
 `:args`
 : Array of data types for the function arguments.
@@ -5513,7 +5518,7 @@ But then you check with `has_function()` first, right?
 `:description`
 : A short description of the test.
 
-Tests that a function is a security definer (i.e., a "setuid" function). If
+Tests that a function or procedure is a security definer (i.e., a "setuid" function). If
 the `:schema` argument is omitted, then the function must be visible in the
 search path. If the `:args` argument is passed, then the function with that
 argument signature will be the one tested; otherwise, a function with any
@@ -5550,7 +5555,7 @@ But then you check with `has_function()` first, right?
 : Schema in which to find the function.
 
 `:function`
-: Function name.
+: Function or proceure name.
 
 `:args`
 : Array of data types for the function arguments.
@@ -5558,9 +5563,8 @@ But then you check with `has_function()` first, right?
 `:description`
 : A short description of the test.
 
-
 This function is the inverse of `is_definer()`. The test passes if the specified
-function is not a security definer.
+function or procedure is not a security definer.
 
 If the function does not exist, a handy diagnostic message will let you know:
 

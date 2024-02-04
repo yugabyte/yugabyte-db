@@ -1,7 +1,8 @@
 \unset ECHO
 \i test/setup.sql
+-- \i sql/pgtap.sql
 
-SELECT plan(1009);
+SELECT plan(1105);
 -- SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -43,6 +44,14 @@ BEGIN
         CREATE FUNCTION etype()
         RETURNS text AS 'SELECT ''anyelement''::text'
         LANGUAGE SQL IMMUTABLE;
+    END IF;
+
+    IF pg_version_num() >= 110000 THEN
+        EXECUTE 'CREATE PROCEDURE public.someproc(int) LANGUAGE SQL AS ''''';
+    ELSE
+        CREATE FUNCTION public.someproc(int)
+        RETURNS void AS ''
+        LANGUAGE SQL;
     END IF;
 END;
 $$;
@@ -207,6 +216,23 @@ SELECT * FROM check_test(
     '' -- No diagnostics.
 );
 
+-- Test with a procedure.
+SELECT * FROM check_test(
+    has_function( 'public', 'someproc', 'hi' ),
+    true,
+    'public procedure',
+    'hi',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_function( 'someproc' ),
+    true,
+    'public procedure',
+    'Function someproc() should exist',
+    ''
+);
+
 /****************************************************************************/
 -- Test hasnt_function().
 SELECT * FROM check_test(
@@ -313,6 +339,23 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Test with a procedure.
+SELECT * FROM check_test(
+    hasnt_function( 'public', 'someproc', 'hi' ),
+    false,
+    'public procedure',
+    'hi',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'someproc' ),
+    false,
+    'public procedure',
+    'Function someproc() should not exist',
+    ''
+);
+
 /****************************************************************************/
 -- Try can() function names.
 SELECT * FROM check_test(
@@ -372,6 +415,23 @@ SELECT * FROM check_test(
     'whatever',
     '    foo() missing
     bar() missing'
+);
+
+-- Try can() with a procedure.
+SELECT * FROM check_test(
+    can( 'public', ARRAY['someproc'], 'whatever' ),
+    true,
+    'can(sch, proc) with desc',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    can( ARRAY['someproc'], 'whatever' ),
+    true,
+    'can(proc) with desc',
+    'whatever',
+    ''
 );
 
 /****************************************************************************/
@@ -554,6 +614,23 @@ SELECT * FROM check_test(
     'function_lang_is(non-func, sql, desc)',
     'whatever',
     '    Function why() does not exist'
+);
+
+-- Test with procedure.
+SELECT * FROM check_test(
+    function_lang_is( 'public', 'someproc', 'sql', 'whatever' ),
+    true,
+    'function_lang_is(schema, proc, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someproc', 'sql', 'whatever' ),
+    true,
+    'function_lang_is(schema, proc, desc)',
+    'whatever',
+    ''
 );
 
 /****************************************************************************/
@@ -747,6 +824,23 @@ SELECT * FROM check_test(
     true,
     'function_returns(func, setof bool)',
     'Function pet() should return setof boolean',
+    ''
+);
+
+-- Try with a procedure.
+SELECT * FROM check_test(
+    function_returns( 'public', 'someproc'::name, 'void' ),
+    true,
+    'function_returns(sch, proc, void)',
+    'Function public.someproc() should return void',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_returns( 'someproc'::name, 'void' ),
+    true,
+    'function_returns(sch, proc, void)',
+    'Function someproc() should return void',
     ''
 );
 
@@ -1037,6 +1131,39 @@ SELECT * FROM check_test(
     false,
     'isnt_definer(func)',
     'Function yay() should not be security definer',
+    ''
+);
+
+-- Try with a procedure.
+SELECT * FROM check_test(
+    is_definer( 'public'::name, 'someproc'::name ),
+    false,
+    'is_definer(sch, proc)',
+    'Function public.someproc() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public'::name, 'someproc'::name ),
+    true,
+    'isnt_definer(sch, proc)',
+    'Function public.someproc() should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_definer( 'someproc'::name ),
+    false,
+    'is_definer(proc)',
+    'Function someproc() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'someproc'::name ),
+    true,
+    'isnt_definer(proc)',
+    'Function someproc() should not be security definer',
     ''
 );
 
@@ -1580,6 +1707,43 @@ SELECT * FROM check_test(
     '    Function zippo() does not exist'
 );
 
+CREATE FUNCTION proc_name() RETURNS TEXT LANGUAGE SQL AS $$
+    -- Use an aggregate function in place of the proc on v10 and earlier.
+    SELECT CASE WHEN pg_version_num() >= 110000 THEN 'someproc' ELSE 'tap_accum' END;
+$$;
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', proc_name()::name ),
+    false,
+    'is_normal_function(schema, proc)',
+    format('Function public.%s() should be a normal function', proc_name()),
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', proc_name()::name ),
+    true,
+    'isnt_normal_function(schema, proc)',
+    format('Function public.%s() should not be a normal function', proc_name()),
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( proc_name()::name ),
+    false,
+    'is_normal_function(proc)',
+    format('Function %s() should be a normal function', proc_name()),
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( proc_name()::name ),
+    true,
+    'isnt_normal_function(proc)',
+    format('Function %s() should not be a normal function', proc_name()),
+    ''
+);
+
 /****************************************************************************/
 -- Test is_aggregate() and isnt_aggregate().
 
@@ -1925,6 +2089,39 @@ SELECT * FROM check_test(
     'isnt_aggregate(noagg)',
     'Function nope() should not be an aggregate function',
     '    Function nope() does not exist'
+);
+
+-- Try with a procedure.
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'someproc'::name ),
+    false,
+    'is_aggregate(schema, proc)',
+    'Function public.someproc() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'someproc'::name ),
+    true,
+    'is_aggregate(schema, proc)',
+    'Function public.someproc() should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'someproc' ),
+    false,
+    'is_aggregate(proc)',
+    'Function someproc() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'someproc' ),
+    true,
+    'is_aggregate(proc)',
+    'Function someproc() should not be an aggregate function',
+    ''
 );
 
 /****************************************************************************/
@@ -2490,6 +2687,39 @@ SELECT * FROM check_test(
     '    Function nooo() does not exist'
 );
 
+-- Try with a procedure.
+SELECT * FROM check_test(
+    is_window( 'public', 'someproc'::name ),
+    false,
+    'is_window(schema, proc)',
+    'Function public.someproc() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'public', 'someproc'::name ),
+    true,
+    'is_window(schema, proc)',
+    'Function public.someproc() should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someproc' ),
+    false,
+    'is_window(proc)',
+    'Function someproc() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someproc' ),
+    true,
+    'is_window(proc)',
+    'Function someproc() should not be a window function',
+    ''
+);
+
 /****************************************************************************/
 -- Test is_strict() and isnt_strict().
 SELECT * FROM check_test(
@@ -2700,6 +2930,39 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Try a procedure (never strict).
+SELECT * FROM check_test(
+    is_strict( 'public', 'someproc'::name ),
+    false,
+    'is_strict(sch, proc)',
+    'Function public.someproc() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'someproc'::name ),
+    true,
+    'isnt_strict(sch, proc)',
+    'Function public.someproc() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'someproc'::name ),
+    false,
+    'is_strict(proc)',
+    'Function someproc() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'someproc'::name ),
+    true,
+    'isnt_strict(proc)',
+    'Function someproc() should not be strict',
+    ''
+);
+
 /****************************************************************************/
 -- Test volatility_is().
 SELECT * FROM check_test(
@@ -2859,6 +3122,23 @@ SELECT * FROM check_test(
     true,
     'function_volatility(func, stable, desc)',
     'whatever',
+    ''
+);
+
+-- Test a procedure (always volatile)
+SELECT * FROM check_test(
+    volatility_is( 'public', 'someproc'::name, 'volatile' ),
+    true,
+    'function_volatility(sch, proc, volatile)',
+    'Function public.someproc() should be VOLATILE',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'someproc'::name, 'volatile' ),
+    true,
+    'function_volatility(proc, volatile)',
+    'Function someproc() should be VOLATILE',
     ''
 );
 

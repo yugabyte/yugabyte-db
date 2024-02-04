@@ -1,5 +1,6 @@
 \unset ECHO
 \i test/setup.sql
+-- \i sql/pgtap.sql
 
 SELECT plan(459);
 --SELECT * FROM no_plan();
@@ -81,6 +82,19 @@ CREATE TYPE someschema."myType" AS (
     id INT,
     foo INT
 );
+
+-- Create a procedure.
+DO $$
+BEGIN
+    IF pg_version_num() >= 110000 THEN
+        EXECUTE 'CREATE PROCEDURE someschema.someproc(int) LANGUAGE SQL AS ''''';
+    ELSE
+        CREATE FUNCTION someschema.someproc(int)
+        RETURNS void AS ''
+        LANGUAGE SQL;
+    END IF;
+END;
+$$;
 
 RESET client_min_messages;
 
@@ -497,7 +511,7 @@ SELECT * FROM check_test(
 -- Test functions_are().
 
 SELECT * FROM check_test(
-    functions_are( 'someschema', ARRAY['yip', 'yap'], 'whatever' ),
+    functions_are( 'someschema', ARRAY['yip', 'yap', 'someproc'], 'whatever' ),
     true,
     'functions_are(schema, functions, desc)',
     'whatever',
@@ -505,7 +519,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    functions_are( 'someschema', ARRAY['yip', 'yap'] ),
+    functions_are( 'someschema', ARRAY['yip', 'yap', 'someproc'] ),
     true,
     'functions_are(schema, functions)',
     'Schema someschema should have the correct functions'
@@ -513,7 +527,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    functions_are( 'someschema', ARRAY['yip', 'yap', 'yop'], 'whatever' ),
+    functions_are( 'someschema', ARRAY['yip', 'yap', 'someproc', 'yop'], 'whatever' ),
     false,
     'functions_are(schema, functions, desc) + missing',
     'whatever',
@@ -522,7 +536,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    functions_are( 'someschema', ARRAY['yip'], 'whatever' ),
+    functions_are( 'someschema', ARRAY['yip', 'someproc'], 'whatever' ),
     false,
     'functions_are(schema, functions, desc) + extra',
     'whatever',
@@ -531,7 +545,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    functions_are( 'someschema', ARRAY['yap', 'yop'], 'whatever' ),
+    functions_are( 'someschema', ARRAY['yap', 'yop', 'someproc'], 'whatever' ),
     false,
     'functions_are(schema, functions, desc) + extra & missing',
     'whatever',
