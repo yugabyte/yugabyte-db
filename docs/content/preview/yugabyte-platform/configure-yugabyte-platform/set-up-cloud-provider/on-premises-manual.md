@@ -14,21 +14,21 @@ type: docs
 
 Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
 
-- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
-- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
+- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Assisted manual**.
+- Your SSH user does not have sudo privileges at all - **Fully manual**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../on-premises-script/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Manual setup with script
+      Assisted manual
     </a>
   </li>
 
   <li>
     <a href="../on-premises-manual/" class="nav-link active">
       <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual setup
+      Fully manual
     </a>
   </li>
 </ul>

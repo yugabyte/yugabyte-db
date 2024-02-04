@@ -14,12 +14,147 @@ menu:
 type: docs
 ---
 
-Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs and add them to the provider's free pool of nodes.
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs, and then add them to the provider's free pool of nodes.
 
-After VM instances are added, you can have YugabyteDB Anywhere auto-provision or you can manually provision the YugabyteDB database software and create universes from these database nodes.
+YBA supports 3 ways of preparing nodes for running YugabyteDB depending upon the level of access provided to YBA:
 
+| Provisioning | Description |
+| :--- | :--- |
+| Automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the ec2-user for AWS EC2 instances. |
+| Assisted&nbsp;manual via a script | YBA doesn't have access to an SSH user with sudo access BUT the user can run a script interactively on YBA and provide the script with parameters for credentials for the SSH user with sudo access. |
+| Fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. In this case the user has to follow manual steps (link to fully manual provisioning) to provision the node. |
+
+## Overview
+
+To create, provision, and add nodes to your on-premises provider, you will perform tasks in roughly three stages.
+
+### Stage 1: Prepare your infrastructure
+
+- Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Prepare your network](../../../install-yugabyte-platform/prepare-on-prem-nodes/).
+- Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
+  - Locate the VMs in the regions and availability zones where you will be deploying universes.
+  - Install a YugabyteDB-supported Linux OS on the VMs.
+  - Set up a `yugabyte` user with root privileges (SSH access and sudo-capable).
+
+  For guidelines on creating VMs that are suitable for deploying YugabyteDB, refer to [Prepare VMs](#prepare-vms).
+
+### Stage 2: Create an on-premises provider configuration
+
+In YBA, create an on-premises provider. This involves the following:
+
+- Defining the regions and availability zones where the provider will be deploying universes.
+- Providing SSH credentials for the `yugabyte` user.
+- Providing NTP setup.
+- If the SSH user does not have passwordless sudo access, enabling Manual provisioning for the provider.
+
+Refer to [Create the provider configuration](../on-premises-provider/).
+
+### Stage 3: Add nodes to the provider free pool
+
+In YBA, you navigate to the provider you created and do the following:
+
+1. Define instance types. An instance type defines some basic properties of the VMs you will be adding.
+1. Add the VMs (instances). How you do this depends on whether you are using automatic or manual provisioning.
+
+    - Automatic - YBA automatically provisions the VMs that you add and you don't have to take any action.
+    - Assisted manual - you run a script provide by YBA to provision each VM.
+    - Fully manual - you follow a sequence of steps to provision each VM.
+
+1. Run pre-checks to validate the nodes you added.
+
+Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
+
+## Prepare VMs
+
+You can prepare VMs for use as nodes in an on-premises deployment, as follows:
+
+1. Ensure that the nodes conform to the requirements outlined in the [YugabyteDB deployment checklist](../../../../deploy/checklist/).
+
+    This checklist also gives an idea of [recommended instance types across public clouds](../../../../deploy/checklist/#public-clouds).
+
+1. Install the prerequisites and verify the system resource limits, as described in [system configuration](../../../../deploy/manual-deployment/system-config).
+1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
+1. Execute the following command to verify that you can `ssh` into the node (from your local machine if the node has a public address):
+
+    ```sh
+    ssh -i your_private_key.pem ssh_user@node_ip
+    ```
+
+The following actions are performed with sudo access:
+
+- Create the `yugabyte:yugabyte` user and group.
+- Set the home directory to `/home/yugabyte`.
+- Create the `prometheus:prometheus` user and group.
+
+  {{< tip title="Tip" >}}
+If you are using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users, as follows:
+
+- Ensure that the `yugabyte` user belongs to the `yugabyte` group.
+
+- Set the home directory for the `yugabyte` user (default `/home/yugabyte`) and ensure that the directory is owned by `yugabyte:yugabyte`. The home directory is used during cloud provider configuration.
+
+- The Prometheus username and the group can be user-defined. You enter the custom user during the cloud provider configuration.
+  {{< /tip >}}
+
+- Ensure that you can schedule Cron jobs with Crontab. Cron jobs are used for health monitoring, log file rotation, and cleanup of system core files.
+
+  {{< tip title="Tip" >}}
+For any third-party Cron scheduling tools, you can disable Crontab and add the following Cron entries:
+
+```sh
+# Ansible: cleanup core files hourly
+0 * * * * /home/yugabyte/bin/clean_cores.sh
+# Ansible: cleanup yb log files hourly
+5 * * * * /home/yugabyte/bin/zip_purge_yb_logs.sh
+# Ansible: Check liveness of master
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh master cron-check || /home/yugabyte/bin/yb-server-ctl.sh master start
+# Ansible: Check liveness of tserver
+*/1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
+```
+
+Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
+  {{< /tip >}}
+
+- Verify that Python 3 is installed.
+- Enable core dumps and set ulimits, as follows:
+
+    ```sh
+    *       hard        core        unlimited
+    *       soft        core        unlimited
+    ```
+
+- Configure SSH, as follows:
+
+  - Disable `sshguard`.
+  - Set `UseDNS no` in `/etc/ssh/sshd_config` (disables reverse lookup, which is used for authentication; DNS is still useable).
+
+- Set `vm.swappiness` to 0.
+- Set `mount` path permissions to 0755.
+
+{{< note title="Note" >}}
+By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
+{{< /note >}}
+
+### Enable Tectia SSH
+
+[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YugabyteDB Anywhere is shipped with a trial version of Tectia SSH client that requires a license in order to notify YugabyteDB Anywhere to permanently use Tectia instead of OpenSSH.
+
+To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during the Replicated installation.
+
+After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+
+```shell
+curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'
+--header 'Cookie: <Cookie>'
+--header 'X-AUTH-TOKEN: <token>'
+--header 'Csrf-Token: <csrf-token>'
+--header 'Content-Type: text/plain'
+--data-raw '"true"'
+```
+
+<!--
 Creating an on-premises provider requires the following steps:
 
 1. Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
@@ -29,166 +164,4 @@ Creating an on-premises provider requires the following steps:
 1. [Add the compute instances](#add-instances) that the provider will use for deploying YugabyteDB universes to the pool of nodes.
 
 ![Configure on-prem provider](/images/yb-platform/config/yba-onprem-config-flow.png)
-
-## Configure the on-premises provider
-
-Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
-
-### Create a provider
-
-To create an on-premises provider:
-
-1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
-
-    ![Create On-Premises provider](/images/yb-platform/config/yba-onp-config-create.png)
-
-1. Enter the provider details. Refer to [Provider settings](#provider-settings).
-
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
-
-After the provider is created, configure the provider hardware. Refer to [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes).
-
-### View and edit providers
-
-To view a provider, select it in the list of On Prem Configs to display the **Overview**.
-
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
-
-To view the universes created using the provider, select **Universes**.
-
-To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
-
-## Provider settings
-
-### Provider Name
-
-Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
-
-### Regions
-
-To add regions for the provider, do the following:
-
-1. Click **Add Region**.
-
-1. Enter a name for the region.
-
-1. Select the region location.
-
-1. To add a zone, click **Add Zone** and enter a name for the zone.
-
-1. Click **Add Region**.
-
-### SSH Key Pairs
-
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because YugabyteDB Anywhere needs SSH access to the nodes to provision them with YugabyteDB. Unless you plan to provision the database nodes manually, the SSH user needs to have password-free sudo permissions to complete a few tasks.
-
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
-
-{{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
-{{< /tip >}}
-
-In the **SSH Port** field, provide the port number of SSH client connections.
-
-In the **SSH Keypair Name** field, provide the name of the key pair.
-
-Use the **SSH Private Key Content** field to upload the private key PEM file available to the SSH user for gaining access via SSH into your instances.
-
-### Advanced
-
-Disable the **DB Nodes have public internet access** option if you want the installation to run in an air-gapped mode without expecting any internet access.
-
-YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
-
-- Pre-provisioned `yugabyte:yugabyte` user and group.
-- Sudo user requires a password.
-- The SSH user is not a sudo user.
-
-For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add instances](#add-instances).
-
-Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-
-Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-
-The **Node Exporter User** field allows you to override the default `prometheus` user. This is helpful when the user is pre-provisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-
-Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
-
-**NTP Setup** lets you to customize the Network Time Protocol server, as follows:
-
-- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
-
-## Configure hardware for YugabyteDB nodes
-
-After the provider has been created, you can configure the hardware for the on-premises configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
-
-![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
-
-To configure the hardware, do the following:
-
-1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
-1. [Add the compute instances](#add-instances).
-
-### Add instance types
-
-An instance type defines some basic properties of a VM.
-
-To add an instance type, do the following:
-
-1. On the configuration **Instances** page, click **Add Instance Type**.
-
-1. Complete the **Add Instance Type** dialog fields, as follows:
-
-    - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
-    - Use the **Number of Cores** field to define the number of cores to be assigned to a node.
-    - Use the **Memory Size (GB)** field to define the memory allocation of a node.
-    - Use the **Volume Size (GB)** field to define the disk volume of a node.
-    - Use the **Mount Paths** field to define a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
-
-1. Click **Add Instance Type**.
-
-### Add instances
-
-You can add instances to an on-prem provider using the YugabyteDB Anywhere UI.
-
-#### Prerequisites
-
-Before you add instances, you need the following:
-
-- The IP addresses of your VMs. Before you can add instances, you need to create your VMs. You do this using your hypervisor or cloud provider.
-- Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
-
-In addition, if either of the following conditions is true (and **Manually Provision Nodes** is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
-
-- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Manual setup with script](../on-premises-script/).
-- Your SSH user does not have sudo privileges. See [Fully manual setup](../on-premises-manual/).
-
-#### Add instances to the on-prem provider
-
-To add the instances, do the following:
-
-1. On the configuration **Instances** page, click **Add Instances**.
-
-    ![On-prem Add Instance Types dialog](/images/yb-platform/config/yba-onprem-config-add-instances.png)
-
-1. For each node in each region, provide the following:
-
-    - Select the zone.
-    - Select the instance type.
-    - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
-    - Optionally, enter an Instance ID; this is a user-defined identifier.
-
-    Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
-
-1. Click **+ Add** to add additional nodes in a region.
-
-1. Click **Add** when you are done.
-
-    The instances are added to the **Instances** list.
-
-1. After the instances are available in the **Instances** list, validate them by performing a preflight check. For each instance, click **Actions**, choose **Perform check**, and click **Apply**.
-
-YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
-
-If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready.
+-->
