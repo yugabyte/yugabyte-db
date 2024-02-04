@@ -1,6 +1,6 @@
 # pgTAP extension
 comment = 'Unit testing for PostgreSQL'
-default_version = '1.3.2'
+default_version = '1.3.3'
 module_pathname = '$libdir/pgtap'
 requires = 'plpgsql'
 relocatable = true
