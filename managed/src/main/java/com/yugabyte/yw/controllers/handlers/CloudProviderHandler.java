@@ -416,22 +416,31 @@ public class CloudProviderHandler {
       boolean ignoreValidationErrors) {
     cloudProviderHelper.validateEditProvider(
         editProviderReq, provider, validate, ignoreValidationErrors);
-    provider.setUsabilityState(Provider.UsabilityState.UPDATING);
-    provider.save();
-    editProviderReq.setVersion(provider.getVersion());
-    CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();
-    taskParams.newProviderState = editProviderReq;
-    taskParams.providerUUID = provider.getUuid();
-    taskParams.skipRegionBootstrap = false;
-    UUID taskUUID = commissioner.submit(TaskType.CloudProviderEdit, taskParams);
-    CustomerTask.create(
-        customer,
-        provider.getUuid(),
-        taskUUID,
-        CustomerTask.TargetType.Provider,
-        CustomerTask.TaskType.Update,
-        provider.getName());
-    return taskUUID;
+    Provider.UsabilityState state = provider.getUsabilityState();
+    try {
+      provider.setUsabilityState(Provider.UsabilityState.UPDATING);
+      provider.save();
+      editProviderReq.setVersion(provider.getVersion());
+      CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();
+      taskParams.newProviderState = editProviderReq;
+      taskParams.providerUUID = provider.getUuid();
+      taskParams.skipRegionBootstrap = false;
+      UUID taskUUID = commissioner.submit(TaskType.CloudProviderEdit, taskParams);
+      CustomerTask.create(
+          customer,
+          provider.getUuid(),
+          taskUUID,
+          CustomerTask.TargetType.Provider,
+          CustomerTask.TaskType.Update,
+          provider.getName());
+      return taskUUID;
+    } catch (Exception e) {
+      // In case, provider edit is tried when it is in-use by some task.
+      // we will fail the edit & restore the state to the old state.
+      provider.setUsabilityState(state);
+      provider.save();
+      throw e;
+    }
   }
 
   public void refreshPricing(UUID customerUUID, Provider provider) {
