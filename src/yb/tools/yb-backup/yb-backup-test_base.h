@@ -85,5 +85,15 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBas
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
+class YBBackupTestWithReadCommittedDisabled : public YBBackupTest {
+ protected:
+  YBBackupTestWithReadCommittedDisabled() : YBBackupTest() {}
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+  }
+};
+
 }  // namespace tools
 }  // namespace yb

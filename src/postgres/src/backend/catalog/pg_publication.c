@@ -1273,3 +1273,51 @@ yb_is_publishable_relation(Relation rel)
 	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 		   YBRelationHasPrimaryKey(rel);
 }
+
+/*
+ * Log a NOTICE if a relation that cannot be published via logical replication
+ * is found.
+ * A slightly modified version of the GetAllTablesPublicationRelations function
+ * defined earlier in this file.
+ */
+void
+yb_log_unsupported_publication_relations(void)
+{
+	Relation	classRel;
+	ScanKeyData key[1];
+	TableScanDesc scan;
+	HeapTuple	tuple;
+
+	classRel = table_open(RelationRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_class_relkind,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum(RELKIND_RELATION));
+
+	scan = table_beginscan_catalog(classRel, 1, key);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_class relForm = (Form_pg_class) GETSTRUCT(tuple);
+		Oid			relid = relForm->oid;
+		Relation	rel;
+
+		rel = table_open(relid, AccessShareLock);
+
+		if (is_publishable_class(RelationGetRelid(rel), relForm) &&
+			!YBRelationHasPrimaryKey(rel))
+		{
+			ereport(NOTICE,
+					(errmsg("tables without primary key will be skipped")));
+
+			table_close(rel, AccessShareLock);
+			break;
+		}
+
+		table_close(rel, AccessShareLock);
+	}
+
+	table_endscan(scan);
+	table_close(classRel, AccessShareLock);
+}

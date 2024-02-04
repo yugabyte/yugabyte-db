@@ -112,12 +112,21 @@ PREREQS_ERROR_MSGS = {
     'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
         'we recommend installing either ntp or chrony package and for centos 8, ' +
         'we recommend installing chrony package.',
+    'mandatory_ports': 'YugabyteDB processes cannot start as the default port(s) {} already' \
+            ' in use. Please free the port(s) and rerun the {} command.',
+    'yugabyted_ui_port': 'Yugabyted UI cannot start as the default port {} is already in use.' \
+            ' Please free the port and restart with --ui=true.',
+    'ysql_metric_port': 'YSQL metrics port {} is already in use. For accessing the YSQL metrics,' \
+            ' please free the port and restart the node.',
+    'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
+            ' please free the port and restart the node.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
     'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
 }
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
+DEFAULT_PORTS_LINK = "https://docs.yugabyte.com/preview/reference/configuration/default-ports/"
 
 # Help Message Constants
 PREFIX = {
@@ -216,10 +225,17 @@ EXAMPLE = {
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=region\n\n" +
-                       "# Configure a multi-zone cluster with specified placement info and rf:\n" +
-                       "yugabyted configure data_placement --fault_tolerance=zone " +
+                       "# Configure a multi-zone cluster with the specified placement info and " + \
+                       "rf:\n" + "yugabyted configure data_placement --fault_tolerance=zone " +
                        "--constraint_value=cloud1.region1.zone1,cloud2.region2.zone2," +
-                       "cloud3.region3.zon3 --rf=3\n\n",
+                       "cloud3.region3.zone3 --rf=3\n\n" +
+                       "# Configure a multi-zone cluster with the order of preference" \
+                       " to place the primary copy of the data:\n" +
+                       "yugabyted configure data_placement  --constraint_value=" +
+                       "cloud1.region1.zone1:<preference_number>," +
+                       "cloud2.region2.zone2:<preference_number>," +
+                       "cloud3.region3.zone3:<preference_number>\n\n",
+
     'encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --enable\n\n" +
                         "# Disable encryption at rest for a cluster:\n" +
@@ -252,6 +268,8 @@ DEFAULT_MASTER_WEBSERVER_PORT = 7000
 DEFAULT_TSERVER_WEBSERVER_PORT = 9000
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
+DEFAULT_YSQL_METRIC_PORT = 13000
+DEFAULT_YCQL_METRIC_PORT = 12000
 DEFAULT_WEBSERVER_PORT = 7200
 DEFAULT_YUGABYTED_UI_PORT = 15433
 DEFAULT_CALLHOME = True
@@ -309,6 +327,16 @@ def search_file_in_paths(dir_candidates, file_name):
     # The caller assumes that the environment is dev and skips
     # performing the post installation steps
     if(file_name == "post_install.sh"):
+        return None
+
+    # If yugabyted-ui is not found, don't error out
+    # Caller should set self.configs.saved_data.get("ui") to false if needed
+    if(file_name == "yugabyted-ui"):
+        Output.log(
+            "Yugabyte {} file not found in paths {}. Please check "
+            "the paths.".format(file_name, dir_candidates),
+            logging.WARN
+        )
         return None
 
     Output.log_error_and_exit(
@@ -782,9 +810,12 @@ class ControlScript(object):
                     self.remove_master_for_data_placement(master_addr, master)
 
         current_masters_with_port_list = self.get_all_masters()
-        placement_info = self.configs.temp_data.get("constraint_value")
-        if not placement_info:
+        if self.configs.temp_data.get("constraint_value"):
+            constraint_value = self.configs.temp_data.get("constraint_value")
+            placement_info,priority_info = self.parse_constraint_value(constraint_value)
+        else:
             placement_info = []
+            priority_info = []
             for master in current_masters_with_port_list:
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
@@ -805,7 +836,16 @@ class ControlScript(object):
         else:
             Output.log("Configure step was successful.")
 
-        status_details = self.get_configure_status_details(placement_locations, new_masters)
+        if priority_info:
+            priority_info = list(set(priority_info))
+            if not YBAdminProxy.set_preferred_zones(master_addresses, priority_info):
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                                          ": Unsuccessful in setting preference for zones")
+            else:
+                Output.log("Successful in setting preference for zones.")
+
+        status_details = self.get_configure_status_details(placement_locations,
+                                                           new_masters, priority_info)
 
         Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
 
@@ -1333,6 +1373,33 @@ class ControlScript(object):
                 thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
+    def check_ports(self):
+        failed_ports = []
+        warning_ports = []
+        mandatory_port_available = True
+        recommended_port_available = True
+        advertise_ip = self.advertise_ip()
+        mandatory_ports = self.get_mandatory_ports()
+        recommended_ports = self.get_recommended_ports()
+
+        for port in mandatory_ports:
+            if not self.is_port_available(advertise_ip,
+                                          self.configs.saved_data.get(port)):
+                mandatory_port_available = False
+                failed_ports.append(str(self.configs.saved_data.get(port)))
+
+        for port in recommended_ports:
+            if not self.is_port_available(advertise_ip,
+                                          self.configs.saved_data.get(port)):
+                recommended_port_available = False
+                warning_ports.append(port)
+                PREREQS_ERROR_MSGS[port] = PREREQS_ERROR_MSGS[port].format(
+                    self.configs.saved_data.get(port)
+                )
+
+        return (failed_ports, warning_ports,
+                mandatory_port_available, recommended_port_available)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
@@ -1350,7 +1417,20 @@ class ControlScript(object):
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
-        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+        (failed_ports, warning_ports, mandatory_port_available,
+        recommended_port_available) = self.check_ports()
+
+        if not mandatory_port_available:
+            prereqs_failed.add('mandatory_ports')
+            PREREQS_ERROR_MSGS['mandatory_ports'] = PREREQS_ERROR_MSGS['mandatory_ports'].format(
+                    ', '.join(failed_ports), Output.make_yellow("yugabyted start")
+                )
+
+        if not recommended_port_available:
+            prereqs_warn.update(warning_ports)
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                mandatory_port_available, recommended_port_available)
 
     # All Pre-requistes check for MacOS
     def mac_prereqs_check(self):
@@ -1359,24 +1439,73 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
-        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
+        (failed_ports, warning_ports, mandatory_port_available,
+        recommended_port_available) = self.check_ports()
+
+        if not mandatory_port_available:
+            prereqs_failed.add('mandatory_ports')
+            PREREQS_ERROR_MSGS['mandatory_ports'] = PREREQS_ERROR_MSGS['mandatory_ports'].format(
+                    ', '.join(failed_ports), Output.make_yellow("yugabyted start")
+                )
+
+        if not recommended_port_available:
+            prereqs_warn.update(warning_ports)
+
+        return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
+                mandatory_port_available, recommended_port_available)
+
+    def is_port_available(self, advertise_ip, port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            return s.connect_ex((advertise_ip, int(port))) != 0
+        finally:
+            s.close()
+
+    def get_mandatory_ports(self):
+        mandatory_ports = []
+        if not self.configs.saved_data.get("read_replica"):
+            mandatory_ports.append("master_rpc_port")
+            mandatory_ports.append("master_webserver_port")
+        mandatory_ports.append("tserver_rpc_port")
+        mandatory_ports.append("tserver_webserver_port")
+        mandatory_ports.append("ysql_port")
+        mandatory_ports.append("ycql_port")
+
+        return mandatory_ports
+
+    def get_recommended_ports(self):
+        recommended_ports = []
+        if not self.configs.saved_data.get("read_replica") and self.configs.saved_data.get("ui"):
+            recommended_ports.append("yugabyted_ui_port")
+        recommended_ports.append("ysql_metric_port")
+        recommended_ports.append("ycql_metric_port")
+
+        return recommended_ports
 
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
-        help_msg = ""
+        help_links = []
         # Check pre-reqs as per machine OS
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
-            help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
-                "the start command: " + Output.make_underline(QUICK_START_LINKS['linux'])+'\n'
         else:
             check = self.mac_prereqs_check()
-            help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
-                "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
-
         # Get pre-req failures and warnings
-        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
+        prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn, \
+        mandatory_port_available, recommended_port_available = check
+        if prereqs_warn_flag:
+            if OS_NAME == "Linux":
+                help_links.append("- Quick start for Linux: " +
+                                  Output.make_underline(QUICK_START_LINKS['linux']))
+            else:
+               help_links.append("- Quick start for macOS: " +
+                                 Output.make_underline(QUICK_START_LINKS['mac']))
 
+        if not mandatory_port_available or not recommended_port_available:
+            help_links.append("- Default ports: " + Output.make_underline(DEFAULT_PORTS_LINK))
+
+        help_msg = "Please review the following docs and rerun the start command:\n" + \
+        '\n'.join(help_links)
         msg = " System checks. Following pre-reqs are not met:\n"
 
         # Display message for failures
@@ -1400,16 +1529,18 @@ class ControlScript(object):
         final_msg = ""
         check_status = None
         # Final display message in case of failures
-        if prereqs_failed_flag:
+        if prereqs_failed_flag or not mandatory_port_available:
             final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
-            final_msg += (failed_msg+warning_msg)
+            final_msg += failed_msg
+            if warning_msg:
+                final_msg += warning_msg
             if ulimits:
                 for ulimit in ulimits:
                     final_msg+=ulimit_msg[ulimit]
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
         # Final display message in case of warnings
-        elif prereqs_warn_flag:
+        elif prereqs_warn_flag or not recommended_port_available:
             final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
@@ -1538,8 +1669,7 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -1626,8 +1756,8 @@ class ControlScript(object):
                     for k in prereqs_check_result['msg'].keys():
                         warnings_for_ui.extend([k])
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'],
-                        level=logging.ERROR)
+                    Output.print_and_log(prereqs_check_result['msg'])
+                    sys.exit(1)
 
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
@@ -1680,26 +1810,35 @@ class ControlScript(object):
                         should_callhome = True
 
             if is_first_run:
-                if self.configs.saved_data.get("ui"):
-                    yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-                        [
-                            "-database_host={}".format(bind_ip),
-                            "-master_ui_port={}".format(self.configs.saved_data.
-                                                        get("master_webserver_port")),
-                            "-tserver_ui_port={}".format(self.configs.saved_data.
-                                                        get("tserver_webserver_port")),
-                            "-warnings={}".format("|".join(warnings_for_ui))
-                        ]
-                    if self.configs.saved_data.get("secure"):
-                        yugabyted_ui_cmd.extend(["-secure=true",
-                            "-database_password={}".format(
-                            self.configs.saved_data.get("database_password"))])
+                ui_port_available = self.configs.temp_data.get("ui_port_available")
+                if self.configs.saved_data.get("ui") and ui_port_available:
+                    yugabyted_ui_path = find_binary_location("yugabyted-ui")
+                    if (yugabyted_ui_path is None):
+                        ui_bin_not_found = "Couldn't find yugabyted-ui binary. " + \
+                            "Cluster started without UI."
+                        warnings.append(ui_bin_not_found)
+                        self.configs.saved_data["ui"] = False
+                    else:
+                        yugabyted_ui_cmd = [ yugabyted_ui_path ] + \
+                            [
+                                "-database_host={}".format(advertise_ip),
+                                "-master_ui_port={}".format(self.configs.saved_data.
+                                                            get("master_webserver_port")),
+                                "-tserver_ui_port={}".format(self.configs.saved_data.
+                                                            get("tserver_webserver_port")),
+                                "-warnings={}".format("|".join(warnings_for_ui))
+                            ]
+                        if self.configs.saved_data.get("secure"):
+                            yugabyted_ui_cmd.extend(["-secure=true",
+                                "-database_password={}".format(
+                                self.configs.saved_data.get("database_password"))])
 
-                    self.processes["yugabyted-ui"] = ProcessManager(
-                        "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-                        self.configs.saved_data.get("data_dir"))
+                        self.processes["yugabyted-ui"] = ProcessManager(
+                            "yugabyted-ui", yugabyted_ui_cmd,
+                            self.configs.saved_data.get("log_dir"),
+                            self.configs.saved_data.get("data_dir"))
 
-            if self.configs.saved_data.get("ui"):
+            if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
                 should_callhome = should_callhome or was_started
 
@@ -1713,7 +1852,7 @@ class ControlScript(object):
                 for msg in warnings:
                     warning_msg += "- " + msg + "\n"
                 if warning_help_msg:
-                    warning_msg += warning_help_msg
+                    warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -1817,8 +1956,7 @@ class ControlScript(object):
         return (err, was_started)
 
     def start_rr_process(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -1890,8 +2028,8 @@ class ControlScript(object):
                     warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
                     warning_help_msg = prereqs_check_result['msg']["help_msg"]
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
-                    Output.log(msg=prereqs_check_result['msg'],
-                        level=logging.ERROR)
+                    Output.print_and_log(prereqs_check_result['msg'])
+                    sys.exit(1)
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
@@ -1941,7 +2079,7 @@ class ControlScript(object):
                 for msg in warnings:
                     warning_msg += "- " + msg + "\n"
                 if warning_help_msg:
-                    warning_msg += warning_help_msg
+                    warning_msg += "\n" + warning_help_msg
 
             if is_first_run:
                 status = self.get_status_string() + \
@@ -1993,8 +2131,7 @@ class ControlScript(object):
             time.sleep(int(self.configs.saved_data.get("polling_interval")))
 
     def get_common_flags(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         fault_tolerance = self.configs.saved_data.get("fault_tolerance")
@@ -2013,7 +2150,7 @@ class ControlScript(object):
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--webserver_interface={}".format(bind_ip),
+            "--webserver_interface={}".format(advertise_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
@@ -2035,8 +2172,7 @@ class ControlScript(object):
 
 
     def get_master_cmd(self, common_flags):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -2046,10 +2182,9 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_flags + \
             [
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
                 "--master_enable_metrics_snapshotter=true",
@@ -2071,8 +2206,7 @@ class ControlScript(object):
         return yb_master_cmd
 
     def get_tserver_cmd(self, common_flags):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -2084,14 +2218,14 @@ class ControlScript(object):
         yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_flags + \
             [
                 "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
-                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--cql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ycql_port")),
+                    advertise_ip, self.configs.saved_data.get("ycql_port")),
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
                 "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ysql_port")),
+                    advertise_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
@@ -2498,6 +2632,8 @@ class ControlScript(object):
     # of the tserver. Use the node address given with the --join flag or use the
     # advertise address if join flag is not provided.
     def get_current_masters_from_api(self, tserverIp):
+        if not tserverIp:
+            return ""
         tserver_addr = "{}:{}".format(tserverIp,
                             self.configs.saved_data.get("tserver_webserver_port"))
         try:
@@ -2581,11 +2717,15 @@ class ControlScript(object):
             jsonResponseFromMaster = json.load(response)
             return jsonResponseFromMaster
         except HTTPError as http_err:
-            Output.print_and_log('HTTP error occurred while fetching cloud location: {}'.format(
-                http_err), level=logging.ERROR)
+            Output.log("HTTP Error occured while hitting the api endpoint " +
+                "http://{}/api/v1/tablet-servers: {}".format(master_hostport, http_err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
+                "present at {} is not reachable.".format(master_hostport))
         except Exception as err:
-            Output.print_and_log('Other error occurred while fetching cloud location: {}'.format(
-                err), level=logging.ERROR)
+            Output.log("HTTP Error occured while hitting the api endpoint " +
+                "http://{}/api/v1/tablet-servers: {}".format(master_hostport, err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
+                "present at {} is not reachable.".format(master_hostport))
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
@@ -2682,8 +2822,9 @@ class ControlScript(object):
     # add a new master computed during configure data_placement command
     def add_master_for_data_placement(self, master_addr, new_master):
 
+        new_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Adding master {} to the cluster.".format(new_master))
-        if not YBAdminProxy.add_master(master_addr, new_master):
+        if not YBAdminProxy.add_master(master_addr, new_master, new_master_rpc_port):
             Output.log_error_and_exit("Failed to add master {} to the cluster."
                             .format(new_master))
         if not self.wait_get_master(new_master):
@@ -2695,8 +2836,9 @@ class ControlScript(object):
     # remove an master computed during configure data_placement command
     def remove_master_for_data_placement(self, master_addr, old_master):
 
+        old_master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         Output.log("Removing master {} from the cluster.".format(old_master))
-        if not YBAdminProxy.remove_master(master_addr, old_master):
+        if not YBAdminProxy.remove_master(master_addr, old_master, old_master_rpc_port):
             Output.log_error_and_exit("Failed to remove master {} from the cluster."
                             .format(old_master))
         if not self.wait_remove_master(old_master):
@@ -2705,9 +2847,20 @@ class ControlScript(object):
         else:
             Output.log("Removed master {} from the cluster".format(old_master))
 
+    def parse_constraint_value(self, constraint_str):
+        placement_constraints = []
+        priority_constraints = []
+        for item in constraint_str.split(","):
+            parts = item.rsplit(":", 1)
+            placement_constraints.append(parts[0])
+            if len(parts) > 1:
+                priority_constraints.append(item)
+
+        placement_str = ",".join(placement_constraints)
+        return placement_str, priority_constraints
 
     # Get status details to print after configure data_placement was run
-    def get_configure_status_details(self, placement_locations, new_masters):
+    def get_configure_status_details(self, placement_locations, new_masters, priority_info):
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
         replication_factor = int(self.configs.temp_data.get("replication_factor"))
@@ -2876,6 +3029,18 @@ class ControlScript(object):
                     (Output.make_yellow(""), az_node_info)
                 ]
 
+        if priority_info:
+            preference_msg = "Successful in setting preference for zones."
+            status_details.append((Output.make_yellow("Zone Preferences"), preference_msg))
+            status_display_info[preference_msg] = Output.make_green
+            status_details.append((Output.make_yellow(""),
+                                   "Following are the preferences for zones"))
+            sorted_priority_info = sorted(priority_info, key=lambda x: int(x.rsplit(':', 1)[1]))
+            for item in sorted_priority_info:
+                zone, priority = item.rsplit(':', 1)
+                zone_preference_info = "{} : {}".format(zone, priority)
+                status_details.append((Output.make_yellow(""), zone_preference_info))
+
         status_display_info = None if len(status_display_info) == 0 else status_display_info
 
         return [status_details, status_display_info]
@@ -2904,7 +3069,6 @@ class ControlScript(object):
             is_valid = False
 
         return is_valid
-
     # az_to_num_rr_nodes_map is map in the form of {az: num_of_rr_nodes}.
     # Here az means the availability zone in form of cloud.region.zone.
     # num_of_rr_nodes is the number of all the nodes present in that az.
@@ -3361,18 +3525,15 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
-
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        # master_addrs = "{}:{}".format(join_ip,
-        #             self.configs.saved_data.get("master_rpc_port"))
-        # master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+        advertise_ip = self.advertise_ip()
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
 
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
-        if not YBAdminProxy.add_master(master_addrs, bind_ip):
+        if not YBAdminProxy.add_master(master_addrs, advertise_ip, master_rpc_port):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
-                bind_ip, join_ip))
+                advertise_ip, join_ip))
             return False
 
         # If we are the third master, set replication factor to 3. This makes the cluster
@@ -3593,7 +3754,9 @@ class ControlScript(object):
         yb_master_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
         console_desc = "Web console"
-        if self.configs.saved_data.get("ui"):
+
+        ui_port_available = self.configs.temp_data.get("ui_port_available")
+        if self.configs.saved_data.get("ui") and ui_port_available:
             try:
                 response = urlopen(Request(yugabyted_ui_status))
                 if response.code == 200:
@@ -3602,10 +3765,10 @@ class ControlScript(object):
                 else:
                     status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
             except HTTPError as http_err:
-                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', http_err)
+                Output.log('HTTP error occurred while fetching YugabyteDB UI {}'.format(http_err))
                 status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
             except Exception as err:
-                Output.log('HTTP error occurred while fetching YugabyteDB UI {}', err)
+                Output.log('Other error occurred while fetching YugabyteDB UI {}'.format(err))
                 status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
@@ -4113,10 +4276,14 @@ class ControlScript(object):
 
     # Get the current master leader known to a tserver using api/v1/masters endpoint
     # of the tserver.
-    def get_current_master_leader_from_api(self, tserverIP):
+    def get_current_master_leader_from_api(self, tserverIP, timeout=60):
+        tserver_addr = "{}:{}".format(tserverIP,
+                            self.configs.saved_data.get("tserver_webserver_port"))
         try:
-            tserverMastersAPI = "http://{}:9000/api/v1/masters".format(tserverIP)
-            response = urlopen(Request(tserverMastersAPI))
+            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
+            Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
+                        " (Timeout={})".format(timeout))
+            response = urlopen(Request(tserverMastersAPI), timeout=timeout)
             jsonResponseFromTserver = json.load(response)
             dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
 
@@ -4134,12 +4301,17 @@ class ControlScript(object):
 
         except HTTPError as http_err:
             Output.log("HTTP Error occured while hitting the api endpoint " +
-                "http://{}:9000/api/v1/masters: {}".format(tserverIP, http_err))
+                "http://{}/api/v1/masters: {}".format(tserver_addr, http_err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
+                "provided is not reachable.")
+        except URLError as url_error:
+            Output.log("Some error occured while hitting the api endpoint " +
+                "http://{}/api/v1/masters: {}".format(tserver_addr, url_error))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
         except Exception as err:
             Output.log("Error occured while hitting the api endpoint " +
-                "http://{}:9000/api/v1/masters: {}".format(tserverIP, err))
+                "http://{}/api/v1/masters: {}".format(tserver_addr, err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
 
@@ -4190,22 +4362,109 @@ class ControlScript(object):
                         "Please specify one of the following - zone, region or cloud ")
 
             if args.constraint_value is not None:
-                data_constraints = args.constraint_value.split(",")
+                placement_info,priority_info = self.parse_constraint_value(args.constraint_value)
+                placement_info = placement_info.split(",")
+
+                # Initializing a map to store different types of errors
+                constraint_value_error_map = {
+                    'placement_error': [],
+                    'invalid_priority_error': [],
+                    'inconsistent_priority_error': [],
+                    'missing_priority_error': False,
+                }
                 has_errors = False
-                for constraint in data_constraints:
+                for constraint in placement_info:
+                    is_valid_placement_info = True
                     cloud_info = constraint.split(".")
+                    # Each cloud location should have exactly 3 parts:
+                    # cloudprovider, region and zone
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
                             if not value:
-                                has_errors=True
+                                is_valid_placement_info = False
                     else:
-                        has_errors = True
+                        is_valid_placement_info = False
+
+                    if not is_valid_placement_info:
+                        error_info = " * {}".format(constraint)
+                        constraint_value_error_map['placement_error'].append(error_info)
+
+                # Validate the format and consistency of the priority info
+                if priority_info:
+                    priority_numbers = []
+                    zones = {}
+                    for preference in priority_info:
+                        zone, priority = preference.rsplit(":", 1)
+                        # Ensure the priority value is a valid integer
+                        if not priority.isdigit():
+                            if priority == '':
+                                error_info = " * Empty priority value found for {}".format(zone)
+                            else:
+                                error_info = " * {} in {}".format(priority, zone)
+                            constraint_value_error_map['invalid_priority_error'].append(error_info)
+                            continue
+
+                        priority = int(priority)
+                        priority_numbers.append(priority)
+                        # Check that same zone must be specified with consistent priority values
+                        if zone in list(zones.keys()):
+                            if priority not in zones[zone]:
+                                zones[zone].append(priority)
+                        else:
+                            zones[zone] = [priority]
+
+                    for zone, priorities in zones.items():
+                        # Condition to check if more than 2 priorities
+                        # are associated with a specified zone
+                        if len(priorities) > 1:
+                            error_info = " * {} in {}". \
+                            format(', '.join(map(str, sorted(priorities))), zone)
+                            constraint_value_error_map['inconsistent_priority_error']. \
+                            append(error_info)
+
+                    # Ensure there are no missing priorities in the sequence
+                    priority_set = set(priority_numbers)
+                    max_priority = max(priority_numbers)
+                    for i in range(1, max_priority + 1):
+                        if i not in priority_set:
+                            constraint_value_error_map['missing_priority_error'] = True
+                            break
+
+                errors = []
+
+                # Add placement errors to the errors list
+                if constraint_value_error_map.get('placement_error'):
+                    errors.append("- Incorrect value specified for cloud location. " \
+                                  "Please follow the format - cloudprovider.region.zone" \
+                                  " for the following cloud locations:\n" + \
+                        "\n".join(constraint_value_error_map['placement_error'])
+                    )
+                    has_errors = True
+                # Add invalid priority errors to the errors list
+                if constraint_value_error_map.get('invalid_priority_error'):
+                    errors.append("- Incorrect priority value specified. " \
+                        "Please specify a valid integer for the following cloud locations:\n" +
+                        "\n".join(constraint_value_error_map['invalid_priority_error'])
+                    )
+                    has_errors = True
+                # Add inconsistent priority errors to the errors list
+                if constraint_value_error_map.get('inconsistent_priority_error'):
+                    errors.append("- Same zone specified with different priority values. Please " \
+                    "specify a consistent priority value for the following cloud locations:\n" +
+                    "\n".join(constraint_value_error_map['inconsistent_priority_error'])
+                    )
+                    has_errors = True
+                # Add missing priority errors to the errors list
+                if constraint_value_error_map.get('missing_priority_error'):
+                    errors.append("- Priority values should not skip numbers." \
+                            " Please specify consecutive priority numbers."
+                    )
+                    has_errors = True
 
                 if has_errors:
-                    Output.print_out(
-                        "Incorrect value specified for constraint_value. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone")
+                    Output.print_out(Output.make_red("Error") + ": Following errors found for" \
+                                        " --constraint_value flag:\n" + "\n".join(errors))
+                 # If no errors are found, set the valid constraint value
                 else:
                     self.configs.temp_data[
                         "constraint_value"] = args.constraint_value
@@ -4394,6 +4653,9 @@ class ControlScript(object):
                         "provided is not a valid address. Please try again with a valid IPV4, " +
                         "IPV6 or DNS.")
 
+            args.advertise_address = IP_LOCALHOST if args.advertise_address == IP_ANY \
+                else args.advertise_address
+
             if args.daemon is not None:
                 if args.background is not None and \
                         self.parse_bool(args.daemon) != self.parse_bool(args.background):
@@ -4412,59 +4674,62 @@ class ControlScript(object):
                         " provided is not a valid address. Please try again with a valid IPV4, " +
                         "IPV6 or DNS.")
 
+                Output.print_and_log("Fetching configs from join IP...")
+                # Check if tserver webserver at join_IP is reachable or not
+                # Also get the leader master(used to get the info of all tservers)
                 master_leader = self.get_current_master_leader_from_api(args.join)
                 args.join = master_leader
 
-                try:
-                    leaderMasterURL = "http://{}:7000/api/v1/tablet-servers".format(master_leader)
-                    response = urlopen(Request(leaderMasterURL))
-                    jsonResponseFromMaster = dict(json.load(response))
-                    is_placement_uuid_set = False
-                    if args.read_replica:
-                        # When the 1st read replica node is started use a new uuid
-                        if len(jsonResponseFromMaster) == 1:
-                            is_placement_uuid_set = True
-                            Output.log("Starting first read replica node. " +
-                                       "Using {} as placement_uuid".format(
-                                           self.configs.saved_data.get("placement_uuid")))
-                        # When a read replica cluster exists use the existing placement UUID
-                        else:
-                            for uuid, nodes in jsonResponseFromMaster.items():
-                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                                if master_leader not in nodes_list and len(nodes) != 0:
-                                    self.configs.saved_data["placement_uuid"] = uuid
-                                    Output.log("Using placement_uuid {} from ".format(uuid) +
-                                               "existing read replica cluster.")
-                                    is_placement_uuid_set = True
+                # Get info on all tservers
+                master_leader_hostport = "{}:{}".format(master_leader,
+                                    self.configs.saved_data.get("master_webserver_port"))
+                tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
+
+                # Check if any existing node has the same IP as advertise address
+                for uuid, nodes in tservers_info.items():
+                    for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                        if args.advertise_address == node:
+                            Output.log_error_and_exit(Output.make_red("ERROR:") + " A node is " +
+                                        "already running on {}, please ".format(args.join) +
+                                        "specify a valid address.")
+
+                is_placement_uuid_set = False
+
+                # Set placement UUID for the node according to it's properties(rr or primary)
+                if args.read_replica:
+                    # When the 1st read replica node is started use a new uuid
+                    if len(tservers_info) == 1:
+                        is_placement_uuid_set = True
+                        Output.log("Starting first read replica node. " +
+                                    "Using {} as placement_uuid".format(
+                                        self.configs.saved_data.get("placement_uuid")))
+                    # When a read replica cluster exists use the existing placement UUID
                     else:
-                        # Use placement uuid set for the primary cluster when 1st node was started.
-                        for uuid, nodes in jsonResponseFromMaster.items():
+                        for uuid, nodes in tservers_info.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if master_leader in nodes_list:
+                            if master_leader not in nodes_list and len(nodes) != 0:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
-                                               "existing primary cluster.")
+                                            "existing read replica cluster.")
                                 is_placement_uuid_set = True
+                else:
+                    # Use placement uuid set for the primary cluster when 1st node was started.
+                    for uuid, nodes in tservers_info.items():
+                        nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                        if master_leader in nodes_list:
+                            self.configs.saved_data["placement_uuid"] = uuid
+                            Output.log("Using placement_uuid {} from ".format(uuid) +
+                                            "existing primary cluster.")
+                            is_placement_uuid_set = True
 
-                    # If placement UUID could not be set for some reason, throw an error
-                    if not is_placement_uuid_set:
-                        Output.log("Cannot find placement UUID for the node. " +
-                                "Leader Master node: {}. ".format(master_leader) +
-                                "Response from tablet-servers API: {}".format(
-                                    str(jsonResponseFromMaster)))
-                        Output.log_error_and_exit(Output.make_red("ERROR:") +
-                                " Unable to start the node.")
-
-                except HTTPError as http_err:
-                    Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, http_err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
-                        "present at {} is not reachable.".format(master_leader))
-                except Exception as err:
-                    Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
-                        "present at {} is not reachable.".format(master_leader))
+                # If placement UUID could not be set for some reason, throw an error
+                if not is_placement_uuid_set:
+                    Output.log("Cannot find placement UUID for the node. " +
+                            "Leader Master node: {}. ".format(master_leader) +
+                            "Response from tablet-servers API: {}".format(
+                                str(tservers_info)))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") +
+                            " Unable to start the node.")
 
             # If no --join is passed then start a new cluster with a new placement_uuid
             else:
@@ -4481,7 +4746,8 @@ class ControlScript(object):
 
             if args.insecure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When a User starts the 1st node in secure mode and tries
                         # to start the second node in insecure mode
@@ -4491,7 +4757,8 @@ class ControlScript(object):
                             "secure and an insecure node.")
             elif args.secure:
                 if args.join:
-                    master_hostport = "{}:7000".format(args.join)
+                    master_hostport = "{}:{}".format(args.join,
+                            self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
                         # Case Scenario: When the user starts the 1st node in insecure mode and
                         # tries to start the second node in secure mode.
@@ -4514,6 +4781,9 @@ class ControlScript(object):
                 args.ui = self.parse_bool(args.ui)
             else:
                 args.ui = self.configs.saved_data.get("ui")
+
+            self.configs.temp_data["ui_port_available"] = self.is_port_available(
+                args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
 
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
@@ -4554,6 +4824,7 @@ class ControlScript(object):
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
 
+        self.configs.save_configs()
 
     def parse_bool(self, config):
         return config in TRUE_CHOICES
@@ -4903,6 +5174,8 @@ class ControlScript(object):
             filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
             format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
 
+        Output.log("Running yugabyted command: '{}'".format(' '.join(sys.argv)))
+
         Output.log("cmd = {} using config file: {} (args.config={})".format(
             args.parser, self.conf_file, args.config))
 
@@ -5000,6 +5273,8 @@ class Configs(object):
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
+            "ysql_metric_port": DEFAULT_YSQL_METRIC_PORT,
+            "ycql_metric_port": DEFAULT_YCQL_METRIC_PORT,
             "advertise_address": "",
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "yugabyted_ui_port": DEFAULT_YUGABYTED_UI_PORT,
@@ -5045,6 +5320,7 @@ class Configs(object):
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
+            "ui_port_available": True,
             "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
         }
         self.config_file = config_file
@@ -5447,16 +5723,16 @@ class YBAdminProxy(object):
             YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
-    def add_master(master_addrs, new_master_ip, timeout=10):
+    def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
+              "change_master_config", "ADD_SERVER", new_master_ip, str(new_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
-    def remove_master(master_addrs, old_master, timeout=10):
+    def remove_master(master_addrs, old_master, old_master_rpc_port, timeout=10):
         cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
-              "change_master_config", "REMOVE_SERVER", old_master, "7100"]
+              "change_master_config", "REMOVE_SERVER", old_master, str(old_master_rpc_port)]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
@@ -5541,6 +5817,13 @@ class YBAdminProxy(object):
                 placement_locations, replication_factor, placement_uuid]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)
+
+    @staticmethod
+    def set_preferred_zones(master_addrs, priority_info, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses",
+                                       master_addrs, "set_preferred_zones"] + priority_info
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
 
     # Sets placement info of read replicas
     @staticmethod

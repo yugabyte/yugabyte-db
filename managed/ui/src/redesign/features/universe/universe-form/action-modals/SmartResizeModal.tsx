@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { YBModal, YBButton } from '../../../../components';
-import { getPrimaryCluster } from '../utils/helpers';
+import { getAsyncCluster, getPrimaryCluster } from '../utils/helpers';
 import { UniverseDetails } from '../utils/dto';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -15,6 +15,7 @@ interface SRModalProps {
   newConfigData: UniverseDetails;
   oldConfigData: UniverseDetails;
   open: boolean;
+  isPrimary: boolean;
   handleFullMove: () => void;
   handleSmartResize: () => void;
   onClose: () => void;
@@ -24,14 +25,19 @@ export const SmartResizeModal: FC<SRModalProps> = ({
   newConfigData,
   oldConfigData,
   open,
+  isPrimary,
   handleFullMove,
   handleSmartResize,
   onClose
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
-  const oldIntent = getPrimaryCluster(oldConfigData)?.userIntent;
-  const newIntent = getPrimaryCluster(newConfigData)?.userIntent;
+  const oldIntent = isPrimary
+    ? getPrimaryCluster(oldConfigData)?.userIntent
+    : getAsyncCluster(oldConfigData)?.userIntent;
+  const newIntent = isPrimary
+    ? getPrimaryCluster(newConfigData)?.userIntent
+    : getAsyncCluster(newConfigData)?.userIntent;
   const isVolumeChanged = oldIntent?.deviceInfo?.volumeSize !== newIntent?.deviceInfo?.volumeSize;
 
   return (

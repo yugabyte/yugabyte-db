@@ -876,6 +876,10 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 		}
 	}
 
+	/* Log a NOTICE for unsupported relations. */
+	if (IsYugaByteEnabled() && stmt->for_all_tables)
+		yb_log_unsupported_publication_relations();
+
 	table_close(rel, RowExclusiveLock);
 
 	InvokeObjectPostCreateHook(PublicationRelationId, puboid, 0);

@@ -42,7 +42,7 @@ export const DrBannerSection = ({
   const classes = useStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
-  const sourceUniverseUuid = drConfig.xClusterConfig.sourceUniverseUUID;
+  const sourceUniverseUuid = drConfig.primaryUniverseUuid;
   if (!sourceUniverseUuid) {
     // We expect the parent compoent to already handle this case.
     return (
@@ -54,7 +54,7 @@ export const DrBannerSection = ({
     );
   }
 
-  const numTablesRequiringBootstrap = drConfig.xClusterConfig.tableDetails.reduce(
+  const numTablesRequiringBootstrap = drConfig.tableDetails.reduce(
     (errorCount: number, xClusterTableDetails) => {
       return xClusterTableDetails.status === XClusterTableStatus.ERROR
         ? errorCount + 1

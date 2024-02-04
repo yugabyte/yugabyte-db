@@ -16,6 +16,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "yb/cdc/cdc_fwd.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 
@@ -29,20 +31,12 @@ namespace yb {
 // Object types used to manage eXternal REPLication (XREPL) of data from a YugabyteDB.
 // xCluster replicates data to another YugabyteDB, and CDC replicates the data to external
 // databases or files.
-namespace xrepl {
-YB_STRONGLY_TYPED_UUID_DECL(StreamId);
-}
 
 namespace cdc {
 static const char* const kIdType = "id_type";
 static const char* const kTableId = "TABLEID";
 
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
-
-// Maps a tablet id -> stream id -> replication error -> error detail.
-typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
-typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
 
 typedef std::unordered_map<SchemaVersion, SchemaVersion> XClusterSchemaVersionMap;
 typedef std::unordered_map<uint32_t, XClusterSchemaVersionMap> ColocatedSchemaVersionMap;

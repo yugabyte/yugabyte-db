@@ -7,6 +7,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -17,11 +19,14 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.CustomerLicenseManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerLicense;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
@@ -42,6 +47,7 @@ import play.mvc.Result;
 public class CustomerLicenseControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
+  CustomerLicenseManager customerLicenseManager;
 
   @Mock RuntimeConfGetter mockConfGetter;
 
@@ -49,6 +55,7 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
+    customerLicenseManager = new CustomerLicenseManager();
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
@@ -120,5 +127,31 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> uploadLicenseFile(true, licenseType, null, null));
     assertBadRequest(result, "License file must contain valid file content.");
     assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testDeleteLicense() {
+    String tmpFile =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/licenses/" + defaultCustomer.getUuid(),
+            "License File",
+            "TEMP LICENSE FILE");
+    CustomerLicense cLicense =
+        CustomerLicense.create(defaultCustomer.getUuid(), tmpFile, "test_license_type");
+    FileData.create(
+        defaultCustomer.getUuid(),
+        FileData.getRelativePath(tmpFile),
+        "extension",
+        "TEMP LICENSE FILE");
+
+    customerLicenseManager.delete(defaultCustomer.getUuid(), cLicense.getLicenseUUID());
+    assertTrue(Files.notExists(Paths.get(tmpFile)));
+    Result result =
+        assertPlatformException(
+            () ->
+                CustomerLicense.getOrBadRequest(
+                    defaultCustomer.getUuid(), cLicense.getLicenseUUID()));
+    assertBadRequest(result, "License not found: " + cLicense.getLicenseUUID());
+    assertNull(FileData.getFromFile(FileData.getRelativePath(tmpFile)));
   }
 }

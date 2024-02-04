@@ -2,11 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.ITask.Abortable;
-import static com.yugabyte.yw.commissioner.ITask.Retryable;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -45,6 +44,9 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
           Universe universe = getUniverse();
 
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.RollingBack);
+
           UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
               universe.getUniverseDetails().prevYBSoftwareConfig;
           String newVersion =
@@ -70,6 +72,10 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Update Software version
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+              false /* isSoftwareRollbackAllowed */);
         });
   }
 }

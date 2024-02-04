@@ -1447,9 +1447,17 @@ void YBClient::CreateCDCStream(
 Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const NamespaceId& namespace_id,
     const std::unordered_map<std::string, std::string>& options,
-    const ReplicationSlotName& replication_slot_name) {
+    bool populate_namespace_id_as_table_id,
+    const ReplicationSlotName& replication_slot_name,
+    const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option) {
   CreateCDCStreamRequestPB req;
-  req.set_namespace_id(namespace_id);
+
+  if (populate_namespace_id_as_table_id) {
+    req.set_table_id(namespace_id);
+  } else {
+    req.set_namespace_id(namespace_id);
+  }
+
   req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
   for (const auto& option : options) {
     auto new_option = req.add_options();
@@ -1458,6 +1466,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
   if (!replication_slot_name.empty()) {
     req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+  }
+  if (consistent_snapshot_option.has_value()) {
+    req.set_cdcsdk_consistent_snapshot_option(*consistent_snapshot_option);
   }
 
   CreateCDCStreamResponsePB resp;
@@ -1753,6 +1764,23 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
+}
+
+Status YBClient::XClusterReportNewAutoFlagConfigVersion(
+    const cdc::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required");
+  master::XClusterReportNewAutoFlagConfigVersionRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_auto_flag_config_version(auto_flag_config_version);
+
+  master::XClusterReportNewAutoFlagConfigVersionResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterReportNewAutoFlagConfigVersion);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 
@@ -2413,6 +2441,29 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(
   return result;
 }
 
+Status YBClient::AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids,
+      std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms) {
+  master::AreNodesSafeToTakeDownRequestPB req;
+  master::AreNodesSafeToTakeDownResponsePB resp;
+
+  for (auto& tserver_uuid : tserver_uuids) {
+    req.add_tserver_uuids(std::move(tserver_uuid));
+  }
+  for (auto& master_uuid : master_uuids) {
+    req.add_master_uuids(std::move(master_uuid));
+  }
+  req.set_follower_lag_bound_ms(follower_lag_bound_ms);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, AreNodesSafeToTakeDown);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Result<cdc::EnumOidLabelMap> YBClient::GetPgEnumOidLabelMap(const NamespaceName& ns_name) {
   GetUDTypeMetadataRequestPB req;
   GetUDTypeMetadataResponsePB resp;
@@ -2670,6 +2721,9 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }();
 
   if (status.ok()) {
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
     return std::move(resp.config());
   }
 
@@ -2678,6 +2732,38 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig(
+    const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class) {
+  master::ValidateAutoFlagsConfigRequestPB req;
+  master::ValidateAutoFlagsConfigResponsePB resp;
+  req.mutable_config()->CopyFrom(config);
+  if (min_flag_class) {
+    req.set_min_flag_class(to_underlying(*min_flag_class));
+  }
+
+  // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
+  // the case when master is running on an older version that does not support this RPC.
+  Status status = [&]() -> Status {
+    CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ValidateAutoFlagsConfig);
+    return Status::OK();
+  }();
+
+  if (!status.ok()) {
+    if (rpc::RpcError(status) == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      return std::nullopt;
+    }
+
+    return status;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK(
+      resp.has_valid() && resp.has_config_version(), IllegalState,
+      "Invalid response from ValidateAutoFlagsConfig");
+  return std::make_pair(resp.valid(), resp.config_version());
 }
 
 Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(

@@ -766,6 +766,18 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
 
+	/*
+	 * YB: in case yb_owns_file_and_func, filename and funcname were already
+	 * set beforehand.
+	 */
+	if (IsYugaByteEnabled() && edata->yb_owns_file_and_func)
+	{
+		Assert(!filename);
+		Assert(!funcname);
+		filename = edata->filename;
+		funcname = edata->funcname;
+	}
+
 	/* Save the last few bits of error state into the stack entry */
 	if (filename)
 	{
@@ -2121,6 +2133,14 @@ CopyErrorData(void)
 	if (newedata->internalquery)
 		newedata->internalquery = pstrdup(newedata->internalquery);
 
+	if (newedata->yb_owns_file_and_func)
+	{
+		if (newedata->filename)
+			newedata->filename = pstrdup(newedata->filename);
+		if (newedata->funcname)
+			newedata->funcname = pstrdup(newedata->funcname);
+	}
+
 	/* Use the calling context for string allocation */
 	newedata->assoc_context = GetCurrentMemoryContext();
 
@@ -2160,6 +2180,13 @@ FreeErrorData(ErrorData *edata)
 		pfree(edata->constraint_name);
 	if (edata->internalquery)
 		pfree(edata->internalquery);
+	if (edata->yb_owns_file_and_func)
+	{
+		if (edata->filename)
+			pfree((char*) edata->filename);
+		if (edata->funcname)
+			pfree((char*) edata->funcname);
+	}
 	pfree(edata);
 }
 
@@ -4482,4 +4509,37 @@ yb_detail_from_status_data(const char *fmt, const size_t nargs,
 
 	recursion_depth--;
 	return 0; /* return value does not matter */
+}
+
+/*
+ * Set the given field to the given value (assumed to be palloc-d) or, if the
+ * new value is null, pstrdup the existing value of the field to ensure that
+ * we end up with a palloc-d or null value in any case.
+ */
+static void
+yb_set_or_pstrdup_err_field(const char** field, const char* new_value)
+{
+	if (new_value)
+	{
+		*field = new_value;
+		return;
+	}
+	if (*field)
+	{
+		/* Assume the existing value originates from __FILE__ or __func__. */
+		*field = pstrdup(*field);
+	}
+}
+
+/*
+ * Set palloc-d filename and funcname and makes sure they are pfreed at the end.
+ */
+void
+yb_set_pallocd_error_file_and_func(const char* filename, const char* funcname)
+{
+	Assert(!IsMultiThreadedMode());
+	ErrorData *edata = &errordata[errordata_stack_depth];
+	yb_set_or_pstrdup_err_field(&edata->filename, filename);
+	yb_set_or_pstrdup_err_field(&edata->funcname, funcname);
+	edata->yb_owns_file_and_func = true;
 }

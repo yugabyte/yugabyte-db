@@ -475,7 +475,7 @@ AutoVacLauncherMain(int argc, char *argv[])
 	/* Early initialization */
 	BaseInit();
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL, NULL);
 
 	SetProcessingMode(NormalProcessing);
 
@@ -1700,7 +1700,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 		 * stale stats info), we'll fail and exit here.
 		 */
 		InitPostgres(NULL, dbid, NULL, InvalidOid, false, false,
-					 dbname);
+					 dbname, NULL);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname);
 		ereport(DEBUG1,

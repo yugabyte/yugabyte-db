@@ -3,7 +3,7 @@ title: User-defined subprograms and anonymous blocks [YSQL]
 headerTitle: User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"
 linkTitle: User-defined subprograms and anonymous blocks
 description: Describes how YSQL supports user-defined subprograms and anonymous blocks implemented in SQL and PL/pgSQL.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: user-defined-subprograms-and-anon-blocks
@@ -92,29 +92,10 @@ Yugabyte recommends that you avoid the possibility to use a function for the pur
 
 ### Procedure invocation syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-  <li>
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/call_procedure,subprogram_arg.diagram.md" %}}
-  </div>
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/call_procedure,subprogram_arg.grammar.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  call_procedure,
+  actual_arg
+{{%/ebnf%}}
 
 ## Anonymous blocks
 

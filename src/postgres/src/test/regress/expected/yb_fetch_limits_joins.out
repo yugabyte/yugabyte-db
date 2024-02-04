@@ -1,38 +1,12 @@
 -- #### nested loop joins ####
-CREATE FUNCTION explain_join_tsmall_tlarge() RETURNS SETOF TEXT LANGUAGE plpgsql AS
-$$
-DECLARE ln TEXT;
-BEGIN
-    FOR ln IN
-        EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
-        SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a
-    LOOP
-        ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
-        ln := regexp_replace(ln, 'Disk: \S*',  'Disk: xxx');
-        RETURN NEXT ln;
-    END LOOP;
-END;
-$$;
-CREATE FUNCTION explain_join_tlarge_tsmall() RETURNS SETOF TEXT LANGUAGE plpgsql AS
-$$
-DECLARE ln TEXT;
-BEGIN
-    FOR ln IN
-        EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
-        SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a
-    LOOP
-        ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
-        ln := regexp_replace(ln, 'Disk: \S*',  'Disk: xxx');
-        RETURN NEXT ln;
-    END LOOP;
-END;
-$$;
+-- disable printing of all non-deterministic fields in EXPLAIN
+SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_fetch_size_limit = 0;
 SET yb_fetch_row_limit = 1024;
 SET yb_bnl_batch_size = 1;
 -- the default behaviour sends 6 RPCs for the outer table
-SELECT explain_join_tsmall_tlarge();
-                        explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  Nested Loop (actual rows=5000 loops=1)
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
@@ -40,10 +14,13 @@ SELECT explain_join_tsmall_tlarge();
    ->  Index Scan using t_small_pkey on t_small (actual rows=1 loops=5000)
          Index Cond: (a = t_large.a)
          Storage Table Read Requests: 1
-(6 rows)
+ Storage Read Requests: 5006
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(9 rows)
 
-SELECT explain_join_tlarge_tsmall();
-                        explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  Nested Loop (actual rows=5000 loops=1)
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
@@ -51,14 +28,17 @@ SELECT explain_join_tlarge_tsmall();
    ->  Index Scan using t_large_pkey on t_large (actual rows=1 loops=5000)
          Index Cond: (a = t_small.a)
          Storage Table Read Requests: 1
-(6 rows)
+ Storage Read Requests: 5006
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(9 rows)
 
 SET yb_fetch_size_limit = '50kB';
 SET yb_fetch_row_limit = 10000;
 -- we require more requests to collect the rows of the outer table when it is large.
 -- the inner table is unchanged at 1 RPC per row.
-SELECT explain_join_tsmall_tlarge();
-                        explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  Nested Loop (actual rows=5000 loops=1)
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
@@ -66,10 +46,13 @@ SELECT explain_join_tsmall_tlarge();
    ->  Index Scan using t_small_pkey on t_small (actual rows=1 loops=5000)
          Index Cond: (a = t_large.a)
          Storage Table Read Requests: 1
-(6 rows)
+ Storage Read Requests: 5099
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(9 rows)
 
-SELECT explain_join_tlarge_tsmall();
-                        explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  Nested Loop (actual rows=5000 loops=1)
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
@@ -77,13 +60,16 @@ SELECT explain_join_tlarge_tsmall();
    ->  Index Scan using t_large_pkey on t_large (actual rows=1 loops=5000)
          Index Cond: (a = t_small.a)
          Storage Table Read Requests: 1
-(6 rows)
+ Storage Read Requests: 5006
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(9 rows)
 
 -- #### batch nested loop joins ####
 SET yb_bnl_batch_size = 1024;
 -- now we can request large amounts of rows from the inner table - these are still bound by the size limit
-SELECT explain_join_tsmall_tlarge();
-                        explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000 loops=1)
    Join Filter: (t_large.a = t_small.a)
@@ -92,10 +78,13 @@ SELECT explain_join_tsmall_tlarge();
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
          Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 1
-(7 rows)
+ Storage Read Requests: 104
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
 
-SELECT explain_join_tlarge_tsmall();
-                        explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000 loops=1)
    Join Filter: (t_small.a = t_large.a)
@@ -104,11 +93,14 @@ SELECT explain_join_tlarge_tsmall();
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
          Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 18
-(7 rows)
+ Storage Read Requests: 96
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
 
 SET yb_fetch_size_limit = '500kB';
-SELECT explain_join_tsmall_tlarge();
-                        explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000 loops=1)
    Join Filter: (t_large.a = t_small.a)
@@ -117,10 +109,13 @@ SELECT explain_join_tsmall_tlarge();
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
          Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 1
-(7 rows)
+ Storage Read Requests: 17
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
 
-SELECT explain_join_tlarge_tsmall();
-                        explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                QUERY PLAN
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=5000 loops=1)
    Join Filter: (t_small.a = t_large.a)
@@ -129,7 +124,10 @@ SELECT explain_join_tlarge_tsmall();
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
          Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 2
-(7 rows)
+ Storage Read Requests: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
 
 -- YB_TODO: tests here onwards fail because proper join is not successfully chosen
 SET yb_bnl_batch_size = 1; -- disable BNLJ
@@ -137,67 +135,76 @@ SET yb_bnl_batch_size = 1; -- disable BNLJ
 SET yb_fetch_row_limit = 1024;
 SET yb_fetch_size_limit = 0;
 -- the default behaviour sends 6 RPCs per table
-SELECT /*+ MergeJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                 explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                         QUERY PLAN
 ------------------------------------------------------------
  Merge Join (actual rows=5000 loops=1)
    Merge Cond: (t_large.a = t_small.a)
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_large.a
-         Sort Method: external merge  Disk: xxx
+         Sort Method: external merge
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_small.a
-         Sort Method: quicksort  Memory: xxx
+         Sort Method: quicksort
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
-(12 rows)
+ Storage Read Requests: 12
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
 
 SET yb_fetch_row_limit = 0;
 -- size limit affects both tables in a Merge Join
 SET yb_fetch_size_limit = '500kB';
-SELECT /*+ MergeJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                 explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                         QUERY PLAN
 ------------------------------------------------------------
  Merge Join (actual rows=5000 loops=1)
    Merge Cond: (t_large.a = t_small.a)
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_large.a
-         Sort Method: external merge  Disk: xxx
+         Sort Method: external merge
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 12
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_small.a
-         Sort Method: quicksort  Memory: xxx
+         Sort Method: quicksort
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 3
-(12 rows)
+ Storage Read Requests: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
 
 SET yb_fetch_size_limit = '50kB';
-SELECT /*+ MergeJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                 explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ MergeJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                         QUERY PLAN
 ------------------------------------------------------------
  Merge Join (actual rows=5000 loops=1)
    Merge Cond: (t_large.a = t_small.a)
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_large.a
-         Sort Method: external merge  Disk: xxx
+         Sort Method: external merge
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 99
    ->  Sort (actual rows=5000 loops=1)
          Sort Key: t_small.a
-         Sort Method: quicksort  Memory: xxx
+         Sort Method: quicksort
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
-(12 rows)
+ Storage Read Requests: 105
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
 
 -- #### hash joins ####
 SET yb_fetch_row_limit = 1024;
 SET yb_fetch_size_limit = 0;
 -- the default behaviour sends 6 RPCs per table
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
-                                explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                        QUERY PLAN
 ------------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
@@ -207,10 +214,13 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
          Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
-(8 rows)
+ Storage Read Requests: 12
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
 
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                               explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                       QUERY PLAN
 -----------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
@@ -220,13 +230,16 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
          Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
-(8 rows)
+ Storage Read Requests: 12
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
 
 SET yb_fetch_row_limit = 0;
 -- size limit affects both tables in a HashJoin
 SET yb_fetch_size_limit = '500kB';
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
-                                explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                        QUERY PLAN
 ------------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
@@ -236,10 +249,13 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
          Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 12
-(8 rows)
+ Storage Read Requests: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
 
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                               explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                       QUERY PLAN
 -----------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
@@ -249,11 +265,14 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
          Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 3
-(8 rows)
+ Storage Read Requests: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
 
 SET yb_fetch_size_limit = '50kB';
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
-                                explain_join_tlarge_tsmall
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
+                                        QUERY PLAN
 ------------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
@@ -263,10 +282,13 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tlarge_tsmall();
          Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 99
-(8 rows)
+ Storage Read Requests: 105
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
 
-SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
-                               explain_join_tsmall_tlarge
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
+                                       QUERY PLAN
 -----------------------------------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
@@ -276,4 +298,7 @@ SELECT /*+ HashJoin(t_small t_large) */ explain_join_tsmall_tlarge();
          Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
-(8 rows)
+ Storage Read Requests: 105
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)

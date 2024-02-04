@@ -67,6 +67,8 @@ class TabletServerPathHandlers {
                          Webserver::WebResponse* resp);
   void HandleOperationsPage(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp);
+  void HandleRemoteBootstrapsPage(const Webserver::WebRequest& req,
+                                  Webserver::WebResponse* resp);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp);
   void HandleIntentsDBPage(const Webserver::WebRequest& req,

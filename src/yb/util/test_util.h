@@ -37,13 +37,13 @@
 #include <atomic>
 #include <string>
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/logging.h"
 #include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
@@ -191,7 +191,16 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
+// For now this assumes that YB Controller binaries are present in build/latest/ybc.
+inline std::string GetYbcToolPath(const std::string& tool_name) {
+  return GetToolPath("../../latest/ybc", tool_name);
+}
+
 std::string GetCertsDir();
+
+// Read YB_TEST_YB_CONTROLLER from env.
+// If true, spawn YBC servers for backup operations.
+bool UseYbController();
 
 int CalcNumTablets(size_t num_tablet_servers);
 

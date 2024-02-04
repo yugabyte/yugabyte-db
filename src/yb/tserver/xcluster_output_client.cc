@@ -38,6 +38,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/xcluster_write_interface.h"
 #include "yb/util/flags.h"
@@ -62,6 +63,8 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
+DECLARE_bool(TEST_running_test);
+
 #define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) \
   do { \
     auto&& _s = (status); \
@@ -71,14 +74,18 @@ DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     } \
   } while (0)
 
-#define ACQUIRE_MUTEX_IF_ONLINE \
+#define ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN \
   std::lock_guard l(lock_); \
   if (IsOffline()) { \
-    VLOG_WITH_PREFIX(1) << "Aborting ApplyChanges since the output client is shutting down."; \
+    VLOG_WITH_PREFIX(1) << "xCluster output client is shutting down."; \
     return; \
   } \
   do { \
   } while (false)
+
+#define ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS \
+  std::lock_guard l(lock_); \
+  SCHECK(!IsOffline(), Aborted, LogPrefix(), "xCluster output client went offline")
 
 using namespace std::placeholders;
 
@@ -86,19 +93,15 @@ namespace yb {
 namespace tserver {
 
 XClusterOutputClient::XClusterOutputClient(
-    XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-    std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
     : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
-      xcluster_consumer_(xcluster_consumer),
+      xcluster_poller_(xcluster_poller),
       consumer_tablet_info_(consumer_tablet_info),
       producer_tablet_info_(producer_tablet_info),
       local_client_(local_client),
-      apply_changes_clbk_(std::move(apply_changes_clbk)),
-      mark_fail_clbk_(std::move(mark_fail_clbk)),
       use_local_tserver_(use_local_tserver),
       all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
       rate_limiter_(rate_limiter) {}
@@ -124,8 +127,13 @@ void XClusterOutputClient::CompleteShutdown() {
 }
 
 void XClusterOutputClient::MarkFailed(const std::string& reason, const Status& status) {
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+  MarkFailedUnlocked(reason, status);
+}
+
+void XClusterOutputClient::MarkFailedUnlocked(const std::string& reason, const Status& status) {
   LOG_WITH_PREFIX(WARNING) << "xCluster Output client failed as " << reason;
-  mark_fail_clbk_(reason, status);
+  xcluster_poller_->MarkFailed(reason, status);
 }
 
 void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
@@ -141,7 +149,7 @@ void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion 
 void XClusterOutputClient::UpdateSchemaVersionMappings(
     const cdc::XClusterSchemaVersionMap& schema_version_map,
     const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
-  std::lock_guard l(lock_);
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
   // Incoming schema version map is typically a superset of what we have so merge should be ok.
   for(const auto& [producer_version, consumer_version] : schema_version_map) {
@@ -167,7 +175,7 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
 
   // Init class variables that threads will use.
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
     op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
@@ -257,7 +265,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
   // Send out the buffered writes.
   std::unique_ptr<WriteRequestPB> write_request;
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
     write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
@@ -300,7 +308,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
-  std::lock_guard l(lock_);
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, LogPrefix(), "xCluster output client went offline");
 
@@ -380,7 +388,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
                 record.change_metadata_request().add_table().schema() :
                 record.change_metadata_request().schema();
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
 
     // If this is a request to add a table and we have already have a mapping for the producer
     // schema version, we can safely ignore the add table as the table and mapping was present at
@@ -446,7 +454,7 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
   // Increment processed records, and check for completion.
   bool done = false;
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
     done = IncProcessedRecordCount();
   }
   return done;
@@ -461,12 +469,12 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
 
-  ACQUIRE_MUTEX_IF_ONLINE;
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
   auto handle = rpcs_->Prepare();
   if (handle == rpcs_->InvalidHandle()) {
     DCHECK(IsOffline());
-    MarkFailed("we could not prepare rpc as it is shutting down");
+    MarkFailedUnlocked("we could not prepare rpc as it is shutting down");
     return;
   }
 
@@ -490,12 +498,12 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
 
-  ACQUIRE_MUTEX_IF_ONLINE;
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
   auto handle = rpcs_->Prepare();
   if (handle == rpcs_->InvalidHandle()) {
     DCHECK(IsOffline());
-    MarkFailed("we could not prepare rpc as it is shutting down");
+    MarkFailedUnlocked("we could not prepare rpc as it is shutting down");
     return;
   }
 
@@ -522,7 +530,7 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   SchemaVersion producer_schema_version = cdc::kInvalidSchemaVersion;
   ColocationId colocation_id = 0;
   {
-    ACQUIRE_MUTEX_IF_ONLINE;
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
     producer_schema_version = producer_schema_version_;
     colocation_id = colocation_id_;
@@ -537,13 +545,10 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     auto msg = Format(
         "XCluster schema mismatch. No matching schema for producer schema $0 with version $1",
         req.schema().DebugString(), producer_schema_version);
-    LOG(WARNING) << msg;
+    LOG(WARNING) << msg << ": " << status;
     if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA) {
-      xcluster_consumer_->StoreReplicationError(
-          consumer_tablet_info_.tablet_id,
-          producer_tablet_info_.stream_id,
-          replication_error,
-          msg);
+      ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+      xcluster_poller_->StoreReplicationError(replication_error);
     }
     HandleError(status);
     return;
@@ -570,10 +575,10 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
 
   {
     // Since we are done processing the meta op, we can increment the processed count.
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     // Update the local cache with the response. This should happen automatically on the heartbeat
     // as well when the poller gets updated, but we opportunistically update here.
-    cdc::XClusterSchemaVersionMap *schema_version_map = nullptr;
+    cdc::XClusterSchemaVersionMap* schema_version_map = nullptr;
     if (colocation_id != kColocationIdNotSet) {
       schema_version_map = &colocated_schema_version_map_[colocation_id];
     } else {
@@ -597,12 +602,10 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     }
 
     IncProcessedRecordCount();
+    xcluster_poller_->ClearReplicationError();
   }
 
   // Clear out any replication errors.
-  xcluster_consumer_->ClearReplicationError(
-      consumer_tablet_info_.tablet_id,
-      producer_tablet_info_.stream_id);
 
   // MetaOps should be the last ones in a batch, so we should be done at this point.
   HandleResponse();
@@ -617,12 +620,14 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
     HandleError(StatusFromPB(response.error().status()));
     return;
   }
-  xcluster_consumer_->TEST_IncrementNumSuccessfulWriteRpcs();
 
   // See if we need to handle any more writes.
   std::unique_ptr<WriteRequestPB> write_request;
   {
-    ACQUIRE_MUTEX_IF_ONLINE;
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+    if (FLAGS_TEST_running_test) {
+      xcluster_poller_->TEST_IncrementNumSuccessfulWriteRpcs();
+    }
     write_request = write_strategy_->FetchNextRequest();
   }
 
@@ -660,7 +665,7 @@ void XClusterOutputClient::HandleError(const Status& s) {
                << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
-    ACQUIRE_MUTEX_IF_ONLINE;
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     error_status_ = s;
     // In case of a consumer side tablet split, need to refresh the partitions.
     if (client::ClientError(error_status_) == client::ClientErrorCode::kTablePartitionListIsStale) {
@@ -672,23 +677,21 @@ void XClusterOutputClient::HandleError(const Status& s) {
 }
 
 void XClusterOutputClient::HandleResponse() {
+  // If we're shutting down, then don't try to call the callback as that object might be deleted.
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+
   XClusterOutputClientResponse response;
-  {
-    // If we're shutting down, then don't try to call the callback as that object might be deleted.
-    ACQUIRE_MUTEX_IF_ONLINE;
-
-    response.status = error_status_;
-    response.get_changes_response = std::move(get_changes_resp_);
-    if (response.status.ok()) {
-      response.last_applied_op_id = op_id_;
-      response.processed_record_count = processed_record_count_;
-      response.wait_for_version = wait_for_version_;
-    }
-    op_id_ = consensus::MinimumOpId();
-    processed_record_count_ = 0;
+  response.status = error_status_;
+  response.get_changes_response = std::move(get_changes_resp_);
+  if (response.status.ok()) {
+    response.last_applied_op_id = op_id_;
+    response.processed_record_count = processed_record_count_;
+    response.wait_for_version = wait_for_version_;
   }
+  op_id_ = consensus::MinimumOpId();
+  processed_record_count_ = 0;
 
-  apply_changes_clbk_(std::move(response));
+  xcluster_poller_->ApplyChangesCallback(std::move(response));
 }
 
 bool XClusterOutputClient::IncProcessedRecordCount() {
@@ -701,16 +704,13 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
 }
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
-    XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-    std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
-      xcluster_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool,
-      rpcs, std::move(apply_changes_clbk), std::move(mark_fail_clbk), use_local_tserver,
-      rate_limiter);
+      xcluster_poller, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
+      use_local_tserver, rate_limiter);
 }
 
 }  // namespace tserver

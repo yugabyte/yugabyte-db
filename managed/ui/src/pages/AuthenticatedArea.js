@@ -18,7 +18,7 @@ import { YBIntroDialog } from './YBIntroDialog';
 
 import { RBAC_RUNTIME_FLAG, isRbacEnabled, setIsRbacEnabled } from '../redesign/features/rbac/common/RbacUtils';
 import { fetchUserPermissions, getAllAvailablePermissions, getApiRoutePermMapList, getRBACEnabledStatus } from '../redesign/features/rbac/api';
-import { Action, Resource } from '../redesign/features/rbac';
+import { Resource } from '../redesign/features/rbac';
 
 
 const RBACAuthenticatedArea = (props) => {
@@ -74,7 +74,7 @@ const RBACAuthenticatedArea = (props) => {
     onSuccess: (data) => {
       window.rbac_permissions = data;
 
-      if (find(data, { actions: [Action.READ], resourceType: Resource.UNIVERSE }) === undefined) {
+      if (find(data, { resourceType: Resource.UNIVERSE }) === undefined && find(data, { resourceType: Resource.DEFAULT }) === undefined) {
         browserHistory.push('/profile');
       };
     },

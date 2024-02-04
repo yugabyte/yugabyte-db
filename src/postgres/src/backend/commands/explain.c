@@ -129,7 +129,8 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									double estimated_num_nexts, double estimated_num_seeks,
+									double yb_estimated_num_nexts,
+									double yb_estimated_num_seeks,
 									ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
@@ -192,6 +193,9 @@ typedef struct YbStatLabelData
 {
 	const char *requests;
 	const char *execution_time;
+
+	/* Indicates if field can vary between runs of the same query */
+	const bool is_non_deterministic;
 } YbStatLabelData;
 
 typedef struct YbExplainState
@@ -200,29 +204,40 @@ typedef struct YbExplainState
 	bool		  display_zero;
 } YbExplainState;
 
-#define BUILD_STAT_LABEL_DATA(NAME) \
+#define BUILD_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
 	{ \
-		NAME " Requests", NAME " Execution Time" \
+		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
 	}
 
+#define BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
+	BUILD_STAT_LABEL_DATA(NAME, true)
+
+#define BUILD_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
+	BUILD_STAT_LABEL_DATA(NAME, false)
+
 const YbStatLabelData yb_stat_label_data[] = {
-	[YB_STAT_LABEL_CATALOG_READ] = BUILD_STAT_LABEL_DATA("Catalog Read"),
-	[YB_STAT_LABEL_CATALOG_WRITE] = BUILD_STAT_LABEL_DATA("Catalog Write"),
+	[YB_STAT_LABEL_CATALOG_READ] =
+		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Read"),
+	[YB_STAT_LABEL_CATALOG_WRITE] =
+		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Write"),
 
-	[YB_STAT_LABEL_STORAGE_READ] = BUILD_STAT_LABEL_DATA("Storage Read"),
-	[YB_STAT_LABEL_STORAGE_WRITE] = BUILD_STAT_LABEL_DATA("Storage Write"),
+	[YB_STAT_LABEL_STORAGE_READ] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Read"),
+	[YB_STAT_LABEL_STORAGE_WRITE] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Write"),
 
-	[YB_STAT_LABEL_STORAGE_TABLE_READ] = BUILD_STAT_LABEL_DATA("Storage Table "
-															   "Read"),
-	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] = BUILD_STAT_LABEL_DATA("Storage Table "
-																"Write"),
+	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Read"),
+	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Write"),
 
-	[YB_STAT_LABEL_STORAGE_INDEX_READ] = BUILD_STAT_LABEL_DATA("Storage Index "
-															   "Read"),
-	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] = BUILD_STAT_LABEL_DATA("Storage Index "
-																"Write"),
+	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Read"),
+	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Write"),
 
-	[YB_STAT_LABEL_STORAGE_FLUSH] = BUILD_STAT_LABEL_DATA("Storage Flush"),
+	[YB_STAT_LABEL_STORAGE_FLUSH] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Flush"),
 };
 
 #undef BUILD_STAT_LABEL_DATA
@@ -668,12 +683,14 @@ static void
 YbExplainStatWithoutTiming(YbExplainState *yb_es, YbStatLabel label,
 						   double count)
 {
-	if (!(count > 0 || yb_es->display_zero))
+	if (!(count > 0 || yb_es->display_zero) ||
+		(yb_explain_hide_non_deterministic_fields &&
+		 yb_stat_label_data[label].is_non_deterministic))
 		return;
 
 	const YbStatLabelData *label_data = &yb_stat_label_data[label];
 	ExplainState		  *es = yb_es->es;
-	ExplainPropertyFloat(label_data->requests, NULL, count, 3, es);
+	ExplainPropertyFloat(label_data->requests, NULL, count, 0, es);
 }
 
 /* Explains a single RPC related stat and its associated timing */
@@ -681,7 +698,9 @@ static void
 YbExplainRpcRequestStat(YbExplainState *yb_es, YbStatLabel label, double count,
 						double timing)
 {
-	if (!(count > 0 || yb_es->display_zero))
+	if (!(count > 0 || yb_es->display_zero) ||
+		(yb_explain_hide_non_deterministic_fields &&
+		 yb_stat_label_data[label].is_non_deterministic))
 		return;
 
 	const YbStatLabelData *label_data = &yb_stat_label_data[label];
@@ -801,6 +820,30 @@ YbExplainLockRows(ExplainState *es)
 		ExplainPropertyBool("Executes", false, es);
 }
 
+static bool
+YbIsTimingNeeded(ExplainState *es, bool timing_set)
+{
+	/* Disable timing if only deterministic fields are requested */
+	if (yb_explain_hide_non_deterministic_fields)
+	{
+		if (timing_set && es->timing)
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+							"disables EXPLAIN option TIMING")));
+		}
+		return false;
+	}
+
+	/* Else if timing option is explicitly set in the query, honor it */
+	if (timing_set)
+		return es->timing;
+
+	/* Else, use timing if the query needs it */
+	return es->analyze;
+}
+
 /*
  * ExplainQuery -
  *	  execute an EXPLAIN command
@@ -884,8 +927,30 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	/* if the timing was not set explicitly, set default value */
-	es->timing = (timing_set) ? es->timing : es->analyze;
+	/* if hiding of non-deterministic fields is requested, turn off debug and verbose modes */
+	if (yb_explain_hide_non_deterministic_fields)
+	{
+		if (es->debug)
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+							"disables EXPLAIN option DEBUG")));
+			es->debug = false;
+		}
+
+		if (es->verbose)
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+							"disables EXPLAIN option VERBOSE")));
+			es->verbose = false;
+		}
+	}
+
+	/* check if timing is required */
+	es->timing = YbIsTimingNeeded(es, timing_set);
 
 	/* check that timing is used with EXPLAIN ANALYZE */
 	if (es->timing && !es->analyze)
@@ -1193,6 +1258,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	double		totaltime = 0;
 	int			eflags;
 	int			instrument_option = 0;
+	bool		show_variable_fields = !yb_explain_hide_non_deterministic_fields;
 
 	Assert(plannedstmt->commandType != CMD_UTILITY);
 
@@ -1308,14 +1374,14 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	}
 
 	/* Show buffer usage in planning */
-	if (bufusage)
+	if (bufusage && show_variable_fields)
 	{
 		ExplainOpenGroup("Planning", "Planning", true, es);
 		show_buffer_usage(es, bufusage, true);
 		ExplainCloseGroup("Planning", "Planning", true, es);
 	}
 
-	if (es->summary && planduration)
+	if (es->summary && planduration && show_variable_fields)
 	{
 		double		plantime = INSTR_TIME_GET_DOUBLE(*planduration);
 
@@ -1361,8 +1427,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	 */
 	if (es->summary && es->analyze)
 	{
-		ExplainPropertyFloat("Execution Time", "ms", 1000.0 * totaltime, 3,
-							 es);
+		if (show_variable_fields)
+			ExplainPropertyFloat("Execution Time", "ms", 1000.0 * totaltime, 3,
+								 es);
+
 		if (es->rpc)
 		{
 			/*
@@ -1414,7 +1482,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 									 total_rpc_wait / 1000000.0, 3, es);
 		}
 
-		if (IsYugaByteEnabled() && yb_enable_memory_tracking)
+		if (IsYugaByteEnabled() && yb_enable_memory_tracking && show_variable_fields)
 			YbAppendPgMemInfo(es, peakMem);
 	}
 
@@ -2115,7 +2183,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				if (DO_AGGSPLIT_SKIPFINAL(agg->aggsplit))
 				{
-					partialmode = "Partial";
+					if (((AggState*) planstate)->yb_pushdown_supported)
+						/*
+						 * If partial aggregate is pushed down, it does not
+						 * really do anything, since entire operation is
+						 * delegated to DocDB.
+						 */
+						partialmode = "Noop";
+					else
+						partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
 				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
@@ -2240,8 +2316,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										indexscan->estimated_num_nexts,
-										indexscan->estimated_num_seeks,
+										indexscan->yb_estimated_num_nexts,
+										indexscan->yb_estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2252,8 +2328,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										indexonlyscan->estimated_num_nexts,
-										indexonlyscan->estimated_num_seeks,
+										indexonlyscan->yb_estimated_num_nexts,
+										indexonlyscan->yb_estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2548,14 +2624,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->verbose && yb_enable_base_scans_cost_model)
+			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
-					((IndexScan *) plan)->estimated_num_seeks, 0, es);
+					"Estimated Seeks", NULL,
+					((IndexScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
-					((IndexScan *) plan)->estimated_num_nexts, 0, es);
+					"Estimated Nexts", NULL,
+					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -2587,14 +2663,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->verbose && yb_enable_base_scans_cost_model)
+			if (es->debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
-					"Estimated Seeks", NULL, 
-					((IndexOnlyScan *) plan)->estimated_num_seeks, 0, es);
+					"Estimated Seeks", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_num_seeks, 0, es);
 				ExplainPropertyFloat(
-					"Estimated Nexts", NULL, 
-					((IndexOnlyScan *) plan)->estimated_num_nexts, 0, es);
+					"Estimated Nexts", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -2644,6 +2720,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
+			if (es->debug && yb_enable_base_scans_cost_model)
+			{
+				ExplainPropertyFloat(
+					"Estimated Seeks", NULL,
+					((YbSeqScan *) plan)->yb_estimated_num_seeks, 0, es);
+				ExplainPropertyFloat(
+					"Estimated Nexts", NULL,
+					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
+			}
 			break;
 		case T_Gather:
 			{
@@ -3603,23 +3688,35 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		const char *sortMethod;
 		const char *spaceType;
 		int64		spaceUsed;
+		bool		show_variable_fields = !yb_explain_hide_non_deterministic_fields;
 
 		tuplesort_get_stats(state, &stats);
 		sortMethod = tuplesort_method_name(stats.sortMethod);
-		spaceType = tuplesort_space_type_name(stats.spaceType);
-		spaceUsed = stats.spaceUsed;
+		if (show_variable_fields)
+		{
+			spaceType = tuplesort_space_type_name(stats.spaceType);
+			spaceUsed = stats.spaceUsed;
+		}
 
 		if (es->format == EXPLAIN_FORMAT_TEXT)
 		{
 			ExplainIndentText(es);
-			appendStringInfo(es->str, "Sort Method: %s  %s: " INT64_FORMAT "kB\n",
-							 sortMethod, spaceType, spaceUsed);
+			appendStringInfo(es->str, "Sort Method: %s", sortMethod);
+
+			if (show_variable_fields)
+				appendStringInfo(es->str, "  %s: " INT64_FORMAT "kB\n",
+								 spaceType, spaceUsed);
+			else
+				appendStringInfo(es->str, "\n");
 		}
 		else
 		{
 			ExplainPropertyText("Sort Method", sortMethod, es);
-			ExplainPropertyInteger("Sort Space Used", "kB", spaceUsed, es);
-			ExplainPropertyText("Sort Space Type", spaceType, es);
+			if (show_variable_fields)
+			{
+				ExplainPropertyInteger("Sort Space Used", "kB", spaceUsed, es);
+				ExplainPropertyText("Sort Space Type", spaceType, es);
+			}
 		}
 	}
 
@@ -4622,7 +4719,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						double estimated_num_nexts, double estimated_num_seeks,
+						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
 						ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
@@ -4654,10 +4751,10 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (yb_enable_base_scans_cost_model)
+		if (es->debug && yb_enable_base_scans_cost_model)
 		{
-			ExplainPropertyFloat("Estimated Seeks", NULL, estimated_num_seeks, 0, es);
-			ExplainPropertyFloat("Estimated Nexts", NULL, estimated_num_nexts, 0, es);
+			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
+			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);
 		}
 	}
 }

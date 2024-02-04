@@ -14,6 +14,7 @@ import { MASTER_PLACEMENT_FIELD, PROVIDER_FIELD } from '../../../utils/constants
 interface MasterPlacementFieldProps {
   isPrimary: boolean;
   useK8CustomResources: boolean;
+  disabled: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -31,7 +32,8 @@ const useStyles = makeStyles((theme) => ({
 
 export const MasterPlacementField = ({
   isPrimary,
-  useK8CustomResources
+  useK8CustomResources,
+  disabled
 }: MasterPlacementFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -74,6 +76,7 @@ export const MasterPlacementField = ({
               onChange={(e) => {
                 setValue(MASTER_PLACEMENT_FIELD, e.target.value as MasterPlacementMode);
               }}
+              isDisabled={disabled}
               options={[
                 {
                   value: MasterPlacementMode.COLOCATED,

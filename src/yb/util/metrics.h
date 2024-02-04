@@ -273,19 +273,17 @@
 
 // Convenience macros to define metric prototypes.
 // See the documentation at the top of this file for example usage.
-#define METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, level, ...)   \
+#define METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, level)   \
   ::yb::CounterPrototype BOOST_PP_CAT(METRIC_, name)(                        \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
                                       BOOST_PP_STRINGIZE(name), \
                                       label, \
                                       unit, \
                                       desc, \
-                                      level, \
-                                      ## __VA_ARGS__))
+                                      level))
 
-#define METRIC_DEFINE_counter(entity, name, label, unit, desc, ...)   \
-  METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, \
-      yb::MetricLevel::kInfo, ## __VA_ARGS__)
+#define METRIC_DEFINE_counter(entity, name, label, unit, desc)   \
+  METRIC_DEFINE_counter_with_level(entity, name, label, unit, desc, yb::MetricLevel::kInfo)
 
 #define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
     METRIC_DEFINE_counter(entity, name, label, unit, label)
@@ -452,11 +450,13 @@ class Metric : public RefCountedThreadSafe<Metric> {
  public:
   // All metrics must be able to render themselves as JSON.
   virtual Status WriteAsJson(JsonWriter* writer,
-                                     const MetricJsonOptions& opts) const = 0;
+                             const MetricJsonOptions& opts) const = 0;
 
   virtual Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const = 0;
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const = 0;
 
   const MetricPrototype* prototype() const { return prototype_; }
 
@@ -506,7 +506,6 @@ class MetricRegistry {
   // See the MetricJsonOptions struct definition above for options changing the
   // output of this function.
   Status WriteAsJson(JsonWriter* writer,
-                     const MetricEntityOptions& entity_options,
                      const MetricJsonOptions& opts) const;
 
   // Writes metrics in this registry to 'writer'.
@@ -520,7 +519,6 @@ class MetricRegistry {
   // See the MetricPrometheusOptions struct definition above for options changing the
   // output of this function.
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricEntityOptions& entity_options,
                             const MetricPrometheusOptions& opts) const;
 
   // For each registered entity, retires orphaned metrics. If an entity has no more
@@ -554,7 +552,7 @@ class MetricRegistry {
 
  private:
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
-  EntityMap entities_;
+  EntityMap entities_ GUARDED_BY(lock_);
 
   mutable std::shared_timed_mutex tablets_shutdown_lock_;
 
@@ -578,16 +576,13 @@ class MetricPrototype {
  public:
   struct OptionalArgs {
     OptionalArgs(uint32_t flags = 0,
-                 AggregationFunction aggregation_function = AggregationFunction::kSum,
-                 AggregationMetricLevel aggregation_metric_level = AggregationMetricLevel::kTable)
+                 AggregationFunction aggregation_function = AggregationFunction::kSum)
       : flags_(flags),
-        aggregation_function_(aggregation_function),
-        aggregation_metric_level_(aggregation_metric_level) {
+        aggregation_function_(aggregation_function) {
     }
 
     const uint32_t flags_;
     const AggregationFunction aggregation_function_;
-    const AggregationMetricLevel aggregation_metric_level_;
   };
 
   // Simple struct to aggregate the arguments common to all prototypes.
@@ -607,8 +602,7 @@ class MetricPrototype {
         description_(description),
         level_(level),
         flags_(optional_args.flags_),
-        aggregation_function_(optional_args.aggregation_function_),
-        aggregation_metric_level_(optional_args.aggregation_metric_level_) {
+        aggregation_function_(optional_args.aggregation_function_) {
     }
 
     const char* const entity_type_;
@@ -619,7 +613,6 @@ class MetricPrototype {
     const MetricLevel level_;
     const uint32_t flags_;
     const AggregationFunction aggregation_function_;
-    const AggregationMetricLevel aggregation_metric_level_;
   };
 
   const char* entity_type() const { return args_.entity_type_; }
@@ -629,9 +622,6 @@ class MetricPrototype {
   const char* description() const { return args_.description_; }
   MetricLevel level() const { return args_.level_; }
   AggregationFunction aggregation_function() const { return args_.aggregation_function_; }
-  AggregationMetricLevel aggregation_metric_level() const {
-    return args_.aggregation_metric_level_;
-  }
   virtual MetricType::Type type() const = 0;
 
   // Writes the fields of this prototype to the given JSON writer.
@@ -712,8 +702,10 @@ class StringGauge : public Gauge {
   void set_value(const std::string& value);
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override;
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override;
  protected:
   virtual void WriteValue(JsonWriter* writer) const override;
  private:
@@ -753,14 +745,17 @@ class AtomicGauge : public Gauge {
   }
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override {
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override {
     if (prototype_->level() < opts.level) {
       return Status::OK();
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
                                     prototype_->description());
   }
@@ -852,14 +847,17 @@ class FunctionGauge : public Gauge {
   }
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override {
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override {
     if (prototype_->level() < opts.level) {
       return Status::OK();
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
                                     prototype_->description());
   }
@@ -908,8 +906,10 @@ class Counter : public Metric {
                              const MetricJsonOptions& opts) const override;
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override;
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override;
 
  private:
   FRIEND_TEST(MetricsTest, SimpleCounterTest);
@@ -953,8 +953,10 @@ class MillisLag : public Metric {
   virtual Status WriteAsJson(JsonWriter* w,
       const MetricJsonOptions& opts) const override;
   virtual Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override;
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override;
 
  private:
   friend class MetricEntity;
@@ -985,14 +987,17 @@ class AtomicMillisLag : public MillisLag {
                      const MetricJsonOptions& opts) const override;
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override {
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override {
     if (prototype_->level() < opts.level) {
       return Status::OK();
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
                                     prototype_->description());
   }
@@ -1085,8 +1090,10 @@ class BaseStats : public Metric {
       JsonWriter* w, const MetricJsonOptions& opts) const override;
 
   Status WriteForPrometheus(
-      PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-      const MetricPrometheusOptions& opts) const override;
+      PrometheusWriter* writer,
+      const MetricEntity::AttributeMap& attr,
+      const MetricPrometheusOptions& opts,
+      const AggregationLevels aggregation_levels) const override;
 
  protected:
   explicit BaseStats(const MetricPrototype* proto): Metric(proto) {}
@@ -1115,7 +1122,9 @@ class Histogram : public BaseStats<Histogram> {
   HdrHistogram* mutable_underlying() { return histogram_.get(); }
 
   Status WritePercentilesForPrometheus(
-      PrometheusWriter* writer, MetricEntity::AttributeMap attr) const;
+      PrometheusWriter* writer,
+      MetricEntity::AttributeMap attr,
+      const AggregationLevels aggregation_levels) const;
 
   // Returns a snapshot of this histogram.
   // Resets mean/min/max, but not the total count/sum.
@@ -1148,7 +1157,9 @@ class EventStats : public BaseStats<EventStats> {
   AggregateStats* mutable_underlying() { return stats_.get(); }
 
   Status WritePercentilesForPrometheus(
-      PrometheusWriter* writer, MetricEntity::AttributeMap attr) const;
+      PrometheusWriter* writer,
+      MetricEntity::AttributeMap attr,
+      const AggregationLevels aggregation_levels) const;
 
  private:
   FRIEND_TEST(MetricsTest, SimpleEventStatsTest);

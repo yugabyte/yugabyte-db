@@ -1592,8 +1592,14 @@ ALTER TABLE fd_pt1 ALTER COLUMN c6 SET NOT NULL;
 ALTER TABLE fd_pt1 ALTER COLUMN c7 DROP NOT NULL;
 -- YB Note: The below errors in PG but doesn't in YB because inheritance isn't supported.
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10) USING '0';
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE fd_pt1 ALTER COLUMN c8 TYPE char(10);
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET STATISTICS 10000;
 ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 ERROR:  ALTER TABLE ALTER column not supported yet

@@ -332,6 +332,12 @@ public class CertificateController extends AuthenticatedController {
       response = UUID.class,
       nickname = "getCertificate")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, String label) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo cert = CertificateInfo.getOrBadRequest(customerUUID, label);

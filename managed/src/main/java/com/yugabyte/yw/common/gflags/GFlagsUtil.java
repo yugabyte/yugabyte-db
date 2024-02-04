@@ -79,6 +79,7 @@ public class GFlagsUtil {
   public static final String YSQL_CGROUP_PATH = "ysql";
 
   private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+  private static final int DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS = 480;
 
   public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
       "default_memory_limit_to_ram_ratio";
@@ -134,6 +135,7 @@ public class GFlagsUtil {
   public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
+  public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -169,6 +171,7 @@ public class GFlagsUtil {
   // DB internal glag to suppress going into shell mode and delete files on master removal.
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
+  public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -229,6 +232,7 @@ public class GFlagsUtil {
       Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       boolean useHostname,
+      Config config,
       RuntimeConfGetter confGetter) {
     Map<String, String> extra_gflags = new TreeMap<>();
     extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
@@ -258,7 +262,7 @@ public class GFlagsUtil {
     boolean legacyNet =
         universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     boolean isDualNet =
-        confGetter.getStaticConf().getBoolean("yb.cloud.enabled")
+        config.getBoolean("yb.cloud.enabled")
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean useSecondaryIp = isDualNet && !legacyNet;
@@ -273,14 +277,14 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      boolean configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
 
       // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
       // to use the primary cluster value instead.
       if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
               == UniverseDefinitionTaskParams.ClusterType.ASYNC
           && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
-        configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
       extra_gflags.putAll(
           getTServerDefaultGflags(
@@ -305,6 +309,9 @@ public class GFlagsUtil {
 
     if (taskParam.isMaster) {
       extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
+      extra_gflags.put(
+          LOAD_BALANCER_INITIAL_DELAY_SECS,
+          String.valueOf(DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS));
     }
 
     if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
@@ -339,7 +346,8 @@ public class GFlagsUtil {
       Universe universe,
       AnsibleConfigureServers.Params taskParam,
       RuntimeConfGetter confGetter,
-      Config config) {
+      Config config,
+      Map<String, String> customYbcGflags) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
@@ -403,12 +411,17 @@ public class GFlagsUtil {
     }
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
+      UUID universeUUID,
+      String nodeName,
+      boolean listenOnAllInterfaces,
+      int hardwareConcurrency,
+      Map<String, String> customYbcGflags) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -445,6 +458,7 @@ public class GFlagsUtil {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
       ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
@@ -560,7 +574,7 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
-      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      String ysqlPgConfCsv = getYsqlPgConfCsv(taskParam);
       if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
         gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
       }
@@ -570,10 +584,9 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  private static String getYsqlPgConfCsv(Universe universe) {
+  private static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
     List<String> ysqlPgConfCsvEntries = new ArrayList<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -640,17 +653,16 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
-      gflags.putAll(getYcqlAuditFlags(universe));
+      gflags.putAll(getYcqlAuditFlags(taskParam));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
   }
 
-  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+  private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
@@ -786,7 +798,12 @@ public class GFlagsUtil {
       gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
       gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
     }
-
+    if (taskParam.isMasterInShellMode || taskParam.masterJoinExistingCluster) {
+      // Always set this to true in shell mode to avoid forming a cluster even if the master
+      // addresses are set by mistake. Once the master joins an existing cluster, this is ignored.
+      gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
+      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2));
+    }
     return gflags;
   }
 
@@ -1025,33 +1042,34 @@ public class GFlagsUtil {
     return trimData;
   }
 
+  public static String mergeCSVs(String csv1, String csv2) {
+    StringWriter writer = new StringWriter();
+    try {
+      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
+      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+        Set<String> records = new LinkedHashSet<>();
+        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        parser = new CSVParser(new StringReader(csv2), csvFormat);
+        for (CSVRecord record : parser) {
+          records.addAll(record.toList());
+        }
+        csvPrinter.printRecord(records);
+        csvPrinter.flush();
+      }
+    } catch (IOException ignored) {
+      // can't really happen
+    }
+    return writer.toString();
+  }
+
   public static void mergeCSVs(
       Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
     if (userGFlags.containsKey(key)) {
-      String userValue = userGFlags.get(key).toString();
-      try {
-        CSVFormat csvFormat = CSVFormat.DEFAULT;
-        CSVParser userValueParser = new CSVParser(new StringReader(userValue), csvFormat);
-        CSVParser platformValuesParser =
-            new CSVParser(
-                new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
-        Set<String> records = new LinkedHashSet<>();
-        StringWriter writer = new StringWriter();
-        try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-          for (CSVRecord record : userValueParser) {
-            records.addAll(record.toList());
-          }
-          for (CSVRecord record : platformValuesParser) {
-            records.addAll(record.toList());
-          }
-          csvPrinter.printRecord(records);
-          csvPrinter.flush();
-        }
-        String result = writer.toString();
-        userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
-      } catch (IOException ignored) {
-        // can't really happen
-      }
+      String userValue = userGFlags.get(key);
+      userGFlags.put(key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, "")));
     }
   }
 
@@ -1264,13 +1282,14 @@ public class GFlagsUtil {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       Map<String, String> userGFlags,
+      Config config,
       RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
-        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config, confGetter);
     for (String gflag : GFLAGS_FORBIDDEN_TO_OVERRIDE) {
       if (userGFlags.containsKey(gflag)
           && platformGFlags.containsKey(gflag)

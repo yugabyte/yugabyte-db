@@ -28,39 +28,52 @@ constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 class XClusterYcqlTestBase : public XClusterTestBase {
  public:
-  void SetUp() override;
+  virtual ~XClusterYcqlTestBase() = default;
 
-  Result<YBTables> SetUpWithParams(
+  virtual Status SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
-      const std::vector<uint32_t>& num_producer_tablets,
-      uint32_t replication_factor,
-      uint32_t num_consumers = 1,
-      uint32_t num_masters = 1,
-      uint32_t num_tservers = 1);
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters = 1, uint32_t num_tservers = 1);
+
+  virtual Status SetUpWithParams();
 
   Result<client::YBTableName> CreateTable(
-      YBClient* client, const std::string& namespace_name, const std::string& table_name,
+      client::YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets);
 
-  Status CreateTable(
-      uint32_t idx, uint32_t num_tablets, YBClient* client,
-      std::vector<client::YBTableName>* tables);
+  Result<client::YBTableName> CreateTable(
+      uint32_t idx, uint32_t num_tablets, client::YBClient* client);
 
-  Status CreateTable(
-      uint32_t idx, uint32_t num_tablets, YBClient* client, client::YBSchema schema,
-      std::vector<client::YBTableName>* tables);
+  Result<client::YBTableName> CreateTable(
+      uint32_t idx, uint32_t num_tablets, YBClient* client, const client::YBSchema& schema);
 
-  void WriteWorkload(
-      uint32_t start, uint32_t end, YBClient* client, const client::YBTableName& table,
+  Status WriteWorkload(
+      uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
       bool delete_op = false);
+
+  Status InsertRowsInProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
+
+  Status InsertRowsInConsumer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> consumer_table = {});
+
+  Status DeleteRows(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
+
+  Status VerifyNumRecords(
+      const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size);
+
+  Status VerifyNumRecordsOnProducer(size_t expected_size, size_t table_idx = 0);
+
+  Status VerifyNumRecordsOnConsumer(size_t expected_size, size_t table_idx = 0);
 
   Status DoVerifyWrittenRecords(
       const client::YBTableName& producer_table, const client::YBTableName& consumer_table,
       YBClient* prod_client = nullptr, YBClient* cons_client = nullptr,
       int timeout_secs = kRpcTimeout);
 
-  Status DoVerifyNumRecords(
-      const client::YBTableName& table, YBClient* client, size_t expected_size);
+  Status VerifyRowsMatch(
+      std::shared_ptr<client::YBTable> producer_table = {}, int timeout_secs = kRpcTimeout);
 
   server::ClockPtr GetClock() { return clock_; }
 
@@ -77,10 +90,17 @@ class XClusterYcqlTestBase : public XClusterTestBase {
       YBClusters* clusters, YBTables* tables, uint32 cluster_id, size_t num_tables,
       uint32_t num_tablets_per_table, bool is_producer, uint32_t num_tservers = 1);
 
- private:
+ protected:
+  virtual bool UseTransactionalTables() { return false; }
+
   server::ClockPtr clock_{new server::HybridClock()};
 
   client::YBSchema schema_;
+
+ private:
+  Status BuildSchemaAndCreateTables(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets);
 };
 
 }  // namespace yb

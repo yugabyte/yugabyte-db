@@ -58,6 +58,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -176,7 +177,7 @@ class PgLibPqFailOnConflictTest : public PgLibPqTest {
 };
 
 static Result<PgOid> GetTablegroupOid(PGConn* conn, const std::string& tablegroup_name) {
-  return conn->FetchValue<PGOid>(
+  return conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname = '$0'", tablegroup_name));
 }
 
@@ -186,20 +187,82 @@ TEST_F(PgLibPqTest, Simple) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
 
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  const auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>("SELECT * FROM t")));
+  ASSERT_EQ(row, (decltype(row){1, "hello"}));
+}
 
-  {
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
+// Make sure index scan queries that error at the beginning of scanning don't bump up the pgstat
+// idx_scan metric.
+TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kNumColumns = 30;
+  constexpr auto kMaxPredicates = 64;
+  // This matches PGSTAT_STAT_INTERVAL.
+  const auto kPgstatStatInterval = 500ms;
+  // This matches PGSTAT_MAX_WAIT_TIME.
+  const auto kPgstatMaxWaitTime = 10000ms;
 
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
+  std::ostringstream create_table_ss;
+  create_table_ss << "CREATE TABLE many (";
+  for (int i = 1; i <= kNumColumns; ++i)
+    create_table_ss << "c" << i << " INT,";
+  create_table_ss << "k INT PRIMARY KEY)";
+  ASSERT_OK(conn.Execute(create_table_ss.str()));
 
-    auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
-    ASSERT_EQ(key, 1);
-    auto value = ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1));
-    ASSERT_EQ(value, "hello");
+  std::ostringstream create_index_ss;
+  create_index_ss << "CREATE INDEX ON many (c1 ASC";
+  for (int i = 2; i <= kNumColumns; ++i)
+    create_index_ss << ", c" << i;
+  create_index_ss << ")";
+  ASSERT_OK(conn.Execute(create_index_ss.str()));
+
+  // There should be only two indexes: pkey index and secondary index.  We want to get stats for the
+  // secondary index, but its name is too long, so filter by != 'many_pkey'.
+  const auto idx_scan_query =
+      "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
+
+  std::ostringstream query_ss;
+  query_ss << "SELECT k FROM many WHERE TRUE";
+  auto num_predicates = 0;
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " = 1";
   }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " > 0";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " < 2";
+  }
+
+  // Successful scan should increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
+  // Stats can take time to update, so retry-loop.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn, &idx_scan_query]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
+      },
+      kPgstatMaxWaitTime,
+      "idx_scan == 1"));
+
+  // Add last predicate, which should not have been added from above and therefore is a new
+  // predicate.
+  static_assert(kMaxPredicates < kNumColumns * 3);
+  query_ss << " AND c" << kNumColumns << " < 2";
+
+  // Unsuccessful scan should not increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  auto status = ResultToStatus(conn.Fetch(query_ss.str()));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
+                             kMaxPredicates));
+  // To avoid sleeping too long, wait the minimum time (x2) rather than maximum time.  In most
+  // cases, the stats should be updated at the minimum pace, so this should be sufficient to catch
+  // regressions.
+  SleepFor(kPgstatStatInterval * 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 1);
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
@@ -313,7 +376,7 @@ TEST_F(PgLibPqTest, ReadRestart) {
     SCOPED_TRACE(Format("Reading: $0", read_key));
 
     ASSERT_OK(conn.Execute("BEGIN"));
-    auto key = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+    auto key = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
         "SELECT * FROM t WHERE key = $0", read_key)));
     ASSERT_EQ(key, read_key);
     ASSERT_OK(conn.Execute("ROLLBACK"));
@@ -353,7 +416,9 @@ TEST_F(PgLibPqTest, ConcurrentInsertTruncateForeignKey) {
 
   for (int i = 0; i != kTruncateThreads; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-      auto truncate_conn = ASSERT_RESULT(Connect());
+      // TODO (#19975): Enable read committed isolation
+      auto truncate_conn = ASSERT_RESULT(
+          SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       int idx __attribute__((unused)) = 0;
       while (!stop.load(std::memory_order_acquire)) {
         auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
@@ -455,18 +520,18 @@ TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
 
     // Verify for CASCADE behaviour.
     ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
-    ASSERT_EQ(ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
 
     stop = true;
     insertion_thread.join();
 
     // Verify t1 has 99 i.e. (100 - 1) rows.
-    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    auto curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t1"));
     ASSERT_EQ(curr_rows, 99);
 
     // Reset the tables for next iteration.
     ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
-    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    curr_rows = ASSERT_RESULT(conn1.FetchRow<int64_t>("SELECT COUNT(*) FROM t2"));
     ASSERT_EQ(curr_rows, 0);
   }
 }
@@ -742,7 +807,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
 
   // Check each counter
   for (int i = 0; i < kThreads; i++) {
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>(Format("SELECT value FROM t WHERE key = $0",
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(Format("SELECT value FROM t WHERE key = $0",
                                                             i))),
               kIncrements);
   }
@@ -780,7 +845,7 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_firs
   }
 
   // Check that we incremented exactly the desired number of times
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM t WHERE key = 0")),
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT value FROM t WHERE key = 0")),
             kThreads * kIncrements);
 }
 
@@ -847,7 +912,7 @@ TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(connection.FetchValue<int32_t>(
+          int read_a = ASSERT_RESULT(connection.FetchRow<int32_t>(
               Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
@@ -964,10 +1029,9 @@ TEST_F(PgLibPqTest, BulkCopy) {
 
   LOG(INFO) << "Finished copy";
   for (;;) {
-    auto result = conn.FetchFormat("SELECT COUNT(*) FROM $0", kTableName);
+    auto result = conn.FetchRow<PGUint64>(Format("SELECT COUNT(*) FROM $0", kTableName));
     if (result.ok()) {
-      LogResult(result->get());
-      auto count = ASSERT_RESULT(GetValue<PGUint64>(result->get(), 0, 0));
+      auto count = *result;
       LOG(INFO) << "Total count: " << count;
       ASSERT_EQ(count, kNumBatches * kBatchSize);
       break;
@@ -1124,7 +1188,7 @@ Result<TableGroupInfo> SelectTablegroup(
     const std::string& group_name) {
   TableGroupInfo group_info;
   const auto database_oid = VERIFY_RESULT(GetDatabaseOid(conn, database_name));
-  group_info.oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
+  group_info.oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name)));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
@@ -1439,11 +1503,13 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto res = ASSERT_RESULT(conn1.Fetch(query_statement));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
 
   // Ensure that reads to separate tables in a colocated database/tablegroup do not conflict.
   if (colocated) {
@@ -1458,10 +1524,8 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
 
-  res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  res = ASSERT_RESULT(conn2.Fetch("SELECT * FROM t2 FOR UPDATE"));
-  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_OK(conn1.FetchRow<int32_t>("SELECT * FROM t FOR UPDATE"));
+  ASSERT_OK(conn2.FetchRow<int32_t>("SELECT * FROM t2 FOR UPDATE"));
 
   ASSERT_OK(conn1.CommitTransaction());
   ASSERT_OK(conn2.CommitTransaction());
@@ -1566,7 +1630,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
     // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
     auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
-    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
     ASSERT_EQ(res, 0);
   }
 
@@ -1576,7 +1640,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
     {
       auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
-      auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+      auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
       ASSERT_EQ(res, 0);
 
       ASSERT_OK(conn_after.Execute("CREATE TABLE bar2 (c char)"));
@@ -1584,9 +1648,9 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     }
     auto conn_after = ASSERT_RESULT(RestartTSAndConnectToPostgres(0, database_name));
 
-    auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+    auto res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar"));
     ASSERT_EQ(res, 0);
-    res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar2"));
+    res = ASSERT_RESULT(conn_after.FetchRow<int64_t>("SELECT COUNT(*) FROM bar2"));
     ASSERT_EQ(res, 0);
   }
 }
@@ -1649,14 +1713,14 @@ class PgLibPqDuplicateClientCreateTableTest : public PgLibPqTest {
 Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
   RETURN_NOT_OK(conn.Execute("CREATE TABLE tbl (k int primary key)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO tbl VALUES (1)"));
-  const int k = VERIFY_RESULT(conn.FetchValue<int32_t>("SELECT * FROM tbl"));
+  const int k = VERIFY_RESULT(conn.FetchRow<int32_t>("SELECT * FROM tbl"));
   SCHECK_EQ(k, 1, IllegalState, "wrong result");
 
   return Status::OK();
 }
 
 Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
-  return conn->FetchValue<std::string>(Format(
+  return conn->FetchRow<std::string>(Format(
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
@@ -2072,29 +2136,9 @@ TEST_F_EX(
   // Create index and verify it's content by forcing an index scan.
   ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a ASC)"));
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int32_t, std::string>> values = {
-    {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
-    },
-    {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
-    },
-    {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
-      ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
-    },
-  };
-  ASSERT_EQ(values[0].first, 1);
-  ASSERT_EQ(values[0].second, "hello");
-  ASSERT_EQ(values[1].first, 2);
-  ASSERT_EQ(values[1].second, "hello2");
-  ASSERT_EQ(values[2].first, 3);
-  ASSERT_EQ(values[2].second, "hello3");
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT * FROM foo ORDER BY a")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "hello"}, {2, "hello2"}, {3, "hello3"}}));
 
   // Create another table within the tablegroup and insert some values.
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE bar (a INT) TABLEGROUP $0", kTablegroupName));
@@ -2105,37 +2149,24 @@ TEST_F_EX(
   // Create index on bar and verify it's content by forcing an index scan.
   ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a DESC)"));
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
-  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
-  ASSERT_EQ(PQntuples(res.get()), 2);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector bar_values = {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-  };
-  ASSERT_EQ(bar_values[0], 200);
-  ASSERT_EQ(bar_values[1], 100);
+  auto values = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM bar ORDER BY a DESC"));
+  ASSERT_EQ(values, (decltype(values){200, 100}));
 
   // Truncating foo works correctly.
   ASSERT_OK(conn.Execute("TRUNCATE TABLE foo"));
-  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM foo")).get()), 0);
+  ASSERT_OK(conn.FetchMatrix("SELECT * FROM foo", 0, 2));
 
   // Index scan on foo should also return 0 rows.
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
-  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
-  ASSERT_EQ(PQntuples(res.get()), 0);
+  const auto query = "SELECT * FROM foo ORDER BY a";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  ASSERT_OK(conn.FetchMatrix(query, 0, 2));
 
   // Truncation of foo shouldn't affect bar.
-  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM bar")).get()), 2);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
-  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
-  ASSERT_EQ(PQntuples(res.get()), 2);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  bar_values = {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-  };
-  ASSERT_EQ(bar_values[0], 200);
-  ASSERT_EQ(bar_values[1], 100);
+  ASSERT_OK(conn.FetchMatrix("SELECT * FROM bar", 2, 1));
+  const auto query2 = "SELECT * FROM bar ORDER BY a DESC";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query2)));
+  values = ASSERT_RESULT(conn.FetchRows<int32_t>(query2));
+  ASSERT_EQ(values, (decltype(values){200, 100}));
 }
 
 TEST_F_EX(
@@ -2171,23 +2202,9 @@ TEST_F_EX(
 
   // Creating a view for the table works.
   ASSERT_OK(conn.ExecuteFormat("CREATE VIEW odd_a_view AS SELECT * FROM foo WHERE MOD(a, 2) = 1"));
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM odd_a_view ORDER BY a"));
-  ASSERT_EQ(PQntuples(res.get()), 2);
-  ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int32_t, std::string>> values = {
-    {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
-    },
-    {
-      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1))
-    },
-  };
-  ASSERT_EQ(values[0].first, 1);
-  ASSERT_EQ(values[0].second, "hello");
-  ASSERT_EQ(values[1].first, 3);
-  ASSERT_EQ(values[1].second, "hello3");
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT * FROM odd_a_view ORDER BY a")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "hello"}, {3, "hello3"}}));
 
   // Creating a table within the tablegroup with a different schema is successful.
   ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
@@ -2330,78 +2347,23 @@ TEST_F_EX(
     // Sequential scan.
     auto query = Format(kQuery, kTableNames[idx]);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(query, "Seq")));
-    auto res = ASSERT_RESULT(conn.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 3);
-    ASSERT_EQ(PQnfields(res.get()), 2);
-    {
-      std::vector<std::pair<int32_t, std::string>> values = {
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
-        },
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
-        },
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
-        },
-      };
-      ASSERT_EQ(values[0].first, 1);
-      ASSERT_EQ(values[0].second, "hello");
-      ASSERT_EQ(values[1].first, 2);
-      ASSERT_EQ(values[1].second, "hello2");
-      ASSERT_EQ(values[2].first, 3);
-      ASSERT_EQ(values[2].second, "hello3");
-    }
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(query)));
+    ASSERT_EQ(rows, (decltype(rows){{1, "hello"}, {2, "hello2"}, {3, "hello3"}}));
 
     // Index scan.
     ASSERT_OK(
         conn.ExecuteFormat("CREATE UNIQUE INDEX foo_index_$0 ON $0 (a ASC)", kTableNames[idx]));
     auto queryForIndexScan = Format(kQueryForIndexScan, kTableNames[idx]);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexScan, "Index")));
-    res = ASSERT_RESULT(conn.Fetch(queryForIndexScan));
-    ASSERT_EQ(PQntuples(res.get()), 3);
-    ASSERT_EQ(PQnfields(res.get()), 2);
-    {
-      std::vector<std::pair<int32_t, std::string>> values = {
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
-        },
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
-        },
-        {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
-          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
-        },
-      };
-      ASSERT_EQ(values[0].first, 1);
-      ASSERT_EQ(values[0].second, "hello");
-      ASSERT_EQ(values[1].first, 2);
-      ASSERT_EQ(values[1].second, "hello2");
-      ASSERT_EQ(values[2].first, 3);
-      ASSERT_EQ(values[2].second, "hello3");
-    }
+    rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(queryForIndexScan)));
+    ASSERT_EQ(rows, (decltype(rows){{1, "hello"}, {2, "hello2"}, {3, "hello3"}}));
 
     // Index only scan.
     auto queryForIndexOnlyScan = Format(kQueryForIndexOnlyScan, kTableNames[idx]);
     ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexOnlyScan, "Index Only")));
-    res = ASSERT_RESULT(conn.Fetch(queryForIndexOnlyScan));
-    ASSERT_EQ(PQntuples(res.get()), 3);
-    ASSERT_EQ(PQnfields(res.get()), 1);
     {
-      std::vector values = {
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
-          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
-      };
-      ASSERT_EQ(values[0], 1);
-      ASSERT_EQ(values[1], 2);
-      ASSERT_EQ(values[2], 3);
+      const auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(queryForIndexOnlyScan));
+      ASSERT_EQ(values, (decltype(values){1, 2, 3}));
     }
   }
 }
@@ -2471,18 +2433,8 @@ bool IsEqual(long double a, long double b) {
   return RelativeDiff(a, b) < kRelativeThreshold;
 }
 
-template<HasExactRepresentation T>
-bool IsEqualAsString(const T& value, const std::string& str) {
-  return IsEqual(value, boost::lexical_cast<T>(str));
-}
-
-template<class T>
-bool IsEqualAsString(const T& value, const std::string& str) {
-  return IsEqual(value, boost::lexical_cast<long double>(str));
-}
-
-// Run SELECT query of [T in] casted to the equivalent pg type. Check that FetchValue and
-// FetchRowAsString return the same thing back.
+// Run SELECT query of [T in] casted to the equivalent pg type. Check that FetchRow returns the
+// same thing back.
 template<typename Tag, typename T>
 Status CheckFetch(PGConn* conn, const T& in, const std::string& type) {
   std::ostringstream ss;
@@ -2493,15 +2445,9 @@ Status CheckFetch(PGConn* conn, const T& in, const std::string& type) {
   const auto query = Format("SELECT '$0'::$1", ss.str(), type);
   LOG(INFO) << "Query: " << query;
 
-  auto out = VERIFY_RESULT(conn->FetchValue<Tag>(query));
+  auto out = VERIFY_RESULT(conn->FetchRow<Tag>(query));
   LOG(INFO) << "Result: " << out;
   SCHECK(IsEqual(in, out), IllegalState, Format("Unexpected result: in=$0, out=$1", in, out));
-
-  const auto out_str = VERIFY_RESULT(conn->FetchRowAsString(query));
-  LOG(INFO) << "Result string: " << out_str;
-  SCHECK(IsEqualAsString(in, out_str),
-         IllegalState,
-         Format("Unexpected string result: in=$0, out_str=$1", in, out_str));
   return Status::OK();
 }
 
@@ -3013,17 +2959,8 @@ TEST_F_EX(PgLibPqTest,
   // sorted and displayed correctly.
   const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
   ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector values = {
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
-  };
-  ASSERT_EQ(values[0], "b");
-  ASSERT_EQ(values[1], "c");
-  ASSERT_EQ(values[2], "a");
+  auto values = ASSERT_RESULT(conn->FetchRows<std::string>(query));
+  ASSERT_EQ(values, (decltype(values){"b", "c", "a"}));
 
   // Now alter the gflag so any new values will have sort order added.
   ASSERT_OK(cluster_->SetFlagOnTServers(
@@ -3053,51 +2990,21 @@ TEST_F_EX(PgLibPqTest,
   // with new enum values which have sort order, can be read back, sorted and
   // displayed correctly.
   ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
-  res = ASSERT_RESULT(conn->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 6);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  values = {
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
-  };
-  ASSERT_EQ(values[0], "b");
-  ASSERT_EQ(values[1], "e");
-  ASSERT_EQ(values[2], "f");
-  ASSERT_EQ(values[3], "c");
-  ASSERT_EQ(values[4], "a");
-  ASSERT_EQ(values[5], "d");
+  values = ASSERT_RESULT(conn->FetchRows<std::string>(query));
+  ASSERT_EQ(values, (decltype(values){"b", "e", "f", "c", "a", "d"}));
 
   // Create an index on the enum table column.
   ASSERT_OK(conn->ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
 
   // Index only scan to verify contents of index table.
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query)));
-  res = ASSERT_RESULT(conn->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 6);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  values = {
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
-  };
-  ASSERT_EQ(values[0], "b");
-  ASSERT_EQ(values[1], "e");
-  ASSERT_EQ(values[2], "f");
-  ASSERT_EQ(values[3], "c");
-  ASSERT_EQ(values[4], "a");
-  ASSERT_EQ(values[5], "d");
+  values = ASSERT_RESULT(conn->FetchRows<std::string>(query));
+  ASSERT_EQ(values, (decltype(values){"b", "e", "f", "c", "a", "d"}));
 
   // Test where clause.
   const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
-  ASSERT_EQ(ASSERT_RESULT(conn->FetchValue<std::string>(query2)), "b");
+  ASSERT_EQ(ASSERT_RESULT(conn->FetchRow<std::string>(query2)), "b");
 }
 
 // Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
@@ -3124,20 +3031,13 @@ TEST_F_EX(PgLibPqTest,
   // the signed extended ffffffff. The following index scan would yield wrong order if we
   // left ffffffff in the high 32-bit.
   ASSERT_OK(conn.ExecuteFormat("ALTER TYPE $0 ADD VALUE 'b' BEFORE 'c'", kEnumTypeName));
-  std::string query = "SELECT oid FROM pg_enum";
-  PGResultPtr res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<Oid> enum_oids = {
-    ASSERT_RESULT(GetValue<PGOid>(res.get(), 0, 0)),
-    ASSERT_RESULT(GetValue<PGOid>(res.get(), 1, 0)),
-    ASSERT_RESULT(GetValue<PGOid>(res.get(), 2, 0)),
-  };
+  auto query = "SELECT oid FROM pg_enum"s;
+  auto values = ASSERT_RESULT(conn.FetchRows<PGOid>(query));
+  ASSERT_EQ(values.size(), 3);
   // Ensure that we do see large OIDs in pg_enum table.
-  LOG(INFO) << "enum_oids: " << enum_oids[0] << "," << enum_oids[1] << "," << enum_oids[2];
-  ASSERT_GT(enum_oids[0], kOidAdjustment);
-  ASSERT_GT(enum_oids[1], kOidAdjustment);
-  ASSERT_GT(enum_oids[2], kOidAdjustment);
+  for (const auto& oid : values) {
+    ASSERT_GT(oid, kOidAdjustment);
+  }
 
   // Create a table using the enum type and insert a few rows.
   ASSERT_OK(conn.ExecuteFormat(
@@ -3158,17 +3058,10 @@ TEST_F_EX(PgLibPqTest,
   // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
   query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector enum_values = {
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
-    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
-  };
-  ASSERT_EQ(enum_values[0], "a");
-  ASSERT_EQ(enum_values[1], "b");
-  ASSERT_EQ(enum_values[2], "c");
+  {
+    auto values = ASSERT_RESULT(conn.FetchRows<std::string>(query));
+    ASSERT_EQ(values, (decltype(values){"a", "b", "c"}));
+  }
 }
 
 namespace {
@@ -3288,11 +3181,14 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
     options->extra_tserver_flags.push_back(
-        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+        Format("--yb_backend_oom_score_adj=" + expected_backend_oom_score));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_webserver_oom_score_adj=" + expected_webserver_oom_score));
   }
 
  protected:
-  const std::string expected_oom_score = "123";
+  const std::string expected_backend_oom_score = "123";
+  const std::string expected_webserver_oom_score = "456";
 };
 
 TEST_F_EX(PgLibPqTest,
@@ -3307,9 +3203,8 @@ TEST_F_EX(PgLibPqTest,
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
-  auto row_str = ASSERT_RESULT(conn3.FetchAllAsString(get_yb_terminated_queries));
-  LOG(INFO) << "Result string: " << row_str;
-  ASSERT_EQ(row_str, "SELECT pg_stat_statements_reset(), Terminated by SIGKILL");
+  auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
+  ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
 }
 
 #ifdef __linux__
@@ -3318,38 +3213,54 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
 
   auto conn = ASSERT_RESULT(Connect());
-  auto backend_pid = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT pg_backend_pid()"));
+  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
   getline(fPtr, oom_score_adj);
-  ASSERT_EQ(oom_score_adj, expected_oom_score);
+  ASSERT_EQ(oom_score_adj, expected_backend_oom_score);
+}
+TEST_F_EX(PgLibPqTest,
+          TestOomScoreAdjPGWebserver,
+          PgLibPqYSQLBackendCrash) {
+
+  // Find the postmaster pid (parent process of our webserver)
+  string postmaster_pid;
+  auto conn = ASSERT_RESULT(Connect());
+  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid);
+
+  // Get the webserver pid using postmaster pid
+  string webserver_pid;
+  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
+                      webserver_pid.end());
+
+  // Check the webserver's OOM score
+  std::string file_name = "/proc/" + webserver_pid + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 #endif
 
 TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
-  const string kTableName ="test";
+  const string kTableName = "test";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-  ASSERT_OK(conn.Execute(
-    "CREATE TABLE test (k int, v int, PRIMARY KEY (k ASC))"));
-  ASSERT_OK(conn.Execute(
-    "INSERT INTO test SELECT i, i FROM generate_series(1,100) AS i"));
-  const string query1 =
-    "SELECT * FROM yb_table_properties('test'::regclass)";
-  auto row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
-  LOG(INFO) << "Result string: " << row_str;
-  ASSERT_EQ(row_str, "1, 0, 0, NULL, NULL");
-  const string query2 =
-    "SELECT * FROM yb_get_range_split_clause('test'::regclass)";
-  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
-  LOG(INFO) << "Result string: " << row_str;
-  ASSERT_EQ(row_str, "");
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k int, v int, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT i, i FROM generate_series(1,100) AS i"));
+  const string query1 = "SELECT * FROM yb_table_properties('test'::regclass)";
+  auto row = ASSERT_RESULT((
+      conn.FetchRow<PGUint64, PGUint64, bool, std::optional<PGOid>, std::optional<PGOid>>(query1)));
+  ASSERT_EQ(row, (decltype(row){1, 0, false, std::nullopt, std::nullopt}));
+  const string query2 = "SELECT * FROM yb_get_range_split_clause('test'::regclass)";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "");
   const TabletId tablet_to_split = ASSERT_RESULT(GetSingleTabletId(kTableName));
   LOG(INFO) << "tablet_to_split: " << tablet_to_split;
-  auto output = ASSERT_RESULT(
-      RunYbAdminCommand("flush_table ysql.yugabyte test"));
+  auto output = ASSERT_RESULT(RunYbAdminCommand("flush_table ysql.yugabyte test"));
   LOG(INFO) << "flush_table command output: " << output;
 
   output = ASSERT_RESULT(
@@ -3369,16 +3280,12 @@ TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   // Execute simple command to update table's partitioning at pggate side.
   // The split_tablet command does not increment catalog version or table
   // schema version. It increments partition_list_version.
-  auto res = CHECK_RESULT(
-      conn.FetchFormat("SELECT count(*) FROM $0", kTableName));
+  ASSERT_OK(conn.FetchFormat("SELECT count(*) FROM $0", kTableName));
 
-  row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
-  LOG(INFO) << "Result string: " << row_str;
-  ASSERT_EQ(row_str, "2, 0, 0, NULL, NULL");
-
-  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
-  LOG(INFO) << "Result string: " << row_str;
-  ASSERT_EQ(row_str, "SPLIT AT VALUES ((49))");
+  row = ASSERT_RESULT((
+      conn.FetchRow<PGUint64, PGUint64, bool, std::optional<PGOid>, std::optional<PGOid>>(query1)));
+  ASSERT_EQ(row, (decltype(row){2, 0, false, std::nullopt, std::nullopt}));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(query2)), "SPLIT AT VALUES ((49))");
 }
 
 TEST_F(PgLibPqTest, AggrSystemColumn) {
@@ -3386,17 +3293,17 @@ TEST_F(PgLibPqTest, AggrSystemColumn) {
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
   // Count oid column which is a system column.
-  const auto count_oid = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(oid) FROM pg_type"));
+  const auto count_oid = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(oid) FROM pg_type"));
 
   // Count oid column which is a system column, but cast oid to int.
   const auto count_oid_int = ASSERT_RESULT(
-      conn.FetchValue<PGUint64>("SELECT COUNT(oid::int) FROM pg_type"));
+      conn.FetchRow<PGUint64>("SELECT COUNT(oid::int) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid_int, count_oid);
 
   // Count typname column which is a regular column.
   const auto count_typname = ASSERT_RESULT(
-      conn.FetchValue<PGUint64>("SELECT COUNT(typname) FROM pg_type"));
+      conn.FetchRow<PGUint64>("SELECT COUNT(typname) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid, count_typname);
 
@@ -3621,14 +3528,9 @@ TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
     ASSERT_OK(status);
     ASSERT_OK(conn2.Execute("INSERT INTO danger VALUES (1, 1)"));
     // Verify
-    auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM mv"));
-    ASSERT_EQ(PQntuples(res.get()), 0);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM danger"));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    ASSERT_EQ(PQnfields(res.get()), 2);
-    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)), 1);
-    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1)), 1);
+    ASSERT_OK(conn1.FetchMatrix("SELECT * FROM mv", 0, 1));
+    auto row = ASSERT_RESULT((conn1.FetchRow<int32_t, int32_t>("SELECT * FROM danger")));
+    ASSERT_EQ(row, (decltype(row){1, 1}));
   } else {
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_STR_CONTAINS(status.ToString(), "Duplicate table");
@@ -3672,8 +3574,7 @@ TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify
-    auto res = ASSERT_RESULT(conn1.Fetch("SELECT COUNT(*) FROM danger"));
-    ASSERT_EQ(ASSERT_RESULT(GetValue<int64_t>(res.get(), 0, 0)), 100);
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM danger")), 100);
   } else {
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_STR_CONTAINS(status.ToString(), "Tablet deleted:");
@@ -3739,12 +3640,12 @@ TEST_P(PgOidCollisionCreateDatabaseTest, CreateDatabasePgOidCollisionFromTserver
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify no OID collision and the expected OID is used.
-    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
     ASSERT_EQ(db3_oid, 16640);
   } else if (ysql_enable_create_database_oid_collision_retry) {
     // Verify internally retry CREATE DATABASE works.
-    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
     ASSERT_EQ(db3_oid, 16386);
   } else {
@@ -3774,8 +3675,8 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
     Format("SELECT count(oid) FROM $0", shared_pg_table);
   const string max_oid_query =
     Format("SELECT max(oid) FROM $0", shared_pg_table);
-  auto count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
-  auto max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  auto count_oid = ASSERT_RESULT(conn.FetchRow<int64_t>(count_oid_query));
+  auto max_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(max_oid_query));
   ASSERT_EQ(count_oid, num_tablespaces + num_system_tablespaces);
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces - 1);
 
@@ -3788,8 +3689,8 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
   for (int i = num_tablespaces; i < num_tablespaces * 2; i++) {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE tp$0 LOCATION '/data'", i));
   }
-  count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
-  max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  count_oid = ASSERT_RESULT(conn.FetchRow<int64_t>(count_oid_query));
+  max_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(max_oid_query));
   ASSERT_EQ(count_oid, num_tablespaces * 2 + num_system_tablespaces);
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces * 2 - 1);
 }
@@ -3802,7 +3703,7 @@ class PgLibPqTempTest: public PgLibPqTest {
     filepaths.reserve(relnames.size());
     for (const string& relname : relnames) {
       string pg_filepath = VERIFY_RESULT(
-          conn->FetchValue<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
+          conn->FetchRow<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
       filepaths.push_back(JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath));
     }
     for (const string& filepath : filepaths) {
@@ -3878,29 +3779,23 @@ TEST_F(PgLibPqTest, DropSequenceTest) {
   // dropped.
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
-  auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('foo')"));
-  LOG(INFO) << "Sequence " << result;
-  ASSERT_EQ(result, "1");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('foo')")), 1);
 
   // Verify same behavior for sequences created using CREATE TABLE.
   ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
-  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
-  LOG(INFO) << "Sequence " << result;
-  ASSERT_EQ(result, "1");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 1);
 
   // Verify same behavior is seen while trying to drop the table.
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
   ASSERT_NOK(conn.Execute("DROP TABLE t"));
-  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
-  LOG(INFO) << "Sequence " << result;
-  ASSERT_EQ(result, "2");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 2);
 
   // Verify that if DROP SEQUENCE is successful, we cannot query the sequence
   // anymore.
   ASSERT_OK(conn.Execute("DROP SEQUENCE foo"));
-  ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
+  ASSERT_NOK(conn.FetchRow<int64_t>("SELECT nextval('foo')"));
 }
 
 TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
@@ -3913,15 +3808,14 @@ TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
       "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't2_' "
       "|| '$1'::regclass::oid::text;",
       pg_ts->GetRootDir(), kTableName);
-  auto values = ASSERT_RESULT(conn.FetchAll<bool>(query));
-  decltype(values) expected_values = {{true}};
-  ASSERT_EQ(values, expected_values);
+  auto values = ASSERT_RESULT(conn.FetchRows<bool>(query));
+  ASSERT_EQ(values, decltype(values){true});
 
   ASSERT_OK(conn.ExecuteFormat("CREATE VIEW tempview AS SELECT * FROM $0", kTableName));
 
   // Check that no new files are created on view creation.
-  values = ASSERT_RESULT(conn.FetchAll<bool>(query));
-  ASSERT_EQ(values, expected_values);
+  values = ASSERT_RESULT(conn.FetchRows<bool>(query));
+  ASSERT_EQ(values, decltype(values){true});
 }
 
 } // namespace pgwrapper

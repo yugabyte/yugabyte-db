@@ -20400,6 +20400,11 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		old_rel_form->relrowsecurity;
 	replaces[Anum_pg_class_relrowsecurity - 1] = true;
 
+	/* Copy relforcerowsecurity value. */
+	values[Anum_pg_class_relforcerowsecurity - 1] =
+		old_rel_form->relforcerowsecurity;
+	replaces[Anum_pg_class_relforcerowsecurity - 1] = true;
+
 	/* Create modified tuple with the new values. */
 	new_rel_new_tuple = heap_modify_tuple(new_rel_old_tuple,
 											RelationGetDescr(pg_class),
@@ -20768,6 +20773,17 @@ YbATCloneTableAndGetMappings(CreateStmt *create_stmt, const Relation old_rel,
 							 AttrMap **new2old_attmap,
 							 bool ignore_type_mismatch)
 {
+
+	if (!YBSuppressUnsafeAlterNotice())
+		ereport(NOTICE,
+				(errmsg("table rewrite may lead to inconsistencies"),
+				 errdetail("Concurrent DMLs may not be reflected in the new"
+						   " table."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19860. Set 'ysql_suppress_unsafe_alter_notice'"
+						 " yb-tserver gflag to true to suppress this"
+						 " notice.")));
+
 	/* clang-format on */
 	ObjectAddress address =
 		DefineRelation(create_stmt, RELKIND_RELATION, old_rel->rd_rel->relowner,

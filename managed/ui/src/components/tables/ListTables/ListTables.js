@@ -17,8 +17,7 @@ import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButtonLink } from '../../common/forms/fields';
 import './ListTables.scss';
-import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+
 
 class TableTitle extends Component {
   render() {
@@ -180,6 +179,7 @@ class ListTableGrid extends Component {
               currentRow={row}
               actionType="import"
               disabled={actions_disabled}
+              universeUUID={currentUniverse.universeUUID}
             />
           ]);
         }
@@ -337,10 +337,7 @@ class ListTableGrid extends Component {
         >
           WAL Size
         </TableHeaderColumn>
-        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && hasNecessaryPerm({
-          onResource: currentUniverse.universeUUID,
-          ...UserPermissionMap.listBackup
-        }) &&  (
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') &&  (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}

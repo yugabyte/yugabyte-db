@@ -22,14 +22,15 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of YBA Installer or Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation. Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li>
+   <li>
     <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -53,6 +54,7 @@ YugabyteDB Anywhere is supported on all Linux distributions that Replicated supp
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
+- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
 
 ## Hardware requirements
 
@@ -67,8 +69,6 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
 Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
-
-Installing on airgapped hosts requires additional configurations, as described in [Airgapped hosts](#airgapped-hosts).
 
 ### Airgapped hosts
 

@@ -1,7 +1,7 @@
 ---
 title: Batch operations in YCQL
 headerTitle: Batch operations
-linkTitle: 6. Batch operations
+linkTitle: Batch operations
 description: Learn how batch operations in YCQL send a set of operations as a single RPC call rather than one by one as individual RPC calls.
 menu:
   stable:
@@ -11,21 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./batch-operations-ysql.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="{{< relref "./batch-operations-ycql.md" >}}" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs list="ycql">}}
 
 Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
 

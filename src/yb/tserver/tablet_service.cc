@@ -237,6 +237,14 @@ DEFINE_test_flag(
 DEFINE_test_flag(
     uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
 
+DEFINE_test_flag(
+    int32, set_tablet_follower_lag_ms, 0,
+    "What to report for tablet follower lag on this tserver in CheckTserverTabletHealth.");
+
+DEFINE_test_flag(
+    bool, pause_before_tablet_health_response, false,
+    "Whether to pause before responding to CheckTserverTabletHealth.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -1897,7 +1905,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   s = Wait(
       [&]() -> Result<bool> {
         num_lagging_backends = narrow_cast<int>(VERIFY_RESULT(
-            conn.FetchValue<pgwrapper::PGUint64>(num_lagging_backends_query)));
+            conn.FetchRow<pgwrapper::PGUint64>(num_lagging_backends_query)));
         if (num_lagging_backends != prev_num_lagging_backends) {
           SCHECK((prev_num_lagging_backends == -1 ||
                   prev_num_lagging_backends > num_lagging_backends),
@@ -2743,6 +2751,41 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
                          &context);
     return;
   }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
+                                                CheckTserverTabletHealthResponsePB* resp,
+                                                rpc::RpcContext context) {
+  TRACE("CheckTserverTabletHealth");
+  for (auto& tablet_id : req->tablet_ids()) {
+    auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
+    if (!res.ok()) {
+      LOG_WITH_FUNC(INFO) << "Failed lookup for tablet " << tablet_id;
+      continue;
+    }
+
+    auto consensus = GetConsensusOrRespond(res->tablet_peer, resp, &context);
+    if (!consensus) {
+      LOG_WITH_FUNC(INFO) << "Could not find consensus for tablet " << tablet_id;
+      continue;
+    }
+
+    auto* tablet_health = resp->add_tablet_healths();
+    tablet_health->set_tablet_id(tablet_id);
+
+    auto role = consensus->role();
+    tablet_health->set_role(role);
+
+    if (FLAGS_TEST_set_tablet_follower_lag_ms != 0) {
+      tablet_health->set_follower_lag_ms(FLAGS_TEST_set_tablet_follower_lag_ms);
+      continue;
+    }
+    if (role != PeerRole::LEADER) {
+      tablet_health->set_follower_lag_ms(consensus->follower_lag_ms());
+    }
+  }
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_tablet_health_response);
   context.RespondSuccess();
 }
 

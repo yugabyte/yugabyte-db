@@ -12,6 +12,7 @@ import com.google.api.gax.paging.Page;
 import com.google.api.gax.retrying.RetrySettings;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.BatchResult;
 import com.google.cloud.logging.LogEntry;
 import com.google.cloud.logging.Logging;
 import com.google.cloud.logging.Logging.EntryListOption;
@@ -21,6 +22,7 @@ import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.Storage.BlobListOption;
 import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
@@ -30,6 +32,8 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -50,6 +54,7 @@ import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -58,7 +63,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -83,6 +91,7 @@ public class GCPUtil implements CloudUtil {
 
   private static JsonNode PRICE_JSON = null;
   private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
+  private static final int DELETE_STORAGE_BATCH_REQUEST_SIZE = 100;
 
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
@@ -144,8 +153,7 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String bucketName = splitLocation[0];
     String objectPrefix = splitLocation[1];
@@ -159,9 +167,23 @@ public class GCPUtil implements CloudUtil {
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
       }
-    } catch (StorageException e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e.getReason());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
+    }
+    return true;
+  }
+
+  private void tryListObjects(Storage storage, String bucket, String prefix) throws Exception {
+    List<Storage.BlobListOption> options =
+        new ArrayList<>(
+            Arrays.asList(
+                Storage.BlobListOption.currentDirectory(), Storage.BlobListOption.pageSize(1)));
+    if (StringUtils.isNotBlank(prefix)) {
+      options.add(Storage.BlobListOption.prefix(prefix));
+      storage.list(bucket, options.toArray(new Storage.BlobListOption[0]));
+    } else {
+      storage.list(bucket, options.toArray(new Storage.BlobListOption[0]));
     }
   }
 
@@ -171,34 +193,68 @@ public class GCPUtil implements CloudUtil {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
-    for (String configLocation : locations) {
-      try {
-        String[] splitLocation = getSplitLocationValue(configLocation);
-        String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
-        String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
-        Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-        if (splitLocation.length == 1) {
-          storage.list(bucketName);
-        } else {
-          storage.list(
-              bucketName,
-              Storage.BlobListOption.prefix(prefix),
-              Storage.BlobListOption.currentDirectory());
+    try {
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      for (String configLocation : locations) {
+        try {
+          String[] splitLocation = getSplitLocationValue(configLocation);
+          String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
+          String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
+          tryListObjects(storage, bucketName, prefix);
+        } catch (Exception e) {
+          log.error(
+              String.format(
+                  "GCP Credential cannot list objects in the specified backup location %s",
+                  configLocation),
+              e);
+          return false;
         }
-      } catch (Exception e) {
-        log.error(
-            String.format(
-                "GCP Credential cannot list objects in the specified backup location %s",
-                configLocation),
-            e);
-        return false;
       }
+      return true;
+    } catch (StorageException | IOException e) {
+      log.error("Failed to create GCS client", e.getMessage());
+      return false;
     }
-    return true;
   }
 
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  @Override
+  public void checkListObjectsWithYbcSuccessMarkerCloudStore(
+      CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
+        csSpec.getBucketLocationsMap();
+    Map<String, String> configRegions = getRegionLocationsMap(configData);
+    try {
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      for (Map.Entry<String, ResponseCloudStoreSpec.BucketLocation> regionPrefix :
+          regionPrefixesMap.entrySet()) {
+        if (configRegions.containsKey(regionPrefix.getKey())) {
+          // Use "cloudDir" of success marker as object prefix
+          String prefix = regionPrefix.getValue().cloudDir;
+          // Use config's bucket for bucket name
+          ConfigLocationInfo configLocationInfo =
+              getConfigLocationInfo(configRegions.get(regionPrefix.getKey()));
+          String bucketName = configLocationInfo.bucket;
+          log.debug("Trying object listing with GCS bucket {} and prefix {}", bucketName, prefix);
+          try {
+            tryListObjects(storage, bucketName, prefix);
+          } catch (Exception e) {
+            String msg =
+                String.format(
+                    "Cannot list objects in cloud location with bucket %s and cloud directory %s",
+                    bucketName, prefix);
+            log.error(msg, e);
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+          }
+        }
+      }
+    } catch (StorageException | IOException e) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Failed to create GCS client: " + e.getLocalizedMessage());
+    }
+  }
+
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations) {
     for (String backupLocation : backupLocations) {
       try {
         String[] splitLocation = getSplitLocationValue(backupLocation);
@@ -206,35 +262,78 @@ public class GCPUtil implements CloudUtil {
         String objectPrefix = splitLocation[1];
         Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
 
-        List<StorageBatchResult<Boolean>> results = new ArrayList<>();
-        StorageBatch storageBatch = storage.batch();
-        try {
-          Page<Blob> blobs = storage.list(bucketName, Storage.BlobListOption.prefix(objectPrefix));
-          if (blobs != null) {
-            log.debug(
-                "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
-            StreamSupport.stream(blobs.iterateAll().spliterator(), true)
-                .forEach(
-                    blob -> {
-                      results.add(storageBatch.delete(blob.getBlobId()));
-                    });
+        Page<Blob> blobs =
+            storage.list(
+                bucketName,
+                BlobListOption.pageSize(DELETE_STORAGE_BATCH_REQUEST_SIZE),
+                BlobListOption.prefix(objectPrefix));
+        log.debug("Deleting blobs at location: {}", backupLocation);
+        String nextPageToken = null;
+        do {
+          deleteBlob(storage, blobs, backupLocation);
+          nextPageToken = blobs.getNextPageToken();
+          if (nextPageToken != null) {
+            blobs =
+                storage.list(
+                    bucketName,
+                    BlobListOption.pageSize(DELETE_STORAGE_BATCH_REQUEST_SIZE),
+                    BlobListOption.prefix(objectPrefix),
+                    BlobListOption.pageToken(nextPageToken));
           }
-        } finally {
-          if (!results.isEmpty()) {
-            storageBatch.submit();
-            if (!results.stream().allMatch(r -> r != null && r.get())) {
-              throw new RuntimeException(
-                  "Error in deleting objects in bucket "
-                      + bucketName
-                      + " with prefix "
-                      + objectPrefix);
-            }
-          }
-        }
-      } catch (StorageException e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getReason());
-        throw e;
+        } while (nextPageToken != null);
+      } catch (Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e);
+        return false;
       }
+    }
+    return true;
+  }
+
+  private void deleteBlob(Storage storage, Page<Blob> blobs, String backupLocation)
+      throws InterruptedException {
+    List<Blob> blobsList =
+        StreamSupport.stream(blobs.getValues().spliterator(), false).collect(Collectors.toList());
+    if (blobs == null || blobsList.size() == 0) {
+      return;
+    }
+
+    CountDownLatch blobDeletionWaitBarrier = new CountDownLatch(blobsList.size());
+    AtomicInteger failed = new AtomicInteger();
+    List<StorageBatchResult<Boolean>> results = new ArrayList<>();
+    StorageBatch storageBatch = storage.batch();
+    blobsList.stream()
+        .forEach(
+            blob -> {
+              if (blob != null) {
+                storageBatch
+                    .delete(blob.getBlobId())
+                    .notify(
+                        new BatchResult.Callback<>() {
+                          @Override
+                          public void success(Boolean result) {
+                            blobDeletionWaitBarrier.countDown();
+                          }
+
+                          @Override
+                          public void error(StorageException exception) {
+                            log.error(exception.getMessage());
+                            failed.incrementAndGet();
+                            blobDeletionWaitBarrier.countDown();
+                          }
+                        });
+              }
+            });
+
+    storageBatch.submit();
+    if (!blobDeletionWaitBarrier.await(30, TimeUnit.MINUTES)) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Timed out waiting for objects at location %s to get deleted", backupLocation));
+    } else if (failed.get() > 0) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Encountered failures deleting objects at location %s", backupLocation));
     }
   }
 
@@ -304,7 +403,7 @@ public class GCPUtil implements CloudUtil {
         splitValues.length > 1
             ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = BackupUtil.appendSlash(cloudDir);
+    cloudDir = StringUtils.isNotBlank(cloudDir) ? BackupUtil.appendSlash(cloudDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       splitValues = getSplitLocationValue(previousBackupLocation);
@@ -316,6 +415,8 @@ public class GCPUtil implements CloudUtil {
         bucket, cloudDir, previousCloudDir, gcsCredsMap, Util.GCS);
   }
 
+  // In case of Restore - cloudDir is picked from success marker
+  // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {

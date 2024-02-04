@@ -5279,7 +5279,7 @@ StartSubTransaction(void)
 
 	ShowTransactionState("StartSubTransaction");
 
-	/* 
+	/*
 	 * Update the value of the sticky objects from parent transaction
 	 */
 	if(CurrentTransactionState->parent)

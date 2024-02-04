@@ -374,7 +374,7 @@ export const AlertsList = (props) => {
     if (
       !customPermValidateFunction((userPermissions) => {
         return (
-          find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
+          find(userPermissions, { resourceType: Resource.UNIVERSE, actions: [Action.READ] }) !==
           undefined
         );
       })

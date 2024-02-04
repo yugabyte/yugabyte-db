@@ -593,7 +593,9 @@ class YBClient {
 
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
-      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""));
+      bool populate_namespace_id_as_table_id = false,
+      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
+      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -678,6 +680,9 @@ class YBClient {
       uint32_t producer_schema_version,
       uint32_t consumer_schema_version,
       master::UpdateConsumerOnProducerMetadataResponsePB* resp);
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const cdc::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -826,6 +831,10 @@ class YBClient {
   std::shared_ptr<YBSession> NewSession(MonoDelta delta);
   std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
+  Status AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids, std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms);
+
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
 
@@ -925,6 +934,15 @@ class YBClient {
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
+
+  // Check if the given AutoFlagsConfigPB is compatible with the AutoFlags config of the universe.
+  // Check the description of AutoFlagsUtil::AreAutoFlagsCompatible for more information about what
+  // compatible means.
+  // Returns the result in the bool and the current AutoFlags config version that it was validated
+  // with. Returns nullopt if the master is running on an older version that does not support this
+  // API.
+  Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
+      const AutoFlagsConfigPB& config, std::optional<AutoFlagClass> min_flag_class = std::nullopt);
 
   Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
       StatefulServiceKind service_kind);

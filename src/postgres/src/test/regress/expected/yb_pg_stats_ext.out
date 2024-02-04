@@ -478,6 +478,9 @@ EXPLAIN (COSTS OFF)
 
 -- check change of column type doesn't break it
 ALTER TABLE functional_dependencies ALTER COLUMN c TYPE numeric;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 EXPLAIN (COSTS OFF)
  SELECT * FROM functional_dependencies WHERE a = 1 AND b = '1' AND c = 1;
                              QUERY PLAN

@@ -516,4 +516,16 @@ public class TestUtils {
     throw new IllegalArgumentException("No numbers given to firstPositiveNumber");
   }
 
+  /**
+   * @return true if YB_TEST_YB_CONTROLLER env variable is set.
+   */
+  public static boolean useYbController() {
+    String env = System.getenv("YB_TEST_YB_CONTROLLER");
+    if (env != null &&
+        (env.equals("1") || env.equalsIgnoreCase("true"))) {
+      return true;
+    }
+    return false;
+  }
+
 }

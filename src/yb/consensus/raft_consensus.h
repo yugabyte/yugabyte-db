@@ -296,7 +296,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Status CopyRetryableRequestsTo(const std::string& dest_path);
   OpId GetLastFlushedOpIdInRetryableRequests();
 
+  int64_t follower_lag_ms() const;
+
   bool TEST_HasRetryableRequestsOnDisk() const;
+  int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.

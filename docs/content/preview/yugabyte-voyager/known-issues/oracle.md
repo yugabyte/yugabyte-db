@@ -1,8 +1,8 @@
 ---
 title: Oracle source database
 linkTitle: Oracle
-headcontent: Known issues when migrating data from Oracle.
-description: Known issues and suggested workarounds for migrating data from Oracle.
+headcontent: What to watch out for when migrating data from Oracle
+description: Review limitations and suggested workarounds for migrating data from Oracle.
 menu:
   preview_yugabyte-voyager:
     identifier: oracle-issues
@@ -13,7 +13,11 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from Oracle to YugabyteDB.
+Review limitations and implement suggested workarounds to successfully migrate data from Oracle to YugabyteDB.
+
+{{< warning title="Unsupported features">}}
+Cluster, Domain, Bitmap join, IOT indexes, and reverse indexes are not exported.
+{{< /warning >}}
 
 ## Contents
 
@@ -25,6 +29,8 @@ This page documents known issues you may encounter and suggested workarounds whe
 - [Negative scale is not supported](#negative-scale-is-not-supported)
 - [Error in CREATE VIEW DDL in synonym.sql](#error-in-create-view-ddl-in-synonym-sql)
 - [Large-sized CLOB/NCLOB data is not supported](#large-sized-clob-nclob-data-is-not-supported)
+- [%TYPE syntax is unsupported](#type-syntax-is-unsupported)
+- [TRANSLATE USING is unsupported](#translate-using-is-unsupported)
 
 ### Some numeric types are not exported
 
@@ -304,3 +310,31 @@ OR
 **Description**: YugabyteDB Voyager ignores any values of BLOB types by default, but for CLOB and NCLOB, it migrates the data as text. However, if the size of rows for such CLOB/ NCLOB type columns exceeds 240 MB, it may result in errors and the migration may fail.
 
 **Workaround**: None. A workaround is being currently explored.
+
+---
+
+### %TYPE syntax is unsupported
+
+**GitHub**: [Issue #19169](https://github.com/yugabyte/yb-voyager/issues/19169)
+
+**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
+
+**Workaround**: None. A workaround is currently being explored.
+
+---
+
+### TRANSLATE USING is unsupported
+
+**GitHub**: [Issue #1146](https://github.com/yugabyte/yb-voyager/issues/1146)
+
+**Description**: Oracle includes a concept of a National Character Set where it can use the TRANSLATE function to translate a value to the "NCHAR_CS" character set. The significance of the National Character Set is its ability to compare and sort character data based on linguistic rules specific to a particular character set. This function is not supported in PostgreSQL and therefore in YugabyteDB.
+
+**Workaround**: None. For a similar purpose, you can use the `convert` function in YugabyteDB.
+
+**Usage**: convert(string using conversion_name)
+
+**Example**: convert('PostgreSQL' using iso_8859_1_to_utf8)
+
+**Result**: 'PostgreSQL' (in UTF8 (Unicode, 8-bit) encoding)
+
+---

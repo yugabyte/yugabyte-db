@@ -30,6 +30,8 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -128,8 +130,7 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String azureUrl = "https://" + splitLocation[0];
@@ -148,12 +149,12 @@ public class AZUtil implements CloudUtil {
         retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
       } else {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       }
-    } catch (BlobStorageException e) {
-      log.error("Error while deleting key object from container " + container, e.getMessage());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     }
+    return true;
   }
 
   // Returns a map for <container_url, SAS token>
@@ -169,6 +170,18 @@ public class AZUtil implements CloudUtil {
     return containerTokenMap;
   }
 
+  private void tryListObjects(BlobContainerClient client, String prefix) throws Exception {
+    ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
+    if (StringUtils.isNotBlank(prefix)) {
+      blobsOptions.setPrefix(prefix);
+    }
+    PagedIterable<BlobItem> blobItems = client.listBlobs(blobsOptions, Duration.ofMinutes(5));
+    if (blobItems == null) {
+      throw new Exception("Fetched blobs iterable cannot be null");
+    }
+    blobItems.iterator().hasNext();
+  }
+
   @Override
   public boolean canCredentialListObjects(
       CustomerConfigData configData, Collection<String> locations) {
@@ -180,7 +193,8 @@ public class AZUtil implements CloudUtil {
     for (String location : locations) {
       String[] splitLocation = getSplitLocationValue(location);
       String azureUrl = "https://" + splitLocation[0];
-      String container = splitLocation.length > 1 ? splitLocation[1] : "";
+      ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+      String container = configLocationInfo.bucket;
       String containerEndpoint = String.format("%s/%s", azureUrl, container);
       String sasToken = containerTokenMap.get(containerEndpoint);
       if (StringUtils.isEmpty(sasToken)) {
@@ -190,19 +204,7 @@ public class AZUtil implements CloudUtil {
       try {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
-        ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
-        PagedIterable<BlobItem> blobItems =
-            blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
-        if (blobItems == null) {
-          return false;
-        }
-        if (blobItems.iterator().hasNext()) {
-          BlobClient blobClient =
-              blobContainerClient.getBlobClient(blobItems.iterator().next().getName());
-          if (!blobClient.exists()) {
-            return false;
-          }
-        }
+        tryListObjects(blobContainerClient, null);
       } catch (Exception e) {
         log.error(
             String.format(
@@ -212,6 +214,47 @@ public class AZUtil implements CloudUtil {
       }
     }
     return true;
+  }
+
+  @Override
+  public void checkListObjectsWithYbcSuccessMarkerCloudStore(
+      CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
+        csSpec.getBucketLocationsMap();
+    Map<String, String> configRegions = getRegionLocationsMap(configData);
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
+    for (Map.Entry<String, ResponseCloudStoreSpec.BucketLocation> regionPrefix :
+        regionPrefixesMap.entrySet()) {
+      if (configRegions.containsKey(regionPrefix.getKey())) {
+        // Use "cloudDir" of success marker as object prefix
+        String prefix = regionPrefix.getValue().cloudDir;
+        // Use config's Azure Url and container
+        String configLocation = configRegions.get(regionPrefix.getKey());
+        String[] splitLocation = getSplitLocationValue(configLocation);
+        String azureUrl = "https://" + splitLocation[0];
+        ConfigLocationInfo configLocationInfo = getConfigLocationInfo(configLocation);
+        String container = configLocationInfo.bucket;
+        String containerEndpoint = String.format("%s/%s", azureUrl, container);
+        String sasToken = containerTokenMap.get(containerEndpoint);
+        log.debug(
+            "Trying object listing with Azure URL {} and prefix {}", containerEndpoint, prefix);
+        try {
+          BlobContainerClient blobContainerClient =
+              createBlobContainerClient(azureUrl, sasToken, container);
+          tryListObjects(blobContainerClient, prefix);
+        } catch (Exception e) {
+          String msg =
+              String.format(
+                  "Cannot list objects in cloud location with container endpoint %s and cloud"
+                      + " directory %s",
+                  containerEndpoint, prefix);
+          log.error(msg, e);
+          throw new PlatformServiceException(
+              PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+        }
+      }
+    }
   }
 
   public static BlobContainerClient createBlobContainerClient(
@@ -234,8 +277,7 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     for (String backupLocation : backupLocations) {
@@ -247,7 +289,8 @@ public class AZUtil implements CloudUtil {
         String containerEndpoint = String.format("%s/%s", azureUrl, container);
         String sasToken = containerTokenMap.get(containerEndpoint);
         if (StringUtils.isEmpty(sasToken)) {
-          throw new Exception(String.format("No SAS token for given location %s", backupLocation));
+          log.error("No SAS token for given location {}", backupLocation);
+          return false;
         }
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
@@ -257,16 +300,16 @@ public class AZUtil implements CloudUtil {
         Iterator<PagedResponse<BlobItem>> pagedResponse = pagedIterable.iterableByPage().iterator();
         log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
         retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
-      } catch (BlobStorageException e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getMessage());
-        throw e;
+      } catch (Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e);
+        return false;
       }
     }
+    return true;
   }
 
   public static void retrieveAndDeleteObjects(
-      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient)
-      throws Exception {
+      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient) {
     while (pagedResponse.hasNext()) {
       PagedResponse<BlobItem> response = pagedResponse.next();
       BlobClient blobClient;
@@ -292,7 +335,7 @@ public class AZUtil implements CloudUtil {
       CustomerConfigData configData) {
     String storageLocation = getRegionLocationsMap(configData).get(region);
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
-    String cloudDir = BackupUtil.appendSlash(commonDir);
+    String cloudDir = StringUtils.isNotBlank(commonDir) ? BackupUtil.appendSlash(commonDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       String[] splitValues = getSplitLocationValue(previousBackupLocation);
@@ -303,6 +346,8 @@ public class AZUtil implements CloudUtil {
         pair.getFirst(), cloudDir, previousCloudDir, pair.getSecond(), Util.AZ);
   }
 
+  // In case of Restore - cloudDir is picked from success marker
+  // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {

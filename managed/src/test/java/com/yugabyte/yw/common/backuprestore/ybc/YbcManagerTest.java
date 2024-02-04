@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -21,14 +24,21 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.YbcClient;
+import org.yb.ybc.BackupServiceValidateCloudConfigRequest;
+import org.yb.ybc.BackupServiceValidateCloudConfigResponse;
+import org.yb.ybc.CloudStoreConfig;
+import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.RpcControllerStatus;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class YbcManagerTest extends FakeDBApplication {
 
   private CustomerConfigService mockCustomerConfigService;
@@ -121,5 +131,51 @@ public class YbcManagerTest extends FakeDBApplication {
     assertThrows(
         RuntimeException.class,
         () -> spyYbcManager.getAvailableYbcClientIpPair(testUniverse.getUniverseUUID(), null));
+  }
+
+  @Test(expected = Test.None.class)
+  public void testValidateCloudConfigWithClientSuccess() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    CloudStoreConfig csConfig = CloudStoreConfig.getDefaultInstance();
+    BackupServiceValidateCloudConfigResponse vcsResponse =
+        BackupServiceValidateCloudConfigResponse.newBuilder()
+            .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
+            .build();
+    when(mockYbcClient.backupServiceValidateCloudConfig(
+            any(BackupServiceValidateCloudConfigRequest.class)))
+        .thenReturn(vcsResponse);
+    spyYbcManager.validateCloudConfigWithClient("127.0.0.1", mockYbcClient, csConfig);
+  }
+
+  @Test
+  public void testValidateCloudConfigWithClientWrongStatusFailure() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    CloudStoreConfig csConfig = CloudStoreConfig.getDefaultInstance();
+    BackupServiceValidateCloudConfigResponse vcsResponse =
+        BackupServiceValidateCloudConfigResponse.newBuilder()
+            .setStatus(
+                RpcControllerStatus.newBuilder().setCode(ControllerStatus.CONNECTION_ERROR).build())
+            .build();
+    when(mockYbcClient.backupServiceValidateCloudConfig(
+            any(BackupServiceValidateCloudConfigRequest.class)))
+        .thenReturn(vcsResponse);
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                spyYbcManager.validateCloudConfigWithClient("127.0.0.1", mockYbcClient, csConfig));
+    assertTrue(ex.getMessage().contains("CONNECTION_ERROR"));
+  }
+
+  @Test
+  @Parameters({"2", "2.5"})
+  public void testGetNumCoresCustomResourcesK8s(double cores) {
+    Universe u =
+        ModelFactory.createK8sUniverseCustomCores(
+            "TEST-K8s", UUID.randomUUID(), testCustomer.getId(), null, null, true, cores);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.usek8sCustomResources))).thenReturn(true);
+    int hardwareConcurrency =
+        spyYbcManager.getCoreCountForTserver(u, u.getTServersInPrimaryCluster().get(0));
+    assertEquals(Math.ceil(cores), hardwareConcurrency, 0.00);
   }
 }

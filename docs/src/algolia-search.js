@@ -85,6 +85,7 @@ import algoliasearch from 'algoliasearch';
       let pageBreadcrumb = '';
       let pageHash = '';
       let pageTitle = '';
+      let subHead = '';
 
       if (hit.title) {
         pageTitle = hit.title;
@@ -105,9 +106,11 @@ import algoliasearch from 'algoliasearch';
             if (pageHeader.matchLevel) {
               if (pageHeader.matchLevel === 'full') {
                 pageHash = generateHeadingIDs(pageHeader.value);
+                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
               } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderMatched) {
                 partialHeaderMatched = pageHeader.matchedWords.length;
                 pageHash = generateHeadingIDs(pageHeader.value);
+                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
               }
 
               if (pageHeader.matchLevel === 'full') {
@@ -120,10 +123,15 @@ import algoliasearch from 'algoliasearch';
         }
       }
 
+      if (pageTitle === subHead) {
+        subHead = '';
+      }
+
       content += `<li>
         <div class="search-title">
           <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
             <span class="search-title-inner">${pageTitle}</span>
+            <div class="search-subhead-inner">${subHead}</div>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
         </div>

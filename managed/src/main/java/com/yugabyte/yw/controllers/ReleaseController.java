@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -56,6 +57,8 @@ public class ReleaseController extends AuthenticatedController {
 
   @Inject ReleaseManager releaseManager;
 
+  @Inject GFlagsValidation gFlagsValidation;
+
   @Inject ValidatingFormFactory formFactory;
 
   @ApiOperation(value = "Create a release", response = YBPSuccess.class, nickname = "createRelease")
@@ -97,7 +100,7 @@ public class ReleaseController extends AuthenticatedController {
       releases.forEach(
           (version, metadata) -> {
             releaseManager.addReleaseWithMetadata(version, metadata);
-            releaseManager.addGFlagsMetadataFiles(version, metadata);
+            gFlagsValidation.addDBMetadataFiles(version, metadata);
           });
       releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {

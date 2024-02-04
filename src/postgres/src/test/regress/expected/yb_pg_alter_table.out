@@ -614,6 +614,9 @@ CREATE TABLE fail_part (
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 ERROR:  child table "fail_part" has different type for column "b"
 ALTER TABLE fail_part ALTER b TYPE char (2) COLLATE "POSIX";
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Uncomment when ALTER TABLE COLLATE is supported (#1013)
 -- ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 DROP TABLE fail_part;

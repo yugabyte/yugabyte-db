@@ -28,13 +28,15 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/master_test.pb.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/tablet_health_manager.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -275,6 +277,7 @@ class RetryingMasterRpcTask : public RetryingRpcTask {
 
   consensus::RaftPeerPB peer_;
   std::shared_ptr<master::MasterTestProxy> master_test_proxy_;
+  std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
 };
 
 // A background task which continuously retries sending an RPC to a tablet server.
@@ -433,6 +436,64 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
   tserver::CreateTabletResponsePB resp_;
 };
 
+class AsyncMasterTabletHealthTask : public RetryingMasterRpcTask {
+ public:
+  AsyncMasterTabletHealthTask(
+      Master* master,
+      ThreadPool* callback_pool,
+      const consensus::RaftPeerPB& peer,
+      std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kFollowerLag;
+  }
+
+  std::string type_name() const override { return "Check Master Follower Lag"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+ private:
+  master::CheckMasterTabletHealthRequestPB req_;
+  master::CheckMasterTabletHealthResponsePB resp_;
+
+  std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler_;
+};
+
+class AsyncTserverTabletHealthTask : public RetrySpecificTSRpcTask {
+ public:
+  AsyncTserverTabletHealthTask(
+    Master* master,
+    ThreadPool* callback_pool,
+    std::string permanent_uuid,
+    std::vector<TabletId> tablets,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kFollowerLag;
+  }
+
+  std::string type_name() const override { return "Check Tserver Follower Lag"; }
+
+  std::string description() const override;
+
+ protected:
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+ private:
+  tserver::CheckTserverTabletHealthRequestPB req_;
+  tserver::CheckTserverTabletHealthResponsePB resp_;
+
+  std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler_;
+};
+
 // Task to start election at hinted leader for a newly created tablet.
 class AsyncStartElection : public RetrySpecificTSRpcTaskWithTable {
  public:
@@ -560,6 +621,15 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
     : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
         transaction_id_(transaction_id) {}
 
+  AsyncAlterTable(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const scoped_refptr<TableInfo>& table, const TransactionId transaction_id, LeaderEpoch epoch,
+      const xrepl::StreamId& cdc_sdk_stream_id, const bool cdc_sdk_require_history_cutoff)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
+          transaction_id_(transaction_id),
+          cdc_sdk_stream_id_(cdc_sdk_stream_id),
+          cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff) {}
+
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAlterTable;
   }
@@ -577,6 +647,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   bool SendRequest(int attempt) override;
 
   TransactionId transaction_id_ = TransactionId::Nil();
+  const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
+  const bool cdc_sdk_require_history_cutoff_ = false;
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {

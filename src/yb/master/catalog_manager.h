@@ -44,6 +44,7 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/master/leader_epoch.h"
@@ -619,7 +620,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DeleteXReplStatesForIndexTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
-  Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
+  Status DeleteCDCStreamsMetadataForTables(const std::unordered_set<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   // Add new table metadata to all CDCSDK streams of required namespace.
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
@@ -698,7 +700,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableName& table_name, const PgSchemaName pg_schema_name = {}) override;
 
   // Return TableInfos according to specified mode.
-  std::vector<TableInfoPtr> GetTables(GetTablesMode mode) override;
+  virtual std::vector<TableInfoPtr> GetTables(
+      GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
 
   // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
   // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.
@@ -1083,8 +1086,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletDriveStorageMetadataPB& storage_metadata,
       const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
-  Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
-      EXCLUDES(mutex_);
+  void SyncXClusterConsumerReplicationStatusMap(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map)
+      EXCLUDES(xcluster_consumer_replication_error_map_mutex_);
+
+  void StoreXClusterConsumerReplicationStatus(
+      const XClusterConsumerReplicationStatusPB& consumer_replication_status) EXCLUDES(mutex_);
 
   void ProcessTabletReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatusPB& full_compaction_status);
@@ -1124,6 +1132,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
   Status DemoteSingleAutoFlag(
       const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
+  Status ValidateAutoFlagsConfig(
+      const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp);
 
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,
@@ -1197,7 +1207,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status InitXClusterConsumer(
       const std::vector<XClusterConsumerStreamInfo>& consumer_info, const std::string& master_addrs,
-      const cdc::ReplicationGroupId& producer_universe_uuid,
+      UniverseReplicationInfo& replication_info,
       std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
@@ -1219,6 +1229,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateCDCStream(
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+
+  Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+    const yb::TabletId& tablet_id,
+    const xrepl::StreamId& cdc_sdk_stream_id,
+    const yb::OpIdPB& safe_opid,
+    const yb::HybridTime& proposed_snapshot_time,
+    const bool require_history_cutoff) override;
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -1346,7 +1363,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp,
       rpc::RpcContext* rpc);
-  //
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+      XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   // Wait for replication to drain on CDC streams.
   typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
@@ -1378,6 +1400,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
+
+  Status ValidateCDCSDKRequestProperties(
+      const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
+      const std::string& record_type_option_value, const std::string& id_type_option_value);
 
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
@@ -1421,7 +1447,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void ReenableTabletSplitting(const std::string& feature) override;
 
-  Status RunXClusterBgTasks(const LeaderEpoch& epoch);
+  void RunXClusterBgTasks(const LeaderEpoch& epoch);
 
   Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
 
@@ -1458,6 +1484,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
 
   std::unordered_set<xrepl::StreamId> GetAllXreplStreamIds() const EXCLUDES(mutex_);
+
+  void NotifyAutoFlagsConfigChanged();
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1764,7 +1792,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                const AlterTableRequestPB* req = nullptr);
 
   Status SendAlterTableRequestInternal(
-      const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch);
+      const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
+      const AlterTableRequestPB* req = nullptr);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2641,10 +2670,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateNewXReplStream(
       const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
-      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch);
+      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
-  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
-
+  Status SetAllCDCSDKRetentionBarriers(
+      const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
+      const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
+      const bool has_consistent_snapshot_option, bool require_history_cutoff);
   Status SetWalRetentionForTable(
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status BackfillMetadataForCDC(
@@ -2674,8 +2705,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
-  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableToDeleteMetadata(
-      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTablesToDeleteMetadata(
+      const std::unordered_set<TableId>& table_ids) const REQUIRES_SHARED(mutex_);
 
   Result<std::optional<CDCStreamInfoPtr>> GetStreamIfValidForDelete(
       const xrepl::StreamId& stream_id, bool force_delete) REQUIRES_SHARED(mutex_);
@@ -2881,35 +2912,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
 
-  void PopulateUniverseReplicationStatus(
-      const UniverseReplicationInfo& universe, GetReplicationStatusResponsePB* resp) const
-      REQUIRES_SHARED(mutex_);
-
-  Status StoreReplicationErrors(
+  // Populate the response with the errors for the given replication group.
+  Status PopulateReplicationGroupErrors(
       const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
-      EXCLUDES(mutex_);
-
-  Status StoreReplicationErrorsUnlocked(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
-      REQUIRES_SHARED(mutex_);
-
-  Status ClearReplicationErrors(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
-
-  Status ClearReplicationErrorsUnlocked(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& consumer_table_id,
-      const xrepl::StreamId& stream_id,
-      const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
+      GetReplicationStatusResponsePB* resp) const
+      REQUIRES_SHARED(mutex_, xcluster_consumer_replication_error_map_mutex_);
 
   // Update the UniverseReplicationInfo object when toggling replication.
   Status SetUniverseReplicationInfoEnabled(
@@ -2955,7 +2962,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   bool IsTableXClusterConsumerUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
 
-  Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
+  Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
   bool ShouldAddTableToXClusterReplication(const TableInfo& index_info, const SysTablesEntryPB& pb)
       EXCLUDES(mutex_);
@@ -3010,6 +3017,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateTableRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status CreateGlobalTransactionStatusTableIfNotPresent(
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
+
+  Status XClusterProcessPendingSchemaChanges(const LeaderEpoch& epoch);
+
+  Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(SysCatalogLoadingState* state)
+      REQUIRES(mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
@@ -3137,6 +3151,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
+
+  mutable std::shared_mutex xcluster_consumer_replication_error_map_mutex_ ACQUIRED_AFTER(mutex_);
+  std::unordered_map<cdc::ReplicationGroupId, xcluster::ReplicationGroupErrors>
+      xcluster_consumer_replication_error_map_
+          GUARDED_BY(xcluster_consumer_replication_error_map_mutex_);
+
+  std::atomic<bool> xcluster_auto_flags_revalidation_needed_{true};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

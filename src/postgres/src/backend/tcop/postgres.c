@@ -5357,7 +5357,8 @@ PostgresMain(const char *dbname, const char *username)
 				 username, InvalidOid,	/* role to connect as */
 				 !am_walsender, /* honor session_preload_libraries? */
 				 false,			/* don't ignore datallowconn */
-				 NULL);			/* no out_dbname */
+				 NULL,			/* no out_dbname */
+				 NULL);			/* session id */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't

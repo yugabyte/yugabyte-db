@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -46,24 +47,27 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   private final XClusterUniverseService xClusterUniverseService;
   private final OperatorStatusUpdater kubernetesStatus;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public DestroyKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
-    super(baseTaskDependencies, xClusterUniverseService);
+      OperatorStatusUpdaterFactory statusUpdaterFactory,
+      SupportBundleUtil supportBundleUtil) {
+    super(baseTaskDependencies, xClusterUniverseService, supportBundleUtil);
     this.xClusterUniverseService = xClusterUniverseService;
     this.kubernetesStatus = statusUpdaterFactory.create();
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   @Override
   public void run() {
+    Universe universe = null;
     try {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = null;
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
@@ -91,6 +95,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
+
+      // cleanup the supportBundles if any
+      deleteSupportBundle(universe.getUniverseUUID());
 
       preTaskActions();
 
@@ -205,20 +212,23 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      // TODO Temporary fix to get the current changes pass.
+      // Retry may fail because the universe record is already deleted.
       kubernetesStatus.updateYBUniverseStatus(
-          getUniverse(),
-          params().getKubernetesResourceDetails(),
-          getName(),
-          getUserTaskUUID(),
-          null);
+          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), null);
     } catch (Throwable t) {
-      kubernetesStatus.updateYBUniverseStatus(
-          getUniverse(), params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
-      // If for any reason destroy fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
+      if (universe != null) {
+        try {
+          kubernetesStatus.updateYBUniverseStatus(
+              universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
+        } finally {
+          // If for any reason destroy fails we would just unlock the universe for update
+          try {
+            unlockUniverseForUpdate();
+          } catch (Throwable t1) {
+            // Ignore the error
+          }
+        }
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

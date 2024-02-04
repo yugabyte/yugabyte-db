@@ -772,5 +772,40 @@ void RemoteBootstrapServiceImpl::EndExpiredSessions() {
                                     FLAGS_remote_bootstrap_timeout_poll_period_ms)));
 }
 
+void RemoteBootstrapServiceImpl::DumpStatusHtml(std::ostream& out) {
+  out << "<h1>Remote Bootstrap Sessions</h1>" << std::endl;
+  out << "<table class='table table-striped'>" << std::endl;
+  out << "<tr><th> Tablet ID </th><th> Peer ID </th></tr>" << std::endl;
+  {
+    std::lock_guard l(sessions_mutex_);
+    for (const auto& [_, session_data] : sessions_) {
+      auto& session = session_data.session;
+      out << "<tr>"
+            << "<td>" << session->tablet_id() << "</td>"
+            << "<td>" << session->requestor_uuid() << "</td>"
+          << "</tr>";
+    }
+  }
+  out << "</table>" << std::endl;
+
+  out << "<h1>Remote Log Anchor Sessions</h1>" << std::endl;
+  out << "<table class='table table-striped'>" << std::endl;
+  out << "<tr>"
+        << "<th> Owner Info [requestor_uuid-tablet_id-start_timestamp] </th>"
+        << "<th> Anchored at Log Index </th>"
+      << "</tr>" << std::endl;
+  {
+    std::lock_guard l(log_anchors_mutex_);
+    for (const auto& [id, session_data] : log_anchors_map_) {
+      auto& log_anchor = session_data->log_anchor_ptr_;
+      out << "<tr>"
+            << "<td>" << id << "</td>"
+            << "<td>" << log_anchor->index() << "</td>"
+          << "</tr>";
+    }
+  }
+  out << "</table>" << std::endl;
+}
+
 } // namespace tserver
 } // namespace yb

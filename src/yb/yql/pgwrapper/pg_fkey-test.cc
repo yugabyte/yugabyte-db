@@ -214,6 +214,10 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
     ASSERT_NE(conn_for_referencing->has_high_priority_txn,
               conn_for_delete->has_high_priority_txn);
     auto& ref_conn = conn_for_referencing->conn;
+    SCOPED_TRACE(Format(
+        "referencing conn high priority: $0 delete conn high priority: $1 isolation level: $2",
+        conn_for_referencing->has_high_priority_txn, conn_for_delete->has_high_priority_txn,
+        GetParam()));
 
     ASSERT_OK(ref_conn.StartTransaction(GetParam()));
     const auto rpc_count = ASSERT_RESULT(rpc_count_->Delta(
@@ -223,10 +227,15 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
     ASSERT_EQ(rpc_count.write, num_batches);
     ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
 
+    const IsolationLevel effective_isolation = ASSERT_RESULT(EffectiveIsolationLevel(&ref_conn));
+
     auto delete_res = conn_for_delete->conn.Execute(kDeletePKQuery);
     auto ref_res = ref_conn.CommitTransaction();
 
-    if (conn_for_referencing->has_high_priority_txn) {
+    // There is no concept of priorities in read committed isolation, all transactions used th same
+    // priority which is 1.0 from the high priority bucket.
+    if ((effective_isolation == IsolationLevel::READ_COMMITTED) ||
+         conn_for_referencing->has_high_priority_txn) {
       ASSERT_OK(ref_res);
       ASSERT_NOK(delete_res);
     } else {
@@ -239,6 +248,10 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
       PGConnWithTxnPriority* conn_for_delete, PGConnWithTxnPriority* conn_for_referencing) {
     ASSERT_NE(conn_for_referencing->has_high_priority_txn, conn_for_delete->has_high_priority_txn);
     auto& delete_conn = conn_for_delete->conn;
+    SCOPED_TRACE(Format(
+        "referencing conn high priority: $0 delete conn high priority: $1 isolation level: $2",
+        conn_for_referencing->has_high_priority_txn, conn_for_delete->has_high_priority_txn,
+        GetParam()));
 
     ASSERT_OK(delete_conn.StartTransaction(GetParam()));
     const auto rpc_count = ASSERT_RESULT(rpc_count_->Delta(
@@ -247,10 +260,15 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
     ASSERT_EQ(rpc_count.write, 1);
     ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write);
 
+    const IsolationLevel effective_isolation = ASSERT_RESULT(EffectiveIsolationLevel(&delete_conn));
+
     auto ref_res = InsertItems(&conn_for_referencing->conn, kFKTable, 1, kItemsCount);
     auto delete_res = delete_conn.CommitTransaction();
 
-    if (conn_for_referencing->has_high_priority_txn) {
+    // There is no concept of priorities in read committed isolation, all transactions use the same
+    // priority which is 1.0 from the high priority bucket.
+    if (conn_for_referencing->has_high_priority_txn &&
+        (effective_isolation != IsolationLevel::READ_COMMITTED)) {
       ASSERT_OK(ref_res);
       ASSERT_NOK(delete_res);
     } else {
@@ -261,7 +279,9 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
 
   Result<PGConnWithTxnPriority> MakeConnWithPriority(bool high_priority_txn) {
     return PGConnWithTxnPriority{
-        .conn = VERIFY_RESULT((*(high_priority_txn ? &SetHighPriTxn : &SetLowPriTxn))(Connect())),
+        .conn = VERIFY_RESULT(SetDefaultTransactionIsolation(
+            (*(high_priority_txn ? &SetHighPriTxn : &SetLowPriTxn))(Connect()),
+            IsolationLevel::SNAPSHOT_ISOLATION)),
         .has_high_priority_txn = high_priority_txn};
   }
 
@@ -512,7 +532,7 @@ TEST_P(PgFKeyTestConcurrentModification, HighPriorityDeleteBeforeLowPriorityRefe
 }
 
 // Test checks that batching of FK check doesn't break transaction conflict detection
-// in scenario when rows get referenced (hight priority txn) after being deleted (low priority txn).
+// in scenario when rows get referenced (high priority txn) after being deleted (low priority txn).
 TEST_P(PgFKeyTestConcurrentModification, LowPriorityDeleteBeforeHighPriorityReferencing) {
   DeleteBeforeReferencing(&state_->low_priority_txn_conn, &state_->high_priority_txn_conn);
 }

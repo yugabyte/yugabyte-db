@@ -17,6 +17,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -30,8 +32,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.fabric8.kubernetes.api.model.Quantity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -48,13 +52,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
   private final OperatorStatusUpdater kubernetesStatus;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   protected EditKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory statusUpdaterFactory,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
     this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   @Override
@@ -64,7 +71,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
-
+      // TODO: Would it make sense to have a precheck k8s task that does
+      // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       kubernetesStatus.createYBUniverseEventStatus(
           universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
@@ -75,7 +83,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // be changed once set during the Universe creation, so we don't
       // allow users to modify it later during edit, upgrade, etc.
       taskParams().useNewHelmNamingStyle = universeDetails.useNewHelmNamingStyle;
-
+      // Only cancelling health checks idempotent.
       preTaskActions();
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       if (primaryCluster == null) { // True in case of only readcluster edit.
@@ -347,7 +355,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            isReadOnlyCluster
+                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
+                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversToAdd);
       }
     }
@@ -561,6 +572,33 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
+  /** Check if PVC needs expansion before launching tasks disk resize in the AZ. */
+  protected boolean needsExpandPVC(
+      String universeName,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      String newDiskSizeGi,
+      Map<String, String> config) {
+    KubernetesManager k8s = kubernetesManagerFactory.getManager();
+    List<Quantity> pvcSizeList =
+        k8s.getPVCSizeList(config, namespace, helmReleaseName, appName, newNamingStyle);
+    // Go through each PVCsize and check that its different from newDiskSize, if yes return true.
+    boolean expand = false;
+    log.info("incoming pvc size", newDiskSizeGi);
+    Quantity newDiskSizeQty = new Quantity(newDiskSizeGi);
+    for (Quantity pvcSize : pvcSizeList) {
+      log.info("Existing pvc size", pvcSize.toString());
+      if (!pvcSize.equals(newDiskSizeQty)) {
+        expand = true;
+        break; // Exit the loop as soon as a difference is found
+      }
+    }
+    log.info("All PVCs have been expanded");
+    return expand;
+  }
+
   /**
    * Add disk resize tasks for each AZ in given cluster placement. Call this for each cluster of the
    * universe.
@@ -584,13 +622,37 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     String softwareVersion = userIntent.ybSoftwareVersion;
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
-
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+
       UUID azUUID = entry.getKey();
       String azName =
           PlacementInfoUtil.isMultiAZ(provider)
               ? AvailabilityZone.getOrBadRequest(azUUID).getCode()
               : null;
+
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, azName, config, newNamingStyle, isReadOnlyCluster);
+
+      String helmReleaseName =
+          KubernetesUtil.getHelmReleaseName(
+              taskParams().nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle);
+
+      boolean needsExpandPVCInZone =
+          needsExpandPVC(
+              universeName,
+              namespace,
+              helmReleaseName,
+              "yb-tserver",
+              newNamingStyle,
+              newDiskSizeGi,
+              config);
+      if (!needsExpandPVCInZone) {
+        log.info("PVC size is unchanged, will not schedule resize tasks");
+        continue;
+      }
+
       Map<String, String> azConfig = entry.getValue();
       PlacementInfo azPI = new PlacementInfo();
       int rf = placement.masters.getOrDefault(azUUID, 0);

@@ -41,6 +41,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
+    (XClusterReportNewAutoFlagConfigVersion)
     (ListCDCStreams)
     (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)

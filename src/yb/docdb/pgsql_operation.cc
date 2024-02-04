@@ -1875,7 +1875,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-          response_.add_batch_orders(batch_argument.order());
+          if (batch_argument.has_order())
+            response_.add_batch_orders(batch_argument.order());
           ++fetched_rows;
         }
         break;

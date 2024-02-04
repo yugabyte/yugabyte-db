@@ -1,5 +1,5 @@
 ---
-title: cluster read-replica resource
+title: ybm CLI cluster read-replica resource
 headerTitle: ybm cluster read-replica
 linkTitle: cluster read-replica
 description: YugabyteDB Managed CLI reference Cluster Read Replica resource.

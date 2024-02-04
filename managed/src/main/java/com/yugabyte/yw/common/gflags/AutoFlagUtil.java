@@ -4,13 +4,16 @@ package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -52,7 +55,7 @@ public class AutoFlagUtil {
    * @param universe
    * @return autoFlagConfig
    */
-  public WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
+  private WireProtocol.AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
@@ -94,6 +97,7 @@ public class AutoFlagUtil {
             .get()
             .getFlagsList()
             .stream()
+            .filter(flag -> !GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
             .collect(Collectors.toSet());
 
     // Add auto flags which are modified through gflags override in the promoted auto flags list.
@@ -122,5 +126,45 @@ public class AutoFlagUtil {
       }
     }
     return autoFlags;
+  }
+
+  public boolean upgradeRequireFinalize(String oldVersion, String newVersion) throws IOException {
+    for (ServerType serverType : ImmutableSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Set<GFlagsValidation.AutoFlagDetails> oldAutoFlags =
+          new HashSet<>(gFlagsValidation.extractAutoFlags(oldVersion, serverType).autoFlagDetails);
+      Set<GFlagsValidation.AutoFlagDetails> newAutoFlags =
+          new HashSet<>(gFlagsValidation.extractAutoFlags(newVersion, serverType).autoFlagDetails);
+      Set<String> newFlags =
+          newAutoFlags.stream()
+              .filter(
+                  flag ->
+                      flag.flagClass != LOCAL_VOLATILE_AUTO_FLAG_CLASS
+                          && !oldAutoFlags.contains(flag))
+              .map(flag -> flag.name)
+              .collect(Collectors.toSet());
+      if (newFlags.size() != 0) {
+        LOG.debug(
+            "Upgrade from {} to {} will require finalize as new auto flags for {} are added {}.",
+            oldVersion,
+            newVersion,
+            serverType,
+            newFlags);
+        return true;
+      }
+    }
+
+    Set<String> oldMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(oldVersion);
+    Set<String> newMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(newVersion);
+    newMigrationFiles.removeAll(oldMigrationFiles);
+    if (newMigrationFiles.size() != 0) {
+      LOG.debug(
+          "Upgrade from {} to {} will require finalize as new migration files are added {}.",
+          oldVersion,
+          newVersion,
+          newMigrationFiles);
+      return true;
+    }
+
+    return false;
   }
 }

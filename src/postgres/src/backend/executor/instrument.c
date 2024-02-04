@@ -283,18 +283,3 @@ WalUsageAccumDiff(WalUsage *dst, const WalUsage *add, const WalUsage *sub)
 	dst->wal_records += add->wal_records - sub->wal_records;
 	dst->wal_fpi += add->wal_fpi - sub->wal_fpi;
 }
-
-/* Initialize a pre-allocated RPC stats structure. */
-void
-YbPgRpcStatsInit(YbPgRpcStats *stats)
-{
-	memset(stats, 0, sizeof(YbPgRpcStats));
-}
-
-/* dst += add */
-void
-YbPgRpcStatsAdd(YbPgRpcStats *dst, const YbPgRpcStats *add)
-{
-	dst->count += add->count;
-	dst->wait_time += add->wait_time;
-}

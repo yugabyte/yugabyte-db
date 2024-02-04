@@ -108,6 +108,7 @@ YugabyteDB feature highlights are listed below.
 
 YugabyteDB has had the following major (stable) releases:
 
+- [v2.20](https://www.yugabyte.com/blog/release-220-announcement/) in November 2023
 - [v2.18](https://www.yugabyte.com/blog/release-218-announcement/) in May 2023
 - [v2.16](https://www.yugabyte.com/blog/yugabytedb-216/) in December 2022
 - [v2.14](https://www.yugabyte.com/blog/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.

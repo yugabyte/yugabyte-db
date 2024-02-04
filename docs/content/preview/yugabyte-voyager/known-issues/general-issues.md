@@ -1,8 +1,8 @@
 ---
-title: General known issues
+title: General guidelines
 linkTitle: General
-headcontent: Known issues when migrating data from MySQL, Oracle, or PostgreSQL.
-description: Known issues and suggested workarounds for migrating data from MySQL, Oracle, or PostgreSQL.
+headcontent: What to watch out for when migrating data from MySQL, Oracle, or PostgreSQL
+description: Review limitations and suggested workarounds for migrating data from MySQL, Oracle, or PostgreSQL.
 menu:
   preview_yugabyte-voyager:
     identifier: general-issues
@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
+Review limitations and implement suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
 
 ## Contents
 

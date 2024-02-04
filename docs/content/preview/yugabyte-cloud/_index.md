@@ -140,12 +140,9 @@ YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to
   linkText1="YugabyteDB Managed Basics"
   linkUrl1="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
   linkTarget1="_blank"
-  linkText2="Builder Workshops"
-  linkUrl2="https://university.yugabyte.com/collections/builder-workshop"
+  linkText2="YSQL Exercises: Basic queries"
+  linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
   linkTarget2="_blank"
-  linkText3="YSQL Exercises: Basic queries"
-  linkUrl3="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
-  linkTarget3="_blank"
   >}}
 
   {{< sections/3-box-card

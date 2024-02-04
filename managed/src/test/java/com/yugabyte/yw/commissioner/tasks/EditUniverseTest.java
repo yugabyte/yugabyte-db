@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,7 +23,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -61,6 +64,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -100,6 +104,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.PreflightNodeCheck,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -243,7 +248,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskInfo> instanceActions = subTasksByPosition.get(0);
+    List<TaskInfo> instanceActions = subTasksByPosition.get(1);
     assertEquals(
         new ArrayList<>(
             Arrays.asList(
@@ -357,6 +362,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    taskParams = performShrink(universe);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Edit,
+        CustomerTask.TargetType.Universe,
+        taskParams.getUniverseUUID(),
+        TaskType.EditUniverse,
+        taskParams);
   }
 
   @Test
@@ -364,11 +378,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(taskInfo.getErrorMessage().contains("Cannot decrease volume size from 100 to 99"));
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertTrue(exception.getMessage().contains("Cannot decrease volume size from 100 to 99"));
     RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
-    taskInfo = submitTask(taskParams);
+    TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -407,9 +421,21 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   private UniverseDefinitionTaskParams performExpand(Universe universe) {
+    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5);
+    taskParams.expectedUniverseVersion = 2;
+    return taskParams;
+  }
+
+  private UniverseDefinitionTaskParams performShrink(Universe universe) {
+    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, "m4.medium", 3);
+    return taskParams;
+  }
+
+  private UniverseDefinitionTaskParams editClusterSize(
+      Universe universe, String instanceType, int numNodes) {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = -1;
     taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
     taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
     taskParams.clusters = universe.getUniverseDetails().clusters;
@@ -417,8 +443,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
-    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
-    newUserIntent.numNodes = 5;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numNodes;
+    newUserIntent.numNodes = numNodes;
+    newUserIntent.instanceType = instanceType;
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);

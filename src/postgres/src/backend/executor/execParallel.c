@@ -39,6 +39,7 @@
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
+#include "executor/nodeYbSeqscan.h"
 #include "executor/tqueue.h"
 #include "jit/jit.h"
 #include "nodes/nodeFuncs.h"
@@ -241,6 +242,11 @@ ExecParallelEstimate(PlanState *planstate, ExecParallelEstimateContext *e)
 			if (planstate->plan->parallel_aware)
 				ExecSeqScanEstimate((SeqScanState *) planstate,
 									e->pcxt);
+			break;
+		case T_YbSeqScanState:
+			if (planstate->plan->parallel_aware)
+				ExecYbSeqScanEstimate((YbSeqScanState *) planstate,
+									  e->pcxt);
 			break;
 		case T_IndexScanState:
 			if (planstate->plan->parallel_aware)
@@ -465,6 +471,11 @@ ExecParallelInitializeDSM(PlanState *planstate,
 			if (planstate->plan->parallel_aware)
 				ExecSeqScanInitializeDSM((SeqScanState *) planstate,
 										 d->pcxt);
+			break;
+		case T_YbSeqScanState:
+			if (planstate->plan->parallel_aware)
+				ExecYbSeqScanInitializeDSM((YbSeqScanState *) planstate,
+										   d->pcxt);
 			break;
 		case T_IndexScanState:
 			if (planstate->plan->parallel_aware)
@@ -960,6 +971,11 @@ ExecParallelReInitializeDSM(PlanState *planstate,
 				ExecSeqScanReInitializeDSM((SeqScanState *) planstate,
 										   pcxt);
 			break;
+		case T_YbSeqScanState:
+			if (planstate->plan->parallel_aware)
+				ExecYbSeqScanReInitializeDSM((YbSeqScanState *) planstate,
+											 pcxt);
+			break;
 		case T_IndexScanState:
 			if (planstate->plan->parallel_aware)
 				ExecIndexScanReInitializeDSM((IndexScanState *) planstate,
@@ -1310,6 +1326,10 @@ ExecParallelInitializeWorker(PlanState *planstate, ParallelWorkerContext *pwcxt)
 		case T_SeqScanState:
 			if (planstate->plan->parallel_aware)
 				ExecSeqScanInitializeWorker((SeqScanState *) planstate, pwcxt);
+			break;
+		case T_YbSeqScanState:
+			if (planstate->plan->parallel_aware)
+				ExecYbSeqScanInitializeWorker((YbSeqScanState *) planstate, pwcxt);
 			break;
 		case T_IndexScanState:
 			if (planstate->plan->parallel_aware)

@@ -27,7 +27,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
@@ -40,11 +39,13 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
@@ -63,8 +64,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.validation.ConstraintViolation;
 import javax.validation.Valid;
 import javax.validation.Validation;
@@ -116,7 +117,6 @@ public class YbcBackupUtil {
   private final UniverseInfoHandler universeInfoHandler;
   private final CustomerConfigService configService;
   private final EncryptionAtRestManager encryptionAtRestManager;
-  private final BackupHelper backupHelper;
   private final StorageUtilFactory storageUtilFactory;
 
   @Inject
@@ -125,12 +125,10 @@ public class YbcBackupUtil {
       UniverseInfoHandler universeInfoHandler,
       CustomerConfigService configService,
       EncryptionAtRestManager encryptionAtRestManager,
-      BackupHelper backupHelper,
       StorageUtilFactory storageUtilFactory) {
     this.universeInfoHandler = universeInfoHandler;
     this.configService = configService;
     this.encryptionAtRestManager = encryptionAtRestManager;
-    this.backupHelper = backupHelper;
     this.storageUtilFactory = storageUtilFactory;
     this.autoFlagUtil = autoFlagUtil;
   }
@@ -224,6 +222,12 @@ public class YbcBackupUtil {
     @JsonProperty("ybdb_version")
     @Valid
     public String ybdbVersion;
+
+    @JsonProperty("rollback_ybdb_version")
+    @Valid
+    public String rollbackYbdbVersion;
+
+    ;
 
     @JsonProperty("master_auto_flags")
     @Valid
@@ -722,6 +726,40 @@ public class YbcBackupUtil {
     return cloudStoreConfigBuilder.build();
   }
 
+  // Use this to create CloudStoreConfig.
+  // TODO: In the next cut add region specific cloud store using NodeDetails.
+  public CloudStoreConfig createCloudStoreConfigForNode(
+      String nodeIP, Universe universe, UUID storageConfigUUID, UUID customerUUID) {
+    CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
+    return getCloudStoreConfigWithProvidedRegions(config, null);
+  }
+
+  // TODO: Add per-region spec for the regions parameter in the next cut.
+  public CloudStoreConfig getCloudStoreConfigWithProvidedRegions(
+      CustomerConfig config, @Nullable Set<String> regions) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
+    CloudStoreSpec defaultSpec =
+        storageUtilFactory
+            .getStorageUtil(config.getName())
+            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject());
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
+  }
+
+  // TODO: Add per-region spec for in the next cut.
+  public CloudStoreConfig getCloudStoreConfigWithBucketLocationsMap(
+      CustomerConfig config, Map<String, BucketLocation> bucketLocationsMap) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
+    CloudStoreSpec defaultSpec =
+        storageUtilFactory
+            .getStorageUtil(config.getName())
+            .createRestoreCloudStoreSpec(
+                DEFAULT_REGION_STRING,
+                bucketLocationsMap.get(DEFAULT_REGION_STRING).cloudDir,
+                config.getDataObject(),
+                false);
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
+  }
+
   public CloudStoreConfig createRestoreConfig(
       CustomerConfig config, YbcBackupResponse successMarker) {
     CustomerConfigData configData = config.getDataObject();
@@ -864,50 +902,6 @@ public class YbcBackupUtil {
     return new TablesMetadata(tablesToReturn);
   }
 
-  public static void validateConfigWithSuccessMarker(
-      YbcBackupResponse successMarker, CloudStoreConfig config, boolean forPrevDir)
-      throws PlatformServiceException {
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareAndValidate =
-            forPrevDir
-                ? SuccessMarkerConfigValidator.compareForPrevCloudDir
-                : SuccessMarkerConfigValidator.compareForCloudDir;
-    if (!compareAndValidate.apply(
-        successMarker.responseCloudStoreSpec.defaultLocation, config.getDefaultSpec())) {
-      throw new PlatformServiceException(
-          PRECONDITION_FAILED, "Default location validation failed.");
-    }
-    if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
-      // config.getRegionSpecMapOrThrow throws exception for key not found.
-      try {
-        successMarker.responseCloudStoreSpec.regionLocations.forEach(
-            (r, rS) -> {
-              if (!(config.containsRegionSpecMap(r)
-                  && compareAndValidate.apply(rS, config.getRegionSpecMapOrThrow(r)))) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED, "Region mapping validation failed.");
-              }
-            });
-      } catch (Exception e) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED, "Region mapping validation failed.");
-      }
-    }
-  }
-
-  private interface SuccessMarkerConfigValidator {
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareForCloudDir =
-            (sm, cs) ->
-                StringUtils.equals(sm.bucket, cs.getBucket())
-                    && StringUtils.equals(sm.cloudDir, cs.getCloudDir());
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareForPrevCloudDir =
-            (sm, cs) ->
-                StringUtils.equals(sm.bucket, cs.getBucket())
-                    && StringUtils.equals(sm.cloudDir, cs.getPrevCloudDir());
-  }
-
   /**
    * Create extended args for YB-Controller backup, adds universe key details if present, optional
    * use tablespace parameter if true.
@@ -922,6 +916,14 @@ public class YbcBackupUtil {
       String ybdbSoftwareVersion =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       config.ybdbVersion = ybdbSoftwareVersion;
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      if (universeDetails.isSoftwareRollbackAllowed
+          && universeDetails.prevYBSoftwareConfig != null) {
+        // Adding DB version on which users can rollback from current state.
+        // This is needed to support restore of backups taken on pre-finalize state
+        // or upgrades which does not require finalize.
+        config.rollbackYbdbVersion = universeDetails.prevYBSoftwareConfig.getSoftwareVersion();
+      }
       if (Util.compareYbVersions(
               ybdbSoftwareVersion,
               YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION,
@@ -982,11 +984,14 @@ public class YbcBackupUtil {
               UniverseTaskBase.ServerType.MASTER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : masterAutoFlags) {
-        if (!targetMasterAutoFlags.contains(flag)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot restore backup as " + flag + " is missing on target universe master server.");
-        }
+        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
+          if (!targetMasterAutoFlags.contains(flag)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot restore backup as "
+                    + flag
+                    + " is missing on target universe master server.");
+          }
       }
     }
     if (!CollectionUtils.isEmpty(tserverAutoFlags)) {
@@ -996,6 +1001,9 @@ public class YbcBackupUtil {
               UniverseTaskBase.ServerType.MASTER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : tserverAutoFlags) {
+        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag)) {
+          continue;
+        }
         if (!targetTServerAutoFlags.contains(flag)) {
           throw new PlatformServiceException(
               BAD_REQUEST,

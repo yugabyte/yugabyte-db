@@ -25,33 +25,36 @@ The valid *arguments* for import data file are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. (default: 20000 rows) |
+| --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. <br> Default: 20000 rows |
 | --data-dir <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location such as an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).|
-| --delimiter | Character used as a delimiter to separate column values in rows of the datafile(s). (default: comma `','` for CSV file format and tab `'\t'` for TEXT file format.)<br>Example: `yb-voyager import data file .... --delimiter ','` |
-| --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
-| --escape-char | Escape character (default: double quotes `'"'`)<br>Example: `yb-voyager import data file ... --escape-char '"'` |
-| --file-opts <string> | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>default: double quotes (") for both escape and quote characters<br>Note that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'` |
-| --null-string | String that represents null values in the datafile. (default: `""` (empty string) for CSV, and `'\N'` for text.)<br>Example: `yb-voyager import data file ... --null-string 'NULL'` |
-| --file-table-map \<filename1:tablename1\> | Comma-separated mapping between the files in `--data-dir` argument to the corresponding table in the database. You can import multiple files in one table either by providing one `<fileName>:<tableName>` entry for each file OR by passing a glob expression in place of the file name.<br>Example: `--file-table-map 'fileName1:tableName,fileName2:tableName'` OR `--file-table-map 'fileName*:tableName'`. |
-| --format <format> | Format of the data file. One of `csv` or `text`. (default: csv)<br>Example: `yb-voyager import data file ... --format text` |
-| --has-header | For `csv` datafiles, use this argument if the datafile has a header with column names for the table. (default: false).<br>Example: `yb-voyager import data file ... --format csv --has-header` OR `yb-voyager import data file ... --format csv --has-header=true` |
+| --delimiter | Character used as a delimiter to separate column values in rows of the datafile(s). <br> Default: comma `','` for CSV file format and tab `'\t'` for TEXT file format.<br>Example: `yb-voyager import data file .... --delimiter ','` |
+| --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1|
+| --enable-upsert | Enable UPSERT mode on target tables while importing data. <br>Default: true<br> Usage for disabling the mode: `yb-voyager import data status ... --enable-upsert false` |
+| --escape-char | Escape character <br> Default: double quotes `'"'`<br>Example: `yb-voyager import data file ... --escape-char '"'` |
+| --file-opts <string> | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \",quote_char \""` or `--file-opts 'escape_char ",quote_char "'` |
+| --null-string | String that represents null values in the datafile. <br> Default: `""` (empty string) for CSV, and `'\N'` for text.<br>Example: `yb-voyager import data file ... --null-string 'NULL'` |
+| --file-table-map \<filename1>:<tablename1\> | Comma-separated mapping between the files in `--data-dir` argument to the corresponding table in the database. You can import multiple files in one table either by providing one `<fileName>:<tableName>` entry for each file OR by passing a glob expression in place of the file name.<br>Example: `--file-table-map 'fileName1:tableName,fileName2:tableName'` OR `--file-table-map 'fileName*:tableName'`. |
+| --format <format> | Format of the data file. One of `csv` or `text`. <br> Default: csv<br>Example: `yb-voyager import data file ... --format text` |
+| --has-header | For `csv` datafiles, use this argument if the datafile has a header with column names for the table. <br> Default: false <br>Example: `yb-voyager import data file ... --format csv --has-header true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
-| --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. (default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.)|
-| --quote-char | Character used to quote the values. (default: double quotes `"`)<br>Example: `yb-voyager import data file ... --quote-char '"'` |
-| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true) |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag. |
+| --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. <br> Default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.|
+| --quote-char | Character used to quote the values. <br> Default: double quotes `'"'`<br>Example: `yb-voyager import data file ... --quote-char '"'` |
+| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-name <name> | Target database name. |
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| --target-db-port <port> | Port number of the target database machine. (default: 5433) |
+| --target-db-port <port> | Port number of the target database machine. <br> Default: 5433 |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
-| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| --target-db-host <hostname> | Domain name or IP address of the machine on which the target database server is running. <br>Default: "127.0.0.1" |
+| --target-endpoints <nodeEndpoints> | Comma-separated list of node endpoints to use for parallel import of data.<br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag is ignored if this is used. |
+| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --verbose | Display extra information in the output. (default: false) |
+| --use-public-ip | Use the node public IP addresses to distribute `--parallel-jobs` uniformly on data import. <br>Default: false<br> **Note** that you may need to configure the YugabyteDB cluster with public IP addresses by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Example: `yb-voyager import data status ... --use-public-ip true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes  | Answer yes to all prompts during the export schema operation. |
 
 ## Examples
@@ -78,7 +81,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions.csv:transactions' \
         --format csv \
-        --has-header=true
+        --has-header true
 ```
 
 ### Import data file from AWS S3
@@ -158,7 +161,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions1.csv:transactions,transactions2.csv:transactions' \
         --format csv \
-        --has-header=true
+        --has-header true
 ```
 
 Example for glob expression of files in --file-table-map (`foo*.csv:foo`) is as follows:
@@ -173,7 +176,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions*.csv:transactions' \
         --format csv \
-        --has-header=true
+        --has-header true
 ```
 
 {{% /tab %}}
@@ -228,7 +231,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --target-db-name target_db \
         --target-db-schema target_schema \
         --data-dir gs://xyz-hospital/data \
-        --file-table-map 'patients.txt:"Patients",doctors.txt:"Doctors",appointments.txt:"Appointments"'\
+        --file-table-map 'patients.txt:"Patients",doctors.txt:"Doctors",appointments.txt:"Appointments"' \
         --format text \
         --delimiter '-'
 ```

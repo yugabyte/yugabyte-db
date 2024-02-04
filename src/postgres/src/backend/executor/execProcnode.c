@@ -480,16 +480,6 @@ ExecProcNodeFirst(PlanState *node)
 	return node->ExecProcNode(node);
 }
 
-
-/*
- * Update Yugabyte specific run-time statistics.
- */
-static void
-YbUpdateInstrument(PlanState *node)
-{
-	YbUpdateSessionStats(&node->instrument->yb_instr);
-}
-
 /*
  * ExecProcNode wrapper that performs instrumentation calls.  By keeping
  * this a separate function, we avoid overhead in the normal case where
@@ -505,7 +495,7 @@ ExecProcNodeInstr(PlanState *node)
 	result = node->ExecProcNodeReal(node);
 
 	InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
-	YbUpdateInstrument(node);
+	YbUpdateSessionStats(&node->instrument->yb_instr);
 
 	return result;
 }

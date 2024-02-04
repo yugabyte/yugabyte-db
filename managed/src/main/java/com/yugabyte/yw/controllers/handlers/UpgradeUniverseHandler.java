@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -9,6 +12,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -17,6 +21,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -31,6 +36,7 @@ import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -39,13 +45,16 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
-import play.mvc.Http.Status;
 
 @Slf4j
 @Singleton
@@ -57,6 +66,8 @@ public class UpgradeUniverseHandler {
   private final YbcManager ybcManager;
   private final RuntimeConfGetter confGetter;
   private final CertificateHelper certificateHelper;
+  private final AutoFlagUtil autoFlagUtil;
+  private final XClusterUniverseService xClusterUniverseService;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -65,13 +76,17 @@ public class UpgradeUniverseHandler {
       RuntimeConfigFactory runtimeConfigFactory,
       YbcManager ybcManager,
       RuntimeConfGetter confGetter,
-      CertificateHelper certificateHelper) {
+      CertificateHelper certificateHelper,
+      AutoFlagUtil autoFlagUtil,
+      XClusterUniverseService xClusterUniverseService) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.ybcManager = ybcManager;
     this.confGetter = confGetter;
     this.certificateHelper = certificateHelper;
+    this.autoFlagUtil = autoFlagUtil;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   public UUID restartUniverse(
@@ -101,6 +116,7 @@ public class UpgradeUniverseHandler {
     requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
@@ -162,8 +178,9 @@ public class UpgradeUniverseHandler {
 
   public UUID finalizeUpgrade(
       FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
-    // TODO(vbansal): Add validations for finalize based on universe state.
-    // Will add them in subsequent diffs.
+
+    requestParams.verifyParams(universe, true);
+
     return submitUpgradeTask(
         TaskType.FinalizeUpgrade,
         CustomerTask.TaskType.FinalizeUpgrade,
@@ -174,13 +191,21 @@ public class UpgradeUniverseHandler {
 
   public UUID rollbackUpgrade(
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
-    // TODO(vbansal): Add validations for finalize based on universe state.
-    // Will add them in subsequent diffs.
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.RollbackKubernetesUpgrade
             : TaskType.RollbackUpgrade;
+
+    requestParams.verifyParams(universe, true);
+    requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
+    PrevYBSoftwareConfig prevYBSoftwareConfig = universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (prevYBSoftwareConfig != null) {
+      requestParams.ybSoftwareVersion = prevYBSoftwareConfig.getSoftwareVersion();
+    } else {
+      requestParams.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    }
+
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
@@ -445,6 +470,51 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
+  public SoftwareUpgradeInfoResponse softwareUpgradeInfo(
+      UUID customerUUID, UUID universeUUID, SoftwareUpgradeInfoRequest request) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    String currentVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    String newVersion = request.getYbSoftwareVersion();
+    if (!CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)
+        || !CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, newVersion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No software upgrade info available for this universe");
+    }
+    SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
+    try {
+      response.setFinalizeRequired(autoFlagUtil.upgradeRequireFinalize(currentVersion, newVersion));
+    } catch (IOException e) {
+      log.error("Error: ", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while checking auto-finalize for upgrade.");
+    }
+    return response;
+  }
+
+  public FinalizeUpgradeInfoResponse finalizeUpgradeInfo(UUID customerUUID, UUID universeUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    FinalizeUpgradeInfoResponse response = new FinalizeUpgradeInfoResponse();
+    if (!CommonUtils.isReleaseEqualOrAfter(
+        Util.YBDB_ROLLBACK_DB_VERSION,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No finalize upgrade info available for this universe");
+    }
+    try {
+      response.setImpactedXClusterConnectedUniverse(
+          xClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
+              universe));
+    } catch (IOException e) {
+      log.error("Error: ", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error while fetching impacted xCluster connected universe set.");
+    }
+    return response;
+  }
+
   private UUID submitUpgradeTask(
       TaskType taskType,
       CustomerTask.TaskType customerTaskType,
@@ -490,7 +560,7 @@ public class UpgradeUniverseHandler {
     try {
       kubernetesManagerFactory.getManager().getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 

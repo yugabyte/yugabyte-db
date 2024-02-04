@@ -66,6 +66,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -124,7 +125,9 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/program_options.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -205,6 +208,7 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
@@ -239,6 +243,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -263,6 +270,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
@@ -303,6 +311,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
@@ -311,6 +320,7 @@
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -326,6 +336,7 @@
 #include "yb/util/ulimit.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/web_callback_registry.h"
 #include "yb/util/write_buffer.h"

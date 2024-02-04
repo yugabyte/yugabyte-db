@@ -1,5 +1,5 @@
 ---
-title: Guide for ybm CLI automation
+title: Create clusters example for ybm CLI automation
 headerTitle: "ybm CLI: Create clusters"
 linkTitle: Create clusters
 description: Tutorial for using YugabyteDB Managed ybm CLI to create clusters.

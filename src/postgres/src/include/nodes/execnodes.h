@@ -1542,8 +1542,9 @@ typedef struct SeqScanState
 typedef struct YbSeqScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	// TODO handle;				/* size of parallel heap scan descriptor */
+	Size		pscan_len;		/* size of parallel heap scan descriptor */
 	List	   *aggrefs;		/* aggregate pushdown information */
+	struct YBParallelPartitionKeysData *pscan; /* parallel scan data */
 } YbSeqScanState;
 
 /* ----------------
