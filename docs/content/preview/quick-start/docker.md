@@ -82,6 +82,8 @@ docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">
 
 ## Create a local cluster
 
+Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create and manage universes.
+
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh

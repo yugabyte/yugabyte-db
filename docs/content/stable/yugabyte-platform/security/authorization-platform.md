@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The role-based access control (RBAC) model in YugabyteDB Anywhere is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.
+The role-based access control (RBAC) model in YugabyteDB Anywhere is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges.
 
 ## Users
 
@@ -19,11 +19,11 @@ A user can interact with a YugabyteDB Anywhere through the UI or REST API.
 
 ## Roles
 
-A role is a set of predefined permissions within YugabyteDB Anywhere. The following roles are available:
+A role is a set of predefined permissions in YugabyteDB Anywhere. The following roles are available:
 
 * **Super Admin** is the first user that is created during the tenant registration. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin in a tenant. This Super Admin can perform the following:
 
-  * Manage all resources, including universes, nodes, backup and restore, and cloud providers.
+  * Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   * Manage the user access control by creating and managing users.
 
   For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).

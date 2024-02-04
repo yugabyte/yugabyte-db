@@ -30,6 +30,7 @@ interface ConfigureOnPremRegionModalProps extends YBModalProps {
   regionOperation: RegionOperation;
   isProviderFormDisabled: boolean;
 
+  inUseZones?: Set<string>;
   regionSelection?: ConfigureOnPremRegionFormValues;
 }
 
@@ -70,6 +71,7 @@ const ON_PREM_LOCATION_OPTIONS = Object.keys(ON_PREM_LOCATIONS).map((locationNam
 export const ConfigureOnPremRegionModal = ({
   configuredRegions,
   isProviderFormDisabled,
+  inUseZones = new Set<string>(),
   onRegionSubmit,
   onClose,
   regionSelection,
@@ -140,6 +142,8 @@ export const ConfigureOnPremRegionModal = ({
 
   const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
   const location = formMethods.watch('location', regionSelection?.location);
+  const isRegionInUse = inUseZones.size > 0;
+  const isRegionFieldDisabled = isFormDisabled || isRegionInUse;
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -166,7 +170,7 @@ export const ConfigureOnPremRegionModal = ({
             control={formMethods.control}
             name="code"
             placeholder="Enter..."
-            disabled={isFormDisabled}
+            disabled={isRegionFieldDisabled}
             fullWidth
           />
         </div>
@@ -177,7 +181,7 @@ export const ConfigureOnPremRegionModal = ({
             name="location"
             onChange={onLocationChange}
             options={ON_PREM_LOCATION_OPTIONS}
-            isDisabled={isFormDisabled}
+            isDisabled={isRegionFieldDisabled}
           />
         </div>
         {location?.label === ON_PREM_CUSTOM_LOCATION && (
@@ -186,7 +190,7 @@ export const ConfigureOnPremRegionModal = ({
               <div>{OnPremRegionFieldLabel.LATITUDE}</div>
               <YBInputField
                 control={formMethods.control}
-                disabled={isFormDisabled}
+                disabled={isRegionFieldDisabled}
                 fullWidth
                 name="latitude"
                 placeholder="Enter..."
@@ -197,7 +201,7 @@ export const ConfigureOnPremRegionModal = ({
               <div>{OnPremRegionFieldLabel.LONGITUDE}</div>
               <YBInputField
                 control={formMethods.control}
-                disabled={isFormDisabled}
+                disabled={isRegionFieldDisabled}
                 fullWidth
                 name="longitude"
                 placeholder="Enter..."
@@ -210,6 +214,7 @@ export const ConfigureOnPremRegionModal = ({
           <ConfigureOnPremAvailabilityZoneField
             className={classes.manageAvailabilityZoneField}
             isFormDisabled={isFormDisabled}
+            inUseZones={inUseZones}
           />
           {formMethods.formState.errors.zones?.message && (
             <FormHelperText error={true}>

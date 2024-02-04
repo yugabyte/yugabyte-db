@@ -19,6 +19,8 @@ interface ChartDataPoint {
   ['DISK_USAGE_GB']?: number | null;
   ['PROVISIONED_DISK_SPACE_GB']?: number | null;
   ['TOTAL_LIVE_NODES']?: number | null;
+  ['TOTAL_LOGICAL_CONNECTIONS']?: number | null;
+  ['TOTAL_PHYSICAL_CONNECTIONS']?: number | null;
 }
 
 interface ChartContainerProps {

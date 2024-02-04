@@ -55,6 +55,7 @@ message CreateCDCStreamRequestPB {
   optional bool transactional = 6; // [default = false]
   optional string namespace_id = 7;
   optional string cdcsdk_ysql_replication_slot_name = 8;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {
@@ -484,6 +485,15 @@ message GetTableSchemaFromSysCatalogResponsePB {
   optional uint32 version = 3;
 }
 
+message XClusterReportNewAutoFlagConfigVersionRequestPB {
+  required string replication_group_id = 1;
+  required uint32 auto_flag_config_version = 2;
+}
+
+message XClusterReportNewAutoFlagConfigVersionResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -545,4 +555,8 @@ service MasterReplication {
 
   rpc BootstrapProducer(BootstrapProducerRequestPB)
       returns (BootstrapProducerResponsePB);
+
+  rpc XClusterReportNewAutoFlagConfigVersion(
+      XClusterReportNewAutoFlagConfigVersionRequestPB)
+      returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
 }

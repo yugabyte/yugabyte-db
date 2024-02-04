@@ -11,6 +11,7 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 interface ReplicationFactorProps {
   disabled?: boolean;
   isPrimary: boolean;
+  isViewMode: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -27,7 +28,8 @@ const ASYNC_RF_MAX = 15;
 
 export const ReplicationFactor = ({
   disabled,
-  isPrimary
+  isPrimary,
+  isViewMode
 }: ReplicationFactorProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
@@ -76,7 +78,7 @@ export const ReplicationFactor = ({
             color={'default'}
             values={PRIMARY_RF}
             selectedNum={value}
-            disabled={disabled}
+            disabled={disabled || isViewMode}
             handleSelect={handleSelect}
           />
         ) : (
@@ -90,6 +92,7 @@ export const ReplicationFactor = ({
                 min: ASYNC_RF_MIN,
                 max: ASYNC_RF_MAX
               }}
+              disabled={isViewMode}
               className={classes.overrideMuiInput}
               onChange={handleChange}
             />

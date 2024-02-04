@@ -11,38 +11,20 @@ type: docs
 ---
 
 {{< warning title="YSQL currently supports only fetching rows from a cursor consecutively in the forward direction." >}}
-See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/).
+See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in the generic section [Cursors](../../../cursors/). In particular, every `MOVE` variant causes the _0A000_ with a message like "MOVE not supported yet".
 {{< /warning >}}
 
 ## Synopsis
 
-Use the `MOVE` statement to change the position of the current row in a _[cursor](../../../cursors/)_. The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
+Use the `MOVE` statement to change the position of the current row in a _cursor_. See the generic section [Cursors](../../../cursors/). The `MOVE` statement is used jointly with the [`DECLARE`](../dml_declare), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/move,move_to_one_row,move_over_many_rows.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/move,move_to_one_row,move_over_many_rows.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  move,
+  move_to_one_row,
+  move_over_many_rows
+{{%/ebnf%}}
 
 ## Semantics
 

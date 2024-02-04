@@ -15,6 +15,8 @@ import { YBInputField } from '../../../../../redesign/components';
 
 interface ConfigureAvailabilityZoneFieldProps {
   isFormDisabled: boolean;
+  inUseZones: Set<String>;
+
   className?: string;
 }
 
@@ -47,6 +49,7 @@ const useStyles = makeStyles((theme) => ({
 
 export const ConfigureOnPremAvailabilityZoneField = ({
   isFormDisabled,
+  inUseZones,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
   const classes = useStyles();
@@ -60,26 +63,30 @@ export const ConfigureOnPremAvailabilityZoneField = ({
     <div className={clsx(className)}>
       <div className={classes.zonesContainer}>
         <Typography variant="h5">Availability Zones</Typography>
-        {fields.map((zone, index) => (
-          <div key={zone.id} className={classes.formField}>
-            <div>{OnPremRegionFieldLabel.ZONE_NAME}</div>
-            <Box display="flex">
-              <YBInputField
-                control={control}
-                name={`zones.${index}.code`}
-                placeholder="Enter..."
-                disabled={isFormDisabled}
-                fullWidth
-              />
-              <YBButton
-                className={classes.removeZoneButton}
-                btnIcon="fa fa-trash-o"
-                onClick={() => remove(index)}
-                disabled={isFormDisabled}
-              />
-            </Box>
-          </div>
-        ))}
+        {fields.map((zone, index) => {
+          const isZoneInUse = inUseZones.has(zone.code);
+          const isFieldDisabled = isZoneInUse || isFormDisabled;
+          return (
+            <div key={zone.id} className={classes.formField}>
+              <div>{OnPremRegionFieldLabel.ZONE_NAME}</div>
+              <Box display="flex">
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.code`}
+                  placeholder="Enter..."
+                  disabled={isFieldDisabled}
+                  fullWidth
+                />
+                <YBButton
+                  className={classes.removeZoneButton}
+                  btnIcon="fa fa-trash-o"
+                  onClick={() => remove(index)}
+                  disabled={isFieldDisabled}
+                />
+              </Box>
+            </div>
+          );
+        })}
         <YBButton
           className={classes.addZoneButton}
           btnIcon="fa fa-plus"

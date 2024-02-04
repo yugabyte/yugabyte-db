@@ -4371,8 +4371,8 @@ MergeJoin(t1 t2)
 Leading(t1 t2)
 Set(random_page_cost 2.0)
 Rows(t1 t2 +10)
-not used hint:
 Parallel(t1 8 hard)
+not used hint:
 duplication hint:
 error hint:
 

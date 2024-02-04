@@ -82,7 +82,8 @@ class TransactionLoader {
   std::optional<ApplyStateWithCommitHt> GetPendingApply(const TransactionId& id) const
       EXCLUDES(pending_applies_mtx_);
 
-  void Shutdown();
+  void StartShutdown() EXCLUDES(mutex_);
+  void CompleteShutdown();
 
   // Moves the pending applies map to the result. Should only be called after the tablet has
   // started.
@@ -104,6 +105,7 @@ class TransactionLoader {
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
   Status load_status_ GUARDED_BY(mutex_);
   std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kLoadNotFinished};
+  std::atomic<bool> shutdown_requested_{false};
   scoped_refptr<Thread> load_thread_;
 
   mutable std::mutex pending_applies_mtx_;

@@ -222,6 +222,7 @@ set(UTIL_SRCS
   physical_time.cc
   port_picker.cc
   priority_thread_pool.cc
+  prometheus_metric_filter.cc
   pstack_watcher.cc
   random_util.cc
   redis_util.cc

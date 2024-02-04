@@ -1,8 +1,8 @@
 ---
 title: PostgreSQL source database
 linkTitle: PostgreSQL
-headcontent: Known issues when migrating data from PostgreSQL.
-description: Known issues and suggested workarounds for migrating data from PostgreSQL.
+headcontent: What to watch out for when migrating data from PostgreSQL
+description: Review limitations and suggested workarounds for migrating data from PostgreSQL.
 menu:
   preview_yugabyte-voyager:
     identifier: postgresql-issues
@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from PostgreSQL to YugabyteDB.
+Review limitations and implement suggested workarounds to successfully migrate data from PostgreSQL to YugabyteDB.
 
 ## Contents
 

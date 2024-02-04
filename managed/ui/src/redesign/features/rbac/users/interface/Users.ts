@@ -10,12 +10,19 @@
 import { UniverseResource } from '../../policy/IPolicy';
 import { Role } from '../../roles';
 
+export enum UserTypes {
+  LOCAL = 'local',
+  LDAP = 'ldap'
+};
+
 export interface RbacUser {
   uuid: string;
   email: string;
   password?: string;
   confirmPassword?: string;
   creationDate?: string;
+  userType?: UserTypes;
+  ldapSpecifiedRole?: boolean;
 }
 
 export interface RbacUserWithResources extends Partial<RbacUser> {

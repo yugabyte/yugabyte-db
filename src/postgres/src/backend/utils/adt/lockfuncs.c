@@ -27,7 +27,7 @@
 static void
 YbPreventAdvisoryLocks(void)
 {
-	if (IsYugaByteEnabled())
+	if (!yb_silence_advisory_locks_not_supported_error)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("advisory locks are not yet implemented"),

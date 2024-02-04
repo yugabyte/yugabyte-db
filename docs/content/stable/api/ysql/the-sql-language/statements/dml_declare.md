@@ -16,41 +16,21 @@ See the subsection [Beware Issue #6514](../../../cursors/#beware-issue-6514) in 
 
 ## Synopsis
 
-Use the `DECLARE` statement to create a _[cursor](../../../cursors/)_. The `DECLARE` statement is used jointly with the [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
+Use the `DECLARE` statement to create a _cursor_. See the generic section [Cursors](../../../cursors/). The `DECLARE` statement is used jointly with the [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements.
 
-The term _cursor_ is _both_ a SQL keyword that's used in the `DECLARE` statement (but nowhere else) _and_ a term of art that denotes the implementation phenomenon that handles everything to do with executing a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement—for example, representing its execution plan and, for a `SELECT` or `VALUES` statement, or a DML statement that uses the `RETURNING` keyword, representing the current, next-to-be-fetched row. Some tools (most notably _psql_ and therefore _ysqlsh_ (and, for that matter, the [PL/pgSQL language](../../../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/)) allow you to issue `SELECT` and DML statements without yourself doing the _cursor_ management. But, if the use case calls for it, you can do the _cursor_ management explicitly using the SQL API that the `DECLARE`,  [`MOVE`](../dml_move), [`FETCH`](../dml_fetch), and [`CLOSE`](../dml_close) statements jointly expose. There's also a PL/pgSQL API for explicit cursor management.
+The term _cursor_ is a SQL keyword that's used in the `DECLARE` statement (but in no other SQL statement).
 
-See the generic section [Cursors](../../../cursors/).
+There's also a PL/pgSQL API for explicit cursor management.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/declare.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/declare.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  declare
+{{%/ebnf%}}
 
 ## Semantics
 
-`DECLARE` creates a _cursor_.  (There's no notion of so-called "opening" a _cursor_ in top-level SQL.) A _cursor's_ duration is limited to the duration of the session that declares it. (The [`CLOSE`](../dml_close) statement drops a _cursor_ so that you can shorten its lifetime if you want to—typically in order to save resources.) Notice the critical maximum lifetime difference between a _holdable_, and a _non-holdable_, _cursor_.
+`DECLARE` creates a _cursor_.  (There's no notion of so-called "opening" a _cursor_ in top-level SQL.) A _cursor's_ duration is limited to the duration of the session that declares it. Notice the critical maximum lifetime difference between a _holdable_, and a _non-holdable_, _cursor_. See the section [Transactional behavior — holdable and non-holdable cursors](../../../cursors/#transactional-behavior-holdable-and-non-holdable-cursors). (The [`CLOSE`](../dml_close) statement drops a _cursor_ so that you can shorten its lifetime if you want to—typically in order to save resources.)
 
 The _pg_cursors_ catalog view lists all the currently existing _cursors_ in the current session.
 
@@ -80,7 +60,7 @@ This indicates that data retrieved from the _cursor_ should be unaffected by upd
 
 `NO SCROLL` specifies that the _cursor_ cannot be used to retrieve the current row or rows that lie before it.
 
-When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly.
+When you specify neither `SCROLL` nor `NO SCROLL`, then allow scrolling is allowed in only _some_ cases—and this is therefore different from specifying `SCROLL` explicitly. 
 
 {{< tip title="Always specify either SCROLL or NO SCROLL explicitly" >}}
 See the [tip](../../../cursors/#specify-no-scroll-or-scroll-explicitly) in the subsection [Scrollable cursors](../../../cursors/#scrollable-cursors) on the dedicated [Cursors](../../../cursors/) page.
@@ -92,11 +72,11 @@ Choose the mode that you want explicitly to honor the requirements that you must
 
 `WITHOUT HOLD` specifies that the _cursor_ cannot be used after the transaction that created it ends (even if it ends with a successful _commit_).
 
-`WITH HOLD` specifies that the _cursor_ can continue to be used after the transaction that created it successfully commits.  (Of course, it vanishes if the transaction that created it rolls back.)
+`WITH HOLD` specifies that the _cursor_ can continue to be used after the transaction that created it successfully commits. (Of course, it vanishes if the transaction that created it rolls back.)
 
 Specifying neither `WITHOUT HOLD` nor `WITH HOLD` is the same as specifying `WITHOUT HOLD`.
 
-## Basic example
+## Simple example
 
 ```plpgsql
 drop table if exists t cascade;

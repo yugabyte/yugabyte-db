@@ -40,6 +40,7 @@
   left: 0;
   top: 0;
 }
+
 .yb-loader-circle .yb-child:before {
   content: '';
   display: block;
@@ -147,7 +148,9 @@
     display: none;
   }
 }
-
+.yb-loader-circle.yb-loader-circle-small .yb-child-primary:before {
+  background-color: #44518b !important;
+}
 .yb-loader-circle.yb-loader-circle-small .yb-child:before {
   content: '';
   display: block;
@@ -218,6 +221,9 @@
   }
 }
 
+.yb-loader-circle.yb-loader-circle-xsmall .yb-child-primary:before {
+  background-color: #44518b !important;
+}
 .yb-loader-circle.yb-loader-circle-xsmall .yb-child:before {
   content: '';
   display: block;
@@ -288,6 +294,9 @@
   }
 }
 
+.yb-loader-circle.yb-loader-circle-inline .yb-child-primary:before {
+  background-color: #44518b !important;
+}
 .yb-loader-circle.yb-loader-circle-inline .yb-child:before {
   content: '';
   display: block;

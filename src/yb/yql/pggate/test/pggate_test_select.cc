@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -340,11 +341,16 @@ Status TestGetTableKeyRanges(
         end_keys->push_back(std::string(key, key_size));
       };
 
+  uint64_t current_tserver_ht = 0;
+  /* Request server HT on the first call for the key ranges */
   CHECK_YBC_STATUS(YBCGetTableKeyRanges(
       database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
       upper_bound_key.cdata(), upper_bound_key.size(), max_num_ranges, range_size_bytes,
-      /* is_forward = */ true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+      /* is_forward = */ true, max_key_length, &current_tserver_ht,
+      &InvokeFunctionWithKeyPtrAndSize, &func));
   LOG(INFO) << "Got " << end_keys->size() << " ranges";
+  LOG(INFO) << "current tserver HT: " << HybridTime(current_tserver_ht).ToString();
+  SCHECK_GT(current_tserver_ht, 0, InternalError, "No tserver hybrid time");
 
   RETURN_NOT_OK(CheckRanges(*end_keys));
 
@@ -363,10 +369,10 @@ Status TestGetTableKeyRanges(
     const auto prev_size = end_keys->size();
 
     LOG(INFO) << "Starting with: " << Slice(lower_bound).ToDebugHexString();
-
     CHECK_YBC_STATUS(YBCGetTableKeyRanges(
         database_oid, table_oid, lower_bound.data(), lower_bound.size(), nullptr, 0, max_num_ranges,
-        range_size_bytes, true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+        range_size_bytes, true, max_key_length, nullptr /* current_tserver_ht */,
+        &InvokeFunctionWithKeyPtrAndSize, &func));
 
     const auto size_diff = end_keys->size() - prev_size;
 
@@ -408,7 +414,7 @@ TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
 
   LOG(INFO) << "Connected to YSQL";
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
 
   ASSERT_OK(
@@ -416,7 +422,7 @@ TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
                    "(200), (300), (3000));"));
 
   const auto table_oid = ASSERT_RESULT(
-      conn.FetchValue<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
 
   ASSERT_OK(conn.Execute(
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp;"));
@@ -452,7 +458,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
       conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kColocatedDatabaseName));
   conn = ASSERT_RESULT(PgConnect(kColocatedDatabaseName));
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kColocatedDatabaseName)));
 
   for (int i = 0; i < kNumTables; ++i) {
@@ -468,7 +474,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
   std::vector<std::pair<std::string, std::string>> min_max_keys;
 
   for (int i = 0; i < kNumTables; ++i) {
-    const auto table_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(
+    const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
         Format("SELECT oid from pg_class WHERE relname='t$0'", i)));
 
     std::vector<std::string> end_keys;

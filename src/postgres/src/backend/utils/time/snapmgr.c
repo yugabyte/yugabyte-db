@@ -324,7 +324,7 @@ GetTransactionSnapshot(void)
 	 *
 	 * READ COMMITTED semantics don't apply to DDLs.
 	 */
-	if (IsYBReadCommitted() && YBGetDdlNestingLevel() == 0)
+	if (IsYBReadCommitted() && !YBCPgIsDdlMode())
 	{
 		HandleYBStatus(YBCPgFlushBufferedOperations());
 		/* If this is a retry for a kReadRestart error, avoid resetting the read point */

@@ -95,6 +95,18 @@ body:not(.td-searchpage) {
           }
         }
 
+        .search-subhead-inner {
+          font-size: 14px;
+          font-style: italic;
+          line-height: normal;
+          display: block;
+          margin: 0 0 5px;
+
+          em {
+            font-style: normal;
+          }
+        }
+
         &:not(:last-child) {
           border-bottom: 1px solid #e9eef2;
         }
@@ -164,19 +176,16 @@ body.td-searchpage {
           line-height: normal;
         }
 
+        .search-subhead-inner {
+          font-style: italic;
+          font-size: 15px;
+          line-height: normal;
+        }
+
         a {
           border: 0;
           text-decoration: none;
         }
-
-        /* @media(max-width: 991px) and (min-width: 768px) {
-           width: 400px;
-           max-width: 100%;
-         }
-         @media(max-width: 599px) {
-           width: 400px;
-           max-width: 100%;
-         } */
       }
 
       .no-result {

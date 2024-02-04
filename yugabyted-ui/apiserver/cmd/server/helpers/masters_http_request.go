@@ -68,7 +68,7 @@ func (h *HelperContainer) GetMastersFuture(nodeHost string, future chan MastersF
     mastersListResponse := <-mastersListFuture
     masterAddresses := []string{}
     if mastersListResponse.Error != nil {
-        h.logger.Warnf("failed to get masters list from tserver at %s:",
+        h.logger.Warnf("failed to get masters list from tserver at %s: %s",
             HOST, mastersListResponse.Error.Error())
         // In this case, assume current node is a master
         masterAddresses = append(masterAddresses, HOST)

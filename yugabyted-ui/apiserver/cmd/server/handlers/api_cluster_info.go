@@ -141,6 +141,20 @@ func (c *Container) getNodes(clusterType ...string) ([]string, error) {
     return hostNames, nil
 }
 
+func getPreferenceOrder(cloud, region, zone string,
+    zonePreferences []helpers.MultiAffinitizedLeader) int32 {
+    for i, leader := range zonePreferences {
+        for _, cloudInfo := range leader.Zones {
+            if cloud == cloudInfo.PlacementCloud &&
+               region == cloudInfo.PlacementRegion &&
+               zone == cloudInfo.PlacementZone {
+                return int32(i+1)
+            }
+        }
+    }
+    return -1
+}
+
 func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQueriesFuture) {
     slowQueries := SlowQueriesFuture{
         Items: []*models.SlowQueryResponseYsqlQueryItem{},
@@ -667,6 +681,42 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Name:   metric,
                 Values: metricValues,
             })
+        case "TOTAL_LOGICAL_CONNECTIONS":
+            rawMetricValues, err := c.getRawMetricsForAllNodes("total_logical_connections",
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            // If the time window is less than 1 hour, don't use as many intervals
+            numIntervals := GRANULARITY_NUM_INTERVALS
+            if endTime - startTime < 60*60 {
+                numIntervals = 25
+            }
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawMetricValues, numIntervals, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "TOTAL_PHYSICAL_CONNECTIONS":
+            rawMetricValues, err := c.getRawMetricsForAllNodes("total_physical_connections",
+            nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            // If the time window is less than 1 hour, don't use as many intervals
+            numIntervals := GRANULARITY_NUM_INTERVALS
+            if endTime - startTime < 60*60 {
+                numIntervals = 25
+            }
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawMetricValues, numIntervals, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
         }
     }
     return ctx.JSON(http.StatusOK, metricResponse)
@@ -893,6 +943,11 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             // the implementation here.
             // For now, assuming IsTserver is always true
             _, isMaster := masters[hostName]
+            zonePreferences := clusterConfigResponse.ClusterConfig.
+            ReplicationInfo.MultiAffinitizedLeaders
+            var preferenceOrder int32 = getPreferenceOrder(
+                nodeData.Cloud, nodeData.Region, nodeData.Zone,
+                zonePreferences)
             response.Data = append(response.Data, models.NodeData{
                 Name:            hostName,
                 Host:            hostName,
@@ -900,6 +955,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 IsMaster:        isMaster,
                 IsTserver:       true,
                 IsReadReplica:   isReadReplica,
+                PreferenceOrder: preferenceOrder,
                 IsMasterUp:      isMasterUp,
                 IsBootstrapping: isBootstrapping,
                 Metrics: models.NodeDataMetrics{
@@ -1304,6 +1360,9 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
 func (c *Container) GetGflagsJson(ctx echo.Context) error {
 
     nodeHost := ctx.QueryParam("node_address")
+    if nodeHost == "" {
+        nodeHost = helpers.HOST
+    }
 
     gFlagsTserverFuture := make(chan helpers.GFlagsJsonFuture)
     go c.helper.GetGFlagsJsonFuture(nodeHost, false, gFlagsTserverFuture)
@@ -1450,6 +1509,21 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
 // GetClusterAlerts - Get all cluster alerts info (If Any)
 func (c *Container) GetClusterAlerts(ctx echo.Context) error {
 
+    nodeHost := ctx.QueryParam("node_address")
+    // If node_address is provided, get alerts from node at that address
+    if nodeHost != "" {
+        httpClient := &http.Client{
+            Timeout: time.Second * 10,
+        }
+        url := fmt.Sprintf("http://%s:%s/api/alerts", nodeHost, c.serverPort)
+        resp, err := httpClient.Get(url)
+        if err != nil {
+            c.logger.Errorf("Failed to get alerts from node %s: %s", nodeHost, err.Error())
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
+        defer resp.Body.Close()
+        return ctx.Stream(resp.StatusCode, echo.MIMEApplicationJSONCharsetUTF8, resp.Body)
+    }
     alertsResponse := models.AlertsResponse {
         Data: []models.AlertsInfo{},
     }
@@ -1466,4 +1540,58 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
     }
 
     return ctx.JSON(http.StatusOK, alertsResponse)
+}
+
+// GetClusterConnections - Get YSQL connection manager stats for every node of the cluster
+func (c *Container) GetClusterConnections(ctx echo.Context) error {
+    connectionsResponse := models.ConnectionsStats{
+        Data: map[string][]models.ConnectionStatsItem{},
+    }
+    nodeList, err := c.getNodes()
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    connectionsFutures := map[string]chan helpers.ConnectionsFuture{}
+    for _, nodeHost := range nodeList {
+        connectionsFuture := make(chan helpers.ConnectionsFuture)
+        connectionsFutures[nodeHost] = connectionsFuture
+        go c.helper.GetConnectionsFuture(nodeHost, connectionsFuture)
+    }
+    for nodeHost, future := range connectionsFutures {
+        connectionResponse := <-future
+        if connectionResponse.Error != nil {
+            c.logger.Errorf("failed to get connection stats from %s: %s",
+                nodeHost, connectionResponse.Error.Error())
+            continue
+        }
+        connectionsResponse.Data[nodeHost] = []models.ConnectionStatsItem{}
+        for _, connectionPool := range connectionResponse.Pools {
+            if connectionPool.Pool != "control_connection" {
+                connectionsResponse.Data[nodeHost] = append(
+                    connectionsResponse.Data[nodeHost],
+                    models.ConnectionStatsItem{
+                        Pool: connectionPool.Pool,
+                        ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
+                        QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
+                        IdleOrPendingLogicalConnections:
+                            connectionPool.IdleOrPendingLogicalConnections,
+                        ActivePhysicalConnections: connectionPool.ActivePhysicalConnections,
+                        IdlePhysicalConnections: connectionPool.IdlePhysicalConnections,
+                        AvgWaitTimeNs: connectionPool.AvgWaitTimeNs,
+                        Qps: connectionPool.Qps,
+                        Tps: connectionPool.Tps,
+                    },
+                )
+            }
+        }
+        if len(connectionsResponse.Data[nodeHost]) == 0 {
+            c.logger.Errorf("did not find non-control connection pool info for %s", nodeHost)
+        }
+    }
+    return ctx.JSON(http.StatusOK, connectionsResponse)
+}
+
+// GetNodeAddress - Get the node address for the current node
+func (c *Container) GetNodeAddress(ctx echo.Context) error {
+    return ctx.String(http.StatusOK, helpers.HOST)
 }

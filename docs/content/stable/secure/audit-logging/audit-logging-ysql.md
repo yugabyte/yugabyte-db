@@ -214,7 +214,7 @@ Your PostgreSQL log should include interleaved output similar to the following:
 
 Sorting by session identifier and timestamp, and including the node information for uniqueness in the cluster, you can group the transactions:
 
-```
+```output
 cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:38.294 SESSION,6,1,MISC,BEGIN,,,begin;,<none>
 cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:42.976 SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (6,2,2);",<none>
 cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:46.596 SESSION,8,1,MISC,COMMIT,,,COMMIT;,<none>

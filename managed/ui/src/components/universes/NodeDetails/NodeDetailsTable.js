@@ -8,6 +8,7 @@ import pluralize from 'pluralize';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import { setCookiesFromLocalStorage } from '../../../routes';
+import { YBTooltip } from '../../../redesign/components';
 import { NodeType } from '../../../redesign/utils/dtos';
 import { CloudType } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
@@ -21,7 +22,6 @@ import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-
 
 const NODE_TYPE = [
   {
@@ -96,18 +96,38 @@ export default class NodeDetailsTable extends Component {
         isMaster ? row.masterPort : row.tserverPort
       );
       const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
+      const universeStatus = getUniverseStatus(currentUniverse.data);
+      const isUniverseStatusGood = universeStatus.state === UniverseState.GOOD;
+
+      const nodeProcess = (
+        <a
+          href={href}
+          onClick={setCookiesFromLocalStorage}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {isMaster ? NodeType.Master : NodeType.TServer}
+        </a>
+      );
+
+      const nodeProcessWithStatus = (
+        <YBTooltip
+          title={isMaster ? row.masterUUID : row.uuid}
+          placement={isMaster ? 'top' : 'bottom'}
+        >
+          {nodeProcess}
+        </YBTooltip>
+      );
+
       return (
         <div>
           {isAlive ? successIcon : warningIcon}&nbsp;
           {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-            <a
-              href={href}
-              onClick={setCookiesFromLocalStorage}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {isMaster ? NodeType.Master : NodeType.TServer}
-            </a>
+            isUniverseStatusGood ? (
+              nodeProcessWithStatus
+            ) : (
+              nodeProcess
+            )
           ) : (
             <span>{isMaster ? NodeType.Master : NodeType.TServer}</span>
           )}

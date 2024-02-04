@@ -7,7 +7,7 @@ import type { TFunction } from "i18next";
 import clsx from "clsx";
 import { useLocalStorage } from "react-use";
 import { AlertConfiguration, AlertNotification, alertConfigurationsKey, useAlerts } from "./alerts";
-import { useGetClusterNodesQuery } from "@app/api/src";
+import { useGetClusterNodesQuery, useGetNodeAddressQuery } from "@app/api/src";
 import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
@@ -146,19 +146,20 @@ export const AlertNotificationDetails: FC = () => {
   const classes = useStyles();
 
   const { data: nodesResponse, refetch: refetchNodes } = useGetClusterNodesQuery();
+  const { data: nodeAddress } = useGetNodeAddressQuery();
 
   const nodesList = useMemo(
     () => nodesResponse?.data.map((node) => ({ label: node.name, value: node.host })) ?? [],
     [nodesResponse?.data]
   );
 
-  const [currentNode, setCurrentNode] = useState<string>(nodesList[0]?.value ?? "");
+  const [currentNode, setCurrentNode] = useState<string>(nodeAddress ?? "");
 
   React.useEffect(() => {
     if (currentNode === "" || !nodesList.find((node) => node.value === currentNode)) {
-      setCurrentNode(nodesList[0]?.value ?? "");
+      setCurrentNode(nodeAddress ?? "");
     }
-  }, [nodesList])
+  }, [nodesList, nodeAddress])
 
   const [severeFilter, setSevereFilter] = React.useState<boolean>(false);
   const [warningFilter, setWarningFilter] = React.useState<boolean>(false);

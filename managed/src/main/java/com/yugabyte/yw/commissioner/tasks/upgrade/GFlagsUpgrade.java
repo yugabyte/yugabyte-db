@@ -87,6 +87,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         taskParams().getNewVersionsOfClusters(universe);
     for (UniverseDefinitionTaskParams.Cluster curCluster : curClusters) {
       UniverseDefinitionTaskParams.UserIntent userIntent = curCluster.userIntent;
+      UniverseDefinitionTaskParams.UserIntent prevIntent = userIntent.clone();
       UniverseDefinitionTaskParams.Cluster newCluster = newClusters.get(curCluster.uuid);
       Map<String, String> masterGflags =
           GFlagsUtil.getBaseGFlags(ServerType.MASTER, newCluster, newClusters.values());
@@ -115,7 +116,10 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       // Fetch master and tserver nodes if there is change in gflags
       List<NodeDetails> masterNodes = fetchMasterNodes(taskParams().upgradeOption);
       List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-      boolean applyToAllNodes = changedByMasterFlags || changedByTserverFlags;
+      boolean applyToAllNodes =
+          (changedByMasterFlags || changedByTserverFlags)
+              && verifyIntentReallyChanged(curCluster.uuid, universe, prevIntent, userIntent);
+
       masterNodes =
           masterNodes.stream()
               .filter(n -> n.placementUuid.equals(curCluster.uuid))
@@ -209,6 +213,28 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             }
           }
         });
+  }
+
+  private boolean verifyIntentReallyChanged(
+      UUID clusterUUID,
+      Universe universe,
+      UniverseDefinitionTaskParams.UserIntent oldIntent,
+      UniverseDefinitionTaskParams.UserIntent newIntent) {
+    // In ybm while creating universe userIntent and gflags are not synchronized.
+    // So it could look like new gflags are changing userIntent, but in fact - they don't.
+    Map<String, String> oldMasterGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.MASTER,
+            universe.getCluster(clusterUUID),
+            universe.getUniverseDetails().clusters);
+    Map<String, String> oldTserverGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.TSERVER,
+            universe.getCluster(clusterUUID),
+            universe.getUniverseDetails().clusters);
+    GFlagsUtil.syncGflagsToIntent(oldMasterGFlags, oldIntent);
+    GFlagsUtil.syncGflagsToIntent(oldTserverGFlags, oldIntent);
+    return GFlagsUtil.checkGFlagsByIntentChange(oldIntent, newIntent);
   }
 
   private boolean hasUpdatedGFlags(

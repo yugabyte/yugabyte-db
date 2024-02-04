@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -43,6 +44,8 @@ public class Commissioner {
   public static final String TASK_ID = "commissioner_task_id";
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
   public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
+  public static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
+  public static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
   private final ExecutorService executor;
 
@@ -199,6 +202,18 @@ public class Commissioner {
       runnableTask.setTaskExecutionListener(getTaskExecutionListener());
     }
     latch.countDown();
+    // Wait for the task to come out of the wait and starts running.
+    while (true) {
+      try {
+        CountDownLatch currentLatch = pauseLatches.get(taskUUID);
+        if (currentLatch == null || currentLatch != latch) {
+          break;
+        }
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+    }
     return true;
   }
 
@@ -241,7 +256,15 @@ public class Commissioner {
     } else {
       userTaskDetails = taskInfo.getUserTaskDetails();
     }
-    responseJson.set("details", Json.toJson(userTaskDetails));
+    ObjectNode details = Json.newObject();
+    if (userTaskDetails != null && userTaskDetails.taskDetails != null) {
+      details.set("taskDetails", Json.toJson(userTaskDetails.taskDetails));
+    }
+    ObjectNode versionNumbers = getVersionInfo(task, taskInfo);
+    if (versionNumbers != null && !versionNumbers.isEmpty()) {
+      details.set("versionNumbers", versionNumbers);
+    }
+    responseJson.set("details", details);
 
     // Set abortable if eligible.
     responseJson.put("abortable", false);
@@ -270,6 +293,23 @@ public class Commissioner {
       responseJson.put("paused", true);
     }
     return Optional.of(responseJson);
+  }
+
+  public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
+    ObjectNode versionNumbers = Json.newObject();
+    JsonNode taskDetails = taskInfo.getDetails();
+    if (ImmutableSet.of(
+                CustomerTask.TaskType.SoftwareUpgrade, CustomerTask.TaskType.RollbackUpgrade)
+            .contains(task.getType())
+        && taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
+      versionNumbers.put(
+          Commissioner.YB_PREV_SOFTWARE_VERSION,
+          taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
+      versionNumbers.put(
+          Commissioner.YB_SOFTWARE_VERSION,
+          taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+    }
+    return versionNumbers;
   }
 
   public boolean isTaskPaused(UUID taskUuid) {
@@ -385,20 +425,20 @@ public class Commissioner {
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
-              final UUID subTaskUUID = taskInfo.getParentUuid();
+              final UUID parentTaskUUID = taskInfo.getParentUuid();
               try {
                 // Insert if absent and get the latch.
-                pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
-                // Resume can set a new listener.
-                RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
-                TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
-                if (listener != null) {
-                  listener.beforeTask(taskInfo);
-                }
+                pauseLatches.computeIfAbsent(parentTaskUUID, k -> new CountDownLatch(1)).await();
               } catch (InterruptedException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
               } finally {
-                pauseLatches.remove(subTaskUUID);
+                pauseLatches.remove(parentTaskUUID);
+              }
+              // Resume can set a new listener.
+              RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
+              TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
+              if (listener != null) {
+                listener.beforeTask(taskInfo);
               }
             }
           };

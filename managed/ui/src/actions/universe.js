@@ -48,6 +48,10 @@ export const DELETE_READ_REPLICA = 'DELETE_READ_REPLICA';
 export const DELETE_READ_REPLICA_RESPONSE = 'DELETE_READ_REPLICA_RESPONSE';
 
 // Get the Master Leader for a Universe
+export const GET_MASTER_NODES_INFO = 'GET_MASTER_NODES_INFO';
+export const GET_MASTER_NODES_INFO_RESPONSE = 'GET_MASTER_NODES_INFO_RESPONSE';
+
+// Get the Master Nodes Info for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
 export const GET_MASTER_LEADER_RESPONSE = 'GET_MASTER_LEADER_RESPONSE';
 export const RESET_MASTER_LEADER = 'RESET_MASTER_LEADER';
@@ -559,6 +563,21 @@ export function getMasterLeader(universeUUID) {
 export function getMasterLeaderResponse(response) {
   return {
     type: GET_MASTER_LEADER_RESPONSE,
+    payload: response
+  };
+}
+
+export function getMasterNodesInfo(universeUUID) {
+  const request = axios.get(`${getCustomerEndpoint()}/universes/${universeUUID}/masters/info`);
+  return {
+    type: GET_MASTER_NODES_INFO,
+    payload: request
+  };
+}
+
+export function getMasterNodesInfoResponse(response) {
+  return {
+    type: GET_MASTER_NODES_INFO_RESPONSE,
     payload: response
   };
 }

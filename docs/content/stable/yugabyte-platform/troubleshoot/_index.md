@@ -9,7 +9,7 @@ menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
-    weight: 648
+    weight: 680
 type: indexpage
 ---
 
@@ -40,10 +40,10 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="universe-issues/">
+    <a class="section-link icon-offset" href="cloud-provider-config-issues/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Cloud provided configuration issues</div>
+        <div class="title">Cloud provider configuration issues</div>
       </div>
       <div class="body">
         Troubleshoot issues encountered when configuring cloud providers.
@@ -51,5 +51,16 @@ type: indexpage
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ldap-issues/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">LDAP issues</div>
+      </div>
+      <div class="body">
+        Troubleshoot LDAP issues.
+      </div>
+    </a>
+  </div>
 
 </div>

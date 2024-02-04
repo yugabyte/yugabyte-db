@@ -4,16 +4,17 @@ import { useEffect, useState, useRef } from 'react';
 import * as Yup from 'yup';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { trimStart, trimEnd, isString, isEqual, isUndefined } from 'lodash';
+import { trimStart, trimEnd, isString, isEqual, isUndefined, find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle, YBFormSelect } from '../../common/forms/fields';
 import { LDAPMappingModal } from './LDAPGroups';
 import { getLDAPRoleMapping, setLDAPRoleMapping } from '../../../actions/customers';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { Action } from '../../../redesign/features/rbac';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { YUGABYTE_TITLE } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
@@ -169,9 +170,7 @@ export const LDAPAuth = (props) => {
     setRunTimeConfig,
     deleteRunTimeConfig,
     featureFlags,
-    runtimeConfigs: {
-      data: { configEntries }
-    }
+    runtimeConfigs
   } = props;
   const [showToggle, setToggleVisible] = useState(false);
   const [dialog, showDialog] = useState(false);
@@ -181,7 +180,7 @@ export const LDAPAuth = (props) => {
 
   const queryClient = useQueryClient();
   const initMappingValue = useRef([]);
-
+  const configEntries = runtimeConfigs?.data?.configEntries ?? [];
   const enableLDAPRoleMapping =
     featureFlags.test.enableLDAPRoleMapping || featureFlags.released.enableLDAPRoleMapping;
 
@@ -334,6 +333,9 @@ export const LDAPAuth = (props) => {
   };
 
   const handleToggle = async (e) => {
+
+    if (!hasNecessaryPerm(ApiPermissionMap.UPDATE_LDAP_MAPPING)) return;
+
     const value = e.target.checked;
 
     if (!value) showDialog(true);
@@ -371,7 +373,7 @@ export const LDAPAuth = (props) => {
 
   return (
     <RbacValidator
-      accessRequiredOn={ApiPermissionMap.GET_LDAP_MAPPINGS}
+      customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined}
     >
       <div className="bottom-bar-padding">
         {dialog && (
@@ -464,8 +466,12 @@ export const LDAPAuth = (props) => {
                                 <i className="fa fa-info-circle" />
                               </YBInfoTip>
                             </Col>
-
-                            {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                            <RbacValidator
+                              accessRequiredOn={ApiPermissionMap.UPDATE_LDAP_MAPPING}
+                              isControl
+                            >
+                              {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                            </RbacValidator>
                           </>
                         </Col>
                       </Row>

@@ -28,7 +28,7 @@ The YugabyteDB Managed REST API allows you to deploy and manage your database cl
     title="Get Started"
     description="Manage YugabyteDB Managed using the API."
     buttonText="API Documentation"
-    buttonUrl="https://api-docs.yugabyte.com/docs/managed-apis/"
+    buttonUrl="https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api"
   >}}
 
 {{< /sections/2-boxes >}}

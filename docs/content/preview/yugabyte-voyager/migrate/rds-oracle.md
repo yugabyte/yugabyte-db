@@ -8,10 +8,17 @@ private=true
 
     ```sql
     SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
     LOG_MODE
     ------------
     ARCHIVELOG
+    ```
 
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
     exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
     ```
 

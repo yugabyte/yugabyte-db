@@ -77,7 +77,7 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
 }
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
-  return conn->FetchValue<PGOid>(
+  return conn->FetchRow<PGOid>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
 }
 
@@ -142,28 +142,25 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
       threads.emplace_back([this, color, kKeys, &complete] {
         auto connection = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(connection.Execute("BEGIN"));
-        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        // TODO(#12494): undo this change
+        // ASSERT_OK(connection.Execute("BEGIN"));
+        // ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(connection.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
-        auto res = connection.Fetch("SELECT * FROM t");
-        if (!res.ok()) {
+        auto rows_res = connection.FetchRows<int32_t, int32_t>("SELECT * FROM t");
+        if (!rows_res.ok()) {
           // res will have failed status here for conflicting transactions as long as we are using
-          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
+          // fail-on-conflict concurrency control. Hence, this test runs with wait-on-conflict
           // disabled.
-          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(rows_res.status())) << rows_res.status();
           return;
         }
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kKeys, lines);
-        for (int j = 0; j != lines; ++j) {
-          if (ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 1)) == color) {
+        ASSERT_EQ(rows_res->size(), kKeys);
+        for (const auto& [key, row_color] : *rows_res) {
+          if (row_color == color) {
             continue;
           }
 
-          auto key = ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 0));
           auto status = connection.ExecuteFormat(
               "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
@@ -191,17 +188,12 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
       continue;
     }
 
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kKeys, lines);
-
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM t")));
     std::vector<int32_t> zeroes, ones;
-    for (int i = 0; i != lines; ++i) {
-      auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0));
-      auto current = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 1));
+    const auto rows_sz = rows.size();
+    zeroes.reserve(rows_sz);
+    ones.reserve(rows_sz);
+    for (const auto& [key, current] : rows) {
       if (current == 0) {
         zeroes.push_back(key);
       } else {

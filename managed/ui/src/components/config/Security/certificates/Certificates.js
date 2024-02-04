@@ -363,7 +363,7 @@ class Certificates extends Component {
                           });
                         }}
                         disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                        btnText="Add Certificate1"
+                        btnText="Add Certificate"
                         btnIcon="fa fa-plus"
                         data-testid="Add-Certificate"
                       />

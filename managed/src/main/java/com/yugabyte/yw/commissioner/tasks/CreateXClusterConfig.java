@@ -370,6 +370,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // tables exist, the restore subtask will fail.
         List<String> tableNamesNeedBootstrap =
             tablesInfoListNeedBootstrap.stream()
+                // Filter out index tables as they will be dropped once their main tables are
+                // dropped.
                 .filter(
                     tableInfo ->
                         tableInfo.getRelationType()
@@ -594,6 +596,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     if (backupRequestParams.backupType != CommonTypes.TableType.PGSQL_TABLE_TYPE) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
           tablesInfoListNeedBootstrap.stream()
+              // Filter out index tables because backup will include them automatically once their
+              // main tables are being backed up.
               .filter(
                   tableInfo ->
                       tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)

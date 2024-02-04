@@ -9,11 +9,11 @@ resources:
   - title: Download
     url: https://download.yugabyte.com/#/
   - title: Deploy
-    url: /stable/deploy/
+    url: /preview/deploy/
   - title: Migrate to YugabyteDB
     url: /preview/yugabyte-voyager/
   - title: Troubleshoot
-    url: /stable/troubleshoot/
+    url: /preview/troubleshoot/
 ---
 
 {{< sections/2-boxes >}}
@@ -29,7 +29,7 @@ resources:
     title="Explore distributed SQL"
     description="Explore the features of distributed SQL, with examples."
     buttonText="Explore"
-    buttonUrl="/stable/explore/"
+    buttonUrl="/preview/explore/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -41,21 +41,21 @@ resources:
     title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
-    buttonUrl="/stable/develop/build-apps/"
+    buttonUrl="/preview/develop/build-apps/"
   >}}
 
   {{< sections/3-box-card
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/stable/drivers-orms/"
+    buttonUrl="/preview/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
     title="Use familiar APIs"
     description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
     buttonText="Develop"
-    buttonUrl="/stable/api/"
+    buttonUrl="/preview/api/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -67,21 +67,21 @@ resources:
     title="Architecture"
     description="Learn how YugabyteDB achieves consistency and high availability."
     buttonText="Learn More"
-    buttonUrl="/stable/architecture/"
+    buttonUrl="/preview/architecture/"
   >}}
 
   {{< sections/3-box-card
     title="Secure"
     description="Secure YugabyteDB with authentication, authorization, and encryption."
     buttonText="Secure"
-    buttonUrl="/stable/secure/"
+    buttonUrl="/preview/secure/"
   >}}
 
   {{< sections/3-box-card
     title="Configure"
     description="Configure core database services."
     buttonText="Configure"
-    buttonUrl="/stable/reference/configuration/"
+    buttonUrl="/preview/reference/configuration/"
   >}}
 
 {{< /sections/3-boxes >}}

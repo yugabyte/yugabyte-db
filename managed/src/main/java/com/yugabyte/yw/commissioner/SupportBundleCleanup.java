@@ -67,6 +67,8 @@ public class SupportBundleCleanup {
     int default_delete_days = config.getInt("yb.support_bundle.retention_days");
 
     if (supportBundle.getStatus() == SupportBundleStatusType.Failed) {
+      // Delete the actual archive file
+      supportBundleUtil.deleteFile(supportBundle.getPathObject());
       // Deletes row from the support_bundle db table
       SupportBundle.delete(supportBundle.getBundleUUID());
 
@@ -98,5 +100,16 @@ public class SupportBundleCleanup {
 
   public void handleSupportBundleError(UUID bundleUUID, Exception e) {
     log.error(String.format("Error trying to delete bundle: %s", bundleUUID.toString()), e);
+  }
+
+  public void markAllRunningSupportBundlesFailed() {
+    SupportBundle.getAll()
+        .forEach(
+            sb -> {
+              if (SupportBundleStatusType.Running.equals(sb.getStatus())) {
+                sb.setStatus(SupportBundleStatusType.Failed);
+                sb.update();
+              }
+            });
   }
 }

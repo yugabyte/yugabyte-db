@@ -44,7 +44,9 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
 
   //form context
-  const { clusterType, mode, universeConfigureTemplate } = useContext(UniverseFormContext)[0];
+  const { clusterType, mode, universeConfigureTemplate, isViewMode } = useContext(
+    UniverseFormContext
+  )[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
@@ -76,31 +78,32 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           />
         </Box>
         <Box mt={2}>
-          <RegionsField disabled={false} />
+          <RegionsField disabled={isViewMode} />
         </Box>
         {isDedicatedNodesEnabled && (
           <Box mt={isPrimary ? 2 : 0}>
             <MasterPlacementField
               isPrimary={isPrimary}
               useK8CustomResources={useK8CustomResources}
+              disabled={isViewMode}
             />
           </Box>
         )}
         <Box mt={2}>
-          <TotalNodesField disabled={false} />
+          <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} />
+          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} isViewMode={isViewMode} />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">
-            <DefaultRegionField disabled={isEditPrimary} />
+            <DefaultRegionField disabled={isEditPrimary || isViewMode} />
           </Box>
         )}
       </Box>
       <Box mt={isLargeDevice ? 0 : 4}>
         <PlacementsField
-          disabled={false}
+          disabled={isViewMode}
           isPrimary={isPrimary}
           isGeoPartitionEnabled={isGeoPartitionEnabled}
           isEditMode={isEditMode}

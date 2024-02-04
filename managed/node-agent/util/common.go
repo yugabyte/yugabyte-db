@@ -81,6 +81,10 @@ const (
 	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
 	NodeAgentLogMaxDaysKey     = "node.log_max_days"
 	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
+
+	// JWT claims.
+	JwtClaimsExpiryKey  = "exp"
+	JwtClaimsSessionKey = "ses"
 )
 
 const (
@@ -362,4 +366,65 @@ func IsPexEnvAvailable() bool {
 		return false
 	}
 	return fInfo.IsDir()
+}
+
+// Indexable refers to indexable type.
+type Indexable interface {
+	Index() int
+	SetIndex(int)
+}
+
+// PriorityQueue implements containers/heap.Interface.
+type PriorityQueue[T interface{ Indexable }] struct {
+	entries    []T
+	comparator func(T, T) bool
+}
+
+// NewPriorityQueue returns an instance of PriorityQueue.
+func NewPriorityQueue[T interface{ Indexable }](comparator func(T, T) bool) *PriorityQueue[T] {
+	return &PriorityQueue[T]{
+		entries:    []T{},
+		comparator: comparator,
+	}
+}
+
+// Len implements the method in container/heap.
+func (queue *PriorityQueue[T]) Len() int { return len(queue.entries) }
+
+// Less implements the method in container/heap.
+func (queue *PriorityQueue[T]) Less(i, j int) bool {
+	return queue.comparator(queue.entries[i], queue.entries[j])
+}
+
+// Swap implements the method in container/heap.
+func (queue *PriorityQueue[T]) Swap(i, j int) {
+	queue.entries[i], queue.entries[j] = queue.entries[j], queue.entries[i]
+	queue.entries[i].SetIndex(i)
+	queue.entries[j].SetIndex(j)
+}
+
+// Push implements the method in container/heap.
+func (queue *PriorityQueue[T]) Push(item any) {
+	entry := item.(T)
+	queue.entries = append(queue.entries, entry)
+	entry.SetIndex(len(queue.entries) - 1)
+}
+
+// Pop implements the method in container/heap.
+func (queue *PriorityQueue[T]) Pop() any {
+	var zero T
+	n := len(queue.entries)
+	entry := queue.entries[n-1]
+	queue.entries[n-1] = zero
+	queue.entries = queue.entries[0 : n-1]
+	return entry
+}
+
+// Peek returns the least/top entry without removing it.
+func (queue *PriorityQueue[T]) Peek() T {
+	var zero T
+	if len(queue.entries) > 0 {
+		return queue.entries[0]
+	}
+	return zero
 }

@@ -161,7 +161,7 @@ EXPLAIN SELECT j FROM test_scan;
 -- yb_transaction_priority to be equal to those two.
 set yb_transaction_priority_lower_bound = 0.4;
 set yb_transaction_priority_upper_bound = 0.4;
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
 show yb_transaction_priority;
           yb_transaction_priority

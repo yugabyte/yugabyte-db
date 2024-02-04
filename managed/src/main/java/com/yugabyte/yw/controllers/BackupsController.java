@@ -423,10 +423,13 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupHelper.validateStorageConfig(customerConfig);
     // Validate universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    if (!backupHelper.isSkipConfigBasedPreflightValidation(universe)) {
+      backupHelper.validateStorageConfig(customerConfig);
+    }
+
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     taskParams.customerUUID = customerUUID;

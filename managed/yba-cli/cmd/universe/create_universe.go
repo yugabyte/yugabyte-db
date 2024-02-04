@@ -372,7 +372,7 @@ func init() {
 			"only for Kubernetes universes defaults to false. ")
 	createUniverseCmd.Flags().String("yb-db-version", "",
 		"[Optional] YugabyteDB Software Version, defaults to the latest available version"+
-			"Run \"yba release list\" to find the latest version.")
+			"Run \"yba yb-db-version list\" to find the latest version.")
 	createUniverseCmd.Flags().Bool("use-systemd", true,
 		"[Optional] Use SystemD, defaults to true.")
 	createUniverseCmd.Flags().String("access-key-code", "",

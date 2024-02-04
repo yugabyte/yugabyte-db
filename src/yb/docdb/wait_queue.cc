@@ -56,6 +56,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
@@ -293,6 +294,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       }
       unlocked_ = std::nullopt;
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("WaiterData::Impl::InvokeCallback:1");
     callback(status, resume_ht);
   }
 
@@ -686,10 +688,10 @@ class ResumedWaiterRunner {
     {
       UniqueLock l(mutex_);
       if (PREDICT_FALSE(shutting_down_)) {
-        // We shouldn't push new entries onto 'pq_' after thread_pool_token_ is shut down as they
-        // wouldn't be processed. Additionally, we cannot skip executing the waiter's callback here
-        // as the record might have already been erased from waiter_status_. Else, we risk dropping
-        // execution of the callback all together.
+        // We shouldn't push new entries onto 'pq_' now as we wouldn't be sure if they would be
+        // processed by thread_pool_token_. Additionally, we cannot skip executing the waiter's
+        // callback here as the record might have already been erased from waiter_status_. Else,
+        // we risk dropping execution of the callback all together.
         l.unlock();
         waiter->InvokeCallback(kShuttingDownError);
         return;
@@ -699,10 +701,12 @@ class ResumedWaiterRunner {
     TriggerPoll();
   }
 
-  void Shutdown() {
-    thread_pool_token_->Shutdown();
-    // ThreadPoolToken Shutdown will wait for the current running task to finish and destroy other
-    // remaining enqueued tasks. Hence, we need to explicitly clear WaiterData entries off 'pq_'.
+  void StartShutdown() {
+    // thread_pool_token_ shouldn't be Shutdown here since the callee executes this method within
+    // the scope of TabletPeer::lock_. thread_pool_token_->Shutdown() would wait for the running
+    // thread to complete its execution, and the running thread could be in the process of resuming
+    // a waiter with Status::OK() and end up waiting for TabletPeer::lock_ during creation of an
+    // operation driver for replication, thus resulting in a deadlock.
     std::vector<WaiterDataPtr> waiters;
     {
       UniqueLock l(mutex_);
@@ -716,6 +720,14 @@ class ResumedWaiterRunner {
     for (const auto& waiter : waiters) {
       waiter->InvokeCallback(kShuttingDownError);
     }
+  }
+
+  void CompleteShutdown() {
+    thread_pool_token_->Shutdown();
+    SharedLock l(mutex_);
+    LOG_IF_WITH_PREFIX(DFATAL, !shutting_down_) << "Called when not in shutting_down_ state.";
+    LOG_IF_WITH_PREFIX(DFATAL, !pq_.empty())
+        << "pq_ found in non-empty state. Could block tablet shutdown.";
   }
 
  private:
@@ -1026,6 +1038,7 @@ class WaitQueue::Impl {
     for (auto [blocker, _] : waiter_data->blockers) {
       blocker->AddWaiter(waiter_data);
     }
+    DEBUG_ONLY_TEST_SYNC_POINT("WaitQueue::Impl::SetupWaiterUnlocked:1");
     return Status::OK();
   }
 
@@ -1214,7 +1227,7 @@ class WaitQueue::Impl {
       blockers_by_key_.clear();
     }
 
-    waiter_runner_.Shutdown();
+    waiter_runner_.StartShutdown();
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->SignalWaitQueueShutdown();
@@ -1234,6 +1247,7 @@ class WaitQueue::Impl {
       VLOG_WITH_PREFIX(1) << "Attempted to shutdown wait queue that is already shutdown";
       return;
     }
+    waiter_runner_.CompleteShutdown();
     SharedLock l(mutex_);
     rpcs_.Shutdown();
     LOG_IF(DFATAL, !shutting_down_)

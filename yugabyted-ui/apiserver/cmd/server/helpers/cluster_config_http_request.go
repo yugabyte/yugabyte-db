@@ -15,9 +15,14 @@ type ReplicasStruct struct {
     PlacementUuid   string           `json:"placement_uuid"`
 }
 
+type MultiAffinitizedLeader struct {
+    Zones []CloudInfoStruct `json:"zones"`
+ }
+
 type ReplicationInfoStruct struct {
-    LiveReplicas ReplicasStruct   `json:"live_replicas"`
-    ReadReplicas []ReplicasStruct `json:"read_replicas"`
+    LiveReplicas              ReplicasStruct          `json:"live_replicas"`
+    ReadReplicas             []ReplicasStruct         `json:"read_replicas"`
+    MultiAffinitizedLeaders  []MultiAffinitizedLeader `json:"multi_affinitized_leaders"`
 }
 
 type EncryptionInfoStruct struct {

@@ -778,6 +778,22 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetAutoFlagsConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_cluster_proxy_->GetAutoFlagsConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "AutoFlags config:" << std::endl;
+  std::cout << resp.config().DebugString() << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::PromoteAutoFlags(
     const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
@@ -849,10 +865,10 @@ Status ClusterAdminClient::PromoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_promoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not promoted. Check the logs for more information" << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Failed to promote AutoFlag " << flag_name << " from process " << process_name
+                << ". Check the logs for more information" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -880,11 +896,10 @@ Status ClusterAdminClient::DemoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_demoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not demoted. Either the flag does not exist or it is not promoted"
-               << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Unable to demote AutoFlag " << flag_name << " from process " << process_name
+                << " because the flag is not in promoted state" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -3729,7 +3744,7 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
-    const std::string& record_type) {
+    const cdc::CDCRecordType record_type) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3738,15 +3753,7 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
 
   req.set_namespace_name(ns.name);
   req.set_db_type(ns.db_type);
-  if (record_type == yb::ToString("ALL")) {
-    req.set_record_type(cdc::CDCRecordType::ALL);
-  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
-    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
-  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
-    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
-  } else {
-    req.set_record_type(cdc::CDCRecordType::CHANGE);
-  }
+  req.set_record_type(record_type);
 
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);

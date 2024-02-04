@@ -27,7 +27,7 @@ public class TestPgRegressPlanner extends BasePgSQLTest {
     }
 
     @Test
-    public void testPgRegressDml() throws Exception {
+    public void testPgRegressPlanner() throws Exception {
         runPgRegressTest("yb_planner_serial_schedule");
     }
 }

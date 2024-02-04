@@ -114,18 +114,13 @@ TEST_F(PgLibPqErrTest, InsertWithoutCommit) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = connection.Fetch("SELECT * FROM terr");
+        auto res = connection.FetchMatrix("SELECT * FROM terr", row_count, 2);
         if (!res.ok()) {
           ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
         // SELECT succeeded.
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(row_count, lines);
         break;
       }
 
@@ -141,12 +136,7 @@ TEST_F(PgLibPqErrTest, InsertWithoutCommit) {
     }
 
     // Table should have no data as transactions were not committed.
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM terr"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(0, lines);
+    ASSERT_OK(conn.FetchMatrix("SELECT * FROM terr", 0, 2));
   }
 }
 
@@ -195,18 +185,13 @@ TEST_F(PgLibPqErrTest, InsertDuplicateWithoutCommit) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = connection.Fetch("SELECT * FROM terr");
+        auto res = connection.FetchMatrix("SELECT * FROM terr", row_count, 2);
         if (!res.ok()) {
           ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
         // SELECT succeeded.
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(row_count, lines);
         break;
       }
 
@@ -222,12 +207,7 @@ TEST_F(PgLibPqErrTest, InsertDuplicateWithoutCommit) {
     }
 
     // Table should have no data as transactions were not committed.
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM terr"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(0, lines);
+    ASSERT_OK(conn.FetchMatrix("SELECT * FROM terr", 0, 2));
   }
 }
 
@@ -275,23 +255,17 @@ TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = connection.Fetch("SELECT * FROM terr");
-        if (!res.ok()) {
-          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
+        auto rows_res = connection.FetchRows<int32_t, int32_t>("SELECT * FROM terr");
+        if (!rows_res.ok()) {
+          ASSERT_TRUE(HasTransactionError(rows_res.status())) << rows_res.status();
           continue;
         }
 
         // Done selecting. Retry not needed.
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kRowCount, lines);
-
+        ASSERT_EQ(rows_res->size(), kRowCount);
         // Check column 'v' vs 'seed'.
-        for (int i = 0; i != lines; ++i) {
-          auto v = ASSERT_RESULT(GetValue<int32_t>(res->get(), i, 1));
-          ASSERT_EQ(v, seed);
+        for (const auto& [_, row_seed] : *rows_res) {
+          ASSERT_EQ(row_seed, seed);
         }
         break;
       }
@@ -308,17 +282,11 @@ TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
     }
 
     // Table should have no updates as transactions were not committed.
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM terr"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kRowCount, lines);
-
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM terr")));
+    ASSERT_EQ(rows.size(), kRowCount);
     // Check column 'v' vs original value 'kSeed'.
-    for (int i = 0; i != lines; ++i) {
-      auto v = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 1));
-      ASSERT_EQ(v, kSeed);
+    for (const auto& [_, row_seed] : rows) {
+      ASSERT_EQ(row_seed, kSeed);
     }
   }
 }
@@ -371,19 +339,13 @@ TEST_F(PgLibPqErrTest, DeleteWithoutCommit) {
 
       // SELECT: Retry number of times or until success.
       for (int rt = 0; rt < kRetryCount; rt++) {
-        auto res = connection.Fetch("SELECT * FROM terr");
+        auto res = connection.FetchMatrix("SELECT * FROM terr", kRowCount - delete_count, 2);
         if (!res.ok()) {
           ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
         // SELECT succeeded.
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kRowCount - delete_count, lines);
-
         break;
       }
 
@@ -399,12 +361,7 @@ TEST_F(PgLibPqErrTest, DeleteWithoutCommit) {
     }
 
     // Table should still have all the rows as transactions were not committed.
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM terr"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kRowCount, lines);
+    ASSERT_OK(conn.FetchMatrix("SELECT * FROM terr", kRowCount, 2));
   }
 }
 

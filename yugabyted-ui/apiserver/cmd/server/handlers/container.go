@@ -10,11 +10,12 @@ import (
 
 // Container will hold all dependencies for your application.
 type Container struct {
-        logger  logger.Logger
-        Client  *gocql.ClusterConfig
-        Session *gocql.Session
-        ConnMap map[helpers.PgClientConnectionParams]*pgxpool.Pool
-        helper  helpers.HelperContainer
+        logger     logger.Logger
+        Client     *gocql.ClusterConfig
+        Session    *gocql.Session
+        ConnMap    map[helpers.PgClientConnectionParams]*pgxpool.Pool
+        helper     helpers.HelperContainer
+        serverPort string
 }
 
 // NewContainer returns an empty or an initialized container for your handlers.
@@ -24,8 +25,9 @@ func NewContainer(
     gocqlSession *gocql.Session,
     pgxConnMap   map[helpers.PgClientConnectionParams]*pgxpool.Pool,
     helper       helpers.HelperContainer,
+    serverPort   string,
     ) (Container, error) {
-        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper}
+        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper, serverPort}
         return c, nil
 }
 

@@ -210,7 +210,7 @@ export default class AlertProfileForm extends Component {
                     type="text"
                     component={YBFormInput}
                     label="Health check interval (in minutes)"
-                    placeholder="Milliseconds to check universe status"
+                    placeholder="Minutes to check universe status"
                     disabled={isReadOnly}
                   />
                   <Field
@@ -218,7 +218,7 @@ export default class AlertProfileForm extends Component {
                     type="text"
                     component={YBFormInput}
                     label="Active alert notification interval (in minutes)"
-                    placeholder="Milliseconds to send an active alert notifications"
+                    placeholder="Minutes to send an active alert notifications"
                     disabled={isReadOnly}
                   />
                 </Col>

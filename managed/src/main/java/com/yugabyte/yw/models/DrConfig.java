@@ -4,7 +4,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -106,7 +105,7 @@ public class DrConfig extends Model {
     return xClusterConfig;
   }
 
-  @JsonProperty("xClusterConfig")
+  @JsonIgnore
   public XClusterConfig getActiveXClusterConfig() {
     if (xClusterConfigs.isEmpty()) {
       throw new IllegalStateException(
@@ -122,7 +121,7 @@ public class DrConfig extends Model {
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
   }
 
-  @JsonProperty("failoverXClusterConfig")
+  @JsonIgnore
   public XClusterConfig getFailoverXClusterConfig() {
     return xClusterConfigs.stream().filter(XClusterConfig::isSecondary).findFirst().orElse(null);
   }

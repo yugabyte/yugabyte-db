@@ -13,6 +13,7 @@ import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox
 import { YBCopyButton } from '../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { UserTypes } from '../../redesign/features/rbac/users/interface/Users';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -76,7 +77,7 @@ export default class UserProfileForm extends Component {
 
     const userRole = currentUser?.data?.role;
     const isSuperAdmin = ['SuperAdmin'].includes(userRole);
-    const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
+    const isLDAPUser = !!currentUser?.data?.userType === UserTypes.LDAP;
     const defaultTimezoneOption = { value: '', label: 'Default' };
     const initialValues = {
       name: customer.data.name || '',

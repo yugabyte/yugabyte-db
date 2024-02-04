@@ -1,20 +1,17 @@
 ---
-title: Secondary indexes in YugabyteDB
+title: Secondary indexes in YugabyteDB YSQL
 headerTitle: Secondary indexes
 linkTitle: Secondary indexes
-description: Overview of Secondary indexes in YSQL and YCQL
-headContent: Explore secondary indexes in YugabyteDB using YSQL and YCQL
+description: Overview of Secondary indexes in YSQL
+headContent: Explore secondary indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
-aliases:
-  - /stable/explore/indexes-constraints/secondary-indexes/
 menu:
   stable:
-    identifier: secondary-indexes
+    identifier: secondary-indexes-ysql
     parent: explore-indexes-constraints
-    weight: 220
+    weight: 210
 type: docs
 ---
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../secondary-indexes-ysql/" class="nav-link active">
@@ -34,23 +31,27 @@ Using indexes enhances database performance by enabling the database server to f
 
 ## Create indexes
 
-You can create indexes in YSQL and YCQL using the `CREATE INDEX` statement that has the following syntax:
+You can create indexes in YSQL using the `CREATE INDEX` statement using the following syntax:
 
 ```sql
 CREATE INDEX index_name ON table_name(column_list);
 ```
 
-*column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
+*column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index (multi-column index).
 
-For more information, see [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/).
+For more information, see [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/).
 
 [Multi-column indexes](#multi-column-index) can be beneficial in situations where queries are searching in more than a single column.
 
-You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression Indexes](../../../explore/indexes-constraints/expression-index-ysql/).
+You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/indexes-constraints/expression-index-ysql/).
 
-YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index](../../../explore/indexes-constraints/gin/).
+YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen.
 
-You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`. For examples, see [HASH and ASC examples in YSQL](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
+For more information on `ybgin`, see [Generalized inverted index](../../../explore/indexes-constraints/gin/).
+
+You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`.
+
+For examples, see [Unique index with HASH column ordering](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering) and [ASC ordered index](../../../api/ysql/the-sql-language/statements/ddl_create_index/#asc-ordered-index).
 
 ## List indexes and verify the query plan
 
@@ -68,7 +69,7 @@ For more information, see [EXPLAIN](../../../api/ysql/the-sql-language/statement
 
 ## Remove indexes
 
-You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL and YCQL with the following syntax:
+You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL using the following syntax:
 
 ```sql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
@@ -97,7 +98,7 @@ INSERT INTO employees VALUES
 (1223, 'Lucille Ball', 'Operations');
 ```
 
-The following example shows a query that finds employees working in Operations:
+The following example shows a query that finds employees working in Operations department:
 
 ```sql
 SELECT * FROM employees WHERE department = 'Operations';
@@ -118,7 +119,7 @@ The following example executes the query after the index has been applied to `de
 EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
 ```
 
-The following is the output produced by the preceding example:
+Following is the output produced by the preceding example:
 
 ```output
 QUERY PLAN
@@ -127,15 +128,13 @@ Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=1
 Index Cond: (department = 'Operations'::text)
 ```
 
-The following example shows how to remove `index_employees_department` that was created in Create indexes:
+To remove the index `index_employees_department`, use the following command:
 
 ```sql
 DROP INDEX index_employees_department;
 ```
 
 ## Multi-column index
-
-Multi-column indexes can be beneficial in situations where queries are searching in more than a single column.
 
 To add a multi-column index during table creation, you can use the following syntax:
 
@@ -239,5 +238,5 @@ EXPLAIN SELECT * FROM employees WHERE last_name='Davolio';
 ## Learn more
 
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
-- [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
+- Blog on [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
 - [How To Design Distributed Indexes for Optimal Query Performance](https://www.yugabyte.com/blog/design-indexes-query-performance-distributed-database/)

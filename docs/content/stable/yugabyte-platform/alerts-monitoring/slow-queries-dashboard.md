@@ -3,6 +3,7 @@ title: Slow queries in YugabyteDB Anywhere
 headerTitle: Slow Queries dashboard
 linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
+headcontent: View slow running queries that have run on your universe
 menu:
   stable_yugabyte-platform:
     parent: alerts-monitoring

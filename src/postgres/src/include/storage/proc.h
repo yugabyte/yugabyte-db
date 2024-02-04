@@ -302,7 +302,20 @@ struct PGPROC
 	 * occasionally the number can be much higher; for example, the
 	 * pg_buffercache extension locks all buffer partitions simultaneously.
 	 */
-	bool 		ybAnyLockAcquired;
+	bool 		ybLWLockAcquired;
+	int 		ybSpinLocksAcquired;
+	/*
+	 * Keep track of if the proc has been fully initialized. If a process that
+	 * was not fully initialized is killed, we don't know how to clean up after
+	 * it. Restart the postmaster in those cases.
+	 */
+	bool		ybInitializationCompleted;
+	/*
+	 * Keep track of if the proc has been terminated and is cleaning up after
+	 * itself. If a process is killed while cleaning itself up, we don't know
+	 * how to clean up after it. Restart the postmaster in those cases.
+	 */
+	bool		ybTerminationStarted;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -409,6 +422,7 @@ typedef struct PROC_HDR
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
+extern PGPROC *KilledProcToClean;
 
 extern PGDLLIMPORT PGPROC *PreparedXactProcs;
 

@@ -1223,6 +1223,13 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
   ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
+
+  // Since we only delete superblock on startup,
+  // restart ts 1 and make sure superblock is deleted
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
 TEST_F(DeleteTableTest, DeleteWithDeadTS) {
@@ -1278,6 +1285,13 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
   ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
+
+  // Since we only delete superblock on startup,
+  // restart ts 1 and make sure superblock is deleted
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
 // Parameterized test case for TABLET_DATA_DELETED deletions.

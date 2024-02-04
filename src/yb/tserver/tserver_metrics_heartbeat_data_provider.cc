@@ -24,7 +24,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.service.h"
@@ -74,8 +74,6 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   bool no_full_tablet_report = !req->has_tablet_report() || req->tablet_report().is_incremental();
   bool should_add_tablet_data =
       FLAGS_tserver_heartbeat_metrics_add_drive_data && no_full_tablet_report;
-  bool should_add_replication_status =
-      FLAGS_tserver_heartbeat_metrics_add_replication_status && no_full_tablet_report;
 
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
     if (tablet_peer) {
@@ -124,42 +122,13 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         }
       }
     }
+  }
 
-    // Report replication errors from the xCluster consumer.
+  // Report xCluster consumer heartbeat info.
+  if (FLAGS_tserver_heartbeat_metrics_add_replication_status) {
     auto xcluster_consumer = server().GetXClusterConsumer();
-    if (xcluster_consumer != nullptr && should_add_replication_status) {
-      const auto tablet_replication_error_map = xcluster_consumer->GetReplicationErrors();
-      for (const auto& tablet_kv : tablet_replication_error_map) {
-        const TabletId& tablet_id = tablet_kv.first;
-
-        auto replication_state = req->add_replication_state();
-        replication_state->set_tablet_id(tablet_id);
-
-        auto& stream_to_status = *replication_state->mutable_stream_replication_statuses();
-        const auto& stream_replication_error_map = tablet_kv.second;
-        for (const auto& [stream_id, replication_error_map] : stream_replication_error_map) {
-          auto& error_to_detail =
-              *stream_to_status[stream_id.ToString()].mutable_replication_errors();
-          for (const auto& error_kv : replication_error_map) {
-            const ReplicationErrorPb error = error_kv.first;
-            const std::string& detail = error_kv.second;
-
-            // Do not report this error if we have already reported it, unless the master needs a
-            // full tablet report.
-            if (no_full_tablet_report &&
-                prev_replication_error_map_.count(tablet_id) == 1 &&
-                prev_replication_error_map_[tablet_id].count(stream_id) == 1 &&
-                prev_replication_error_map_[tablet_id][stream_id].count(error) == 1 &&
-                prev_replication_error_map_[tablet_id][stream_id][error] == detail) {
-              continue;
-            }
-
-            error_to_detail[static_cast<int32_t>(error)] = detail;
-          }
-        }
-      }
-
-      prev_replication_error_map_ = tablet_replication_error_map;
+    if (xcluster_consumer != nullptr) {
+      xcluster_consumer->PopulateMasterHeartbeatRequest(req, last_resp.needs_full_tablet_report());
     }
   }
 

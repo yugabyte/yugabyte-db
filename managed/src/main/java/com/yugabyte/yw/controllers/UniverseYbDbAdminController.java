@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -55,7 +56,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @Inject private UniverseYbDbAdminHandler universeYbDbAdminHandler;
 
   @ApiOperation(
-      value = "Set a universe's database credentials",
+      value = "YbaApi Internal. Set a universe's database credentials",
       nickname = "setDatabaseCredentials",
       response = YBPSuccess.class)
   @ApiImplicitParams(
@@ -65,6 +66,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseSecurityFormData",
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -90,7 +92,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Drop a database user for a universe",
+      value = "YbaApi Internal. Drop a database user for a universe",
       nickname = "dropUserInDB",
       response = YBPSuccess.class,
       hidden = true)
@@ -101,6 +103,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserDropFormData",
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -126,7 +129,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create a restricted user for a universe",
+      value = "YbaApi Internal. Create a restricted user for a universe",
       nickname = "createRestrictedUserInDB",
       response = YBPSuccess.class,
       hidden = true)
@@ -137,6 +140,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -163,7 +167,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create a database user for a universe",
+      value = "YbaApi Internal. Create a database user for a universe",
       nickname = "createUserInDB",
       response = YBPSuccess.class)
   @ApiImplicitParams(
@@ -173,6 +177,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true,
           dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -200,7 +205,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @VisibleForTesting static final String DEPRECATED = "Deprecated.";
 
   @ApiOperation(
-      value = "Run a YSQL query in a universe",
+      value = "YbaApi Internal. Run a YSQL query in a universe",
       notes = "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
       nickname = "runYsqlQueryUniverse",
       response = Object.class)
@@ -210,6 +215,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RunQueryFormData",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -241,7 +247,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
    * @return Result of update operation with task id
    */
   @ApiOperation(
-      value = "Configure YSQL",
+      value = "WARNING: This is a preview API that could change. Configure YSQL",
       notes = "Queues a task to configure ysql in a universe.",
       nickname = "configureYSQL",
       response = YBPTask.class)
@@ -252,6 +258,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.ConfigureYSQLFormData",
           required = true,
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -282,7 +289,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
    * @return Result of update operation with task id
    */
   @ApiOperation(
-      value = "Configure YCQL",
+      value = "WARNING: This is a preview API that could change. Configure YCQL",
       notes = "Queues a task to configure ycql in a universe.",
       nickname = "configureYCQL",
       response = YBPTask.class)
@@ -293,6 +300,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.ConfigureYCQLFormData",
           required = true,
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

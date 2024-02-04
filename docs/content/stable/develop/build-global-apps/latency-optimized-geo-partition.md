@@ -22,7 +22,7 @@ Application instances are active in all regions, do consistent reads, and operat
 
 {{<cluster-setup-tabs>}}
 
-Suppose you want to serve users in both the East and West regions of the US with reduced latency. Set up a cluster with a replication factor of 3 and leaders in 2 regions, `us-west-1` and `us-east-1`, and place the replicas in nearby regions, `us-west-2` and `us-east-2`. This provides low read and write latencies for the 2 partitions.
+Suppose you want to serve users both in the East and West regions of the US with reduced latency. Set up a cluster with a replication factor of 3 and leaders in 2 regions, `us-west-1` and `us-east-1`, and place the replicas in nearby regions, `us-west-2` and `us-east-2`. This provides low read and write latencies for the 2 partitions.
 
 ![RF3 cluster spanning 2 regions](/images/develop/global-apps/latency-optimized-geo-partition-setup.png)
 
@@ -37,7 +37,7 @@ CREATE TABLE users (
 ) PARTITION BY LIST (geo);
 ```
 
-Partition your data for east and west users. This ensures that the application in `us-west` will use the `west` partition and the application in `us-east` will use the `east` partition.
+Partition your data for east and west users. This ensures that the application in `us-west` will operate on `west` partition and the application in `us-east` will operate on the `east` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.

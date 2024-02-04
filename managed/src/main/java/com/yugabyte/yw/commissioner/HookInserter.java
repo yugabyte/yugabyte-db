@@ -29,8 +29,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HookInserter {
 
-  private static final String ENABLE_CUSTOM_HOOKS_PATH =
-      "yb.security.custom_hooks.enable_custom_hooks";
   private static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
 
   public static void addHookTrigger(

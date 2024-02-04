@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { AxiosError } from 'axios';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 
-import { useSyncXClusterConfigWithDB } from '../../../redesign/helpers/hooks';
-import { xClusterQueryKey } from '../../../redesign/helpers/api';
-import { fetchTaskUntilItCompletes } from '../../../actions/xClusterReplication';
+import { api, drConfigQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
+import {
+  fetchTaskUntilItCompletes,
+  syncXClusterConfigWithDB
+} from '../../../actions/xClusterReplication';
 import { YBModal, YBModalProps } from '../../../redesign/components';
 import { YBErrorIndicator } from '../../common/indicators';
 
@@ -14,48 +17,66 @@ import { XClusterConfig } from '../dtos';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
-interface SyncXClusterConfigModalProps {
+interface CommonSyncXClusterConfigModalProps {
   xClusterConfig: XClusterConfig;
   modalProps: YBModalProps;
 }
 
+type SyncXClusterConfigModalProps =
+  | (CommonSyncXClusterConfigModalProps & {
+      isDrInterface: true;
+      drConfigUuid: string;
+    })
+  | (CommonSyncXClusterConfigModalProps & { isDrInterface: false });
+
 const MODAL_NAME = 'SyncDbModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.syncDbModal';
 
-export const SyncXClusterConfigModal = ({
-  xClusterConfig,
-  modalProps
-}: SyncXClusterConfigModalProps) => {
+// TODO: Test. Verify error handling.
+export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const queryClient = useQueryClient();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const { xClusterConfig, modalProps } = props;
 
-  const syncXClusterConfig = useSyncXClusterConfigWithDB(queryClient, {
-    onSuccess: (data, variables) => {
-      const invalidateQueries = () => {
-        queryClient.invalidateQueries(xClusterQueryKey.detail(variables.xClusterConfigUuid));
-      };
-      const handleTaskCompletion = (error: boolean) => {
-        if (error) {
-          toast.error(
-            <span className={toastStyles.toastMessage}>
-              <i className="fa fa-exclamation-circle" />
-              <span>{t('error.taskFailure')}</span>
-              <a href={`/tasks/${data.taskUUID}`} rel="noopener noreferrer" target="_blank">
-                {t('viewDetails', { keyPrefix: 'task' })}
-              </a>
-            </span>
-          );
-        } else {
-          toast.success(t('success.taskSuccess'));
-        }
-        invalidateQueries();
-      };
+  const syncXClusterConfigMutation = useMutation(
+    ({ targetUniverseUuid }: { targetUniverseUuid: string }) => {
+      return props.isDrInterface
+        ? api.syncDrConfig(props.drConfigUuid)
+        : syncXClusterConfigWithDB(xClusterConfig.replicationGroupName, targetUniverseUuid);
+    },
+    {
+      onSuccess: (data) => {
+        const invalidateQueries = () => {
+          if (props.isDrInterface) {
+            queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+          }
+          queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+        };
+        const handleTaskCompletion = (error: boolean) => {
+          if (error) {
+            toast.error(
+              <span className={toastStyles.toastMessage}>
+                <i className="fa fa-exclamation-circle" />
+                <span>{t('error.taskFailure')}</span>
+                <a href={`/tasks/${data.taskUUID}`} rel="noopener noreferrer" target="_blank">
+                  {t('viewDetails', { keyPrefix: 'task' })}
+                </a>
+              </span>
+            );
+          } else {
+            toast.success(t('success.taskSuccess'));
+          }
+          invalidateQueries();
+        };
 
-      modalProps.onClose();
-      fetchTaskUntilItCompletes(data.taskUUID, handleTaskCompletion, invalidateQueries);
+        modalProps.onClose();
+        fetchTaskUntilItCompletes(data.taskUUID, handleTaskCompletion, invalidateQueries);
+      },
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
     }
-  });
+  );
 
   const modalTitle = t('title');
   const submitLabel = t('submitButton');
@@ -84,10 +105,8 @@ export const SyncXClusterConfigModal = ({
   };
   const onSubmit = () => {
     setIsSubmitting(true);
-    syncXClusterConfig.mutate(
+    syncXClusterConfigMutation.mutate(
       {
-        xClusterConfigUuid: xClusterConfig.uuid,
-        replicationGroupName: xClusterConfig.replicationGroupName,
         targetUniverseUuid: targetUniverseUuid
       },
       { onSettled: () => resetModal() }

@@ -7,10 +7,8 @@
 #include <dirent.h>
 #include <float.h>
 #include <inttypes.h>
-#include <math.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -35,7 +33,6 @@
 #include <compare>
 #include <condition_variable>
 #include <cstdarg>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -49,6 +46,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <random>
 #include <set>
@@ -66,18 +64,23 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/atomic.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/functional/hash.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
 #include <boost/optional.hpp>
-#include <boost/optional/optional.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/config/config.hpp>
@@ -90,9 +93,12 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
+#include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
@@ -107,6 +113,7 @@
 #include <glog/logging.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
+#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
@@ -115,6 +122,7 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
@@ -164,6 +172,7 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/blocking_queue.h"
@@ -193,6 +202,8 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -203,13 +214,17 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -228,7 +243,7 @@
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/signal_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/stack_trace.h"
@@ -244,6 +259,8 @@
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -256,6 +273,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/util/user.h"
 #include "yb/util/uuid.h"
+#include "yb/util/varint.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/web_callback_registry.h"

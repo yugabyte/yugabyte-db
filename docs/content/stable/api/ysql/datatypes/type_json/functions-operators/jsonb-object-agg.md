@@ -20,7 +20,25 @@ input value:       anyelement
 return value:      jsonb
 ```
 
-**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance. (The `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the _key_.
+**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance.
+
+{{< note title="JSON objects and their keys." >}}
+A _JSON object_ is a set of key-value pairs where each key is (taken to be) unique and the order is undefined and insignificant. (See also the accounts of the [`jsonb_set()` and `jsonb_insert()`](../jsonb-set-jsonb-insert) functions.) 
+
+This means that if a _key-value_ pair is specified more than once, in any context that defines an _object_ value, then the one that is most recently specified wins. Here's a simple example:
+
+```plpgsql
+select ('{"f2": 42, "f7": 7, "f2": null}'::jsonb)::text;
+```
+This is the result:
+
+```output
+ {"f2": null, "f7": 7}
+```
+(In the other direction, the `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the _key_.)
+{{< /note >}}
+
+Try this demonstration of the `jsonb_object_agg()` function:
 
 ```plpgsql
 do $body$
@@ -45,17 +63,10 @@ end;
 $body$;
 ```
 
-An _object_ is a set of key-value pairs where each key is unique and the order is undefined and insignificant. (As explained earlier, when a JSON literal is This example emphasizes the property of a JSON _object_ that _keys_ are unique. (See the accounts of the [`jsonb_set()` and `jsonb_insert()`](../jsonb-set-jsonb-insert) functions.) This means that if a _key-value_ pair is specified more than once, then the one that is most recently specified wins. You see the same rule at work here:
-```plpgsql
-select ('{"f2": 42, "f7": 7, "f2": null}'::jsonb)::text;
-```
-It shows this:
-```
-         text
------------------------
- {"f2": null, "f7": 7}
-```
-The `DO` block specifies both the value for _key "f2_" and the value for _key "f7_" twice:
+It finishes silently, showing that the `assert` holds.
+
+Now try this counter-example. The `DO` block specifies both the value for _key "f2_" and the value for _key "f7_" twice:
+
 ```plpgsql
 do $body$
 declare
@@ -78,3 +89,5 @@ begin
 end;
 $body$;
 ```
+
+It, too, finishes silently, showing that, again,  the `assert` holds.

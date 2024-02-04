@@ -45,15 +45,12 @@
 namespace yb {
 namespace pggate {
 
-YB_DEFINE_ENUM(
-  DdlType,
-  // Not a DDL operation.
-  ((NonDdl, 0))
-  // DDL operation that does not modify the DocDB schema protobufs.
-  ((DdlWithoutDocdbSchemaChanges, 1))
-  // DDL operation that modifies the DocDB schema protobufs.
-  ((DdlWithDocdbSchemaChanges, 2))
-);
+struct DdlMode {
+  bool has_docdb_schema_changes{false};
+
+  std::string ToString() const;
+  void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
+};
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
@@ -71,6 +68,11 @@ struct PerformResult {
   }
 };
 
+struct TableKeyRangesWithHt {
+  boost::container::small_vector<RefCntSlice, 2> encoded_range_end_keys;
+  HybridTime current_ht;
+};
+
 using PerformCallback = std::function<void(const PerformResult&)>;
 
 class PgClient {
@@ -80,7 +82,8 @@ class PgClient {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object);
+               const tserver::TServerSharedObject& tserver_shared_object,
+               std::optional<uint64_t> session_id);
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -92,7 +95,7 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type);
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -175,9 +178,10 @@ class PgClient {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+      uint64_t read_time_serial_no);
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);

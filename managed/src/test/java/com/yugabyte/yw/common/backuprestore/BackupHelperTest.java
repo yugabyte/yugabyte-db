@@ -25,7 +25,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -74,6 +76,7 @@ public class BackupHelperTest extends FakeDBApplication {
   private RuntimeConfGetter mockRuntimeConfGetter;
   private ValidateReplicationInfo mockValidateReplicationInfo;
   private NodeUniverseManager mockNodeUniverseManager;
+  private YbcBackupUtil mockYbcBackupUtil;
 
   @Before
   public void setup() {
@@ -84,6 +87,7 @@ public class BackupHelperTest extends FakeDBApplication {
     mockCommissioner = mock(Commissioner.class);
     mockValidateReplicationInfo = mock(ValidateReplicationInfo.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    mockYbcBackupUtil = mock(YbcBackupUtil.class);
     spyBackupHelper =
         Mockito.spy(
             new BackupHelper(
@@ -94,7 +98,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockStorageUtilFactory,
                 mockCommissioner,
                 mockValidateReplicationInfo,
-                mockNodeUniverseManager));
+                mockNodeUniverseManager,
+                mockYbcBackupUtil));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -351,7 +356,7 @@ public class BackupHelperTest extends FakeDBApplication {
     when(mockConfigService.getOrBadRequest(
             eq(testCustomer.getUuid()), eq(testStorageConfigS3.getConfigUUID())))
         .thenCallRealMethod();
-    doNothing().when(mockAWSUtil).validateStorageConfigOnLocationsList(any(), any());
+    doNothing().when(mockAWSUtil).validateStorageConfigOnDefaultLocationsList(any(), any());
     doReturn(false)
         .when(mockAWSUtil)
         .checkFileExists(
@@ -420,7 +425,7 @@ public class BackupHelperTest extends FakeDBApplication {
     when(mockConfigService.getOrBadRequest(
             eq(testCustomer.getUuid()), eq(testStorageConfigNFS.getConfigUUID())))
         .thenCallRealMethod();
-    doNothing().when(mockNfsUtil).validateStorageConfigOnLocationsList(any(), any());
+    doNothing().when(mockNfsUtil).validateStorageConfigOnDefaultLocationsList(any(), any());
     doReturn(false)
         .when(mockNfsUtil)
         .checkFileExists(
@@ -499,6 +504,9 @@ public class BackupHelperTest extends FakeDBApplication {
             BackupServiceTaskEnabledFeaturesResponse.newBuilder()
                 .setSelectiveTableRestore(selectiveRestoreYbcResponse)
                 .build());
+    doNothing()
+        .when(spyBackupHelper)
+        .validateStorageConfigForSuccessMarkerDownloadOnUniverse(any(), any(), any());
     RestorePreflightResponse preflightResponse =
         spyBackupHelper.generateYBCRestorePreflightResponseWithoutBackupObject(
             preflightParams, testStorageConfigS3, filterIndexes, testUniverse);
@@ -626,5 +634,56 @@ public class BackupHelperTest extends FakeDBApplication {
                 spyBackupHelper.validateMapToRestoreWithUniverseNonRedisYBC(
                     testUniverse.getUniverseUUID(), restoreMap));
     assertTrue(ex.getMessage().equals("Restore attempting overwrite on YSQL keyspace foo."));
+  }
+
+  @Test(expected = Test.None.class)
+  @Parameters({"backup/ybc_success_file_without_regions.json"})
+  public void testValidateStorageConfigForYbcRestoreTaskSuccess(String successFilePath) {
+    String successStr = TestUtils.readResource(successFilePath);
+    YbcBackupResponse successMarker = YbcBackupUtil.parseYbcBackupResponse(successStr);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    CustomerConfig storageConfig_S3 = ModelFactory.createS3StorageConfig(testCustomer, "TEST-1");
+    when(mockConfigService.getOrBadRequest(any(), any())).thenCallRealMethod();
+    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    spyBackupHelper.validateStorageConfigForYbcRestoreTask(
+        storageConfig_S3.getConfigUUID(),
+        testCustomer.getUuid(),
+        testUniverse.getUniverseUUID(),
+        List.of(successMarker));
+  }
+
+  @Test
+  @Parameters({"backup/ybc_success_file_with_regions.json"})
+  // The success file contains a multi-region backup which should fail with default config.
+  public void testValidateStorageConfigForYbcRestoreTaskFail(String successFilePath) {
+    String successStr = TestUtils.readResource(successFilePath);
+    YbcBackupResponse successMarker = YbcBackupUtil.parseYbcBackupResponse(successStr);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    CustomerConfig storageConfig_S3 = ModelFactory.createS3StorageConfig(testCustomer, "TEST-1");
+    when(mockConfigService.getOrBadRequest(any(), any())).thenCallRealMethod();
+    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.validateStorageConfigForYbcRestoreTask(
+                    storageConfig_S3.getConfigUUID(),
+                    testCustomer.getUuid(),
+                    testUniverse.getUniverseUUID(),
+                    List.of(successMarker)));
+    assertTrue(ex.getMessage().contains("Storage config does not contain region"));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testGetSkipPreflightValidationRuntimeValue(boolean value) {
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(value);
+    assertEquals(value, spyBackupHelper.isSkipConfigBasedPreflightValidation(testUniverse));
   }
 }

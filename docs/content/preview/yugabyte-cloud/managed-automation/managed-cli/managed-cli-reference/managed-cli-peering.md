@@ -1,5 +1,5 @@
 ---
-title: vpc peering resource
+title: ybm CLI vpc peering resource
 headerTitle: ybm vpc peering
 linkTitle: vpc peering
 description: YugabyteDB Managed CLI reference VPC Peering resource.

@@ -53,9 +53,9 @@ jobs:
             os: ubuntu-20.04
             yb_build_args: --clang16 release --no-linuxbrew
 
-          - name: "Clang 16, release, CentOS 7, Linuxbrew glibc"
+          - name: "Clang 16, release, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: --clang16 release --linuxbrew
+            yb_build_args: --clang16 release --no-linuxbrew
 
           - name: "GCC 11, debug, CentOS 7"
             os: ubuntu-20.04

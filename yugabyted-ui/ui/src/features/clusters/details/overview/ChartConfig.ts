@@ -191,6 +191,18 @@ export const useChartConfig = (): Record<string, ChartConfig> => {
       chartDrawingType: ['line'],
       metric: ['AVERAGE_SSTABLES_PER_NODE']
     },
+    totalConnections: {
+      title: t('clusterDetail.charts.totalConnections'),
+      chartLabels: [
+        t('clusterDetail.charts.logicalConnections'),
+        t('clusterDetail.charts.physicalConnections')
+      ],
+      chartDrawingType: ['line', 'line'],
+      metric: [
+        'TOTAL_LOGICAL_CONNECTIONS',
+        'TOTAL_PHYSICAL_CONNECTIONS',
+      ],
+    },
     totalLiveNodes: {
         title: t('clusterDetail.charts.totalLiveNodes'),
         chartLabels: [t('clusterDetail.charts.liveNodes')],

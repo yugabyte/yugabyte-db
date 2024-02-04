@@ -14,6 +14,7 @@
 #include <chrono>
 #include <utility>
 #include <boost/assign.hpp>
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
@@ -504,6 +505,39 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
         }
       }
     }
+}
+
+TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
+
+  auto stream_id =
+      ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE t1"));
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok() && resp->has_error()) {
+            return true;
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  // We should be able to create the replication slot again with the same name.
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
 }
 
 }  // namespace cdc

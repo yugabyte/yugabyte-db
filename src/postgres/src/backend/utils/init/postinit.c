@@ -112,6 +112,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool load_session_libraries,
 							 bool override_allow_connections,
 							 char *out_dbname,
+							 uint64_t *session_id,
 							 bool* yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
 
@@ -687,6 +688,10 @@ BaseInit(void)
  * We expect that InitProcess() was already called, so we already have a
  * PGPROC struct ... but it's not completely filled in yet.
  *
+ * YB extension: session_id. If greater than zero, connect local YbSession
+ * to existing YbClientSession instance in TServer, rather than requesting new.
+ * Helpful to initialize background worker backends that need to share state.
+ *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
@@ -700,14 +705,15 @@ InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
-			 char *out_dbname)
+			 char *out_dbname,
+			 uint64_t *session_id)
 {
 	bool sys_table_prefetching_started = false;
 	PG_TRY();
 	{
 		InitPostgresImpl(
 			in_dbname, dboid, username, useroid, load_session_libraries,
-			override_allow_connections, out_dbname,
+			override_allow_connections, out_dbname, session_id,
 			&sys_table_prefetching_started);
 	}
 	PG_CATCH();
@@ -725,6 +731,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
+				 uint64_t *session_id,
 				 bool* yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -773,6 +780,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		RegisterTimeout(IDLE_STATS_UPDATE_TIMEOUT,
 						IdleStatsUpdateTimeoutHandler);
 	}
+
+	MyProc->ybInitializationCompleted = true;
 
 	/*
 	 * If this is either a bootstrap process or a standalone backend, start up
@@ -824,9 +833,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username);
+		YBInitPostgresBackend("postgres", "", username, session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username);
+		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{

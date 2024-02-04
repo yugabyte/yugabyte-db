@@ -12,6 +12,7 @@
 # or implied.  See the License for the specific language governing permissions and limitations under
 # the License.
 
+# shellcheck source=build-support/common-build-env.sh
 . "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
 activate_virtualenv
 set_pythonpath

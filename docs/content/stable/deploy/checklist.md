@@ -2,7 +2,7 @@
 title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
+description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.  
 menu:
   stable:
     identifier: checklist

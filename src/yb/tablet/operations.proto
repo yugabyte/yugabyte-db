@@ -127,6 +127,10 @@ message ChangeMetadataRequestPB {
 
   // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
   optional bool should_abort_active_txns = 16 [ default = false ];
+
+  // For CDCSDK Stream creation with consistent snapshot
+  optional bytes retention_requester_id = 18;
+  optional bool cdc_sdk_require_history_cutoff = 19;
 }
 
 message SplitTabletRequestPB {

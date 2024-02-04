@@ -24,7 +24,7 @@ current_sha1=$( git rev-parse HEAD )
 if [[ ! $current_sha1 =~ ^[0-9a-f]{40}$ ]]; then
   fatal "Could not get current git SHA1 in $PWD"
 fi
-if [[ $current_sha1 != $thirdparty_sha1 ]]; then
+if [[ $current_sha1 != "$thirdparty_sha1" ]]; then
   if ! git checkout "$thirdparty_sha1"; then
     git fetch
     git checkout "$thirdparty_sha1"

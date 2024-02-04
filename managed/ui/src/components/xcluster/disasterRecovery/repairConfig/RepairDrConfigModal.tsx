@@ -12,7 +12,7 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
   api,
   drConfigQueryKey,
-  EditDrConfigRequest,
+  ReplaceDrReplicaRequest,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
@@ -30,6 +30,7 @@ import {
 import { ReactComponent as SelectedIcon } from '../../../../redesign/assets/circle-selected.svg';
 import { ReactComponent as UnselectedIcon } from '../../../../redesign/assets/circle-empty.svg';
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import { getXClusterConfig } from '../utils';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
@@ -45,7 +46,7 @@ interface RepairDrConfigModalFormValues {
   storageConfig: StorageConfigOption;
 
   repairType?: RepairType;
-  targetUniverse?: Universe;
+  targetUniverse?: { value: Universe; label: string };
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -129,29 +130,26 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
     api.fetchUniverseList()
   );
-
-  const editDrConfigMutation = useMutation(
-    (editDrConfigRequest: EditDrConfigRequest) => {
-      return api.editDrConfig(drConfig.uuid, editDrConfigRequest);
+  const replaceDrReplicaMutation = useMutation(
+    (replaceDrReplicaRequest: ReplaceDrReplicaRequest) => {
+      return api.replaceDrReplica(drConfig.uuid, replaceDrReplicaRequest);
     },
     {
-      onSuccess: (response, editDrConfigRequest) => {
+      onSuccess: (response, replaceDrReplicaRequest) => {
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.ALL, { exact: true });
           queryClient.invalidateQueries(drConfigQueryKey.detail(drConfig.uuid));
 
           // Refetch the participating universes and the new target universe to update
           // universe status and references to the DR config.
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
           queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(editDrConfigRequest.newTargetUniverseUuid),
+            universeQueryKey.detail(replaceDrReplicaRequest.drReplicaUniverseUuid),
             {
               exact: true
             }
@@ -193,9 +191,10 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     }
   );
 
+  const xClusterConfig = getXClusterConfig(drConfig);
   const restartConfigMutation = useMutation(
     (storageConfigUuid: string) => {
-      return restartXClusterConfig(drConfig.xClusterConfig.uuid, [], {
+      return restartXClusterConfig(xClusterConfig.uuid, [], {
         backupRequestParams: { storageConfigUUID: storageConfigUuid }
       });
     },
@@ -204,18 +203,16 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.ALL, { exact: true });
           queryClient.invalidateQueries(drConfigQueryKey.detail(drConfig.uuid));
-          queryClient.invalidateQueries(xClusterQueryKey.detail(drConfig.xClusterConfig.uuid));
+          queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
 
           // Refetch the participating universes and the new target universe to update
           // universe status and references to the DR config.
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -253,8 +250,8 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     }
   );
 
-  if (!drConfig.xClusterConfig.sourceUniverseUUID || !drConfig.xClusterConfig.targetUniverseUUID) {
-    const i18nKey = drConfig.xClusterConfig.sourceUniverseUUID
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
       ? 'undefinedTargetUniverseUuid'
       : 'undefinedSourceUniverseUuid';
     return (
@@ -278,8 +275,8 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   }
 
   const universeList = universeListQuery.data;
-  const sourceUniverseUuid = drConfig.xClusterConfig.sourceUniverseUUID;
-  const targetUniverseUuid = drConfig.xClusterConfig.targetUniverseUUID;
+  const sourceUniverseUuid = drConfig.primaryUniverseUuid;
+  const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const sourceUniverse = universeList.find(
     (universe: Universe) => universe.universeUUID === sourceUniverseUuid
   );
@@ -289,10 +286,12 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
 
   if (!sourceUniverse || !targetUniverse) {
     const i18nKey = sourceUniverse ? 'failedToFindTargetUniverse' : 'failedToFindSourceUniverse';
+    const universeUuid = sourceUniverse ? targetUniverseUuid : sourceUniverseUuid;
     return (
       <YBErrorIndicator
         customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
+          keyPrefix: 'clusterDetail.xCluster.error',
+          universeUuid: universeUuid
         })}
       />
     );
@@ -310,10 +309,13 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         return restartConfigMutation.mutateAsync(storageConfigUuid);
       case RepairType.USE_NEW_TARGET_UNIVERSE:
         if (formValues.targetUniverse) {
-          return editDrConfigMutation.mutateAsync({
-            newTargetUniverseUuid: formValues.targetUniverse.universeUUID,
-            bootstrapBackupParams: {
-              storageConfigUUID: storageConfigUuid
+          return replaceDrReplicaMutation.mutateAsync({
+            primaryUniverseUuid: drConfig.primaryUniverseUuid ?? '',
+            drReplicaUniverseUuid: formValues.targetUniverse.value.universeUUID,
+            bootstrapParams: {
+              backupRequestParams: {
+                storageConfigUUID: storageConfigUuid
+              }
             }
           });
         }

@@ -20,7 +20,7 @@ from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstance
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
     AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
     VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
-    WaitForConnection
+    WaitForConnection, ManageOtelCollector
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -59,6 +59,7 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(AzureCreateRootVolumesMethod(self))
         self.add_method(AzureReplaceRootVolumeMethod(self))
         self.add_method(AzureHardRebootInstancesMethod(self))
+        self.add_method(ManageOtelCollector(self))
 
 
 class AzureAccessCommand(AccessCommand):

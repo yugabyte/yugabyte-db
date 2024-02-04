@@ -284,19 +284,19 @@ The tests have shown that you cannot exclude either _pg_temp_ or _pg_catalog_ fr
 
 - If the definition of _search_path_ does not mention _pg_catalog_ but does mention _pg_temp_, then the effective search order that name resolution uses is:
 
-  ```output 
+  ```output
   [everything that the definition did mention, in that order], pg_catalog
   ```
 
 - If the definition of _search_path_ does not mention _pg_temp_ but does mention _pg_catalog_, then the effective search order that name resolution uses is:
 
-  ```output 
+  ```output
   pg_temp, [everything that the definition did mention, in that order]
   ```
 
 - If the definition of _search_path_ mentions both _pg_catalog_ and _pg_temp_, then the effective search order that name resolution uses is, of course:
 
-  ```output 
+  ```output
   [everything that the definition did mention, in that order]
   ```
 
@@ -323,7 +323,7 @@ This is the result:
  6.00
 ```
 
-Here, even if you don't place _s_ leftmost in the _search_path_, name resolution will choose your _s.area()_ because (through the current version) no occurrence of _pg_catalog.area()_ has the right signature. However, you cannot rely on the assumption that a future version will never define a _pg_catalog_ overload that collides with your implementation—and that therefore brings confusion. 
+Here, even if you don't place _s_ leftmost in the _search_path_, name resolution will choose your _s.area()_ because (through the current version) no occurrence of _pg_catalog.area()_ has the right signature. However, you cannot rely on the assumption that a future version will never define a _pg_catalog_ overload that collides with your implementation—and that therefore brings confusion.
 
 Your only recourse is to confirm, when you invent a name for an application object, that it doesn't collide with the name of any object in the _pg_catalog_ schema.
 {{< /tip >}}
@@ -333,7 +333,7 @@ Your only recourse is to confirm, when you invent a name for an application obje
 The forgoing examples have demonstrated the name resolution rules and pointed out the risks that these bring. You clearly must prioritize correct, unsubvertible, application behavior over coding convenience for the application code author and especially over the speed at which you can type _ad hoc_ tests. Remember that nothing can stop any role from setting _search_path_.
 
 - You must ensure that _pg_temp_ is searched _last_.  This is because, without this practice, a role that can create temporary objects can capture an application object with a temporary object with the same name and subvert the application's behavior. If you want to use a temporary object, then you should use a schema-qualified identifier for it that starts with _pg_temp_.
-- The decision about where to put _pg_catalog_ in the search order is more subtle. Generally speaking, it's bad practice to create a user-object with a name that collides with that of an object in _pg_catalog_. The objects in _pg_catalog_ define PostgreSQL's implementation, or list facts about such objects—and so a colliding user-defined object would change PostgreSQL's behavior. It's hard to see how doing this would not be confusing and dangerous. This implies putting _pg_catalog_ first in _search_path_. You then need to avoid the possibility of a _pg_catalog_ object capturing an application object by never giving an application object a name that collides with that of a _pg_catalog_ object. 
+- The decision about where to put _pg_catalog_ in the search order is more subtle. Generally speaking, it's bad practice to create a user-object with a name that collides with that of an object in _pg_catalog_. The objects in _pg_catalog_ define PostgreSQL's implementation, or list facts about such objects—and so a colliding user-defined object would change PostgreSQL's behavior. It's hard to see how doing this would not be confusing and dangerous. This implies putting _pg_catalog_ first in _search_path_. You then need to avoid the possibility of a _pg_catalog_ object capturing an application object by never giving an application object a name that collides with that of a _pg_catalog_ object.
 
 There might be plausible use cases where it isn't known until run-time in which schema the object that's the intended name resolution target will be found, where it might be found in more than one schema, and where the requirement is to resolve to the one that is first on the _search_path_. But such scenarios are rare. Yugabyte therefore recommends that you simply do not rely on name resolution for anything but objects in the _pg_catalog_ schema and adopt this practice;
 
@@ -361,7 +361,7 @@ Secondary objects, like columns in tables, are resolved within the namespace tha
 
 For example
 
-```plpgql
+```plpgsql
 select v, f() from t;
 ```
 
@@ -373,7 +373,7 @@ can mean only that:
 
 Similarly:
 
-```plpgql
+```plpgsql
 select s.t.v from t;
 ```
 

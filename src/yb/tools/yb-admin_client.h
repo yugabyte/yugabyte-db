@@ -320,6 +320,8 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status GetAutoFlagsConfig();
+
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
@@ -388,7 +390,7 @@ class ClusterAdminClient {
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
-      const std::string& RecordType);
+      const cdc::CDCRecordType RecordType);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 

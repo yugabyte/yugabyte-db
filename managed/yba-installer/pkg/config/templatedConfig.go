@@ -23,11 +23,24 @@ import (
 )
 
 // GetYamlPathData reads the key text from the input file and returns it as a string.
-// Also does some custom processing for passwords by returning random defaults.
 func GetYamlPathData(text string) string {
 	// TODO: we should validate if we ever send a key that has spaces.
 	pathString := strings.ReplaceAll(text, " ", "")
 	return viper.GetString(pathString)
+}
+
+// GetYamlPathSliceData reads the key text from the input file and returns it as a slice of string
+func GetYamlPathSliceData(text string) []string {
+	pathString := strings.ReplaceAll(text, " ", "")
+	// Use viper to directly retrieve the slice
+	list := viper.GetStringSlice(pathString)
+
+	// Format the slice
+	var formattedList []string
+	for _, item := range list {
+		formattedList = append(formattedList, fmt.Sprintf("%q", item))
+	}
+	return formattedList
 }
 
 // ReadConfigAndTemplate Reads info from input config file and sets
@@ -41,6 +54,7 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
 		"yamlPath":          GetYamlPathData,
+		"yamlPathSlice":     GetYamlPathSliceData,
 		"installRoot":       common.GetSoftwareRoot,
 		"installVersionDir": common.GetInstallerSoftwareDir,
 		"baseInstall":       common.GetBaseInstall,

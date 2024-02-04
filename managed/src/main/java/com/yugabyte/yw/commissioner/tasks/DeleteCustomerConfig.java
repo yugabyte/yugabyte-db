@@ -94,18 +94,28 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
             case GCS:
             case AZ:
               for (Backup backup : backupList) {
+                boolean success = true;
                 try {
                   CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
                   backupLocations = BackupUtil.getBackupLocations(backup);
-                  cloudUtil.deleteKeyIfExists(
-                      customerConfig.getDataObject(), backupLocations.get(0));
-                  cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
+                  success =
+                      success
+                          && cloudUtil.deleteKeyIfExists(
+                              customerConfig.getDataObject(), backupLocations.get(0));
+                  if (success) {
+                    success =
+                        success
+                            && cloudUtil.deleteStorage(
+                                customerConfig.getDataObject(), backupLocations);
+                  }
                 } catch (Exception e) {
+                  success = false;
                   log.error(" Error in deleting backup " + backup.getBackupUUID().toString(), e);
-                  backup.transitionState(Backup.BackupState.FailedToDelete);
                 } finally {
-                  if (backup.getState() != Backup.BackupState.FailedToDelete) {
+                  if (success) {
                     backup.delete();
+                  } else {
+                    backup.transitionState(Backup.BackupState.FailedToDelete);
                   }
                 }
               }

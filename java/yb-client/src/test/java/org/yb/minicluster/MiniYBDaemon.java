@@ -13,6 +13,7 @@
  */
 package org.yb.minicluster;
 
+import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -206,7 +207,7 @@ public class MiniYBDaemon {
   }
 
   /**
-   * @param type daemon type (master / tablet server)
+   * @param type daemon type (master / tablet / yb controller server)
    * @param commandLine command line used to run the daemon
    * @param process daemon process
    */
@@ -349,6 +350,26 @@ public class MiniYBDaemon {
       process.getInputStream().close();
     } catch (IOException ex) {
     }
+  }
+
+  /**
+   * Ping the YB Controller server.
+   * Throws an exception if ping fails.
+   */
+  public void ping() throws Exception {
+    if (this.type != MiniYBDaemonType.YBCONTROLLER) {
+      LOG.warn("This method is for YB Controller only.");
+      return;
+    }
+
+    final List<String> cmdLine = Lists.newArrayList(
+        TestUtils.findBinary("../ybc/yb-controller-cli"),
+        "ping",
+        "--tserver_ip=" + this.bindIp,
+        "--server_port=" + this.rpcPort);
+
+    LOG.info("Pinging YB Controller server with host = {}, port = {}", this.bindIp, this.rpcPort);
+    ProcessUtil.executeSimple(cmdLine, " ");
   }
 
 }

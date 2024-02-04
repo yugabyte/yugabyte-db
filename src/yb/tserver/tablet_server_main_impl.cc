@@ -280,9 +280,6 @@ int TabletServerMain(int argc, char** argv) {
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
-  if(!FLAGS_enable_ysql_conn_mgr)
-    FLAGS_enable_ysql_conn_mgr_stats = false;
-
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(

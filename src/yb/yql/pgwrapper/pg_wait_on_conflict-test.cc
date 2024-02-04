@@ -34,6 +34,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/sync_point.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -59,6 +60,7 @@ DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
+DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
 
 using namespace std::literals;
 
@@ -703,11 +705,11 @@ class ConcurrentBlockedWaitersTest {
     auto conn = VERIFY_RESULT(GetDbConn());
     for (int i = 0; i < num_waiters; ++i) {
       auto k = num_waiters + i;
-      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", k)));
+      auto v = VERIFY_RESULT(conn.FetchRow<int32_t>(Format("SELECT v FROM foo WHERE k=$0", k)));
       EXPECT_EQ(v, k);
     }
     for (int i = -1; i > num_waiters; --i) {
-      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", i)));
+      auto v = VERIFY_RESULT(conn.FetchRow<int32_t>(Format("SELECT v FROM foo WHERE k=$0", i)));
       EXPECT_EQ(v, i);
     }
     return Status::OK();
@@ -846,7 +848,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForSha
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = conn2.FetchValue<int32_t>("select v from t1 where k=1 for share");
+    auto value = conn2.FetchRow<int32_t>("select v from t1 where k=1 for share");
     // Should detect the conflict and raise serializable error.
     ASSERT_NOK(value);
     ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
@@ -868,14 +870,14 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 
   // txn1: lock the row in share mode
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  auto value = ASSERT_RESULT(conn.FetchValue<int32_t>("select v from t1 where k=1 for share"));
+  auto value = ASSERT_RESULT(conn.FetchRow<int32_t>("select v from t1 where k=1 for share"));
   ASSERT_EQ(value, 11);
 
   // txn2: do an UPDATE on the same row, should wait for txn1 to commit
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+    auto value = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "update t1 set v=111 where k=1 returning v"));
     ASSERT_OK(conn2.Execute("COMMIT"));
     ASSERT_EQ(value, 111);
@@ -1121,11 +1123,20 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
       "statements involving multiple tablets.";
   auto update_analyze_query = Format("EXPLAIN (ANALYZE, DIST) $0", Format(update_query, -10));
   ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto explain_analyze_output = ASSERT_RESULT(setup_conn.FetchAllAsString(update_analyze_query));
-  ASSERT_NE(explain_analyze_output.find(
-      Format("Storage Write Requests: $0", kNumKeys)), std::string::npos) << explain_fail_help_text;
-  ASSERT_NE(explain_analyze_output.find("Storage Flush Requests: 1"), std::string::npos)
-      << explain_fail_help_text;
+  auto values = ASSERT_RESULT(
+      setup_conn.FetchRows<std::string>(update_analyze_query));
+  const auto storage_write_requests_text = Format("Storage Write Requests: $0", kNumKeys);
+  bool found_flush_requests_line = false;
+  bool found_write_requests_line = false;
+  for (const auto& value : values) {
+    if (value.find(storage_write_requests_text) != std::string::npos) {
+      found_write_requests_line = true;
+    } else if (value.find("Storage Flush Requests: 1") != std::string::npos) {
+      found_flush_requests_line = true;
+    }
+  }
+  ASSERT_TRUE(found_flush_requests_line && found_write_requests_line)
+      << explain_fail_help_text << "\n" << JoinStrings(values, "\n");
   ASSERT_OK(setup_conn.CommitTransaction());
 
   ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
@@ -1158,8 +1169,8 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
     thread_holder.AddThreadFunctor(
         [i, &conn, &update_did_return = update_did_return[i], &queued_waiters, &update_query] {
       // Wait for all connections to queue their thread of execution
-      auto txn_id = ASSERT_RESULT(conn.FetchAllAsString("SELECT yb_get_current_transaction()"));
-      LOG(INFO) << "Conn " << i << " queued with txn id " <<  txn_id;
+      auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+      LOG(INFO) << "Conn " << i << " queued with txn id " << yb::ToString(txn_id);
       queued_waiters.CountDown();
       ASSERT_TRUE(queued_waiters.WaitFor(10s * kTimeMultiplier));
       LOG(INFO) << "Conn " << i << " finished waiting";
@@ -1180,7 +1191,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
             execute_status.ToString(), "pgsql error 40001");
       }
       LOG(INFO) << "Update completed on conn " << i
-                << " with txn id: " << txn_id
+                << " with txn id: " << yb::ToString(txn_id)
                 << " and status " << execute_status;
 
       update_did_return.exchange(true);
@@ -1211,9 +1222,62 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
   // Confirm that all rows have been updated to the value set by the first update txn.
   for (int i = 0; i < kNumKeys; ++i) {
     ASSERT_EQ(
-        ASSERT_RESULT(setup_conn.FetchValue<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
+        ASSERT_RESULT(setup_conn.FetchRow<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
   }
 }
+
+class PgWaitQueueRF1Test : public PgWaitQueuesTest {
+ protected:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+#ifndef NDEBUG
+TEST_F(PgWaitQueueRF1Test, TestResumingWaitersDoesntBlockTabletShutdown) {
+  static const char* sync_points[1][4] = {
+      {"WaitQueue::Impl::SetupWaiterUnlocked:1", "PgWaitQueueRF1Test::CommitConnection1:1",
+       "TabletPeer::StartShutdown:1", "WaiterData::Impl::InvokeCallback:1"}};
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {sync_points[0][0], sync_points[0][1]},
+    {sync_points[0][2], sync_points[0][3]}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 2), 0"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  ASSERT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    EXPECT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+    return Status::OK();
+  });
+  // Hold off commit until the waiter txn registers itself with the wait-queue.
+  DEBUG_ONLY_TEST_SYNC_POINT("PgWaitQueueRF1Test::CommitConnection1:1");
+  ASSERT_OK(conn.CommitTransaction());
+  // TabletPeer::StartShutdown:1 "happens before" WaiterData::Impl::InvokeCallback:1 dependency
+  // will ensure that the resumed waiter's callback would only be called after the tablet peer's
+  // lock_ has been acquired in TabletPeer::StartShutdown.
+  //
+  // Delay participant shutdown so as to give a chance for the resumed waiter to grab a valid
+  // request scope. Post that, the resumed waiter thread will block temporarily while trying to
+  // obtain tablet peer's lock_ during construction of operation driver.
+  //
+  // Ensure that the thread executing Tablet::StartShutdown (while holding the peer's lock_)
+  // doesn't wait for the completion of waiter's callback. Else, it could result in a deadlock.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_delay_on_start_shutdown_ms) =
+      1000 * kTimeMultiplier;
+  ASSERT_OK(setup_conn.Execute("DROP TABLE foo"));
+  ASSERT_NOK(status_future.get());
+}
+#endif // NDEBUG
 
 class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
  protected:
@@ -1252,7 +1316,7 @@ TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate))
   // txn2: do select-for-keyshare on the same row, should be able to lock and get the value.
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
-    auto value = conn2.FetchValue<int32_t>(
+    auto value = conn2.FetchRow<int32_t>(
         "select value from foo where key = 1 for key share");
     ASSERT_OK(value);
     ASSERT_EQ(value.get(), 1);

@@ -47,6 +47,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -66,6 +67,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -76,6 +78,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
@@ -85,6 +88,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -275,7 +279,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<UniverseTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
         defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));

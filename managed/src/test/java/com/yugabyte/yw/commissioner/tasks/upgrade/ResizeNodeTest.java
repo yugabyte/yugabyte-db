@@ -1289,6 +1289,17 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
     deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     assertEquals(Json.toJson(deviceInfo), deviceParams);
+    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getUniverseDetails()
+        .nodeDetailsSet
+        .forEach(
+            node -> {
+              if (node.getAzUuid().equals(az2.getUuid())) {
+                assertNotNull(node.lastVolumeUpdateTime);
+              } else {
+                assertNull(node.lastVolumeUpdateTime);
+              }
+            });
   }
 
   @Test

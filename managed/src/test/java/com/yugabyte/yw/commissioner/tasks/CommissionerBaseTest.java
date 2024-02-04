@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 
@@ -79,6 +80,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -205,6 +207,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getTaskExecutor()).thenReturn(taskExecutor);
     when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
+    when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
   }
 
   @Override
@@ -388,6 +391,36 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
   }
 
+  /** This method returns all the subtasks of a task. */
+  private Map<Integer, List<TaskInfo>> getSubtasks(UUID taskUuid) throws Exception {
+    // Pause at the beginning to capture the sub-tasks to be executed.
+    waitForTaskPaused(taskUuid);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+    Optional<Integer> optionalIdx =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.FreezeUniverse)
+            .map(TaskInfo::getPosition)
+            .findFirst();
+    if (optionalIdx.isPresent()) {
+      // Resume the task to get past the freeze subtask so that all the sub-tasks are created.
+      setPausePosition(optionalIdx.get() + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      taskInfo.refresh();
+    }
+    // Fetch the original list of sub-tasks to be executed before any retry.
+    Map<Integer, List<TaskInfo>> subtaskMap =
+        taskInfo.getSubTasks().stream()
+            .collect(
+                Collectors.groupingBy(
+                    TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+    // Verify that it has some subtasks after FreezeUniverse if it is present.
+    assertTrue(
+        "At least some real subtasks must be present",
+        subtaskMap.size() > (optionalIdx.isPresent() ? optionalIdx.get() + 1 : 1));
+    return subtaskMap;
+  }
+
   /**
    * This method aborts before every sub-task starting from position 0 and retries to make sure no
    * pending subtasks from the first attempt are skipped on every retry. This mainly verifies that
@@ -403,19 +436,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       ITaskParams taskParams,
       boolean checkStrictOrdering) {
     try {
-      // Pause at the beginning to capture the sub-tasks to be executed.
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
       CustomerTask.create(
           customer, targetUuid, taskUuid, targetType, customerTaskType, "fake-name");
-      waitForTaskPaused(taskUuid);
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
-      // Fetch the original list of sub-tasks to be executed before any retry.
-      Map<Integer, List<TaskInfo>> expectedSubTaskMap =
-          taskInfo.getSubTasks().stream()
-              .collect(
-                  Collectors.groupingBy(
-                      TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+      Map<Integer, List<TaskInfo>> expectedSubTaskMap = getSubtasks(taskUuid);
       List<TaskType> expectedSubTaskTypes =
           expectedSubTaskMap.values().stream()
               .map(l -> l.get(0).getTaskType())
@@ -423,11 +448,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       int freezeIdx = expectedSubTaskTypes.indexOf(TaskType.FreezeUniverse);
       // Number of sub-tasks to be executed on any run.
       int totalSubTaskCount = expectedSubTaskMap.size();
-      // Fail after freeze universe if present to make it retryable.
       int pendingSubTaskCount =
           freezeIdx >= 0 ? totalSubTaskCount - (freezeIdx + 1) : totalSubTaskCount;
       int retryCount = 0;
       while (pendingSubTaskCount > 0) {
+        clearAbortOrPausePositions();
         // Abort starts from the first sub-task until there is no more sub-task left.
         int abortPosition = totalSubTaskCount - pendingSubTaskCount;
         if (pendingSubTaskCount > 1) {
@@ -436,14 +461,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
               expectedSubTaskTypes.size() - pendingSubTaskCount,
               expectedSubTaskMap);
           setAbortPosition(abortPosition);
-        } else {
-          // Let the last sub-task complete.
-          clearAbortOrPausePositions();
         }
         // Resume task will resume and abort it if any abort position is set.
         commissioner.resumeTask(taskUuid);
         // Wait for the task to abort.
-        taskInfo = waitForTask(taskUuid);
+        TaskInfo taskInfo = waitForTask(taskUuid);
         if (pendingSubTaskCount <= 1) {
           assertEquals(State.Success, taskInfo.getTaskState());
         } else {
@@ -456,18 +478,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           retryCount++;
           // New task UUID for the retry.
           taskUuid = customerTask.getTaskUUID();
-          waitForTaskPaused(taskUuid);
+          // Get the task and sub-tasks that are to be executed on retry.
+          Map<Integer, List<TaskInfo>> retrySubTaskMap = getSubtasks(taskUuid);
           log.info(
               "Validating subtasks for next abort position at {} in the original subtasks {}",
               expectedSubTaskTypes.size() - pendingSubTaskCount + 1,
               expectedSubTaskMap);
-          // Get the task and sub-tasks that are to be executed on retry.
-          taskInfo = TaskInfo.getOrBadRequest(taskUuid);
-          Map<Integer, List<TaskInfo>> retrySubTaskMap =
-              taskInfo.getSubTasks().stream()
-                  .collect(
-                      Collectors.groupingBy(
-                          TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
           List<TaskType> retryTaskTypes =
               retrySubTaskMap.values().stream()
                   .map(l -> l.get(0).getTaskType())

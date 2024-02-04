@@ -32,10 +32,10 @@
 # under the License.
 #
 
-ROOT=$(cd $(dirname $BASH_SOURCE)/..; pwd)
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 
 TMP=$(mktemp)
-trap "rm $TMP" EXIT
+trap 'rm $TMP' EXIT
 
 ONLY_CHANGED=false
 
@@ -45,31 +45,33 @@ for flag in "$@" ; do
       ONLY_CHANGED=true
       ;;
     *)
-      echo unknown flag: $flag
+      echo unknown flag: "$flag"
       exit 1
       ;;
   esac
 done
 
 if $ONLY_CHANGED; then
-  FILES=$(git diff --name-only $($ROOT/build-support/get-upstream-commit.sh)  \
-    | egrep  '\.(cc|h)$' | grep -v "gutil\|trace_event")
+  FILES=$(git diff --name-only "$("$ROOT/build-support/get-upstream-commit.sh")"  \
+    | grep -E '\.(cc|h)$' | grep -v "gutil\|trace_event")
   if [ -z "$FILES" ]; then
     echo No source files changed
     exit 0
   fi
 else
-  FILES=$(find $ROOT/src -name '*.cc' -or -name '*.h' | grep -v "\.pb\.\|\.service\.\|\.proxy\.\|\.yrpc\.\|gutil\|trace_event\|yb_export\.h")
+  FILES=$(find "$ROOT/src" -name '*.cc' -or -name '*.h' | \
+          grep -v "\.pb\.\|\.service\.\|\.proxy\.\|\.yrpc\.\|gutil\|trace_event\|yb_export\.h")
 fi
 
-cd $ROOT
+cd "$ROOT" || exit 1
 
-$ROOT/thirdparty/installed/bin/cpplint.py \
+# shellcheck disable=SC2086
+"$ROOT/thirdparty/installed/bin/cpplint.py" \
   --verbose=4 \
   --filter=-whitespace/comments,-readability/todo,-build/header_guard,-build/include_order,-legal/copyright,-build/c++11 \
-  $FILES 2>&1 | grep -v 'Done processing' | tee $TMP
+  $FILES 2>&1 | grep -v 'Done processing' | tee "$TMP"
 
-NUM_ERRORS=$(grep "Total errors found" $TMP | awk '{print $4}')
+NUM_ERRORS=$(grep "Total errors found" "$TMP" | awk '{print $4}')
 
 if [ "$NUM_ERRORS" -ne 0 ]; then
   exit 1

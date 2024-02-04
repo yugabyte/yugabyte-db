@@ -53,7 +53,7 @@ If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../..
 
 ### Create a database
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 yugabyte=# CREATE DATABASE yb_demo;
@@ -125,7 +125,6 @@ yb_demo=# SELECT count(*) FROM products;
 ```
 
 The following query selects the `id`, `title`, `category`, `price`, and `rating` columns for the first five products.
-
 
 ```sql
 yb_demo=# SELECT id, title, category, price, rating

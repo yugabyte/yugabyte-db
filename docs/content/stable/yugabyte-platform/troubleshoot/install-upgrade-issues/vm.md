@@ -79,7 +79,6 @@ do
 done
 ```
 
-
 <!--
 
 For YugabyteDB Anywhere HTTPS configuration, you should set your own key or certificate. If you do provide this setting, the default public key is used, creating a potential security risk.

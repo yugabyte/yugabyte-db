@@ -109,7 +109,9 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -117,6 +119,7 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/utility.hpp>
@@ -160,6 +163,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
@@ -183,6 +187,7 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/blocking_queue.h"
@@ -213,6 +218,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -237,8 +245,10 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
@@ -270,6 +280,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
@@ -278,6 +289,7 @@
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"

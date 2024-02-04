@@ -60,7 +60,7 @@ public interface StorageUtil {
   public Map<String, String> getRegionLocationsMap(CustomerConfigData configData);
 
   /**
-   * Plain config validation. Mainly used pre-backup. This is not used for incremental backups.
+   * Plain config validation. Mainly used pre-backup.
    *
    * @param configData The storage config data object
    */
@@ -81,7 +81,7 @@ public interface StorageUtil {
    * @param configData The storage config data object
    * @param locations List of default locations to check
    */
-  public default void validateStorageConfigOnLocationsList(
+  public default void validateStorageConfigOnDefaultLocationsList(
       CustomerConfigData configData, Collection<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       throw new RuntimeException("Empty locations list provided to validate");
@@ -91,7 +91,10 @@ public interface StorageUtil {
             l ->
                 checkStoragePrefixValidity(
                     ((CustomerConfigStorageData) configData).backupLocation, l));
-    canCredentialListObjects(configData, locations);
+    if (!canCredentialListObjects(configData, locations)) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Storage config credentials cannot list objects");
+    }
   }
 
   /**
@@ -129,20 +132,32 @@ public interface StorageUtil {
   }
 
   /**
-   * Validate Storage config against YBC success marker. This consists of checking whether default +
-   * regional buckets are available and the same as Backup's buckets. TODO: Validate read and list
-   * permissions on cloud dir.
+   * Check if storage config can list objects in the given locations. The locations should be of the
+   * exact format as present in cloud storage. For eg: s3://test/foo/bar
    *
-   * @param configData The storage config data object
-   * @param successMarker The YBC success marker in parsed format
+   * @param configData
+   * @param locations
+   * @return
    */
-  public void validateStorageConfigOnSuccessMarker(
-      CustomerConfigData configData, YbcBackupResponse successMarker);
-
   public default boolean canCredentialListObjects(
       CustomerConfigData configData, Collection<String> locations) {
     return true;
   }
+
+  /**
+   * Check if storage config can list objects for the given regionPrefixes map. This is used in case
+   * of preflight validation during restores, where the success marker downloaded from backup
+   * contains prefixes in form of cloudDirs. The method uses regional buckets including default
+   * region from the storage config.
+   *
+   * <p>Ignored for NFS.
+   *
+   * @param configData Storage config to use. The buckets are taken from this.
+   * @param regionPrefixesMap Region<->Prefixes mapping. The cloudDirs to use as prefixes while
+   *     listing are taken from here.
+   */
+  public default void checkListObjectsWithYbcSuccessMarkerCloudStore(
+      CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {}
 
   /**
    * Validate similarity of bucket for S3/GCS/NFS. For AZ also check the AZ URL is same for config
@@ -162,7 +177,8 @@ public interface StorageUtil {
   }
 
   // Only for NFS
-  public default void validateStorageConfigOnUniverse(CustomerConfig config, Universe universe) {
+  public default void validateStorageConfigOnUniverseNonRpc(
+      CustomerConfig config, Universe universe) {
     // default empty fall-through stub
   }
 

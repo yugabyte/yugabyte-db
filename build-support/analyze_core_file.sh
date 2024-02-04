@@ -13,6 +13,7 @@
 # under the License.
 #
 
+# shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}"/common-test-env.sh
 
 print_usage() {
@@ -33,7 +34,6 @@ EOT
 
 core_file_path=""
 executable_path=""
-delete_core_file=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --core|-c)

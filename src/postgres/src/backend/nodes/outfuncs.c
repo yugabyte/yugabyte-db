@@ -3960,9 +3960,9 @@ _outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 	WRITE_NODE_TYPE("YBEXPRCOLREFDESC");
 
 	WRITE_INT_FIELD(attno);
-	WRITE_INT_FIELD(typid);
+	WRITE_OID_FIELD(typid);
 	WRITE_INT_FIELD(typmod);
-	WRITE_INT_FIELD(collid);
+	WRITE_OID_FIELD(collid);
 }
 
 /*

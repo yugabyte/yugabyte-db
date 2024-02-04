@@ -32,7 +32,7 @@ delete ::= DELETE FROM table_name
 Where
 
 - `table_name` is an identifier (possibly qualified with a keyspace name).
-- Restrictions on `where_expression` and `if_expression` are covered in the Semantics section below.
+- Restrictions on `where_expression` and `if_expression` are covered in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
@@ -218,7 +218,7 @@ ycqlsh:example> SELECT * FROM employees;
 
 ### Delete with the `USING TIMESTAMP` clause
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name) VALUES (4, 4, 'Ted') USING TIMESTAMP 1000;

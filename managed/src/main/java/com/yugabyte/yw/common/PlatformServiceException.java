@@ -22,7 +22,7 @@ import play.mvc.Results;
 
 public class PlatformServiceException extends RuntimeException {
   @Getter private final int httpStatus;
-  private final String userVisibleMessage;
+  @Getter private final String userVisibleMessage;
   private final JsonNode errJson;
   private String method;
   private String uri;

@@ -91,7 +91,7 @@ yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands desribed in the following sections.
+Install YugabyteDB in the Kubernetes cluster using the commands described in the following sections.
 
 #### On multi-node Kubernetes
 
@@ -118,7 +118,7 @@ helm install yb-demo yugabytedb/yugabyte \
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
 
-Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to disable these services, pass the `enableLoadBalancer=False` flag, as follows:
+Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state as load balancers are not available in a Minikube environment. If you would like to disable these services, pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \

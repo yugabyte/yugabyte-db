@@ -513,11 +513,11 @@ TEST_F(PgCatalogPerfTest, RPCCountAfterDmlFailure) {
 TEST_F(PgCatalogPerfTest, RPCCountAfterConflictError) {
   auto conn1 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE mytable (id INT PRIMARY KEY)"));
-  ASSERT_OK(conn1.Execute("SET transaction_isolation='repeatable read'"));
+  ASSERT_OK(conn1.Execute("SET default_transaction_isolation='repeatable read'"));
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_OK(conn1.Execute("INSERT INTO mytable VALUES (1)"));
   auto rpc_count = ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) {
-    RETURN_NOT_OK(conn->Execute("SET transaction_isolation='repeatable read'"));
+    RETURN_NOT_OK(conn->Execute("SET default_transaction_isolation='repeatable read'"));
     RETURN_NOT_OK(conn->Execute("BEGIN"));
     RETURN_NOT_OK(conn->Execute("INSERT INTO mytable VALUES (3)"));
     RETURN_NOT_OK(conn1.Execute("COMMIT"));

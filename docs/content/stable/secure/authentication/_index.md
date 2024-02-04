@@ -19,7 +19,7 @@ Authentication is the process by which the database server establishes the ident
 The authentication methods do not require any external security infrastructure and are the quickest way for YugabyteDB DBAs to secure the database. Password authentication is the easiest choice for authenticating remote user connections.
 {{< /note >}}
 
-The various methods for authenticating users supported by YugabyteDB are listed below.
+YugabyteDB supports the following methods for authenticating users.
 
 <div class="row">
 

@@ -36,7 +36,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
@@ -60,7 +60,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
-using tserver::XClusterConsumer;
 
 Status XClusterTestBase::PostSetUp() {
   if (!producer_tables_.empty()) {
@@ -98,19 +97,23 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
 
+  RETURN_NOT_OK(PreProducerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
     RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostProducerCreate());
 
   auto consumer_opts = opts;
   consumer_opts.cluster_id = "consumer";
   consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
 
+  RETURN_NOT_OK(PreConsumerCreate());
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
     RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
+  RETURN_NOT_OK(PostConsumerCreate());
 
   RETURN_NOT_OK(RunOnBothClusters([](Cluster* cluster) {
     RETURN_NOT_OK(cluster->mini_cluster_->WaitForAllTabletServers());
@@ -257,6 +260,10 @@ Status XClusterTestBase::SetupReverseUniverseReplication(
   return SetupUniverseReplication(
       consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId,
       producer_tables);
+}
+
+Status XClusterTestBase::SetupUniverseReplication() {
+  return SetupUniverseReplication(producer_tables_);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
@@ -537,7 +544,7 @@ uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   uint32_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     auto* tserver = mini_tserver->server();
-    XClusterConsumer* xcluster_consumer;
+    tserver::XClusterConsumerIf* xcluster_consumer;
     if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer())) {
       size += xcluster_consumer->TEST_GetNumSuccessfulWriteRpcs();
     }
@@ -776,11 +783,9 @@ Status XClusterTestBase::WaitForReplicationDrain(
   return Status::OK();
 }
 
-void XClusterTestBase::VerifyReplicationError(
-    const std::string& consumer_table_id,
-    const std::string& stream_id,
-    const boost::optional<ReplicationErrorPb>
-        expected_replication_error) {
+Status XClusterTestBase::VerifyReplicationError(
+    const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
+    const std::optional<ReplicationErrorPb> expected_replication_error) {
   // 1. Verify that the RPC contains the expected error.
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
@@ -789,10 +794,10 @@ void XClusterTestBase::VerifyReplicationError(
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
       &consumer_client()->proxy_cache(),
-      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
   rpc::RpcController rpc;
-  ASSERT_OK(WaitFor(
+  RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         rpc.Reset();
         rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
@@ -805,7 +810,7 @@ void XClusterTestBase::VerifyReplicationError(
         }
 
         if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&
-                                          resp.statuses()[0].stream_id() != stream_id)) {
+                                          resp.statuses()[0].stream_id() != stream_id.ToString())) {
           return false;
         }
 
@@ -820,14 +825,20 @@ void XClusterTestBase::VerifyReplicationError(
 
   // 2. Verify that the yb-admin output contains the expected error.
   auto admin_out =
-      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
+      VERIFY_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kReplicationGroupId));
   if (expected_replication_error) {
-    ASSERT_TRUE(
+    SCHECK_FORMAT(
         admin_out.find(Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
-        std::string::npos);
+            std::string::npos,
+        IllegalState, "Expected error '$0' not found in yb-admin output '$1'",
+        expected_replication_error, admin_out);
   } else {
-    ASSERT_TRUE(admin_out.find("error:") == std::string::npos);
+    SCHECK_FORMAT(
+        admin_out.find("error:") == std::string::npos, IllegalState,
+        "Unexpected error found in yb-admin output '$0'", admin_out);
   }
+
+  return Status::OK();
 }
 
 Result<xrepl::StreamId> XClusterTestBase::GetCDCStreamID(const TableId& producer_table_id) {
@@ -982,5 +993,4 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
   // Colocated database
   return GetTablegroupParentTable(&producer_cluster_, namespace_name);
 }
-
 } // namespace yb

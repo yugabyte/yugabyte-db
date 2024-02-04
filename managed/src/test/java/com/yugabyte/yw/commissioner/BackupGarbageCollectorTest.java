@@ -99,6 +99,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
+    when(mockAWSUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAWSUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -116,6 +118,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockGCPUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockGCPUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockGCPUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -133,6 +137,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAZUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockAZUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAZUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -251,6 +257,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockAWSUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAWSUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,

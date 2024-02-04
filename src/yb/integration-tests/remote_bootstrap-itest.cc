@@ -1957,7 +1957,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   auto new_conn = ASSERT_RESULT(ConnectToDB(database));
   for (int i = 0; i < num_tables; ++i) {
     auto res = ASSERT_RESULT(
-        new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+        new_conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
     ASSERT_EQ(res, 2);
   }
 }

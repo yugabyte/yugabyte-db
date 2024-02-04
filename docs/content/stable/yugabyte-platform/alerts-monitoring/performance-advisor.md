@@ -1,5 +1,5 @@
 ---
-title: Performance Advisor
+title: YBA Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your universe to discover performance optimizations.
 headcontent: Scan your universe to discover performance optimizations
@@ -17,7 +17,7 @@ Use Performance Advisor to scan your universe for potential optimizations.
 
 For meaningful results, run your workload for at least an hour before running the advisor.
 
-To monitor clusters in real time, use the [universe level metrics](../../troubleshoot/universe-issues/#use-metrics).
+To monitor clusters in real time, use the [universe level metrics](../anywhere-metrics/).
 
 ## Recommendations
 

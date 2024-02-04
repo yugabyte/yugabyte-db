@@ -790,7 +790,7 @@ Status ChangeTimeExecute(const ChangeTimeArguments& args, bool subtract) {
       &runner));
   RETURN_NOT_OK(ChangeTimeInWalDirs(
       delta, bound_time, args.max_num_old_wal_entries, SplitAndFlatten(args.wal_dirs), &runner));
-  return runner.Wait();
+  return runner.Wait(StopWaitIfFailed::kFalse);
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -42,6 +42,7 @@ import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver_types.proto";
+import "yb/util/opid.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
 // startup to avoid running initdb.
@@ -53,6 +54,9 @@ message ChangeMetadataResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
+
+  // CDC SDK Create Stream context
+  optional OpIdPB cdc_sdk_snapshot_safe_op_id = 3;
 }
 
 message GetSafeTimeRequestPB {

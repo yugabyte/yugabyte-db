@@ -70,6 +70,7 @@
 #include "utils/lsyscache.h"
 
 /*  YB includes. */
+#include "access/yb_scan.h"
 #include "executor/ybc_fdw.h"
 #include "executor/ybcExpr.h"
 #include "pg_yb_utils.h"
@@ -729,12 +730,10 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 					return;
 			}
 
-			if (IsYugaByteEnabled())
+			if (rel->is_yb_relation)
 			{
-				/* If YB scan, disable parallelization for now. */
-				return;
+				/* TODO(#19470) check YB specific conditions */
 			}
-
 			/*
 			 * There are additional considerations for appendrels, which we'll
 			 * deal with in set_append_rel_size and set_append_rel_pathlist.
@@ -1690,11 +1689,15 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 			accumulate_append_subpath(subpath, &subpaths, NULL);
 		}
 
+		subpaths_valid &= yb_has_same_batching_reqs(subpaths);
+
 		if (subpaths_valid)
 			add_path(rel, (Path *)
 					 create_append_path(root, rel, subpaths, NIL,
 										NIL, required_outer, 0, false,
 										-1));
+		else
+			break;
 	}
 
 	/*
@@ -4226,6 +4229,8 @@ compute_parallel_worker(RelOptInfo *rel, double heap_pages, double index_pages,
 	 */
 	if (rel->rel_parallel_workers != -1)
 		parallel_workers = rel->rel_parallel_workers;
+	else if (rel->is_yb_relation)
+		parallel_workers = ybParallelWorkers(rel->tuples);
 	else
 	{
 		/*

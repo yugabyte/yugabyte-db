@@ -54,7 +54,7 @@ You can install YugabyteDB Anywhere using YBA Installer on the following Linux d
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
-- SUSE Linux Enterprise Server (SLES) 15 SP4 ([Tech Preview](/preview/releases/versioning/#feature-availability))
+- SUSE Linux Enterprise Server (SLES) 15 SP4 {{<badge/tp>}}
 
 YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 

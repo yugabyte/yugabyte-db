@@ -518,7 +518,11 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request, UserProfileFormData.class);
 
     UserProfileFormData formData = form.get();
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    Users loggedInUser = getLoggedInUser(request);
 
+    // Password validation for both old RBAC and new RBAC is same.
     if (StringUtils.isNotEmpty(formData.getPassword())) {
       if (UserType.ldap == user.getUserType()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
@@ -537,36 +541,58 @@ public class UsersController extends AuthenticatedController {
       user.setPassword(formData.getPassword());
     }
 
-    Users loggedInUser = getLoggedInUser(request);
-    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
-        && formData.getRole() != user.getRole()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
-    }
-
-    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
-        && !formData.getTimezone().equals(user.getTimezone())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
-    }
-
-    if (!formData.getTimezone().equals(user.getTimezone())) {
-      user.setTimezone(formData.getTimezone());
-    }
-    if (formData.getRole() != user.getRole()) {
-      if (Users.Role.SuperAdmin == user.getRole()) {
-        throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+    if (useNewAuthz) {
+      // Timezone validation for new RBAC.
+      // No explicit validation required as the API is already authorized with the required
+      // permissions.
+      if (formData.getTimezone() != null && !formData.getTimezone().equals(user.getTimezone())) {
+        user.setTimezone(formData.getTimezone());
       }
-
-      if (formData.getRole() == Users.Role.SuperAdmin) {
+    } else {
+      // Timezone validation for old RBAC.
+      if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+          && !formData.getTimezone().equals(user.getTimezone())) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+            BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
       }
 
-      if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
-        throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+      // Set the timezone if edited to a correct value.
+      if (formData.getTimezone() != null && !formData.getTimezone().equals(user.getTimezone())) {
+        user.setTimezone(formData.getTimezone());
       }
-      user.setRole(formData.getRole());
+    }
+
+    if (useNewAuthz) {
+      // Role validation for new RBAC.
+      if (formData.getRole() != null && formData.getRole() != user.getRole()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Wrong API to change users role when new authz is enabled. "
+                + "Use setRoleBinding API(/customers/:cUUID/rbac/role_binding/:userUUID) instead");
+      }
+    } else {
+      // Role validation for old RBAC.
+      if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+          && formData.getRole() != user.getRole()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
+      }
+      if (formData.getRole() != user.getRole()) {
+        if (Users.Role.SuperAdmin == user.getRole()) {
+          throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+        }
+
+        if (formData.getRole() == Users.Role.SuperAdmin) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+        }
+
+        if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
+          throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+        }
+        user.setRole(formData.getRole());
+      }
     }
     auditService()
         .createAuditEntryWithReqBody(

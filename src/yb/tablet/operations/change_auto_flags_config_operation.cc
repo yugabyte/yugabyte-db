@@ -51,7 +51,7 @@ Status ChangeAutoFlagsConfigOperation::Apply() {
   // critical failures like IO issues and invalid flags (indicating we are running an unsupported
   // code version). Execution must stop immediately to protect data correctness, so we return the
   // Status directly instead of setting complete_status.
-  RETURN_NOT_OK(tablet->ApplyAutoFlagsConfig(request()->ToGoogleProtobuf()));
+  RETURN_NOT_OK(tablet->ProcessAutoFlagsConfigOperation(request()->ToGoogleProtobuf()));
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "Completed";
 

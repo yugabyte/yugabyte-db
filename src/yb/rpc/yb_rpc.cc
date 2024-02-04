@@ -368,7 +368,7 @@ void YBInboundCall::DoSerialize(ByteBlocks* output) {
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.holder());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));
@@ -446,7 +446,7 @@ Slice YBInboundCall::method_name() const {
 }
 
 Result<RefCntSlice> YBInboundCall::ExtractSidecar(size_t idx) const {
-  return received_sidecars_.Extract(request_data_.buffer(), idx);
+  return received_sidecars_.Extract(request_data_.holder(), idx);
 }
 
 Status YBOutboundConnectionContext::HandleCall(

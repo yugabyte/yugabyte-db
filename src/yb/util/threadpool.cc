@@ -695,22 +695,27 @@ Status TaskRunner::Init(int concurrency) {
   return builder.Build(&thread_pool_);
 }
 
-Status TaskRunner::Wait() {
-  std::unique_lock<std::mutex> lock(mutex_);
-  cond_.wait(lock, [this] { return running_tasks_ == 0; });
+Status TaskRunner::Wait(StopWaitIfFailed stop_wait_if_failed) {
+  UniqueLock lock(mutex_);
+  WaitOnConditionVariable(&cond_, &lock, [this, &stop_wait_if_failed] {
+    return (running_tasks_ == 0 || (stop_wait_if_failed && failed_.load()));
+  });
   return first_failure_;
 }
 
 void TaskRunner::CompleteTask(const Status& status) {
+  bool is_first_failure = false;
   if (!status.ok()) {
     bool expected = false;
     if (failed_.compare_exchange_strong(expected, true)) {
+      is_first_failure = true;
+      std::lock_guard lock(mutex_);
       first_failure_ = status;
     } else {
       LOG(WARNING) << status.message() << std::endl;
     }
   }
-  if (--running_tasks_ == 0) {
+  if (--running_tasks_ == 0 || is_first_failure) {
     std::lock_guard lock(mutex_);
     cond_.notify_one();
   }

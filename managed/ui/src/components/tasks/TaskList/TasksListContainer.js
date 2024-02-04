@@ -26,7 +26,7 @@ const mapDispatchToProps = (dispatch) => {
     resetCustomerTasks: () => {
       dispatch(resetCustomerTasks());
     },
-    abortCurrentTask: (taskUUID) => {
+    abortTask: (taskUUID) => {
       return dispatch(abortTask(taskUUID)).then((response) => {
         return dispatch(abortTaskResponse(response.payload));
       });

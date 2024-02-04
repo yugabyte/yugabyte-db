@@ -74,6 +74,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kRemoveServer)
   (kRemoveTableFromTablet)
   (kSnapshotOp)
+  (kFollowerLag)
   (kSplitTablet)
   (kStartElection)
   (kTestRetryTs)

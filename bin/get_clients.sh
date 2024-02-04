@@ -13,7 +13,7 @@ printf "Downloading %s ... \r" "$pkg"
 curl --silent "https://downloads.yugabyte.com/${pkg}" | tar -xz
 
 if test "$uname" = "linux"; then
-   printf "Setting up %s ... \r" $pkg
+   printf "Setting up %s ... \r" "$pkg"
   "${PKG_PREFIX}-${VERSION}/bin/post_install.sh" > /dev/null 2>&1
 fi
 

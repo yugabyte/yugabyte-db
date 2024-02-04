@@ -13,6 +13,7 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.impl.EnableRollbackSupportKeyValidator;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
 import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzValidator;
@@ -44,10 +45,12 @@ public class RuntimeConfigPreChangeNotifier {
   public RuntimeConfigPreChangeNotifier(
       SSH2EnabledKeyValidator ssh2EnabledKeyValidator,
       MetricCollectionLevelValidator metricCollectionLevelValidator,
-      UseNewRbacAuthzValidator useNewRbacAuthzValidator) {
+      UseNewRbacAuthzValidator useNewRbacAuthzValidator,
+      EnableRollbackSupportKeyValidator enableRollbackSupportKeyValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
     addListener(useNewRbacAuthzValidator);
+    addListener(enableRollbackSupportKeyValidator);
   }
 
   public void notifyListenersDeleteConfig(UUID scopeUUID, String path) {

@@ -44,6 +44,7 @@
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <future>
@@ -75,6 +76,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
@@ -128,7 +130,9 @@
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/adaptors.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -213,8 +217,10 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/async_util.h"
@@ -251,10 +257,13 @@
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -336,6 +345,7 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -345,6 +355,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
@@ -352,6 +363,7 @@
 #include "yb/util/unique_lock.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/version_tracker.h"
 #include "yb/util/web_callback_registry.h"

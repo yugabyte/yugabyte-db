@@ -99,6 +99,11 @@ void TabletStatusListener::StatusMessage(const string& status) {
   last_status_ = status;
 }
 
+void TabletStatusListener::SetStatusPrefix(const std::string& prefix) {
+  std::lock_guard l(lock_);
+  status_prefix_ = prefix + "\n";
+}
+
 Status BootstrapTablet(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,

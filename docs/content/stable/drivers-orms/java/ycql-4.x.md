@@ -9,8 +9,6 @@ menu:
     identifier: ycql-java-driver-4.x
     parent: java-drivers
     weight: 500
-aliases:
-  - /stable/drivers-orms/java/ycql-4.6/
 type: docs
 ---
 

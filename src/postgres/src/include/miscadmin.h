@@ -475,7 +475,8 @@ extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 const char *username, Oid useroid,
 						 bool load_session_libraries,
 						 bool override_allow_connections,
-						 char *out_dbname);
+						 char *out_dbname,
+						 uint64_t *session_id);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

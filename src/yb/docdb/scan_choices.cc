@@ -726,10 +726,10 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 }
 
 // Method called when the scan target is done being used
-Result<bool> HybridScanChoices::DoneWithCurrentTarget() {
+Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) {
   bool result = false;
   if (schema_num_keys_ == scan_options_.size() ||
-      prefix_length_ > 0) {
+      (prefix_length_ > 0 && !current_row_skipped)) {
 
     ssize_t incr_idx =
         (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
@@ -832,8 +832,10 @@ Result<bool> HybridScanChoices::InterestedInRow(
 }
 
 Result<bool> HybridScanChoices::AdvanceToNextRow(
-    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) {
-  if (!VERIFY_RESULT(DoneWithCurrentTarget()) || CurrentTargetMatchesKey(row_key->AsSlice())) {
+    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter, bool current_fetched_row_skipped) {
+
+  if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped)) ||
+      CurrentTargetMatchesKey(row_key->AsSlice())) {
     return false;
   }
   SeekToCurrentTarget(iter);
@@ -866,7 +868,9 @@ class EmptyScanChoices : public ScanChoices {
     return true;
   }
 
-  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override {
+  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                IntentAwareIteratorIf* iter,
+                                bool current_fetched_row_live) override {
     return false;
   }
 };

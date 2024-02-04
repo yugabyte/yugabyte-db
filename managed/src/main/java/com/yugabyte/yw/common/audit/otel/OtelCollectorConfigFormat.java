@@ -26,6 +26,7 @@ public class OtelCollectorConfigFormat {
     private String storage;
     private MultilineConfig multiline;
     private List<Operator> operators;
+    private Map<String, String> attributes;
   }
 
   @Data
@@ -43,6 +44,7 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class RegexOperator extends Operator {
     private String regex;
+    private String on_error;
     private OperatorTimestamp timestamp;
     private OperatorSeverity severity;
   }
@@ -94,6 +96,7 @@ public class OtelCollectorConfigFormat {
 
   @Data
   public static class QueueConfig {
+    private boolean enabled;
     private String storage;
   }
 

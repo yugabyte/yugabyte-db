@@ -14,19 +14,18 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/cdc/cdc_service.h"
-
 #include "yb/cdc/cdc_state_table.h"
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
-#include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/master_defaults.h"
-
 #include "yb/master/master-test_base.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_replication.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
@@ -34,7 +33,9 @@
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
-DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(cdc_enable_postgres_replica_identity);
+DECLARE_uint32(max_replication_slots);
 
 namespace yb {
 namespace master {
@@ -62,6 +63,7 @@ class MasterTestXRepl  : public MasterTestBase {
     // Default of FLAGS_cdc_state_table_num_tablets is to fallback to num_tablet_servers which is 0
     // in this test. So we need to explicitly set it here.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
   }
 
   Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);
@@ -84,6 +86,10 @@ class MasterTestXRepl  : public MasterTestBase {
   Result<GetUniverseReplicationResponsePB> GetUniverseReplication(const std::string& producer_id);
 
   Status CreateTableWithTableId(TableId* table_id);
+  Status DeleteNamespace(std::string namespace_id, YQLDatabase db_type);
+  Result<bool> IsDeleteNamespaceDone(std::string namespace_id);
+  Status WaitForDeleteNamespaceToComplete(
+      std::string namespace_id, MonoDelta timeout, const std::string& failure_message);
 };
 
 Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStream(const TableId& table_id) {
@@ -130,6 +136,8 @@ Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   RETURN_NOT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -289,6 +297,43 @@ Status MasterTestXRepl::CreateTableWithTableId(TableId* table_id) {
   return CreateTable(kTableName, kTableSchema, table_id);
 }
 
+Status MasterTestXRepl::DeleteNamespace(std::string namespace_id, YQLDatabase db_type) {
+  DeleteNamespaceRequestPB req;
+  DeleteNamespaceResponsePB resp;
+  req.mutable_namespace_()->set_id(namespace_id);
+  req.set_database_type(db_type);
+  auto s = proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController());
+  if (!s.ok()) {
+    return s;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<bool> MasterTestXRepl::IsDeleteNamespaceDone(std::string namespace_id) {
+  IsDeleteNamespaceDoneRequestPB req;
+  IsDeleteNamespaceDoneResponsePB resp;
+  req.mutable_namespace_()->set_id(std::move(namespace_id));
+
+  auto s = proxy_ddl_->IsDeleteNamespaceDone(req, &resp, ResetAndGetController());
+  if (!s.ok()) {
+    return s;
+  }
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.done();
+}
+
+Status MasterTestXRepl::WaitForDeleteNamespaceToComplete(
+    std::string namespace_id, MonoDelta timeout, const std::string& failure_message) {
+  return WaitFor(
+      [this, &namespace_id]() -> Result<bool> { return IsDeleteNamespaceDone(namespace_id); },
+      timeout, failure_message);
+}
+
 TEST_F(MasterTestXRepl, TestDisableTruncation) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   TableId table_id;
@@ -367,6 +412,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
 
@@ -385,7 +432,7 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
 }
 
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
 
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
@@ -402,19 +449,76 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
   ASSERT_NE(
-      resp
-        .error()
-        .status()
-        .message()
-        .find("Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is"
-              " false"),
+      resp.error().status().message().find(
+          "Creation of CDCSDK stream with a replication slot name is disallowed"),
       std::string::npos)
       << resp.error().status().message();
+}
+
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithNewRecordTypeDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = false;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::PG_DEFAULT));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_NE(
+      resp.error().status().message().find("Using new record types is disallowed in the middle of "
+                                           "an upgrade. Finalize the upgrade and try again."),
+      std::string::npos)
+      << resp.error().status().message();
+}
+
+// TODO(#19930): Disallow stream creation with older record types once we have disallowed the YSQL
+// CDC commands in yb-admin.
+TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldRecordType)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_postgres_replica_identity) = true;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_FALSE(resp.has_error());
 }
 
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotName) {
@@ -435,6 +539,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotNam
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
@@ -464,6 +570,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
   req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
 
   ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
@@ -477,6 +585,44 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
 
   auto list_resp = ASSERT_RESULT(ListCDCStreams());
   ASSERT_EQ(0, list_resp.streams_size());
+}
+
+TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceLimitReached) {
+  // Set max_replication_slots to a small value for ease of testing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 1;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName2);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(MasterErrorPB::REPLICATION_SLOT_LIMIT_REACHED, resp.error().code());
+  ASSERT_NE(
+      resp.error().status().message().find(
+          "Replication slot limit reached"),
+      std::string::npos)
+      << resp.error().status().message();
+
+  auto list_resp = ASSERT_RESULT(ListCDCStreams());
+  ASSERT_EQ(1, list_resp.streams_size());
 }
 
 TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
@@ -740,6 +886,20 @@ TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
   resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+}
+
+TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+  ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
+  ASSERT_OK(DeleteNamespace(ns_id, YQL_DATABASE_PGSQL));
+  ASSERT_OK(WaitForDeleteNamespaceToComplete(
+      ns_id, MonoDelta::FromSeconds(30), "Failed waiting for database drop to complete"));
 }
 
 } // namespace master

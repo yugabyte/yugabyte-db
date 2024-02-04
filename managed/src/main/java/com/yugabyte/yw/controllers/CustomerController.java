@@ -28,9 +28,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.CustomerHandler;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
@@ -44,10 +44,7 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -89,13 +86,13 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject private AlertService alertService;
 
-  @Inject private MetricService metricService;
-
   @Inject private MetricQueryHelper metricQueryHelper;
 
   @Inject private CloudQueryHelper cloudQueryHelper;
 
   @Inject private CustomerConfigService customerConfigService;
+
+  @Inject private CustomerHandler customerHandler;
 
   @Deprecated
   @ApiOperation(
@@ -309,33 +306,7 @@ public class CustomerController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(UUID customerUUID, Http.Request request) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-
-    List<Users> users = Users.getAll(customerUUID);
-    for (Users user : users) {
-      user.delete();
-    }
-
-    // delete the taskInfo corresponding to the customer_task
-    // TODO: Alter task_info table to have foreign key reference to customer id.
-    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customerUUID);
-    if (!customerTasks.isEmpty()) {
-      for (CustomerTask task : customerTasks) {
-        UUID taskUUID = task.getTaskUUID();
-        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-        if (!taskInfo.delete()) {
-          throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR, "Unable to delete taskInfo of taskUUID: " + taskUUID);
-        }
-      }
-    }
-
-    if (!customer.delete()) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
-    }
-
-    metricService.markSourceRemoved(customerUUID, null);
+    customerHandler.deleteCustomer(customerUUID);
 
     auditService()
         .createAuditEntry(

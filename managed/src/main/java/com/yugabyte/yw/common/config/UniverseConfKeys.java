@@ -849,6 +849,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
+      new ConfKeyInfo<>(
+          "yb.gflags.allow_during_prefinalize",
+          ScopeType.UNIVERSE,
+          "Allow editing GFlags for a universe in pre-finalize state",
+          "Allow editing GFlags for a universe in pre-finalize state",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -959,6 +967,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Always wait for data move on remove node",
           "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_config_based_preflight_validation",
+          ScopeType.UNIVERSE,
+          "Skip storage config backup/restore preflight validation",
+          "Skip preflight validation before backup/scheduled backups/incremental backups/restores."
+              + " This skips the storage config/success marker based validations done before B/R.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

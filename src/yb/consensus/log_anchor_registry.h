@@ -117,6 +117,10 @@ struct LogAnchor {
   LogAnchor();
   ~LogAnchor();
 
+  int64_t index() const {
+    return log_index;
+  }
+
  private:
   FRIEND_TEST(LogTest, TestGCWithLogRunning);
   FRIEND_TEST(LogAnchorRegistryTest, TestUpdateRegistration);

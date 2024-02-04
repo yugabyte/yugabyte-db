@@ -9,7 +9,8 @@
 yb_home_dir: "/home/{{ user_name }}"
 yb_bin_dir: "{{ yb_home_dir }}/bin"
 yb_software_dir: "{{ yb_home_dir }}/yb-software"
-ybc_conf_file: "{{ yb_home_dir }}/controller/conf/server.conf"
+ybc_conf_dir: "{{ yb_home_dir }}/controller/conf"
+ybc_conf_file: "{{ ybc_conf_dir }}/server.conf"
 ybc_logs_dir: "{{ yb_home_dir }}/controller/logs"
 configure_ybc: false
 systemd_option: false

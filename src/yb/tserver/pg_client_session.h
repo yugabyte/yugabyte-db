@@ -70,6 +70,7 @@ class PgMutationCounter;
     (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchData) \
     (FetchSequenceTuple) \
     (FinishTransaction) \
     (InsertSequenceTuple) \
@@ -143,6 +144,8 @@ class PgClientSession {
 
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_DECLARE, ~, PG_CLIENT_SESSION_METHODS);
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_DECLARE, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
+
+  size_t SaveData(const RefCntBuffer& buffer);
 
  private:
   std::string LogPrefix();
@@ -258,6 +261,9 @@ class PgClientSession {
   std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
   UsedReadTime plain_session_used_read_time_;
+
+  simple_spinlock pending_data_mutex_;
+  std::vector<RefCntBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 };
 
 }  // namespace tserver

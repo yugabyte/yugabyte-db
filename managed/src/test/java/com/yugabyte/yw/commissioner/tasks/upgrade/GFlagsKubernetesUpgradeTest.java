@@ -43,7 +43,6 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.UpdateAndPersistGFlags,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -81,6 +80,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
           TaskType.InstallingThirdPartySoftware,
+          TaskType.UpdateAndPersistGFlags,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
@@ -101,10 +101,6 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
-        Json.toJson(
-            ImmutableMap.of(
-                "masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
-                "tserverGFlags", Json.parse("{\"tserver-flag\":\"t1\"}"))),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
         Json.toJson(
@@ -164,6 +160,10 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
+                "tserverGFlags", Json.parse("{\"tserver-flag\":\"t1\"}"))),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }

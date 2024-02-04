@@ -82,12 +82,6 @@ class UniverseDisplayItem extends Component {
 
     return (
       <Col sm={4} md={3} lg={2}>
-        <RbacValidator
-          accessRequiredOn={{
-            ...ApiPermissionMap.GET_UNIVERSES_BY_ID,
-            onResource: universe.universeUUID
-          }}
-        >
           <Link to={'/universes/' + universe.universeUUID}>
             <div className="universe-display-item-container">
               <div className="status-icon">
@@ -122,7 +116,6 @@ class UniverseDisplayItem extends Component {
               </div>
             </div>
           </Link>
-        </RbacValidator>
       </Col>
     );
   }

@@ -4,8 +4,6 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { ArrowDropDown } from '@material-ui/icons';
-import clsx from 'clsx';
 
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
@@ -14,6 +12,7 @@ import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplicati
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
+import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
 
 import { DrConfig } from '../dtos';
 
@@ -59,6 +58,9 @@ const useStyles = makeStyles((theme) => ({
   rpoBenchmarkIcon: {
     fontSize: '16px'
   },
+  confirmTextInputBox: {
+    width: '400px'
+  },
   success: {
     color: theme.palette.ybacolors.success
   },
@@ -80,7 +82,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
 
-  const targetUniverseUuid = drConfig.xClusterConfig.targetUniverseUUID;
+  const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
     universeQueryKey.detail(targetUniverseUuid),
     () => api.fetchUniverse(targetUniverseUuid),
@@ -94,7 +96,12 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }: {
       drConfig: DrConfig;
       namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
-    }) => api.initiateFailover(drConfig.uuid, namespaceIdSafetimeEpochUsMap),
+    }) =>
+      api.initiateFailover(drConfig.uuid, {
+        primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
+        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? '',
+        namespaceIdSafetimeEpochUsMap
+      }),
     {
       onSuccess: (response, { drConfig }) => {
         const invalidateQueries = () => {
@@ -103,14 +110,12 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
 
           // The `drConfigUuidsAsSource` and `drConfigUuidsAsTarget` fields will need to be updated as
           // we switched roles for both universes.
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -132,9 +137,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
                   <Trans
                     i18nKey={`${TRANSLATION_KEY_PREFIX}.success.taskSuccess`}
                     components={{
-                      universeLink: (
-                        <a href={`/universes/${drConfig.xClusterConfig.targetUniverseUUID}`} />
-                      ),
+                      universeLink: <a href={`/universes/${drConfig.drReplicaUniverseUuid}`} />,
                       bold: <b />
                     }}
                     values={{ sourceUniverseName: targetUniverseQuery.data?.name }}
@@ -154,8 +157,8 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }
   );
 
-  if (!drConfig.xClusterConfig.sourceUniverseUUID || !drConfig.xClusterConfig.targetUniverseUUID) {
-    const i18nKey = drConfig.xClusterConfig.sourceUniverseUUID
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
       ? 'undefinedTargetUniverseUuid'
       : 'undefinedSourceUniverseUuid';
     return (
@@ -170,7 +173,8 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     return (
       <YBErrorIndicator
         customErrorMessage={t('faliedToFetchTargetuniverse', {
-          keyPrefix: 'clusterDetail.xCluster.error'
+          keyPrefix: 'clusterDetail.xCluster.error',
+          universeUuid: drConfig.drReplicaUniverseUuid
         })}
       />
     );
@@ -232,16 +236,9 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
               <InfoIcon className={classes.infoIcon} />
             </YBTooltip>
           </div>
-          <Box display="flex" justifyContent="space-between">
-            <Typography variant="body1">Placeholder</Typography>
-            <Box display="flex" alignItems="center">
-              {/* TODO: Check estimate data loss vs. RPO to determine the icon to show. */}
-              <ArrowDropDown className={clsx(classes.rpoBenchmarkIcon, classes.success)} />
-              <Typography variant="body2">
-                {t('estimatedDataLoss.rpoBenchmark.below', { ms: 100 })}
-              </Typography>
-            </Box>
-          </Box>
+          <div>
+            <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
+          </div>
         </div>
       </div>
       <Box marginTop={4}>
@@ -249,7 +246,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
           {t('confirmationInstructions')}
         </Typography>
         <YBInput
-          fullWidth
+          className={classes.confirmTextInputBox}
           placeholder={targetUniverseName}
           value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}

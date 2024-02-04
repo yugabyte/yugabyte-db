@@ -52,6 +52,7 @@ ERROR:  Publishing only a subset of DML commands is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority
 -- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
+NOTICE:  tables without primary key will be skipped
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
 ERROR:  Publishing only a subset of DML commands is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority

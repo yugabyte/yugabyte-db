@@ -34,6 +34,7 @@ class FlushManager;
 class YsqlBackendsManager;
 class PermissionsManager;
 class EncryptionManager;
+class TabletHealthManager;
 struct LeaderEpoch;
 class XClusterManager;
 
@@ -114,6 +115,7 @@ class MasterServiceBase {
 
   CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  TabletHealthManager* handler(TabletHealthManager*);
   YsqlBackendsManager* handler(YsqlBackendsManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);

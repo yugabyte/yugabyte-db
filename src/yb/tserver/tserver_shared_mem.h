@@ -106,7 +106,7 @@ YB_STRONGLY_TYPED_BOOL(Create);
 
 class SharedExchange {
  public:
-  SharedExchange(const Uuid& instance_id, uint64_t session_id, Create create);
+  SharedExchange(const std::string& instance_id, uint64_t session_id, Create create);
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
@@ -118,6 +118,8 @@ class SharedExchange {
 
   uint64_t session_id() const;
 
+  static Status Cleanup(const std::string& instance_id);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -128,7 +130,7 @@ using SharedExchangeListener = std::function<void(size_t)>;
 class SharedExchangeThread {
  public:
   SharedExchangeThread(
-      const Uuid& instance_id, uint64_t session_id, Create create,
+      const std::string& instance_id, uint64_t session_id, Create create,
       const SharedExchangeListener& listener);
 
   ~SharedExchangeThread();
@@ -146,6 +148,8 @@ struct SharedExchangeMessage {
   uint64_t session_id;
   size_t size;
 };
+
+constexpr size_t kTooBigResponseMask = 1ULL << 63;
 
 }  // namespace tserver
 }  // namespace yb

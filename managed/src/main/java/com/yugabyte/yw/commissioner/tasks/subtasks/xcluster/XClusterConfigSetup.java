@@ -163,7 +163,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       }
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

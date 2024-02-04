@@ -82,6 +82,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
@@ -182,7 +183,8 @@ DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DECLARE_bool(ysql_yb_enable_replication_commands);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 METRIC_DEFINE_entity(cdc);
 
@@ -657,7 +659,7 @@ class CDCServiceImpl::Impl {
     cdc_state_metadata_.clear();
   }
 
-  std::unique_ptr<client::AsyncClientInitialiser> async_client_init_;
+  std::unique_ptr<client::AsyncClientInitializer> async_client_init_;
 
   // this will be used for the std::call_once call while caching the client
   std::once_flag is_client_cached_;
@@ -972,17 +974,22 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   // Forward request to master directly since we support creating CDCSDK stream for a namespace
   // atomically in master now.
-  if (FLAGS_ysql_yb_enable_replication_commands) {
-    xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-        client()->CreateCDCSDKStreamForNamespace(ns_id, options),
-        CDCError(CDCErrorPB::INTERNAL_ERROR));
-    resp->set_db_stream_id(db_stream_id.ToString());
-    return Status::OK();
-  } else {
-    return STATUS(
-        ServiceUnavailable, "Creating a CDC stream is disallowed during an upgrade",
-        CDCError(CDCErrorPB::OPERATION_DISALLOWED));
+  // If FLAGS_TEST_ysql_yb_enable_replication_commands, populate the namespace id in the newly added
+  // namespace_id field, otherwise use the table_id as done before.
+  bool populate_namespace_id_as_table_id = !FLAGS_TEST_ysql_yb_enable_replication_commands;
+
+  // Consistent Snapshot option
+  std::optional<CDCSDKSnapshotOption> snapshot_option = std::nullopt;
+  if (req->has_cdcsdk_consistent_snapshot_option()) {
+     snapshot_option = req->cdcsdk_consistent_snapshot_option();
   }
+
+  xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+      client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
+                                               ReplicationSlotName(""), snapshot_option),
+      CDCError(CDCErrorPB::INTERNAL_ERROR));
+  resp->set_db_stream_id(db_stream_id.ToString());
+  return Status::OK();
 }
 
 void CDCServiceImpl::CreateCDCStream(
@@ -1606,11 +1613,22 @@ void CDCServiceImpl::GetChanges(
   bool report_tablet_split = false;
   // Read the latest changes from the Log.
   if (record.GetSourceType() == XCLUSTER) {
+    // Check AutoFlags version and fail early on errors before scanning the WAL.
+    if (!ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
+      return;
+    }
+    TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion1");
+    TEST_SYNC_POINT("GetChanges::AfterFirstValidateAutoFlagsConfigVersion2");
     status = GetChangesForXCluster(
         stream_id, req->tablet_id(), from_op_id, tablet_peer,
         std::bind(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster, this, producer_tablet, _1),
         mem_tracker, get_changes_deadline, &record, &msgs_holder, resp, &last_readable_index);
+
+    // Check AutoFlags version again if we are sending any records back.
+    if (resp->records_size() > 0 && !ValidateAutoFlagsConfigVersion(*req, *resp, context)) {
+      return;
+    }
   } else {
     uint64_t commit_timestamp;
     OpId last_streamed_op_id;
@@ -2362,7 +2380,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
     // taking the snapshot of any table.
     if (entry.cdc_sdk_safe_time &&
-        (record.GetRecordType() == CDCRecordType::ALL || entry.snapshot_key.has_value())) {
+       ((record.GetRecordType() == CDCRecordType::ALL ||
+         record.GetRecordType() == CDCRecordType::PG_FULL) || entry.snapshot_key.has_value())) {
       cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
     }
 
@@ -3648,7 +3667,11 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
               << ", and stream: " << producer_tablet.stream_id;
     }
 
-    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    if (!is_snapshot) {
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
+    } else {
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    }
   }
 
   // If we update the colocated snapshot row, we still need to do one of two things:
@@ -3666,7 +3689,7 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
       CDCStateTableEntry entry(producer_tablet.tablet_id, producer_tablet.stream_id);
       entry.active_time = last_active_time;
       entry.cdc_sdk_safe_time = checkpoint.has_snapshot_time() ? checkpoint.snapshot_time() : 0;
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
     }
   }
 
@@ -3687,8 +3710,8 @@ Status CDCServiceImpl::UpdateSnapshotDone(
         !cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time();
     entry.active_time = current_time;
     entry.last_replication_time = 0;
-    // Insert if row not found, Update if row already exists.
-    RETURN_NOT_OK(cdc_state_table_->UpsertEntries({entry}));
+    // Insert if row not found, Update if row already exists. Remove snapshot_key from map
+    RETURN_NOT_OK(cdc_state_table_->UpsertEntries({entry}, false, {"snapshot_key"}));
   }
 
   // Also update the active_time in the streaming row.
@@ -3696,7 +3719,7 @@ Status CDCServiceImpl::UpdateSnapshotDone(
     CDCStateTableEntry entry(tablet_id, stream_id);
     entry.active_time = current_time;
     entry.cdc_sdk_safe_time = VERIFY_RESULT(GetSafeTime(stream_id, tablet_id));
-    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
   }
 
   return Status::OK();
@@ -4047,6 +4070,36 @@ void CDCServiceImpl::CheckReplicationDrain(
 void CDCServiceImpl::AddTabletCheckpoint(
     OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
   impl_->AddTabletCheckpoint(op_id, stream_id, tablet_id);
+}
+
+bool CDCServiceImpl::ValidateAutoFlagsConfigVersion(
+    const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context) {
+  if (!FLAGS_enable_xcluster_auto_flag_validation || !req.has_auto_flags_config_version()) {
+    return true;
+  }
+
+  const auto get_auto_flags_version_result = context_->GetAutoFlagsConfigVersion();
+
+  if (!get_auto_flags_version_result) {
+    SetupErrorAndRespond(
+        resp.mutable_error(), get_auto_flags_version_result.status(), CDCErrorPB::INTERNAL_ERROR,
+        &context);
+    return false;
+  }
+  const auto local_auto_flags_config_version = *get_auto_flags_version_result;
+
+  if (local_auto_flags_config_version == req.auto_flags_config_version()) {
+    return true;
+  }
+
+  resp.set_auto_flags_config_version(local_auto_flags_config_version);
+  SetupErrorAndRespond(
+      resp.mutable_error(),
+      STATUS_FORMAT(
+          InvalidArgument, "AutoFlags config version mismatch. Expected: $0, Actual: $1",
+          req.auto_flags_config_version(), local_auto_flags_config_version),
+      CDCErrorPB::AUTO_FLAGS_CONFIG_VERSION_MISMATCH, &context);
+  return false;
 }
 
 }  // namespace cdc

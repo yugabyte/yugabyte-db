@@ -57,7 +57,7 @@ assignment ::= { column_name | column_name'['index_expression']' } '=' expressio
 Where
 
 - `table_name` is an identifier (possibly qualified with a keyspace name).
-- Restrictions for `ttl_expression`, `where_expression`, and `if_expression` are covered in the Semantics section below.
+- Restrictions for `ttl_expression`, `where_expression`, and `if_expression` are covered in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
@@ -198,7 +198,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
 
 ### Update row with the `USING TIMESTAMP` clause
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 4, 'Jeff', 20) USING TIMESTAMP 1000;

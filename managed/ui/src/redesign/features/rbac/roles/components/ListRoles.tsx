@@ -87,9 +87,13 @@ const ListRoles = () => {
     select: (data) => data.data
   });
 
-  const { data: roleBindings } = useQuery('role_bindings', getRoleBindingsForAllUsers, {
-    select: (data) => data.data
-  });
+  const { data: roleBindings, isError: isRoleBindingsError } = useQuery(
+    'role_bindings',
+    getRoleBindingsForAllUsers,
+    {
+      select: (data) => data.data
+    }
+  );
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'rbac.roles.list'
@@ -110,6 +114,8 @@ const ListRoles = () => {
       role.name.toLowerCase().includes(searchText.toLowerCase())
     );
   }
+
+  const allRoleMapping = flattenDeep(values(roleBindings ?? []));
 
   const getActions = (_: undefined, role: Role) => {
     const menuOptions = [
@@ -150,7 +156,7 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled: role.roleType === RoleType.SYSTEM
     });
 
     menuOptions.push({
@@ -160,7 +166,8 @@ const ListRoles = () => {
         setCurrentRole({
           ...role,
           roleUUID: '',
-          name: ''
+          name: '',
+          roleType: RoleType.CUSTOM
         });
         setEditView(EditViews.CONFIGURATIONS);
         setCurrentPage(Pages.CREATE_ROLE);
@@ -212,7 +219,10 @@ const ListRoles = () => {
           </RbacValidator>
         );
       },
-      disabled: false
+      disabled:
+        role.roleType === RoleType.SYSTEM ||
+        allRoleMapping.filter((roleMapping) => roleMapping.role.roleUUID === role.roleUUID)
+          .length !== 0
     });
 
     return (
@@ -223,8 +233,6 @@ const ListRoles = () => {
       </MoreActionsMenu>
     );
   };
-
-  const allRoleMapping = flattenDeep(values(roleBindings ?? []));
 
   return (
     <RbacValidator accessRequiredOn={ApiPermissionMap.GET_RBAC_ROLES}>
@@ -293,15 +301,18 @@ const ListRoles = () => {
               ).length;
               return order === SortOrder.ASCENDING ? aCount - bCount : bCount - aCount;
             }}
-            dataFormat={(_, role: Role) => (
-              <>
-                {
-                  allRoleMapping.filter(
-                    (roleMapping) => roleMapping.role.roleUUID === role.roleUUID
-                  ).length
-                }
-              </>
-            )}
+            dataFormat={(_, role: Role) => {
+              if (isRoleBindingsError) return '-';
+              return (
+                <>
+                  {
+                    allRoleMapping.filter(
+                      (roleMapping) => roleMapping.role.roleUUID === role.roleUUID
+                    ).length
+                  }
+                </>
+              );
+            }}
           >
             {t('table.users')}
           </TableHeaderColumn>

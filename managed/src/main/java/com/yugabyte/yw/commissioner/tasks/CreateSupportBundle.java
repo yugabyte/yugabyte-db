@@ -82,6 +82,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
+    supportBundle.setPathObject(bundlePath);
     Files.createDirectories(bundlePath);
     Path gzipPath =
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
@@ -122,11 +123,13 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
-          log.error("Error occurred in support bundle collection", e);
-          throw new RuntimeException(
-              String.format(
-                  "Error while trying to download the node level component files : %s",
-                  e.getMessage()));
+          // Log the error and continue with the rest of support bundle collection.
+          log.error(
+              "Error occurred in node level support bundle collection for component '{} on node"
+                  + " '{}''.",
+              componentType,
+              node.getNodeName(),
+              e);
         }
       }
     }
@@ -145,11 +148,11 @@ public class CreateSupportBundle extends AbstractTaskBase {
         supportBundleComponent.downloadComponentBetweenDates(
             customer, universe, globalComponentsDirPath, startDate, endDate, null);
       } catch (Exception e) {
-        log.error("Error occurred in support bundle collection", e);
-        throw new RuntimeException(
-            String.format(
-                "Error while trying to download the global level component files : %s",
-                e.getMessage()));
+        // Log the error and continue with the rest of support bundle collection.
+        log.error(
+            "Error occurred in global level support bundle collection for component '{}'.",
+            componentType,
+            e);
       }
     }
 

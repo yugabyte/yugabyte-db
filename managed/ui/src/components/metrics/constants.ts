@@ -119,6 +119,7 @@ export const MetricTypesWithOperations = {
       'tserver_rpc_queue_size_tserver',
       'tserver_cpu_util_secs',
       'tserver_yb_rpc_connections',
+      'tserver_live_tablet_peers',
       'raft_leader'
     ]
   },

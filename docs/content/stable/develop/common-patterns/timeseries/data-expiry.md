@@ -2,7 +2,7 @@
 title: Automatic Data Expiration
 headerTitle: Automatic data expiration
 linkTitle: Automatic data expiration
-description: Distribute your time-ordered data and retrieve fast
+description: Expire data using the `USING TTL` operator
 headcontent: Expire data using time-to-live
 menu:
   stable:

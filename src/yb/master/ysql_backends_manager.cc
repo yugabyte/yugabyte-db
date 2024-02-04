@@ -734,11 +734,13 @@ TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {
 
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
-  {
-    auto job = job_.lock();
+  if (auto job = job_.lock()) {
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
     req.set_prev_num_lagging_backends(prev_num_lagging_backends_);
+  } else {
+    AbortTask(STATUS(Aborted, "job was destroyed"));
+    return false;
   }
 
   ts_admin_proxy_->WaitForYsqlBackendsCatalogVersionAsync(req, &resp_, &rpc_, BindRpcCallback());

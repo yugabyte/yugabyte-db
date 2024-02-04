@@ -48,6 +48,8 @@ import {
   FETCH_RUNTIME_CONFIGS_RESPONSE,
   FETCH_RUNTIME_CONFIGS_KEY_INFO,
   FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+  FETCH_PROVIDER_RUNTIME_CONFIGS,
+  FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE,
   SET_RUNTIME_CONFIG,
   SET_RUNTIME_CONFIG_RESPONSE,
   DELETE_RUNTIME_CONFIG,
@@ -130,6 +132,7 @@ const INITIAL_STATE = {
   error: null,
   loading: false,
   softwareVersions: [],
+  softwareVersionswithMetaData: [],
   alerts: {
     alertsList: [],
     updated: null
@@ -165,7 +168,8 @@ const INITIAL_STATE = {
   createAlertDestination: getInitialState({}),
   createAlertConfig: getInitialState({}),
   updateAlertDestination: getInitialState({}),
-  updateAlertConfig: getInitialState({})
+  updateAlertConfig: getInitialState({}),
+  providerRuntimeConfigs: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -220,9 +224,13 @@ export default function (state = INITIAL_STATE, action) {
     case RESET_CUSTOMER:
       return { ...state, currentCustomer: getInitialState({}), authToken: getInitialState({}) };
     case FETCH_SOFTWARE_VERSIONS:
-      return { ...state, softwareVersions: [] };
+      return { ...state, softwareVersions: [], softwareVersionswithMetaData: [] };
     case FETCH_SOFTWARE_VERSIONS_SUCCESS:
-      return { ...state, softwareVersions: action.payload.data.sort(sortVersion) };
+      return {
+        ...state,
+        softwareVersions: action.payload.data.sort(sortVersion),
+        softwareVersionswithMetaData: action.payload.releasesWithMetadata
+      };
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return { ...state };
     case FETCH_TLS_CERTS:
@@ -405,6 +413,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'runtimeConfigsKeyMetadata', []);
     case FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigsKeyMetadata', action);
+    case FETCH_PROVIDER_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'providerRuntimeConfigs', []);
+    case FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, 'providerRuntimeConfigs', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

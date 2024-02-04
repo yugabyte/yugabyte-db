@@ -59,7 +59,7 @@ The master key resource policy should include the following key policy [permissi
 
 {{< note title="Note" >}}
 
-To support master key rotation, if you upgrade to YBA 2.18.0 or later, add the kms:Encrypt permission to any existing keys that are used by any AWS KMS configurations, if not already present.
+To support master key rotation, after upgrading YBA from a version prior to 2.17.3, add the kms:Encrypt permission to any existing keys that are used by any AWS KMS configurations, if not already present.
 
 {{< /note >}}
 

@@ -121,15 +121,18 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   constexpr int kBytesBeforeDocHt = 3;
   if (intent_prefix.size() < doc_ht_size + kBytesBeforeDocHt) {
     return STATUS_FORMAT(
-        Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
+        Corruption, "Intent key is too short: $0 bytes. Encoded key: $1",
+        encoded_intent_key.size(), encoded_intent_key.ToDebugHexString());
   }
   result.doc_ht.Assign(intent_prefix.Suffix(doc_ht_size));
   intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
   auto* prefix_end = intent_prefix.end();
 
   if (prefix_end[2] != KeyEntryTypeAsChar::kHybridTime)
-    return STATUS_FORMAT(Corruption, "Expecting hybrid time with ValueType $0, found $1",
-        KeyEntryType::kHybridTime, static_cast<KeyEntryType>(prefix_end[2]));
+    return STATUS_FORMAT(
+        Corruption, "Expecting hybrid time with ValueType $0, found $1. Encoded key: $2",
+        KeyEntryType::kHybridTime, static_cast<KeyEntryType>(prefix_end[2]),
+        encoded_intent_key.ToDebugHexString());
 
   if (prefix_end[0] != KeyEntryTypeAsChar::kIntentTypeSet) {
     if (prefix_end[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
@@ -140,9 +143,10 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
       return STATUS_FORMAT(
           Corruption,
           "Expecting intent type set ($0) or intent type ($1) or obsolete intent type set ($2), "
-              "found $3",
+              "found $3. Encoded key: $4",
           KeyEntryType::kIntentTypeSet, KeyEntryType::kObsoleteIntentType,
-          KeyEntryType::kObsoleteIntentTypeSet, static_cast<KeyEntryType>(prefix_end[0]));
+          KeyEntryType::kObsoleteIntentTypeSet, static_cast<KeyEntryType>(prefix_end[0]),
+          encoded_intent_key.ToDebugHexString());
     }
   } else {
     result.intent_types = IntentTypeSet(prefix_end[1]);

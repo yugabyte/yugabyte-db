@@ -23,6 +23,7 @@ This is the default concurrency control strategy and is applicable for `Repeatab
 It is not applicable for [Read Committed](../read-committed/) isolation.
 
 In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
+
 If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read, write, or lock a row in a mode conflicting with other concurrent transactions:
 
 - **Wound:** If T1 has a higher priority than all the other conflicting transactions, T1 will abort them and make progress.
@@ -344,13 +345,13 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 The following examples describe different use cases detailing the Wait-on-Conflict behavior.
 
 1. Note that the examples require you to set the YB-TServer flag `enable_wait_queues=true`.
-1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is only done to easily illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
+1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
 
 A restart is necessary for these flags to take effect.
 
 Start by setting up the table you'll use in all of the examples in this section.
 
-```output
+```sql
 create table test (k int primary key, v int);
 insert into test values (1, 1);
 insert into test values (2, 2);
@@ -996,7 +997,7 @@ commit;
 
 #### Rollback of sub-transaction with conflicting write
 
-Suppose a transaction T1 is blocked on some operation of another transaction T2. If that blocking operation was part of a subtransaction which is later rolled back, then T1 may proceed:
+Suppose a transaction T1 is blocked on some operation of another transaction T2. If that blocking operation was part of a sub-transaction which is later rolled back, then T1 may proceed:
 
 <table class="no-alter-colors">
 <thead>
@@ -1114,7 +1115,7 @@ commit;
 
 In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer flag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless it is absolutely certain that the application or workload behavior makes deadlocks impossible. A rolling restart is required for the change to take effect.
 
-Add `enable_deadlock_detection=true` to the list of YB-TServer flags and restart the cluster.
+Add `enable_deadlock_detection=true` to the list of TServer flags and restart the cluster.
 
 <table class="no-alter-colors">
 <thead>

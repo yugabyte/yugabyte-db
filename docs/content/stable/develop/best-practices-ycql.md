@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: best-practices-ycql
     parent: develop
-    weight: 582
+    weight: 571
 type: docs
 ---
 

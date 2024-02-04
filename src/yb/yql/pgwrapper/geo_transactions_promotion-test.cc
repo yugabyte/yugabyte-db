@@ -210,10 +210,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     }
 
@@ -236,10 +236,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
@@ -910,11 +910,10 @@ TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
   // Assert that the conflicting updates above go through successfully.
   auto conn = ASSERT_RESULT(Connect());
   for (int i = 1; i <= num_iterations/2; i++) {
-    auto rows_res = ASSERT_RESULT(conn.FetchFormat(
-        "SELECT people FROM $0 WHERE country='C$1'", table_name, i));
-    auto num_fetched_rows = PQntuples(rows_res.get());
-    for (int j = 0; j < num_fetched_rows; j++) {
-      ASSERT_EQ(num_sessions * 2, ASSERT_RESULT(pgwrapper::GetValue<int32>(rows_res.get(), j, 0)));
+    auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(
+        Format("SELECT people FROM $0 WHERE country='C$1'", table_name, i)));
+    for (const auto value : values) {
+      ASSERT_EQ(value, num_sessions * 2);
     }
   }
 }
@@ -975,7 +974,7 @@ TEST_F(GeoPartitionedReadCommiittedTest,
   ASSERT_OK(conn.CommitTransaction());
 
   thread_holder.WaitAndStop(60s * kTimeMultiplier);
-  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
       "SELECT people FROM $0 WHERE country='C0' AND state='$1'", table_name, kLocalState)));
   ASSERT_EQ(res, num_sessions + 1);
 }

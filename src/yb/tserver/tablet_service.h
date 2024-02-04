@@ -48,6 +48,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/read_query.h"
@@ -188,6 +190,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void CancelTransaction(const CancelTransactionRequestPB* req,
                          CancelTransactionResponsePB* resp,
                          rpc::RpcContext context) override;
+
+  void CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
+                                  CheckTserverTabletHealthResponsePB* resp,
+                                  rpc::RpcContext context) override;
 
   void StartRemoteSnapshotTransfer(
       const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,

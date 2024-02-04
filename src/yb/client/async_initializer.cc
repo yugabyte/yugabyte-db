@@ -30,7 +30,7 @@ DEFINE_test_flag(bool, force_master_leader_resolution, false,
 namespace yb {
 namespace client {
 
-AsyncClientInitialiser::AsyncClientInitialiser(
+AsyncClientInitializer::AsyncClientInitializer(
     const std::string& client_name, MonoDelta default_timeout, const std::string& tserver_uuid,
     const yb::server::ServerBaseOptions* opts, scoped_refptr<MetricEntity> metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker, rpc::Messenger* messenger)
@@ -61,24 +61,24 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   }
 }
 
-AsyncClientInitialiser::~AsyncClientInitialiser() {
+AsyncClientInitializer::~AsyncClientInitializer() {
   Shutdown();
   if (init_client_thread_) {
     init_client_thread_->Join();
   }
 }
 
-void AsyncClientInitialiser::Start(const server::ClockPtr& clock) {
+void AsyncClientInitializer::Start(const server::ClockPtr& clock) {
   CHECK_OK(Thread::Create(
-      "async_client_initialiser", "init_client", &AsyncClientInitialiser::InitClient, this, clock,
+      "async_client_initializer", "init_client", &AsyncClientInitializer::InitClient, this, clock,
       &init_client_thread_));
 }
 
-YBClient* AsyncClientInitialiser::client() const {
+YBClient* AsyncClientInitializer::client() const {
   return client_future_.get();
 }
 
-void AsyncClientInitialiser::InitClient(const server::ClockPtr& clock) {
+void AsyncClientInitializer::InitClient(const server::ClockPtr& clock) {
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
     auto result = client_builder_->Build(messenger_, clock);

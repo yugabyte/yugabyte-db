@@ -64,9 +64,9 @@ hostssl mydb myuser myhost cert,hostssl all all all reject
 To begin, download and configure sample certificates:
 
 ```sh
-$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/ent/test_certs/ca.crt
-$ wget -O node.127.0.0.1.key https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/ent/test_certs/ysql.key
-$ wget -O node.127.0.0.1.crt https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/ent/test_certs/ysql.crt
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/test_certs/ca.crt
+$ wget -O node.127.0.0.1.key https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/test_certs/ysql.key
+$ wget -O node.127.0.0.1.crt https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/test_certs/ysql.crt
 $ chmod 600 ca.crt node.127.0.0.1.key node.127.0.0.1.crt
 $ CERTS=`pwd`
 $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"

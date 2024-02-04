@@ -150,6 +150,7 @@ bool YBCStatusIsDuplicateKey(YBCStatus s);
 bool YBCStatusIsSnapshotTooOld(YBCStatus s);
 bool YBCStatusIsTryAgain(YBCStatus s);
 bool YBCStatusIsAlreadyPresent(YBCStatus s);
+bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);

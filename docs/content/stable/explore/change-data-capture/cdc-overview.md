@@ -30,7 +30,7 @@ Each tablet has its own WAL file. WAL is NOT in-memory, but it is disk persisted
 
 ![How does CDC work](/images/explore/cdc-overview-work2.png)
 
-YugabyteDB normally purges WAL segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular YugabyyteDB database, it starts by performing a consistent snapshot of each of the database schemas.
+YugabyteDB normally purges WAL segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas.
 
 The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database.
 
@@ -59,7 +59,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 ## Further reading
 
-* Refer to this [GitHub repo](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
+* Refer to [CDC Examples](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
 * Refer to [Tutorials](../cdc-tutorials/) to deploy in different Kafka environments.
 * Refer to blogs about CDC:
   * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/)

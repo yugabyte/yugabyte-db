@@ -122,20 +122,44 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE type = 'closed' AND iso_region 
 SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
   ident  |  type  |                     name                      | elevation_ft | continent | iso_country | iso_region |     municipality     | gps_code | iata_code | local_code |              coordinates
 ---------+--------+-----------------------------------------------+--------------+-----------+-------------+------------+----------------------+----------+-----------+------------+----------------------------------------
- 0CA0    | closed | Drew Medical Center Heliport                  |          180 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 33.923302, -118.241997
  0CA1    | closed | Northside Airpark                             |          190 | NA        | US          | US-CA      | Santa Maria          |          |           |            | 34.9883003235, -120.458000183
- 0Q6     | closed | Shingletown Airport                           |         3880 | NA        | US          | US-CA      | Shingletown          |          |           |            | 40.522099, -121.818001
- 10CL    | closed | Joe Gottlieb Field                            |          347 | NA        | US          | US-CA      | Bakersfield          |          |           |            | 35.368, -119.195
- 19CL    | closed | Palisades Ranch Airport                       |         2510 | NA        | US          | US-CA      | Helendale            |          |           |            | 34.7122, -117.350999
  28CL    | closed | Borax Heliport                                |         2400 | NA        | US          | US-CA      | Boron                |          |           |            | 35.030498, -117.708
  34CA    | closed | Fiddyment Field                               |           98 | NA        | US          | US-CA      | Roseville            | 34CA     |           | 34CA       | 38.79209899902344, -121.37300109863281
- 35CL    | closed | 59 Ranch Airport                              |          154 | NA        | US          | US-CA      | Merced               |          |           |            | 37.231899, -120.478996
  3CA3    | closed | Dixon Airport                                 |         2440 | NA        | US          | US-CA      | Cuyama               |          |           |            | 34.922199, -119.526001
+ 76CL    | closed | Emmett Field                                  |          135 | NA        | US          | US-CA      | Dos Palos            |          |           |            | 37.088799, -120.500999
+ CA10    | closed | Coonrod Ranch Airport                         |         3010 | NA        | US          | US-CA      | Little Shasta        |          |           |            | 41.6171, -122.319
+ CA30    | closed | Commodore Heliport                            |           10 | NA        | US          | US-CA      | San Francisco        |          |           |            | 37.810799, -122.415001
+ CA80    | closed | San Bernardino County Medical Center Heliport |         1124 | NA        | US          | US-CA      | San Bernardino       |          |           |            | 34.1278, -117.267997
+ CL88    | closed | Wesinger Ranch Airport                        |         4300 | NA        | US          | US-CA      | Alturas              |          |           |            | 41.447102, -120.584
+ CL90    | closed | Butte Creek Hog Ranch Airport                 |          200 | NA        | US          | US-CA      | Chico                |          |           |            | 39.688801, -121.783997
+ CLG     | closed | Coalinga Airport                              |              | NA        | US          | US-CA      |                      |          | CLG       |            | 36.1580433385, -120.360116959
+ KNGZ    | closed | Alameda Naval Air Station                     |           10 | NA        | US          | US-CA      | Alameda              | KNGZ     | NGZ       |            | 37.78889846801758, -122.31999969482422
+ SBT     | closed | Tri-City Airport                              |         1038 | NA        | US          | US-CA      | San Bernardino       |          |           |            | 34.0677, -117.2725
+ SFR     | closed | San Fernando Airport                          |         1168 | NA        | US          | US-CA      | Los Angeles          |          | SFR       |            | 34.289, -118.422
+ SRF     | closed | Hamilton Field                                |            2 | NA        | US          | US-CA      | San Rafael           |          | SRF       |            | 38.06, -122.51
+ SRU     | closed | Santa Cruz Sky Park                           |          523 | NA        | US          | US-CA      | Scotts Valley        |          | SRU       |            | 37.0503, -122.0315
+ US-0322 | closed | Camp San Luis Obispo Army Airfield            |          256 | NA        | US          | US-CA      | Camp San Luis Obispo |          |           |            | 35.3321, -120.7483
+ US-0483 | closed | Terminal Island Airport/Allen Field           |           12 | NA        | US          | US-CA      | Long Beach           |          |           |            | 33.75, -118.257001
+ 0CA0    | closed | Drew Medical Center Heliport                  |          180 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 33.923302, -118.241997
+ 19CL    | closed | Palisades Ranch Airport                       |         2510 | NA        | US          | US-CA      | Helendale            |          |           |            | 34.7122, -117.350999
+ 35CL    | closed | 59 Ranch Airport                              |          154 | NA        | US          | US-CA      | Merced               |          |           |            | 37.231899, -120.478996
  3CA5    | closed | Haws Airport                                  |          192 | NA        | US          | US-CA      | Madera               |          |           |            | 36.9416, -120.242995
  43CN    | closed | Mazza Airport                                 |           20 | NA        | US          | US-CA      | Petaluma             |          |           |            | 38.1852, -122.601997
  44CA    | closed | W R Byron Airport                             |          400 | NA        | US          | US-CA      | Blythe               |          |           |            | 33.679199, -114.643997
- 45L     | closed | Parker Center Heliport                        |          450 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 34.0522, -118.240997
  46CA    | closed | Rancho Vallecito Airport                      |         1680 | NA        | US          | US-CA      | Julian               |          |           |            | 32.970901, -116.408997
+ 91CL    | closed | Sacatar Meadows Airport                       |         6427 | NA        | US          | US-CA      | Kennedy Meadows      |          |           |            | 35.989899, -118.080002
+ 99L     | closed | Pomona Superior Court Heliport                |         1000 | NA        | US          | US-CA      | Pomona               | 99L      |           | 99L        | 34.052498626709, -117.74900054932
+ 9CL1    | closed | Johnson Ranch Airport                         |          240 | NA        | US          | US-CA      | Le Grand             |          |           |            | 37.191101, -120.276001
+ CA17    | closed | Peterson Airport                              |          158 | NA        | US          | US-CA      | Riverbank            |          |           |            | 37.723499, -120.889999
+ CN22    | closed | Northrop Anaheim Heliport                     |          160 | NA        | US          | US-CA      | Anaheim              |          |           |            | 33.865002, -117.917
+ CN35    | closed | Hughes/Space & Comm. Heliport                 |          183 | NA        | US          | US-CA      | El Segundo           |          |           |            | 33.930302, -118.398003
+ CVR     | closed | Hughes Airport                                |           17 | NA        | US          | US-CA      | Culver City          |          | CVR       |            | 33.975, -118.417
+ KNZJ    | closed | El Toro Marine Corps Air Station              |          383 | NA        | US          | US-CA      | Santa Ana            | KNZJ     |           | NZJ        | 33.67610168457031, -117.73100280761719
+ US-0260 | closed | San Clemente Naval Auxiliary Air Station      |              | NA        | US          | US-CA      |                      |          |           |            | 32.94721, -118.53085
+ US-0507 | closed | Natomas Field                                 |           19 | NA        | US          | US-CA      | Sacramento           |          |           |            | 38.638237, -121.515236
+ 0Q6     | closed | Shingletown Airport                           |         3880 | NA        | US          | US-CA      | Shingletown          |          |           |            | 40.522099, -121.818001
+ 10CL    | closed | Joe Gottlieb Field                            |          347 | NA        | US          | US-CA      | Bakersfield          |          |           |            | 35.368, -119.195
+ 45L     | closed | Parker Center Heliport                        |          450 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 34.0522, -118.240997
  52CA    | closed | Lake Mathews Airport                          |         1385 | NA        | US          | US-CA      | Riverside            |          |           |            | 33.8531, -117.424004
  57CA    | closed | Merle Norman Cosmetics Bldg 3 Heliport        |          126 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 33.9533, -118.380997
  59L     | closed | City Hall Heliport                            |          360 | NA        | US          | US-CA      | Los Angeles          |          |           |            | 34.054199, -118.242995
@@ -143,45 +167,21 @@ SELECT * FROM airports WHERE type = 'closed' AND iso_region = 'US-CA';
  6CL9    | closed | Peoria Airport                                |          830 | NA        | US          | US-CA      | Jamestown            |          |           |            | 37.9217, -120.514999
  74CA    | closed | R.I. San Bernardino G/L Helistop              |         1030 | NA        | US          | US-CA      | San Bernardino       |          |           |            | 34.074501, -117.268997
  75CL    | closed | Willis Ranch Airport                          |          115 | NA        | US          | US-CA      | Dos Palos            |          |           |            | 37.065497, -120.567
- 76CL    | closed | Emmett Field                                  |          135 | NA        | US          | US-CA      | Dos Palos            |          |           |            | 37.088799, -120.500999
  87CA    | closed | Swanson Ranch Nr 1 Airport                    |          248 | NA        | US          | US-CA      | Hanford              |          |           |            | 36.399899, -119.617995
  8Q0     | closed | Travis Air Force Base Aero Club               |           51 | NA        | US          | US-CA      | Fairfield            |          |           |            | 38.269688, -121.972081
- 91CL    | closed | Sacatar Meadows Airport                       |         6427 | NA        | US          | US-CA      | Kennedy Meadows      |          |           |            | 35.989899, -118.080002
  97CA    | closed | Tejon Agricultural Airport                    |         1065 | NA        | US          | US-CA      | Lebec                |          |           |            | 34.989101, -118.915001
  98CL    | closed | Noltas Airport                                |          145 | NA        | US          | US-CA      | Willows              |          |           |            | 39.578999, -122.200996
- 99L     | closed | Pomona Superior Court Heliport                |         1000 | NA        | US          | US-CA      | Pomona               | 99L      |           | 99L        | 34.052498626709, -117.74900054932
- 9CL1    | closed | Johnson Ranch Airport                         |          240 | NA        | US          | US-CA      | Le Grand             |          |           |            | 37.191101, -120.276001
  CA02    | closed | Patterson Airport                             |          168 | NA        | US          | US-CA      | Patterson            |          |           |            | 37.468498, -121.168999
- CA10    | closed | Coonrod Ranch Airport                         |         3010 | NA        | US          | US-CA      | Little Shasta        |          |           |            | 41.6171, -122.319
  CA14    | closed | U of C - Richmond Field Station Heliport      |           17 | NA        | US          | US-CA      | Richmond             |          |           |            | 37.913799, -122.332002
- CA17    | closed | Peterson Airport                              |          158 | NA        | US          | US-CA      | Riverbank            |          |           |            | 37.723499, -120.889999
- CA30    | closed | Commodore Heliport                            |           10 | NA        | US          | US-CA      | San Francisco        |          |           |            | 37.810799, -122.415001
- CA80    | closed | San Bernardino County Medical Center Heliport |         1124 | NA        | US          | US-CA      | San Bernardino       |          |           |            | 34.1278, -117.267997
  CL18    | closed | Danby Airstrip                                |         1400 | NA        | US          | US-CA      | Danby                |          |           |            | 34.555, -115.356003
- CL88    | closed | Wesinger Ranch Airport                        |         4300 | NA        | US          | US-CA      | Alturas              |          |           |            | 41.447102, -120.584
- CL90    | closed | Butte Creek Hog Ranch Airport                 |          200 | NA        | US          | US-CA      | Chico                |          |           |            | 39.688801, -121.783997
- CLG     | closed | Coalinga Airport                              |              | NA        | US          | US-CA      |                      |          | CLG       |            | 36.1580433385, -120.360116959
- CN22    | closed | Northrop Anaheim Heliport                     |          160 | NA        | US          | US-CA      | Anaheim              |          |           |            | 33.865002, -117.917
- CN35    | closed | Hughes/Space & Comm. Heliport                 |          183 | NA        | US          | US-CA      | El Segundo           |          |           |            | 33.930302, -118.398003
- CVR     | closed | Hughes Airport                                |           17 | NA        | US          | US-CA      | Culver City          |          | CVR       |            | 33.975, -118.417
  KL67    | closed | Rialto Municipal Miro Field                   |         1455 | NA        | US          | US-CA      | Rialto               | KL67     |           | L67        | 34.129299163800006, -117.402000427
- KNGZ    | closed | Alameda Naval Air Station                     |           10 | NA        | US          | US-CA      | Alameda              | KNGZ     | NGZ       |            | 37.78889846801758, -122.31999969482422
  KNTK    | closed | MCAS Tustin                                   |           52 | NA        | US          | US-CA      | Tustin               | KNTK     |           | NTK        | 33.7066993713, -117.827003479
- KNZJ    | closed | El Toro Marine Corps Air Station              |          383 | NA        | US          | US-CA      | Santa Ana            | KNZJ     |           | NZJ        | 33.67610168457031, -117.73100280761719
  L80     | closed | Roy Williams Airport                          |         2464 | NA        | US          | US-CA      | Joshua Tree          |          |           |            | 34.154202, -116.251999
  LRO     | closed | Sharpe AAF                                    |           55 | NA        | US          | US-CA      | Lathrop              |          | LRO       |            | 37.837916666699996, -121.272805556
  NRC     | closed | NASA Crows Landing Airport                    |          166 | NA        | US          | US-CA      | Crows Landing        | KNRC     | NRC       | NRC        | 37.408000946045, -121.10900115967
  NXF     | closed | MCOLF Camp Pendleton (Red Beach) Airport      |           89 | NA        | US          | US-CA      | Oceanside            |          |           |            | 33.285643, -117.456476
  O62     | closed | Carmel Valley                                 |              | NA        | US          | US-CA      |                      |          | O62       |            | 36.4814843441, -121.72911644
  RZH     | closed | Quartz Hill Airport                           |         2465 | NA        | US          | US-CA      | Lancaster            |          | RZH       |            | 34.65, -118.206
- SBT     | closed | Tri-City Airport                              |         1038 | NA        | US          | US-CA      | San Bernardino       |          |           |            | 34.0677, -117.2725
- SFR     | closed | San Fernando Airport                          |         1168 | NA        | US          | US-CA      | Los Angeles          |          | SFR       |            | 34.289, -118.422
- SRF     | closed | Hamilton Field                                |            2 | NA        | US          | US-CA      | San Rafael           |          | SRF       |            | 38.06, -122.51
- SRU     | closed | Santa Cruz Sky Park                           |          523 | NA        | US          | US-CA      | Scotts Valley        |          | SRU       |            | 37.0503, -122.0315
- US-0260 | closed | San Clemente Naval Auxiliary Air Station      |              | NA        | US          | US-CA      |                      |          |           |            | 32.94721, -118.53085
- US-0322 | closed | Camp San Luis Obispo Army Airfield            |          256 | NA        | US          | US-CA      | Camp San Luis Obispo |          |           |            | 35.3321, -120.7483
- US-0483 | closed | Terminal Island Airport/Allen Field           |           12 | NA        | US          | US-CA      | Long Beach           |          |           |            | 33.75, -118.257001
- US-0507 | closed | Natomas Field                                 |           19 | NA        | US          | US-CA      | Sacramento           |          |           |            | 38.638237, -121.515236
  US-1038 | closed | Conner Airport                                |         4108 | NA        | US          | US-CA      | Goffs                |          |           |            | 35.097004, -115.221257
  WJBK    | closed | Berkley Municipal Heliport                    |           12 | NA        | US          | US-CA      | Oakland              | WJBK     | JBK       | JBK        | 37.8666, -122.3065
 (62 rows)

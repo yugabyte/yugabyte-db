@@ -442,6 +442,13 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void AddTabletCheckpoint(OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
+  // Validates the passed in AutoFlags config version and returns error if it does not match the
+  // local universe. Returns true if the check passed, and false if it failed. Sets
+  // AUTO_FLAGS_CONFIG_VERSION_MISMATCH error and the local_auto_flags_config_version in the resp
+  // when the config version does not match.
+  bool ValidateAutoFlagsConfigVersion(
+      const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;

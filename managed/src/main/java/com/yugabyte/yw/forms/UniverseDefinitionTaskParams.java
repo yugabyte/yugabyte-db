@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.audit.*;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -48,6 +49,7 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -78,6 +80,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+
+  public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
+      ImmutableSet.of(
+          SoftwareUpgradeState.Upgrading,
+          SoftwareUpgradeState.RollingBack,
+          SoftwareUpgradeState.Finalizing);
 
   @Constraints.Required()
   @Size(min = 1)
@@ -140,6 +148,34 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
+
+  @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
+
+  // Set to true when software rollback is allowed.
+  @ApiModelProperty(
+      value = "Available since YBA version 2.21.0.0.",
+      accessMode = AccessMode.READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
+  public boolean isSoftwareRollbackAllowed = false;
+
+  public enum SoftwareUpgradeState {
+    @EnumValue("Ready")
+    Ready,
+    @EnumValue("Upgrading")
+    Upgrading,
+    @EnumValue("UpgradeFailed")
+    UpgradeFailed,
+    @EnumValue("PreFinalize")
+    PreFinalize,
+    @EnumValue("Finalizing")
+    Finalizing,
+    @EnumValue("FinalizeFailed")
+    FinalizeFailed,
+    @EnumValue("RollingBack")
+    RollingBack,
+    @EnumValue("RollbackFailed")
+    RollbackFailed
+  }
 
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;
@@ -245,7 +281,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
 
-  @ApiModelProperty public boolean otelCollectorEnabled = false;
+  @ApiModelProperty(value = "YbaApi Internal. OpenTelemetry Collector enabled for universe")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  public boolean otelCollectorEnabled = false;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -290,7 +328,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
-    public boolean equals(Cluster other) {
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37).append(uuid).toHashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      Cluster other = (Cluster) obj;
       return uuid.equals(other.uuid);
     }
 
@@ -675,7 +726,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
-    // Instance tags (used for AWS only).
+    // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
     // True if user wants to have dedicated nodes for master and tserver processes.
@@ -703,9 +754,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
 
     // Audit Logging Config
-    @ApiModelProperty public AuditLogConfig auditLogConfig;
+    @ApiModelProperty(value = "YbaApi Internal. Audit Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+    public AuditLogConfig auditLogConfig;
 
-    // for gflags
     public AuditLogConfig getAuditLogConfig() {
       return auditLogConfig;
     }
@@ -873,8 +925,42 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return deviceInfo;
     }
 
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37)
+          .append(universeName)
+          .append(provider)
+          .append(providerType)
+          .append(replicationFactor)
+          .append(regionList)
+          .append(preferredRegion)
+          .append(instanceType)
+          .append(numNodes)
+          .append(ybSoftwareVersion)
+          .append(accessKeyCode)
+          .append(assignPublicIP)
+          .append(useSpotInstance)
+          .append(spotPrice)
+          .append(assignStaticPublicIP)
+          .append(useTimeSync)
+          .append(useSystemd)
+          .append(dedicatedNodes)
+          .append(masterInstanceType)
+          .append(masterInstanceType)
+          .append(userIntentOverrides)
+          .build();
+    }
+
     // NOTE: If new fields are checked, please add them to the toString() as well.
-    public boolean equals(UserIntent other) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      UserIntent other = (UserIntent) obj;
       if (universeName.equals(other.universeName)
           && provider.equals(other.provider)
           && providerType == other.providerType
@@ -1169,6 +1255,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return null;
     }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  /**
+   * Helper API to retrieve tserver nodes that are in a specified cluster.
+   *
+   * @param uuid UUID of the cluster that we want tserver nodes from.
+   * @return A Set of NodeDetails that are in the specified cluster.
+   */
+  @JsonIgnore
+  public Set<NodeDetails> getTserverNodesInCluster(UUID uuid) {
+    if (nodeDetailsSet == null) {
+      return null;
+    }
+    return nodeDetailsSet.stream()
+        .filter(n -> n.isInPlacement(uuid) && n.isTserver)
+        .collect(Collectors.toSet());
   }
 
   @JsonIgnore

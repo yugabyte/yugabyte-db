@@ -163,6 +163,8 @@ public class SwamperHelper {
     NODE_NAME,
     NODE_ADDRESS,
     NODE_IDENTIFIER,
+    NODE_REGION,
+    NODE_CLUSTER_TYPE,
     UNIVERSE_UUID
   }
 
@@ -195,6 +197,9 @@ public class SwamperHelper {
         labels.put(
             LabelType.NODE_ADDRESS.toString().toLowerCase(), nodeDetails.cloudInfo.private_ip);
       }
+      if (nodeDetails.cloudInfo.region != null) {
+        labels.put(LabelType.NODE_REGION.toString().toLowerCase(), nodeDetails.cloudInfo.region);
+      }
       if (CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
         NodeInstance nodeInstance = NodeInstance.get(nodeDetails.nodeUuid);
         if (nodeInstance != null
@@ -204,6 +209,11 @@ public class SwamperHelper {
               nodeInstance.getDetails().instanceName);
         }
       }
+    }
+    if (nodeDetails.placementUuid != null) {
+      labels.put(
+          LabelType.NODE_CLUSTER_TYPE.toString().toLowerCase(),
+          universe.getCluster(nodeDetails.placementUuid).clusterType.toString());
     }
     if (t.isCollectionLevelSupported()) {
       MetricCollectionLevel level = getLevel(universe);

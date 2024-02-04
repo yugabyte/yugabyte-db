@@ -501,11 +501,11 @@ The database server port to which you are currently connected. This is set every
 
 ##### PROMPT1 / PROMPT2 / PROMPT3
 
-These specify what the prompts ysqlsh issues should look like. See [Prompting](#prompting) below.
+These specify what the prompts ysqlsh issues should look like. See [Prompting](#prompting).
 
 ##### QUIET
 
-Setting this variable to `on` is equivalent to the command line option `-q`. It is probably not too useful in interactive mode.
+Setting this variable to `on` is equivalent to the command line option `-q`. It is probably not too helpful in interactive mode.
 
 ##### SERVER_VERSION_NAME / SERVER_VERSION_NUM
 

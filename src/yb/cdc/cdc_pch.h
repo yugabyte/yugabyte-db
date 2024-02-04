@@ -75,6 +75,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/container/stable_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
@@ -107,11 +108,14 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
@@ -176,10 +180,12 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/background_task.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/byte_buffer.h"
@@ -194,6 +200,7 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -209,6 +216,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
@@ -223,6 +233,7 @@
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -232,6 +243,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
@@ -241,6 +253,7 @@
 #include "yb/util/opid.messages.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
@@ -266,11 +279,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"

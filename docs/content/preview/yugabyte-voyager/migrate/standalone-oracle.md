@@ -8,11 +8,17 @@ private=true
 
     ```sql
     SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
     LOG_MODE
     ------------
     ARCHIVELOG
+    ```
 
-    If not enabled,
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
     sqlplus /nolog
     SQL>alter system set db_recovery_file_dest_size = 10G;
     SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;

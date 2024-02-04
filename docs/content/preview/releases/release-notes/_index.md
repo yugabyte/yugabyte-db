@@ -14,6 +14,7 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.20](v2.20/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 | [v2.19](v2.19/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.19" release >}} | No support | n/a |
 | [v2.18](v2.18/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
 | [v2.16](v2.16/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.16" release >}} | {{< yb-eol-dates "v2.16" EOM >}} | {{< yb-eol-dates "v2.16" EOL >}} |
@@ -40,7 +41,7 @@ The following stable and preview releases are no longer supported:
 | [v2.17](v2.17/) | December 8, 2022 | n/a | n/a |
 | [v2.15](v2.15/) | June 27, 2022 | n/a | n/a |
 | [v2.13](end-of-life/v2.13/) | March 7, 2022 | n/a | n/a |
-| [v2.12](end-of-life/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
+| [v2.12](end-of-life/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.11](end-of-life/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](end-of-life/v2.9/) | August 31, 2021 | n/a | n/a |
 | [v2.8](end-of-life/v2.8/) | November 15, 2021 | November 15, 2022 | May 15, 2023 |

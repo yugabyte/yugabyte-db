@@ -11,10 +11,14 @@ menu:
 type: docs
 ---
 
-This section states the restrictions that govern the use of "commit" and other transaction control statements in user-defined subprograms (and, by extension, in anonymous blocks). It then makes a practical recommendation always to invoke a user-defined subprogram using _single statement automatic transaction mode_. See these two sections:
+This section states the restrictions that govern the use of "commit" and other transaction control statements in user-defined subprograms (and, by extension, in anonymous blocks). It then makes a practical recommendation _almost_ always to invoke a user-defined subprogram using _single statement automatic transaction mode_. See these two sections:
 
 - [Semantics of issuing non-transaction-control SQL statements during an ongoing transaction](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-during-an-ongoing-transaction)
-- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing).)
+- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing).
+
+{{< tip title="When you should invoke a user-defined subprogram within an ongoing explicitly started transaction." >}}
+Notice the use of "_almost_ always" in the recommendation. There are very rare exceptions where this recommendation defeats the larger aim. A compelling example is shown in the section **[Using the "hard-shell" approach to separate the code that opens a cursor from the code that fetches the rows](../../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/cursor-manipulation/#using-the-hard-shell-approach-to-separate-the-code-that-opens-a-cursor-from-the-code-that-fetches-the-rows)**.
+{{< /tip >}}
 
 Finally, it demonstrates all of the restrictions with code examples.
 

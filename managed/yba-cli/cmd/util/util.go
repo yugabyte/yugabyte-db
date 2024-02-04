@@ -279,3 +279,21 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	}
 	return 0, errors.New("Unable to parse YB version strings")
 }
+
+// IsYBVersion checks if the given string is a valid YB version string
+func IsYBVersion(v string) (bool, error) {
+	ybaVersionRegex := "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$"
+	vParts := strings.Split(v, "-")
+	if len(vParts) > 2 {
+		v = fmt.Sprintf("%v%v", vParts[0]+"-", vParts[1])
+	}
+	versionPattern, err := regexp.Compile(ybaVersionRegex)
+	if err != nil {
+		return false, err
+	}
+	vMatcher := versionPattern.Match([]byte(v))
+	if !vMatcher {
+		return false, errors.New("unable to parse YB version strings")
+	}
+	return true, nil
+}

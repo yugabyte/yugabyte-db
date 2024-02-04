@@ -165,7 +165,7 @@ true             | polymorphic: boolean
 
 The function _my_typeof()_ adds no functionality beyond what the _pg_typeof()_ built-in function exposes. So the code example has no value beyond this pedagogy:
 
-- The built-in function _pg_typeof()_ is itself polymorphic. The \\_df_ meta-command shows that its input formal argument has the datatype _"any"_. (The double quotes are used because _any_ is a SQL reserved word.) Notice that the designer of this built-in could just as well have defined it with an input formal argument of data type _anyelement_.
+- The built-in function _pg_typeof()_ is itself polymorphic. The \\_df_ meta-command shows that its input formal argument has the data type _"any"_. (The double quotes are used because _any_ is a SQL reserved word.) Notice that the designer of this built-in could just as well have defined it with an input formal argument of data type _anyelement_.
 - A user-defined subprogram with an input formal argument of data type _anyelement_ can be among a set of distinguishable overloads where others in the set have input formal arguments of data type, for example, _text_ or _int_.
 
 ### Proof-of-concept example #2
@@ -223,7 +223,7 @@ This is the result:
 
 ## Combining variadic and polymorphic functionality in a single user-defined function
 
-A _variadic_ function can be _polymorphic_ too. Simply declare its last formal argument as _variadic anyarray_.  Argument matching and the determination of the actual result type behave as you'd expect.
+A _variadic_ function can be _polymorphic_ too. Simply declare its last formal argument as _variadic anyarray_. Argument matching, and the determination of the actual result type, behave as you'd expect.
 
 ### Example: _mean()_ for numeric values or single character values
 

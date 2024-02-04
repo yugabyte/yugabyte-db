@@ -242,7 +242,7 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
- * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level, and it uses
  * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
  */
@@ -280,14 +280,6 @@ extern bool YbNeedAdditionalCatalogTables();
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
- * Handle a DocDB status while ignoring the 'AlreadyPresent' error case. It is
- * useful in providing specific error messages in the case of 'AlreadyPresent"
- * error.
- */
-extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
-											   bool *already_present);
-
-/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
@@ -298,7 +290,10 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  */
 extern void YBInitPostgresBackend(const char *program_name,
 								  const char *db_name,
-								  const char *user_name);
+								  const char *user_name,
+								  uint64_t *session_id);
+
+extern bool YbGetCurrentSessionId(uint64_t *session_id);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -551,6 +546,12 @@ extern int yb_wait_for_backends_catalog_version_timeout;
  */
 extern bool yb_prefer_bnl;
 
+/*
+ * If true, all fields that vary from run to run are hidden from the
+ * output of EXPLAIN.
+ */
+extern bool yb_explain_hide_non_deterministic_fields;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -589,6 +590,12 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -608,6 +615,12 @@ extern char *yb_test_fail_index_state_change;
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+/*
+ * GUC to allow user to silence the error saying that advisory locks are not
+ * supported.
+ */
+extern bool yb_silence_advisory_locks_not_supported_error;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -635,13 +648,37 @@ bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
 void YbSetIsGlobalDDL();
-void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
-								bool is_breaking_catalog_change);
+
+typedef enum YbSysCatalogModificationAspect
+{
+	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 1,
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 2
+} YbSysCatalogModificationAspect;
+
+typedef enum YbDdlMode
+{
+	YB_DDL_MODE_SILENT = 0,
+
+	YB_DDL_MODE_VERSION_INCREMENT =
+		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
+
+	YB_DDL_MODE_BREAKING_CHANGE =
+		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
+		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
+} YbDdlMode;
+
+void YBIncrementDdlNestingLevel(YbDdlMode mode);
 void YBDecrementDdlNestingLevel();
-bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-								 bool *is_catalog_version_increment,
-								 bool *is_breaking_catalog_change,
-								 ProcessUtilityContext context);
+
+typedef struct YbDdlModeOptional
+{
+	bool has_value;
+	YbDdlMode value;
+} YbDdlModeOptional;
+
+YbDdlModeOptional YbGetDdlMode(
+	PlannedStmt *pstmt, ProcessUtilityContext context);
+
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
@@ -823,6 +860,10 @@ void YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+
+/* GUC assign hook for max_replication_slots */
+extern void yb_assign_max_replication_slots(int newval, void *extra);
+
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
@@ -914,8 +955,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
  * here. Also we don't need ereport's flexibility, as we support transfer of
  * limited subset of Postgres error fields.
  *
- * Similar to ereport, we have a version for compilers without support for
- * __builtin_constant_p, though we may drop it eventually.
+ * We require the compiler to support __builtin_constant_p.
  */
 #ifdef HAVE__BUILTIN_CONSTANT_P
 #define HandleYBStatusAtErrorLevel(status, elevel) \
@@ -945,53 +985,22 @@ OptSplit *YbGetSplitOptions(Relation rel);
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(filename ? filename : __FILE__, \
+				errfinish(NULL, \
 						  lineno > 0 ? lineno : __LINE__, \
-						  funcname ? funcname : PG_FUNCNAME_MACRO);	   \
+						  NULL); \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
-		} \
-	} while (0)
-#else							/* !HAVE__BUILTIN_CONSTANT_P */
-#define HandleYBStatusAtErrorLevel(status, elevel) \
-	do \
-	{ \
-		AssertMacro(!IsMultiThreadedMode()); \
-		YBCStatus _status = (status); \
-		if (_status) \
-		{ \
-			const int		elevel_ = (elevel); \
-			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
-			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
-			const char	   *filename = YBCStatusFilename(_status); \
-			int				lineno = YBCStatusLineNumber(_status); \
-			const char	   *funcname = YBCStatusFuncname(_status); \
-			const char	   *msg_buf = NULL; \
-			const char	   *detail_buf = NULL; \
-			size_t		    msg_nargs = 0; \
-			size_t		    detail_nargs = 0; \
-			const char	  **msg_args = NULL; \
-			const char	  **detail_args = NULL; \
-			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
-										   &msg_nargs, &msg_args, &detail_buf, \
-										   &detail_nargs, &detail_args); \
-			YBCFreeStatus(_status); \
-			if (errstart(elevel_, TEXTDOMAIN)) \
+			else \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
-				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
-				errcode(pg_err_code); \
-				yb_txn_errcode(txn_err_code); \
-				errhidecontext(true); \
-				errfinish(filename ? filename : __FILE__, \
-						  lineno > 0 ? lineno : __LINE__, \
-						  funcname ? funcname : PG_FUNCNAME_MACRO); \
-				if (elevel_ >= ERROR) \
-					pg_unreachable(); \
+				if (filename) \
+					pfree((void*) filename); \
+				if (funcname) \
+					pfree((void*) funcname); \
 			} \
 		} \
 	} while (0)

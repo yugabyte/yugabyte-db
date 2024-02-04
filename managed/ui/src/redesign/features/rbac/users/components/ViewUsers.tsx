@@ -31,7 +31,7 @@ import { RoleTypeComp } from '../../common/RbacUtils';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 import { ForbiddenRoles, Role, RoleType } from '../../roles';
-import { RbacUser } from '../interface/Users';
+import { RbacUser, UserTypes } from '../interface/Users';
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as User } from '../../../../assets/user.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
@@ -187,7 +187,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
                 </RbacValidator>
               );
             },
-            disabled: isSuperAdmin
+            disabled: isSuperAdmin || (user.userType === UserTypes.LDAP && user.ldapSpecifiedRole)
           },
           {
             text: t('table.moreActions.deleteUser'),

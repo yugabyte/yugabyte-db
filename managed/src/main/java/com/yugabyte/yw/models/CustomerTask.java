@@ -294,6 +294,9 @@ public class CustomerTask extends Model {
     @EnumValue("Failover")
     Failover,
 
+    @EnumValue("Switchover")
+    Switchover,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -332,6 +335,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("DisableYbc")
     DisableYbc,
+
+    @EnumValue("UpgradeYbcGFlags")
+    UpgradeYbcGFlags,
 
     @EnumValue("ConfigureDBApis")
     ConfigureDBApis,
@@ -455,7 +461,9 @@ public class CustomerTask extends Model {
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
         case Failover:
-          return completed ? "Failed over dr confing " : "Failing over dr confing ";
+          return completed ? "Failed over dr config " : "Failing over dr config ";
+        case Switchover:
+          return completed ? "Switched over dr config " : "Switching over dr config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
@@ -490,6 +498,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
+        case UpgradeYbcGFlags:
+          return completed ? "Upgraded Ybc GFlags" : "Upgrading Ybc GFlags";
         case ConfigureDBApisKubernetes:
         case ConfigureDBApis:
           return completed ? "Configured DB APIs" : "Configuring DB APIs";
@@ -768,10 +778,17 @@ public class CustomerTask extends Model {
       return 0;
     }
     int subTaskSize = rootTaskInfo.getSubTasks().size();
-    // This performs cascade delete.
-    rootTaskInfo.delete();
+    deleteTasks(rootTaskInfo);
     delete();
     return 2 + subTaskSize;
+  }
+
+  @Transactional
+  // This is in a transaction block to not lose the parent task UUID.
+  private void deleteTasks(TaskInfo rootTaskInfo) {
+    rootTaskInfo.delete();
+    // TODO This is needed temporarily if the migration to add the FK constraint is skipped.
+    rootTaskInfo.getSubTasks().stream().forEach(TaskInfo::delete);
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {

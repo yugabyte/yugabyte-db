@@ -3,6 +3,7 @@ title: Alerts in YugabyteDB Anywhere
 headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
+headcontent: Set alerts for activity in your account
 menu:
   stable_yugabyte-platform:
     identifier: alert
@@ -35,4 +36,4 @@ For additional information, see the following:
 
 - [Create and configure alerts](../../configure-yugabyte-platform/set-up-alerts-health-check/)
 - [Alerts and notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
-- [Metrics in YugabyteDB Anywhere](../../troubleshoot/universe-issues/#use-metrics)
+- [Metrics in YugabyteDB Anywhere](../anywhere-metrics/)

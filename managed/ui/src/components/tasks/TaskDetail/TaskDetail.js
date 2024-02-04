@@ -116,7 +116,7 @@ class TaskDetail extends Component {
           {isNonEmptyString(currentTaskData.title) && currentTaskData.retryable && (
             <RbacValidator
               accessRequiredOn={{
-                onResource: universeUUID,
+                onResource: currentTaskData?.targetUUID,
                 ...ApiPermissionMap.RETRY_TASKS
               }}
               isControl

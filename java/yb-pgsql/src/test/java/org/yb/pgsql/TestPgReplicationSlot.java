@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
@@ -36,6 +37,20 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected int getInitialNumTServers() {
     return 3;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("TEST_ysql_yb_enable_replication_commands", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_ysql_yb_enable_replication_commands", "true");
+    return flagMap;
   }
 
   @Test

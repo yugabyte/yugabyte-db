@@ -201,7 +201,7 @@ std::vector<std::string> PerfArguments(int pid) {
 
 }  // namespace
 
-template<class T>
+template<BasePGType T>
 GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
   if constexpr (IsPGNonNeg<T>) {
     const auto value = VERIFY_RESULT(GetValue<typename T::Type>(result, row, column));
@@ -393,34 +393,6 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   return res;
 }
 
-Result<std::string> PGConn::FetchRowAsString(const std::string& command, const std::string& sep) {
-  auto res = VERIFY_RESULT(Fetch(command));
-
-  auto fetched_rows = PQntuples(res.get());
-  if (fetched_rows != 1) {
-    return STATUS_FORMAT(
-        RuntimeError, "Fetched $0 rows, while 1 expected", fetched_rows);
-  }
-
-  return RowToString(res.get(), 0, sep);
-}
-
-Result<std::string> PGConn::FetchAllAsString(
-    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
-  auto res = VERIFY_RESULT(Fetch(command));
-
-  std::string result;
-  auto fetched_rows = PQntuples(res.get());
-  for (int i = 0; i != fetched_rows; ++i) {
-    if (i) {
-      result += row_sep;
-    }
-    result += VERIFY_RESULT(RowToString(res.get(), i, column_sep));
-  }
-
-  return result;
-}
-
 Status PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
@@ -466,20 +438,10 @@ Result<bool> PGConn::HasIndexScan(const std::string& query) {
 }
 
 Result<bool> PGConn::HasScanType(const std::string& query, const std::string expected_scan_type) {
-  constexpr int kExpectedColumns = 1;
-  auto res = VERIFY_RESULT(FetchFormat("EXPLAIN $0", query));
-
-  {
-    int fetched_columns = PQnfields(res.get());
-    if (fetched_columns != kExpectedColumns) {
-      return STATUS_FORMAT(
-          InternalError, "Fetched $0 columns, expected $1", fetched_columns, kExpectedColumns);
-    }
-  }
-
-  for (int line = 0; line < PQntuples(res.get()); ++line) {
-    auto value = VERIFY_RESULT(GetValue<std::string>(res.get(), line, 0));
-    if (value.find(Format("$0 Scan", expected_scan_type)) != std::string::npos) {
+  const auto rows = VERIFY_RESULT(FetchRows<std::string>(Format("EXPLAIN $0", query)));
+  const auto search = Format("$0 Scan", expected_scan_type);
+  for (const auto& row : rows) {
+    if (row.find(search) != std::string::npos) {
       return true;
     }
   }
@@ -644,25 +606,6 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   }
 }
 
-Result<std::string> RowToString(PGresult* result, int row, const std::string& sep) {
-  int cols = PQnfields(result);
-  std::string line;
-  for (int col = 0; col != cols; ++col) {
-    if (col) {
-      line += sep;
-    }
-    line += VERIFY_RESULT(ToString(result, row, col));
-  }
-  return line;
-}
-
-void LogResult(PGresult* result) {
-  int rows = PQntuples(result);
-  for (int row = 0; row != rows; ++row) {
-    LOG(INFO) << RowToString(result, row);
-  }
-}
-
 // Escape literals in postgres (e.g. to make a libpq connection to a database named
 // `this->'\<-this`, use `dbname='this->\'\\<-this'`).
 //
@@ -722,8 +665,40 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
 Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
 }
+
 Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
+}
+
+Result<PGConn> SetDefaultTransactionIsolation(
+    Result<PGConn> connection, IsolationLevel isolation_level) {
+  switch (isolation_level) {
+    case IsolationLevel::NON_TRANSACTIONAL:
+      return STATUS(InvalidArgument, "default transaction_isolation non-transactional is invalid");
+    case IsolationLevel::READ_COMMITTED:
+      return Execute(std::move(connection), "SET default_transaction_isolation = 'read committed'");
+    case IsolationLevel::SNAPSHOT_ISOLATION:
+      return Execute(
+          std::move(connection), "SET default_transaction_isolation = 'repeatable read'");
+    case IsolationLevel::SERIALIZABLE_ISOLATION:
+      return Execute(std::move(connection), "SET default_transaction_isolation = 'serializable'");
+  }
+
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
+}
+
+Result<IsolationLevel> EffectiveIsolationLevel(PGConn* conn) {
+  const std::string effective_isolation = CHECK_RESULT(
+      conn->FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+
+  if (effective_isolation == "read committed")
+      return IsolationLevel::READ_COMMITTED;
+  if (effective_isolation == "repeatable read")
+      return IsolationLevel::SNAPSHOT_ISOLATION;
+  if (effective_isolation == "serializable")
+      return IsolationLevel::SERIALIZABLE_ISOLATION;
+
+  return STATUS_FORMAT(NotFound, "Unknown effective isolation level: $0", effective_isolation);
 }
 
 Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
@@ -732,7 +707,7 @@ Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
     : process_("perf",
-               PerfArguments(CHECK_RESULT(conn->FetchValue<PGUint32>("SELECT pg_backend_pid()")))) {
+               PerfArguments(CHECK_RESULT(conn->FetchRow<PGUint32>("SELECT pg_backend_pid()")))) {
 
   CHECK_OK(process_.Start());
 }

@@ -123,11 +123,14 @@
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/pop_front.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
@@ -214,6 +217,7 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/async_util.h"
@@ -260,6 +264,8 @@
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -338,6 +344,7 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -346,6 +353,7 @@
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -363,3 +371,4 @@
 #include "yb/util/web_callback_registry.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
+#include "yb/util/yb_pg_errcodes.h"

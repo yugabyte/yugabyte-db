@@ -10,6 +10,7 @@ menu:
     parent: timezones
     weight: 30
 type: indexpage
+showRightNav: true
 ---
 
 All possible operations are inevitably executed in the context of a specified _UTC offset_ because the default scheme for the _TimeZone_ session setting ensures that this is never a zero-length _text_ value or _null_. (See the section [Specify the _UTC offset_ using the session environment parameter _TimeZone_](../syntax-contexts-to-spec-offset/#specify-the-utc-offset-using-the-session-environment-parameter-timezone).) The _TimeZone_ setting might specify the _UTC offset_ directly as an _interval_ value or it might specify it indirectly by identifying the timezone.
@@ -24,7 +25,7 @@ However, only _three_ operations are sensitive to the setting:
 
 The detail is explained in the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](./timestamptz-plain-timestamp-conversion/). That section defines the semantics of the conversions.
 
-- Other conversions where the source or target data type is _timestamptz_ exhibit sensitivity to the _UTC offset_; but this can always be understood as a transitive sensitivity to the fundamental _timestamptz_ to/from plain _timestamp_ conversions. The section [Typecasting between values of different date-time datatypes](../../typecasting-between-date-time-values/) calls out all of these cases. Here is an example:
+- Other conversions where the source or target data type is _timestamptz_ exhibit sensitivity to the _UTC offset_; but this can always be understood as a transitive sensitivity to the fundamental _timestamptz_ to/from plain _timestamp_ conversions. The section [Typecasting between values of different date-time data types](../../typecasting-between-date-time-values/) calls out all of these cases. Here is an example:
 
     ```output
     timestamptz_value::date = (timestamptz_value::timestamp)::date
@@ -33,7 +34,7 @@ The detail is explained in the section [Sensitivity of converting between _times
 - You can convert between a _timestamptz_ value and a plain _timestamp_ value using either the _::timestamp_ typecast or the _at time zone_ operator. The former approach is sensitive to the current _TimeZone_ session setting. And the latter approach, because the _UTC offset_ is specified explicitly (maybe directly as an _interval_ value or indirectly via an identified timezone) is insensitive to the current _TimeZone_ session setting.
 - The built-in function overloads _timezone(timestamp, text)_ and _timezone(interval, text)_ have identical semantics to the _at time zone_ operator and it can be advantageous to prefer these. See the section [Recommended practice for specifying the _UTC offset_](../recommendation/).
 
-- You can create a _timestamptz_ value explicitly using either the _make_timestamptz()_ built-in or a _text_ literal. In each case, you can identify the timezone, or supply an _interval_ value, directly in the syntax; or you can elide this information and let it be taken from the current _TimeZone_ session setting. The full explanations are given in the section [Specify the _UTC offset_ explicitly within the text of a timestamptz literal or for make_interval()'s 'timezone' parameter](../syntax-contexts-to-spec-offset/#specify-the-utc-offset-explicitly-within-the-text-of-a-timestamptz-literal-or-for-make-interval-s-timezone-parameter) and in the [_text_ to _timestamptz_](../../typecasting-between-date-time-values/#text-to-timestamptz) subsection on the [Typecasting between values of different date-time datatypes](../../typecasting-between-date-time-values/) page.
+- You can create a _timestamptz_ value explicitly using either the _make_timestamptz()_ built-in or a _text_ literal. In each case, you can identify the timezone, or supply an _interval_ value, directly in the syntax; or you can elide this information and let it be taken from the current _TimeZone_ session setting. The full explanations are given in the section [Specify the _UTC offset_ explicitly within the text of a timestamptz literal or for make_interval()'s 'timezone' parameter](../syntax-contexts-to-spec-offset/#specify-the-utc-offset-explicitly-within-the-text-of-a-timestamptz-literal-or-for-make-interval-s-timezone-parameter) and in the [_text_ to _timestamptz_](../../typecasting-between-date-time-values/#text-to-timestamptz) subsection on the [Typecasting between values of different date-time data types](../../typecasting-between-date-time-values/) page.
 
 ## Adding or subtracting an interval value to/from a timestamptz value
 

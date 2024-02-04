@@ -9,8 +9,14 @@ import { FieldValues, FormState } from 'react-hook-form';
 
 import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
-import { KeyPairManagement, ProviderStatus, TRANSITORY_PROVIDER_STATUSES } from '../constants';
+import {
+  KeyPairManagement,
+  ProviderCode,
+  ProviderStatus,
+  TRANSITORY_PROVIDER_STATUSES
+} from '../constants';
 import { AccessKey, YBProvider } from '../types';
+import { NonEditableInUseProviderField } from './constants';
 
 export const readFileAsText = (sshKeyFile: File) => {
   const reader = new FileReader();
@@ -152,16 +158,26 @@ export const constructAccessKeysEditPayload = (
 
 export const getIsFormDisabled = <TFieldValues extends FieldValues>(
   formState: FormState<TFieldValues>,
-  isProviderInUse = false,
   providerConfig?: YBProvider
-) =>
+) => {
+  const isProviderBusy =
+    !!providerConfig?.usabilityState &&
+    (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
+      providerConfig?.usabilityState
+    );
 
-(providerConfig?.usabilityState &&
-  (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
-    providerConfig?.usabilityState
-  )) || isProviderInUse ||
-  formState.isSubmitting;
+  return isProviderBusy || formState.isSubmitting;
+};
 
 export const getIsRegionFormDisabled = <TFieldValues extends FieldValues>(
   formState: FormState<TFieldValues>
 ) => formState.isSubmitting;
+
+export const getIsFieldDisabled = (
+  providerCode: ProviderCode,
+  fieldName: string,
+  isFormDisabled: boolean,
+  isProviderInUse: boolean
+) =>
+  isFormDisabled ||
+  (NonEditableInUseProviderField[providerCode].includes(fieldName) && isProviderInUse);

@@ -8,11 +8,11 @@ menu:
   preview_yugabyte-voyager:
     identifier: bulk-data-load
     parent: migration-types
-    weight: 104
+    weight: 105
 type: docs
 ---
 
-This page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
+The following page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
 
 ## Prerequisite
 
@@ -20,7 +20,7 @@ This page describes the steps to import data in CSV or TEXT format from flat fil
 
 ## Import data files from the local disk
 
-If your data files are in CSV or TEXT format and are present on the local disk, and you have already created a schema in your target YugabyteDB database, you can use the following `yb-voyager import data file` command to load the data into the target table directly from the flat file(s).
+If your data files are in CSV or TEXT format and are present on the local disk, and you have already created a schema in your target YugabyteDB database, you can use the following `yb-voyager import data file` command with required arguments to load the data into the target table directly from the flat file(s).
 
 ```sh
 # Replace the argument values with those applicable to your migration.
@@ -31,7 +31,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        --data-dir </path/to/files/dir/> \
-       --file-table-map <filename1:table1,filename2:table2> \
+       --file-table-map <filename1>:<table1>,<filename2>:<table2> \
        --format csv|text \ # default csv
        # Optional arguments as per data format
        --delimiter <DELIMITER> \ # default ',' for csv and '\t' for text
@@ -42,6 +42,12 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
 ```
 
 Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
+
+### Import data status
+
+Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
+
+Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
 ### Load multiple files into the same table
 
@@ -109,6 +115,7 @@ The authentication mechanism for accessing a GCS bucket using yb-voyager is the 
 To import data from Azure blob storage containers, provide the Azure container URI in the `data-dir` flag as follows:
 
 ```sh
+
 yb-voyager import data file .... \
         --data-dir https://<account_name>.blob.core.windows.net/<container_name>...
 ```
@@ -118,3 +125,50 @@ Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/au
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+## Verify migration
+
+After the data import is complete, manually run validation queries on the target YugabyteDB database to ensure that the data is correctly imported. For example, run queries to check the row count of each table.
+
+{{< warning title = "Row count reported by import data status" >}}
+
+Suppose you have the following scenario:
+
+* The [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
+* To resolve this issue, you delete some of the rows from the split files.
+* After retrying, the import data to target command completes successfully.
+
+In this scenario, the [import data status](#import-data-status) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+{{< /warning >}}
+
+## End migration
+
+To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
+
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the migration report, and the log files by providing the backup related flags (mandatory) as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager end migration --export-dir <EXPORT_DIR> \
+        --backup-log-files <true, false, yes, no, 1, 0> \
+        --backup-data-files false \
+        --backup-schema-files false \
+        --save-migration-reports <true, false, yes, no, 1, 0> \
+        # Set optional argument to store a back up of any of the above arguments.
+        --backup-dir <BACKUP_DIR>
+```
+
+{{< note title="Note" >}}
+
+* After performing end migration, you can't continue import data file operations using the specified export directory (export-dir).
+
+* Because import data file only imports data (and doesn't import or export the schema or export data), set the `--backup-data-files` and `backup-schema-files` arguments to false.
+
+{{< /note >}}
+
+If you want to back up the log file and import data status output for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more details on the arguments.

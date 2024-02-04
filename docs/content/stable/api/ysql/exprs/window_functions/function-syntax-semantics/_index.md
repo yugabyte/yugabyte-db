@@ -3,7 +3,7 @@ title: YSQL window functions signature and purpose
 linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each window function
 description: This section summarizes the signature and purpose of each of the YSQL window functions and links to their individual accounts.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: window-function-syntax-semantics

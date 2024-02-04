@@ -363,7 +363,7 @@ java -Dnode=<node_ip> \
       -Ddbname=<dbname> \
       -Ddbuser=<dbuser> \
       -Ddbpassword=<dbpassword> \
-      -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
+      -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> \
       -jar ./yb-workload-sim-0.0.4.jar
 ```
 
@@ -375,7 +375,7 @@ Replace the following:
 
 - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
 
-- `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+- `<cloud.region.zone>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
     ```sh
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c

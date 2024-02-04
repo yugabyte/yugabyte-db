@@ -1,8 +1,8 @@
 ---
-title: The 'pg_proc' catalog table for subprograms [YSQL]
-headerTitle: The 'pg_proc' catalog table for subprograms
-linkTitle: The pg_proc catalog table
-description: Explains how to use the 'pg_proc' catalog table to see subprogram metadata [YSQL].
+title: The "pg_proc" catalog table for subprograms [YSQL]
+headerTitle: The "pg_proc" catalog table for subprograms
+linkTitle: The "pg_proc" catalog table
+description: Explains how to use the "pg_proc" catalog table to see subprogram metadata [YSQL].
 menu:
   stable:
     identifier: pg-proc-catalog-table
@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-## Querying 'pg_proc' explicitly
+## Querying "pg_proc" explicitly
 
-The _[pg_proc](https://www.postgresql.org/docs/11/catalog-pg-proc.html)_ section in the PostgreSQL documentation, within the [System Catalogs](https://www.postgresql.org/docs/11/catalogs.html) enclosing chapter, describes the dedicated catalog table for subprogram metadata. It's a wide table with a column for every single fact that characterizes functions and procedures.
+The [_pg_proc_](https://www.postgresql.org/docs/11/catalog-pg-proc.html) section in the PostgreSQL documentation, within the [System Catalogs](https://www.postgresql.org/docs/11/catalogs.html) enclosing chapter, describes the dedicated catalog table for subprogram metadata. It's a wide table with a column for every single fact that characterizes functions and procedures.
 
 {{< tip title="Any role can see the metadata for every object in the database." >}}
 After you've connected to some database by authorizing as some role, you can query the metadata for all objects in that database irrespective of ownership and privileges—and for global phenomena, cluster-wide, like roles too. YugabyteDB inherits this behavior from PostgreSQL. The community of PostgreSQL experts, and in particular committers to the code base, consider this to be a good thing that brings no security risks.
@@ -132,7 +132,7 @@ This is result (following what you created using the code above):
 
 This produces a canonically formatted _create or replace_ statement for the nominated subprogram. The optional `+` qualifier shows the line numbers. This can be useful for debugging runtime errors.
 
-The [\\_sf_](../../../../admin/ysqlsh-meta-commands/#sf-function-description) meta-command takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its _[subprogram_call_signature](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature)_ is sufficient—and it's conventional always to use just this.)
+The [\\_sf_](../../../../admin/ysqlsh-meta-commands/#sf-function-description) meta-command takes a single argument: the (optionally) fully qualified _[subprogram_name](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-name)_ and its signature. (Its [_subprogram_call_signature_](../../../../api/ysql/syntax_resources/grammar_diagrams/#subprogram-call-signature) is sufficient—and it's conventional always to use just this.)
 
 Try this example. Notice that the function _bad(int)_ is contrived to cause a runtime error. Notice, too, that the various attributes besides the source text have been written in an order (following the source text)  that, while it is legal, is unusual.
 
