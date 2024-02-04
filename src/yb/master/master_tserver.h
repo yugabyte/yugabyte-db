@@ -76,9 +76,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetPublisher(rpc::Publisher service) override;
 
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override {
+    LOG_WITH_FUNC(FATAL) << "should not be called on the master";
+  }
+
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  rpc::Messenger* GetMessenger() const override;
+  rpc::Messenger* GetMessenger(tserver::ServerType type) const override;
 
  private:
   Master* master_ = nullptr;

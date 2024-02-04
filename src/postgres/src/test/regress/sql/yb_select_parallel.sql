@@ -2,6 +2,10 @@
 -- PARALLEL
 --
 
+-- TODO as of GHI 20637 some of tests below do not use parallel query, since
+-- it is currently restricted to colocated tables. Eventually we will enable
+-- it for distributed tables and update expected results.
+
 create function sp_parallel_restricted(int) returns int as
   $$begin return $1; end$$ language plpgsql parallel restricted;
 

@@ -3996,6 +3996,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
                                               ColumnFamilyData* cfd,
                                               SuperVersion* super_version,
                                               Arena* arena) {
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   InternalIterator* internal_iter;
   assert(arena != nullptr);
   // Need to create internal iterator from the arena.
@@ -4018,7 +4019,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
 template <bool kSkipLastEntry>
 std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
     const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
-  SCOPED_WAIT_STATUS(RocksDB_ReadIO);
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   std::unique_ptr<InternalIterator> merge_iter;
   MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
       cfd->internal_comparator().get());
@@ -5527,8 +5528,11 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
         lfile->SetPreallocationBlockSize(
             mutable_cf_options.write_buffer_size / 10 +
             mutable_cf_options.write_buffer_size);
+        // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
+        // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
         unique_ptr<WritableFileWriter> file_writer(
-            new WritableFileWriter(std::move(lfile), opt_env_opt));
+            new WritableFileWriter(std::move(lfile), opt_env_opt, nullptr,
+            AllocateBuffer::kFalse));
         new_log = new log::Writer(std::move(file_writer), new_log_number,
                                   db_options_.recycle_log_file_num > 0);
       }
@@ -6437,8 +6441,11 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     if (s.ok()) {
       lfile->SetPreallocationBlockSize((max_write_buffer_size / 10) + max_write_buffer_size);
       impl->logfile_number_ = new_log_number;
+      // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
+      // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
       unique_ptr<WritableFileWriter> file_writer(
-          new WritableFileWriter(std::move(lfile), opt_env_options));
+          new WritableFileWriter(std::move(lfile), opt_env_options, nullptr,
+          AllocateBuffer::kFalse));
       impl->logs_.emplace_back(
           new_log_number,
           new log::Writer(std::move(file_writer), new_log_number,

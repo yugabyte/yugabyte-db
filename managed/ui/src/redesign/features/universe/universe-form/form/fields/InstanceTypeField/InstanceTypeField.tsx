@@ -1,7 +1,6 @@
-import { ChangeEvent, ReactElement, useState } from 'react';
+import { ChangeEvent, ReactElement, useEffect } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
-import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
@@ -104,7 +103,12 @@ export const InstanceTypeField = ({
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
   const { data, isLoading, refetch } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones), isOsPatchingEnabled ? cpuArch : null],
+    [
+      QUERY_KEY.getInstanceTypes,
+      provider?.uuid,
+      JSON.stringify(zones),
+      isOsPatchingEnabled ? cpuArch : null
+    ],
     () => api.getInstanceTypes(provider?.uuid, zones, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid && zones.length > 0,
@@ -130,7 +134,7 @@ export const InstanceTypeField = ({
     }
   );
 
-  useUpdateEffect(() => {
+  useEffect(() => {
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
       //Reset instance type after provider change

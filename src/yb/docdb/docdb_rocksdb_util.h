@@ -101,6 +101,7 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter();
 // the tablet.
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
+    const TabletId& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions(),

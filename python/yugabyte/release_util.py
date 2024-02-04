@@ -222,6 +222,8 @@ class ReleaseUtil:
             mkdir_p(current_dest_dir)
 
             for elem in self.release_manifest[dir_from_manifest]:
+                if not elem:
+                    continue
                 elem = self.repo_expand_path(elem)
                 files = glob.glob(elem)
                 for file_path in files:

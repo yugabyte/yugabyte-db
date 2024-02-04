@@ -928,6 +928,11 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
+    req.set_fetch_tserver_states(true);
+    req.set_fetch_flush_and_compaction_states(true);
+    req.set_fetch_raft_log_appender_states(true);
+    req.set_fetch_cql_states(true);
+    req.set_ignore_ash_calls(true);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));

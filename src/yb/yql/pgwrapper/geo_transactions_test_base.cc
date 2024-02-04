@@ -25,6 +25,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
@@ -50,7 +51,7 @@ namespace client {
 namespace {
 
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000);
-const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000);
+const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000) * kTimeMultiplier;
 
 }
 
@@ -323,11 +324,10 @@ void GeoTransactionsTestBase::ValidateAllTabletLeaderinZone(std::vector<TabletId
   }
 }
 
-Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) {
+Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {
   auto conn = EXPECT_RESULT(Connect());
-  uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+  return EXPECT_RESULT(conn.FetchRow<pgwrapper::PGOid>(strings::Substitute(
       "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
-  return tablespace_oid;
 }
 
 Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(

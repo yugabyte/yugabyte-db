@@ -312,6 +312,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
+    TRACE_FUNC();
     SET_WAIT_STATUS(OnCpu_Passive);
     SCOPED_WAIT_STATUS(OnCpu_Active);
     auto& status = waiter_status;

@@ -75,23 +75,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      configureTaskParams(universe);
+    }
   }
 
-  private void freezeUniverseInTxn(Universe universe) {
-    // The universe parameter in this callback has local changes which may be needed by
-    // the methods inside e.g updateInProgress field.
-    // Fetch the task params from the DB to start from fresh on retry.
-    // Otherwise, some operations like name assignment can fail.
-    fetchTaskDetailsFromDB();
-    // TODO Transaction is required mainly because validations are done here.
+  // Configure the task params in memory. These changes are committed in freeze callback.
+  private void configureTaskParams(Universe universe) {
     // Set all the node names.
     setNodeNames(universe);
     // Set non on-prem node UUIDs.
     setCloudNodeUuids(universe);
-    // Update on-prem node UUIDs.
-    updateOnPremNodeUuidsOnTaskParams();
-    // Perform pre-task actions.
-    preTaskActions(universe);
+    // Update on-prem node UUIDs in task params but do not commit yet.
+    updateOnPremNodeUuidsOnTaskParams(false);
     // Select master nodes, if needed. Changes in masters are not automatically
     // applied.
     SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
@@ -110,6 +106,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         n -> {
           n.masterState = MasterState.ToStop;
         });
+    createPreflightNodeCheckTasks(
+        taskParams().clusters,
+        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
+        null,
+        null);
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    // Perform pre-task actions.
+    preTaskActions(universe);
+    // Confirm the nodes on hold.
+    commitReservedNodes();
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     // Task params contain the exact blueprint of what is desired.
@@ -124,17 +132,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
-    Universe universe =
-        lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    Universe universe = null;
     try {
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
                 != universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
       }
-      // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
           taskParams().nodeDetailsSet.stream()
@@ -192,6 +199,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       errorString = t.getMessage();
       throw t;
     } finally {
+      releaseReservedNodes();
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       universe = unlockUniverseForUpdate(errorString);

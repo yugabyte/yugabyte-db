@@ -95,7 +95,6 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -251,10 +250,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.azUuid = testData.zone.getUuid();
     params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
-    Iterator<NodeDetails> iter = universe.getNodes().iterator();
-    if (iter.hasNext()) {
-      params.nodeUuid = iter.next().nodeUuid;
-    }
+    params.nodeUuid = testData.node.getNodeUuid();
     params.setUniverseUUID(universe.getUniverseUUID());
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     params.currentClusterType = ClusterType.PRIMARY;

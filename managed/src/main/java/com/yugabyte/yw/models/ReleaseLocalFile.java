@@ -1,5 +1,8 @@
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import jakarta.persistence.Column;
@@ -33,5 +36,13 @@ public class ReleaseLocalFile extends Model {
 
   public static ReleaseLocalFile get(UUID fileUUID) {
     return find.byId(fileUUID);
+  }
+
+  public static ReleaseLocalFile getOrBadRequest(UUID fileUUID) {
+    ReleaseLocalFile rlf = ReleaseLocalFile.get(fileUUID);
+    if (rlf == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find Release Local File " + fileUUID);
+    }
+    return rlf;
   }
 }

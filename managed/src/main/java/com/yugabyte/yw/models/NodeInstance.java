@@ -1,11 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -25,12 +27,15 @@ import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Data;
@@ -48,6 +53,22 @@ import play.libs.Json;
 @ApiModel(description = "A single node instance, attached to a provider and availability zone")
 public class NodeInstance extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstance.class);
+  private static final Map<UUID, Set<InflightNodeInstanceInfo>> CLUSTER_INFLIGHT_NODE_INSTANCES =
+      new ConcurrentHashMap<>();
+
+  @Data
+  @EqualsAndHashCode(onlyExplicitlyIncluded = true)
+  static class InflightNodeInstanceInfo {
+    private final String nodeName;
+    private final UUID zoneUuid;
+    @EqualsAndHashCode.Include private final UUID nodeUuid;
+
+    InflightNodeInstanceInfo(String nodeName, UUID nodeUuid, UUID zoneUuid) {
+      this.nodeName = nodeName;
+      this.nodeUuid = nodeUuid;
+      this.zoneUuid = zoneUuid;
+    }
+  }
 
   @Id
   @ApiModelProperty(value = "The node's UUID", accessMode = READ_ONLY)
@@ -129,17 +150,22 @@ public class NodeInstance extends Model {
       new Finder<UUID, NodeInstance>(NodeInstance.class) {};
 
   public static List<NodeInstance> listByZone(UUID zoneUuid, String instanceTypeCode) {
-    List<NodeInstance> nodes = null;
-    // Search in the proper AZ.
-    ExpressionList<NodeInstance> exp = NodeInstance.find.query().where().eq("zone_uuid", zoneUuid);
-    // Search only for nodes not in use.
-    exp.where().eq("in_use", false);
+    return listByZone(zoneUuid, instanceTypeCode, null);
+  }
+
+  public static List<NodeInstance> listByZone(
+      UUID zoneUuid, String instanceTypeCode, Set<UUID> nodeUuids) {
+    // Search in the proper AZ and only for nodes not in use.
+    ExpressionList<NodeInstance> exp =
+        NodeInstance.find.query().where().eq("zone_uuid", zoneUuid).eq("in_use", false);
     // Filter by instance type if asked to.
     if (instanceTypeCode != null) {
       exp.where().eq("instance_type_code", instanceTypeCode);
     }
-    nodes = exp.findList();
-    return nodes;
+    if (CollectionUtils.isNotEmpty(nodeUuids)) {
+      exp = appendInClause(NodeInstance.find.query().where(), "node_uuid", nodeUuids);
+    }
+    return exp.findList();
   }
 
   public static List<NodeInstance> listByRegion(UUID regionUUID, String instanceTypeCode) {
@@ -218,19 +244,36 @@ public class NodeInstance extends Model {
     return deleteStmt.execute();
   }
 
+  private static List<NodeInstance> filterInflightNodeUuids(List<NodeInstance> nodes) {
+    Set<UUID> inflightNodeUuids =
+        CLUSTER_INFLIGHT_NODE_INSTANCES.values().stream()
+            .flatMap(Set::stream)
+            .map(InflightNodeInstanceInfo::getNodeUuid)
+            .collect(Collectors.toSet());
+    return nodes.stream()
+        .filter(n -> !inflightNodeUuids.contains(n.getNodeUuid()))
+        .collect(Collectors.toList());
+  }
+
   /**
-   * Pick available nodes in zones specified by onpremAzToNodes with with the instance type
-   * specified
+   * Reserve nodes in memory without persisting the changes in the database.
+   *
+   * @param clusterUuid Cluster UUID.
+   * @param onpremAzToNodes AZ to set of node names.
+   * @param instanceTypeCode instance code.
+   * @return map of node name to node instance.
    */
-  public static synchronized Map<String, NodeInstance> pickNodes(
-      Map<UUID, List<String>> onpremAzToNodes, String instanceTypeCode) {
+  public static synchronized Map<String, NodeInstance> reserveNodes(
+      UUID clusterUuid, Map<UUID, Set<String>> onpremAzToNodes, String instanceTypeCode) {
+    Preconditions.checkState(
+        !CLUSTER_INFLIGHT_NODE_INSTANCES.containsKey(clusterUuid),
+        "Nodes already reserved for cluster " + clusterUuid);
     Map<String, NodeInstance> outputMap = new HashMap<>();
-    Throwable error = null;
     try {
-      for (Entry<UUID, List<String>> entry : onpremAzToNodes.entrySet()) {
+      for (Entry<UUID, Set<String>> entry : onpremAzToNodes.entrySet()) {
         UUID zoneUuid = entry.getKey();
-        List<String> nodeNames = entry.getValue();
-        List<NodeInstance> nodes = listByZone(zoneUuid, instanceTypeCode);
+        Set<String> nodeNames = entry.getValue();
+        List<NodeInstance> nodes = filterInflightNodeUuids(listByZone(zoneUuid, instanceTypeCode));
         if (nodes.size() < nodeNames.size()) {
           LOG.error(
               "AZ {} has {} nodes of instance type {} but needs {}.",
@@ -240,36 +283,102 @@ public class NodeInstance extends Model {
               nodeNames.size());
           throw new RuntimeException("Not enough nodes in AZ " + zoneUuid);
         }
+        Set<InflightNodeInstanceInfo> instanceInfos =
+            CLUSTER_INFLIGHT_NODE_INSTANCES.computeIfAbsent(clusterUuid, k -> new HashSet<>());
         int index = 0;
         for (String nodeName : nodeNames) {
           NodeInstance node = nodes.get(index);
-          node.setInUse(true);
-          node.setNodeName(nodeName);
           outputMap.put(nodeName, node);
-          ++index;
-          LOG.info("Marking node {} (ip {}) as in-use.", nodeName, node.getDetails().ip);
+          instanceInfos.add(new InflightNodeInstanceInfo(nodeName, node.getNodeUuid(), zoneUuid));
+          index++;
+          LOG.info(
+              "Marking node {} (ip {}) as inflight", node.getInstanceName(), node.getDetails().ip);
+        }
+      }
+    } catch (RuntimeException e) {
+      CLUSTER_INFLIGHT_NODE_INSTANCES.remove(clusterUuid);
+      outputMap.clear();
+      throw e;
+    }
+    return outputMap;
+  }
+
+  /**
+   * Release the reserved uncommitted nodes.
+   *
+   * @param clusterUuid
+   */
+  public static void releaseReservedNodes(UUID clusterUuid) {
+    CLUSTER_INFLIGHT_NODE_INSTANCES.remove(clusterUuid);
+  }
+
+  /**
+   * Commit the reserved nodes in memory to the database. The reserved nodes are cleared when this
+   * method returns. It is the responsibility of the caller to call this method in transaction.
+   *
+   * @param clusterUuid the cluster UUID.
+   * @return the previously reserved node instances.
+   */
+  public static synchronized Map<String, NodeInstance> commitReservedNodes(UUID clusterUuid) {
+    Set<InflightNodeInstanceInfo> instanceInfos = CLUSTER_INFLIGHT_NODE_INSTANCES.get(clusterUuid);
+    Preconditions.checkState(
+        !CollectionUtils.isEmpty(instanceInfos),
+        "No nodes are reserved for cluster " + clusterUuid);
+    Map<String, NodeInstance> outputMap = new HashMap<>();
+    try {
+      Map<UUID, List<InflightNodeInstanceInfo>> azInstanceInfos =
+          instanceInfos.stream()
+              .collect(Collectors.groupingBy(InflightNodeInstanceInfo::getZoneUuid));
+      for (Map.Entry<UUID, List<InflightNodeInstanceInfo>> entry : azInstanceInfos.entrySet()) {
+        UUID zoneUuid = entry.getKey();
+        Map<UUID, InflightNodeInstanceInfo> nodeUuidInstanceInfoMap =
+            entry.getValue().stream()
+                .collect(
+                    Collectors.toMap(InflightNodeInstanceInfo::getNodeUuid, Function.identity()));
+        List<NodeInstance> nodes = listByZone(zoneUuid, null, nodeUuidInstanceInfoMap.keySet());
+        // Ensure that the nodes are still available.
+        Preconditions.checkState(
+            nodes.size() == nodeUuidInstanceInfoMap.keySet().size(),
+            "Unexpected error in verifying the count for node instance for cluster " + clusterUuid);
+        for (NodeInstance node : nodes) {
+          InflightNodeInstanceInfo instanceInfo = nodeUuidInstanceInfoMap.get(node.getNodeUuid());
+          node.setInUse(true);
+          node.setNodeName(instanceInfo.getNodeName());
+          outputMap.put(instanceInfo.getNodeName(), node);
+          LOG.info(
+              "Marking node {} (ip {}) as in-use.",
+              instanceInfo.getNodeName(),
+              node.getDetails().ip);
         }
       }
       // All good, save to DB.
       for (NodeInstance node : outputMap.values()) {
         node.save();
       }
-    } catch (Throwable t) {
-      error = t;
-      throw t;
     } finally {
-      if (error != null) {
-        outputMap = null;
-        // TODO: any cleanup needed?
-      }
+      CLUSTER_INFLIGHT_NODE_INSTANCES.remove(clusterUuid);
     }
     return outputMap;
+  }
+
+  /**
+   * Pick available nodes in zones specified by onpremAzToNodes with with the instance type
+   * specified
+   */
+  public static synchronized Map<String, NodeInstance> pickNodes(
+      UUID clusterUuid, Map<UUID, Set<String>> onpremAzToNodes, String instanceTypeCode) {
+    reserveNodes(clusterUuid, onpremAzToNodes, instanceTypeCode);
+    return commitReservedNodes(clusterUuid);
   }
 
   @Deprecated
   public static NodeInstance get(UUID nodeUuid) {
     NodeInstance node = NodeInstance.find.byId(nodeUuid);
     return node;
+  }
+
+  public static Optional<NodeInstance> maybeGet(UUID nodeUuid) {
+    return Optional.ofNullable(get(nodeUuid));
   }
 
   public static NodeInstance getOrBadRequest(UUID nodeUuid) {

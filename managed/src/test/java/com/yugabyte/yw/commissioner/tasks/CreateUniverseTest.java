@@ -11,6 +11,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +57,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks, // PreNodeProvision
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks, // PostNodeProvision
+          TaskType.CheckLocale,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -147,6 +150,26 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+
+      List<String> command = new ArrayList<>();
+      command.add("locale");
+      command.add("-a");
+      command.add("|");
+      command.add("grep");
+      command.add("-E");
+      command.add("-q");
+      command.add("\"en_US.utf8|en_US.UTF-8\"");
+      command.add("&&");
+      command.add("echo");
+      command.add("\"Locale is present\"");
+      command.add("||");
+      command.add("echo");
+      command.add("\"Locale is not present\"");
+      when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "Locale is present"));
     } catch (Exception e) {
       fail();
     }

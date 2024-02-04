@@ -161,7 +161,8 @@ class RocksDBHelper {
  public:
   RocksDBHelper() : immutable_cf_options_(options_) {
     docdb::InitRocksDBOptions(
-        &options_, kLogPrefix, /* statistics= */ nullptr, tablet_options_, table_options_);
+        &options_, kLogPrefix, yb::TabletId{}, /* statistics= */ nullptr, tablet_options_,
+        table_options_);
     internal_key_comparator_ = std::make_shared<rocksdb::InternalKeyComparator>(
         options_.comparator);
   }
