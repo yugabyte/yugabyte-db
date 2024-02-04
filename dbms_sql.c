@@ -535,8 +535,11 @@ bind_variable(PG_FUNCTION_ARGS)
 
 	if (var->typoid != InvalidOid)
 	{
-		if (!var->typbyval)
+		if (!var->typbyval && !var->isnull)
+		{
 			pfree(DatumGetPointer(var->value));
+			var->value = (Datum) 0;
+		}
 
 		var->isnull = true;
 	}
@@ -620,6 +623,17 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 		ereport(ERROR,
 			    (errcode(ERRCODE_DATATYPE_MISMATCH),
 			     errmsg("value is not a array")));
+
+	if (var->typoid != InvalidOid)
+	{
+		if (!var->typbyval && !var->isnull)
+		{
+			pfree(DatumGetPointer(var->value));
+			var->value = (Datum) 0;
+		}
+
+		var->isnull = true;
+	}
 
 	var->is_array = true;
 	var->typoid = valtype;

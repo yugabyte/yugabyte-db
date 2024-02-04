@@ -123,7 +123,7 @@ $$;
 
 -- should not to crash, when we try to touch result without execute
 do $$
-  declare
+declare
   c int;
   a int[];
 begin
@@ -135,6 +135,23 @@ begin
 end;
 $$;
 
+-- should not to crash, when the variable is overwritten
+DO $$
+declare
+  c integer;
+  n integer;
+  c2 numeric;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'INSERT INTO foo(a) VALUES (:bnd2)');
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+  n := dbms_sql.execute(c);
+end
+$$;
+
+select * from foo;
+truncate foo;
 do $$
 declare
   c int;
