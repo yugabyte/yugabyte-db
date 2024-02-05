@@ -383,9 +383,9 @@ public class CustomerTask extends Model {
         case SoftwareUpgradeYB:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case FinalizeUpgrade:
-          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+          return completed ? "Finalized Upgrade " : "Finalizing Upgrade ";
         case RollbackUpgrade:
-          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
+          return completed ? "Rolled back upgrade " : "Rolling back upgrade ";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
