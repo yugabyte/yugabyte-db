@@ -767,8 +767,6 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
 
-After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node agent binary to your PATH.
-
 ### Preflight check
 
 After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
