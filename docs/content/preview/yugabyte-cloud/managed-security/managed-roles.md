@@ -46,7 +46,7 @@ YugabyteDB Managed includes built-in roles for managing your account:
   - delete or change the role of other users
   - change login methods
   - create or revoke API keys
-  - create a billing profile
+  - manage plans and billing
   - view account activity
 
 - **Viewer** - The Viewer role has _all_ view permissions, exclusively, and can't perform any tasks.
