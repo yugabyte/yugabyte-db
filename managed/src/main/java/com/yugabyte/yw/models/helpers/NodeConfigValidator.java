@@ -369,6 +369,7 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
       case SWAPPINESS:
+      case LOCALE_PRESENT:
       case SYSTEMD_SUDOER_ENTRY:
         {
           return false;
