@@ -704,7 +704,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * constant throughout the session. We don't want to do this during
 	 * bootstrap because it won't have client address anyway.
 	 */
-	if (IsYugaByteEnabled() && YBEnableAsh() && !bootstrap)
+	if (IsYugaByteEnabled() && yb_ash_enable_infra && !bootstrap)
 		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)

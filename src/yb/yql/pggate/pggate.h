@@ -120,7 +120,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+            const YBCPgAshConfig* ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {

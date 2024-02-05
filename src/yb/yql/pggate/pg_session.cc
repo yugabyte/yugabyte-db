@@ -221,12 +221,6 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
   return Status::OK();
 }
 
-// This function is used as a dummy function when the GFlag FLAGS_TEST_yb_enable_ash
-// is disabled. This will be removed once the flag is removed.
-uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
-  return wait_event;
-}
-
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -396,8 +390,7 @@ PgSession::PgSession(
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
-      wait_starter_(FLAGS_TEST_yb_enable_ash
-          ? pg_callbacks_.PgstatReportWaitStart : &PgstatReportWaitStartNoOp),
+      wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional) {
             return FlushOperations(std::move(ops), transactional);
