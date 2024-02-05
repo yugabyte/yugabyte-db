@@ -116,8 +116,8 @@ To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resy
 
 Before you can use the command, you need an API token, your customer ID, and the UUID of the Standby universe; refer to [Automation](../../../../yugabyte-platform/anywhere-automation/).
 
-To resynchronize the YBA UI, run the following command:
+To resynchronize the YBA UI, run the following on the command line on the YBA host:
 
 ```sh
-curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data
+curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?targetUniverseUUID=<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data ''
 ```
