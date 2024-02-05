@@ -144,15 +144,14 @@ INSERT INTO vectors SELECT to_tsvector('simple', 'filler') FROM generate_series(
 CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 -- Avoid fetching primary key and fetch secondary key instead since
 --   there is already an LSM index on the primary key and LSM supports distinct index scan.
--- XXX: Explain output also shows memory consumed for sort.
---      This can be handled using regex but leave it be for readability.
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM vectors;
                         QUERY PLAN
 ----------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Sort (actual rows=10 loops=1)
          Sort Key: v
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Seq Scan on vectors (actual rows=10 loops=1)
 (5 rows)
 
@@ -243,7 +242,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FRO
 ---------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
    Sort Key: r2
-   Sort Method: quicksort  Memory: 25kB
+   Sort Method: quicksort
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
                Distinct Prefix: 2

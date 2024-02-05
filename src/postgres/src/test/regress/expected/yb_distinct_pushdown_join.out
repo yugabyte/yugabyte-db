@@ -51,6 +51,7 @@ SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 (2 rows)
 
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
@@ -62,7 +63,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
                      Distinct Prefix: 1
          ->  Sort (actual rows=7 loops=1)
                Sort Key: t2.r2
-               Sort Method: quicksort  Memory: 25kB
+               Sort Method: quicksort
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
                      Distinct Prefix: 2
 (11 rows)
@@ -85,7 +86,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
                      Distinct Prefix: 1
          ->  Sort (actual rows=7 loops=1)
                Sort Key: t2.r2
-               Sort Method: quicksort  Memory: 25kB
+               Sort Method: quicksort
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
                      Distinct Prefix: 2
 (11 rows)
@@ -518,12 +519,12 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Merge Cond: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
    ->  Sort (actual rows=6 loops=1)
          Sort Key: t1.h1, t1.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th t1 (actual rows=6 loops=1)
                Distinct Prefix: 2
    ->  Sort (actual rows=6 loops=1)
          Sort Key: t2.h1, t2.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th t2 (actual rows=6 loops=1)
                Distinct Prefix: 2
 (12 rows)
@@ -598,7 +599,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Prefix: 2
    ->  Sort (actual rows=6 loops=1)
          Sort Key: th.h1, th.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
                Distinct Prefix: 2
 (10 rows)
