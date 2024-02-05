@@ -13,6 +13,8 @@ menu:
 type: indexpage
 ---
 
+There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage.
+
 Review your usage and plan details, manage your billing information, and review invoices from the **Usage & Billing** page.
 
 <div class="row">

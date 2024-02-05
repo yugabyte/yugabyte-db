@@ -235,8 +235,6 @@ The biggest factor in the price of a cluster is the number vCPUs.
 
 Cluster charges are based on the total number of vCPUs used and how long they have been running. The rate is determined by your [pricing plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/).
 
-Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
-
 ## Cloud provider regions
 
 {{< tabpane text=true >}}

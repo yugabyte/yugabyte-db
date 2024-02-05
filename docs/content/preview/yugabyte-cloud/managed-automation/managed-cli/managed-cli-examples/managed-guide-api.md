@@ -35,7 +35,7 @@ YBM_ACCOUNT_ID="<account_ID>"
 YBM_PROJECT_ID="<project_ID>"
 ```
 
-To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../managed-freetrial/).
+To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/), or you can [start a free trial](../../../managed-freetrial/).
 
 Note that you can only create one Sandbox cluster per account.
 

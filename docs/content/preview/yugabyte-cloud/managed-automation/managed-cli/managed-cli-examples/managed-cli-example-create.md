@@ -22,7 +22,7 @@ This guide assumes you have already done the following:
 - [Installed ybm CLI](../../../managed-cli/managed-cli-overview/#install-ybm).
 - [Configured ybm CLI](../../../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
+Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/), or you can [start a free trial](../../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
 
 ## Create a sandbox cluster
 
