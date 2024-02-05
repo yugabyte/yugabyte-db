@@ -150,6 +150,26 @@ begin
 end
 $$;
 
+-- should not to crash, when we try to read column without data
+do $$
+declare
+  c int;
+  strval varchar;
+  intval int;
+begin
+  c := dbms_sql.open_cursor();
+  call dbms_sql.parse(c, 'select ''foo'', 1');
+  call dbms_sql.define_column(c, 1, strval);
+  call dbms_sql.define_column(c, 2, intval);
+  perform dbms_sql.execute(c);
+  while dbms_sql.fetch_rows(c) > -1
+  loop
+    call dbms_sql.column_value(c, 1, strval);
+  end loop;
+  call dbms_sql.close_cursor(c);
+end;
+$$;
+
 select * from foo;
 truncate foo;
 do $$

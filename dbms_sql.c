@@ -1587,6 +1587,11 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 
 	Assert(c->executed);
 
+	if (last_row_count == 0)
+		ereport(ERROR,
+			    (errcode(ERRCODE_NO_DATA_FOUND),
+			     errmsg("no data found")));
+
 	if (!c->tupdesc)
 		ereport(ERROR,
 			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
@@ -1684,7 +1689,7 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 		value = cast_value(ccast, value, *isnull);
 	}
 
-	if (spi_transfer)
+	if (1)//spi_transfer)
 		value = SPI_datumTransfer(value, ccast->typbyval, ccast->typlen);
 
 	return value;
