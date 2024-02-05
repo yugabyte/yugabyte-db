@@ -20,11 +20,11 @@
 #include "geospatial/bson_geospatial_private.h"
 #include "utils/list_utils.h"
 
-PG_FUNCTION_INFO_V1(pgmongo_bson_extract_geometry);
-PG_FUNCTION_INFO_V1(pgmongo_bson_extract_geometry_array);
-PG_FUNCTION_INFO_V1(pgmongo_bson_extract_geometry_runtime);
-PG_FUNCTION_INFO_V1(pgmongo_bson_validate_geometry);
-PG_FUNCTION_INFO_V1(pgmongo_bson_validate_geography);
+PG_FUNCTION_INFO_V1(bson_extract_geometry);
+PG_FUNCTION_INFO_V1(bson_extract_geometry_array);
+PG_FUNCTION_INFO_V1(bson_extract_geometry_runtime);
+PG_FUNCTION_INFO_V1(bson_validate_geometry);
+PG_FUNCTION_INFO_V1(bson_validate_geography);
 
 /*
  * A function that takes a pgbson, a dotted path into the
@@ -34,7 +34,7 @@ PG_FUNCTION_INFO_V1(pgmongo_bson_validate_geography);
  * like generating geometry term for invalid input
  */
 Datum
-pgmongo_bson_extract_geometry(PG_FUNCTION_ARGS)
+bson_extract_geometry(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
 	text *path = PG_GETARG_TEXT_P(1);
@@ -51,7 +51,7 @@ pgmongo_bson_extract_geometry(PG_FUNCTION_ARGS)
 
 
 Datum
-pgmongo_bson_extract_geometry_array(PG_FUNCTION_ARGS)
+bson_extract_geometry_array(PG_FUNCTION_ARGS)
 {
 	/* noop, To be removed when we are in 1.11 along with all the references in 1.9 sqls */
 	PG_RETURN_ARRAYTYPE_P(construct_empty_array(GeometryTypeId()));
@@ -67,7 +67,7 @@ pgmongo_bson_extract_geometry_array(PG_FUNCTION_ARGS)
  * validation is treated
  */
 Datum
-pgmongo_bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
+bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	text *path = PG_GETARG_TEXT_P(1);
@@ -82,7 +82,7 @@ pgmongo_bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
 
 
 /*
- * pgmongo_bson_validate_geometry is used to validate the geometries in the `document` at
+ * bson_validate_geometry is used to validate the geometries in the `document` at
  * the given path. This works like a bloom filter which either tells if geometry is not present
  * at all or any invalid/valid geometry is present.
  *
@@ -91,7 +91,7 @@ pgmongo_bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
  * 1- Make the 2d index sparse
  * ===========================
  * This function is used as predicate in "2d index" CREATE INDEX statement like this:
- * CREATE INDEX ... WHERE pgmongo_bson_validate_geometry(document, 'a') IS NOT NULL;
+ * CREATE INDEX ... WHERE bson_validate_geometry(document, 'a') IS NOT NULL;
  *
  * Anytime there is no valid geometry found at the given `path` then we should not create index terms for
  * the document.
@@ -101,7 +101,7 @@ pgmongo_bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
  * This function is also used in geospatial query operators to match the index predicate.
  * e.g. $geoWithin mongo operator is converted like this in our planner
  * query => {a: {$geoWithin: {$box: [[10, 10], [20, 20]]}}}
- * planner => pgmongo_bson_validate_geometry(document, 'a') @|-| {a: {$box: [[10, 10], [20, 20]]}}
+ * planner => bson_validate_geometry(document, 'a') @|-| {a: {$box: [[10, 10], [20, 20]]}}
  *
  *
  * This function returns NULL when there is surely no geometries at path and the document is valid for insertion
@@ -109,7 +109,7 @@ pgmongo_bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
  * otherwise it just returns the original document
  */
 Datum
-pgmongo_bson_validate_geometry(PG_FUNCTION_ARGS)
+bson_validate_geometry(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	text *path = PG_GETARG_TEXT_P(1);
@@ -157,11 +157,11 @@ pgmongo_bson_validate_geometry(PG_FUNCTION_ARGS)
 
 
 /*
- * A similar function to `pgmongo_bson_validate_geometry` for 2d sphere geography based indexes
+ * A similar function to `bson_validate_geometry` for 2d sphere geography based indexes
  * which acts as a bloom filter for 2d sphere index
  */
 Datum
-pgmongo_bson_validate_geography(PG_FUNCTION_ARGS)
+bson_validate_geography(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	text *path = PG_GETARG_TEXT_P(1);
