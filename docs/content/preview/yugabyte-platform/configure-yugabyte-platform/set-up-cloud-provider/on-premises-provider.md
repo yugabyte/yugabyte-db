@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must create an on-premises provider configuration.
 
 With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
 
@@ -30,7 +30,7 @@ To create an on-premises provider:
 
 1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
 
-After the provider is created, configure the provider hardware. Refer to [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes).
+After the provider is created, add your VMs to the provider's free pool of nodes. Refer to [Add nodes to the provider free pool](../on-premises-nodes/).
 
 ## View and edit providers
 
@@ -105,4 +105,4 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 
 ## Next steps
 
-- [Add nodes to the provider free pool](./on-premises-nodes/)
+- [Add nodes to the provider free pool](../on-premises-nodes/)

@@ -59,8 +59,8 @@ In YBA, you navigate to the provider you created and do the following:
 1. Add the VMs (instances). How you do this depends on whether you are using automatic or manual provisioning.
 
     - Automatic - YBA automatically provisions the VMs that you add and you don't have to take any action.
-    - Assisted manual - you run a script provide by YBA to provision each VM.
-    - Fully manual - you follow a sequence of steps to provision each VM.
+    - Assisted manual - you run a script provided by YBA to provision each VM before adding the VM to the pool.
+    - Fully manual - you follow a sequence of steps to provision each VM manually before adding the VM to the pool.
 
 1. Run pre-checks to validate the nodes you added.
 

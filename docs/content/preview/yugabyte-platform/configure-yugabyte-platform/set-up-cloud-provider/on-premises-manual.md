@@ -48,13 +48,13 @@ For each node, perform the following:
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
-After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
+After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../on-premises-nodes/#add-instances-to-the-on-prem-provider).
 
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.
 
-Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard CentOS 7 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
+Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard AlmaLinux 8 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
 
 ## Open incoming TCP/IP ports
 
@@ -82,9 +82,9 @@ The preceding table is based on the information on the [default ports page](../.
 
 This process carries out all provisioning tasks on the database nodes which require elevated privileges. After the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
-Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
+Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Log in to each database node as a user with sudo enabled (the `centos` user in CentOS 7 images).
+1. Log in to each database node as a user with sudo enabled (for example, the `ec2-user` user in AWS).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
@@ -155,11 +155,11 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Install the rsync and OpenSSL packages (if not already included with your Linux distribution) using the following commands:
 
     ```sh
-    sudo yum install openssl
-    sudo yum install rsync
+    sudo dnf install openssl
+    sudo dnf install rsync
     ```
 
-    For airgapped environments, make sure your Yum repository mirror contains these packages.
+    For airgapped environments, make sure your DNF repository mirror contains these packages.
 
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
@@ -167,7 +167,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
         ```sh
         sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E >> /etc/sysctl.conf
+        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E
         ```
 
     1. Configure the parameter `vm.max_map_count` as follows:
@@ -225,7 +225,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `ec2-user`).
 
 1. Run the following commands:
 
@@ -308,7 +308,7 @@ You can install the backup utility for the backup storage you plan to use, as fo
   - For a regular installation, execute the following:
 
       ```sh
-      sudo yum install s3cmd
+      sudo dnf install s3cmd
       ```
 
   - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
