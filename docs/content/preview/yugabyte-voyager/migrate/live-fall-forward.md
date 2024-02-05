@@ -51,28 +51,512 @@ Before proceeding with migration, ensure that you have completed the following s
 
 Create a new database user, and assign the necessary user permissions.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#oracle" class="nav-link active" id="oracle-tab" data-toggle="tab"
+      role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
-      Standalone Oracle Container Database
+      Oracle
     </a>
   </li>
-    <li>
-    <a href="#rds-oracle" class="nav-link" id="rds-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
-      <i class="icon-oracle" aria-hidden="true"></i>
-      RDS Oracle
+  <li >
+    <a href="#pg" class="nav-link" id="pg-tab" data-toggle="tab"
+      role="tab" aria-controls="pg" aria-selected="false">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL
     </a>
   </li>
 </ul>
-
 <div class="tab-content">
-  <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
-  {{% includeMarkdown "./standalone-oracle.md" %}}
+  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone Oracle Container Database" %}}
+
+1. Ensure that your database log_mode is `archivelog` as follows:
+
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
+
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
+    sqlplus /nolog
+    SQL>alter system set db_recovery_file_dest_size = 10G;
+    SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
+    SQL> connect / as sysdba
+    SQL> Shutdown immediate
+    SQL> Startup mount
+    SQL> Alter database archivelog;
+    SQL> Alter database open;
+    ```
+
+1. Create the tablespaces as follows:
+
+    1. Connect to Pluggable database (PDB) as sysdba and run the following command:
+
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
+
+    1. Connect to Container database (CDB) as sysdba and run the following command:
+
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
+
+1. Run the following commands from CDB as sysdba:
+
+    ```sql
+    CREATE USER c##ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs
+      CONTAINER=ALL;
+
+    GRANT CREATE SESSION TO c##ybvoyager CONTAINER=ALL;
+    GRANT SET CONTAINER TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$DATABASE to c##ybvoyager CONTAINER=ALL;
+    GRANT FLASHBACK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOGMINING TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT CREATE TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOCK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT CREATE SEQUENCE TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT EXECUTE ON DBMS_LOGMNR TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT SELECT ON V_$LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOG_HISTORY TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_LOGS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_PARAMETERS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGFILE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT SELECT ON V_$MYSTAT TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$STATNAME TO c##ybvoyager CONTAINER=ALL;
+    ```
+
+1. Enable supplemental logging in the database as follows:
+
+    ```sql
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (PRIMARY KEY) COLUMNS;
+    ```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS Oracle" %}}
+
+1. Ensure that your database log_mode is `archivelog` as follows:
+
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
+
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
+    exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
+    ```
+
+1. Connect to your database as an admin user, and create the tablespaces as follows:
+
+    ```sql
+    CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;
+    ```
+
+1. Run the following commands connected to the admin or privileged user:
+
+    ```sql
+    CREATE USER ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs;
+
+    GRANT CREATE SESSION TO YBVOYAGER;
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$DATABASE',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    GRANT FLASHBACK ANY TABLE TO YBVOYAGER;
+    GRANT SELECT ANY TABLE TO YBVOYAGER;
+    GRANT SELECT_CATALOG_ROLE TO YBVOYAGER;
+    GRANT EXECUTE_CATALOG_ROLE TO YBVOYAGER;
+    GRANT SELECT ANY TRANSACTION TO YBVOYAGER;
+    GRANT LOGMINING TO YBVOYAGER;
+
+    GRANT CREATE TABLE TO YBVOYAGER;
+    GRANT LOCK ANY TABLE TO YBVOYAGER;
+    GRANT CREATE SEQUENCE TO YBVOYAGER;
+
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR_D',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$LOG',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOG_HISTORY',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_LOGS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_CONTENTS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_PARAMETERS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGFILE',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVED_LOG',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVE_DEST_STATUS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$TRANSACTION',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$MYSTAT',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$STATNAME',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+    ```
+
+1. Enable supplemental logging in the database as follows:
+
+    ```sql
+    exec rdsadmin.rdsadmin_util.alter_supplemental_logging('ADD');
+
+    begin
+        rdsadmin.rdsadmin_util.alter_supplemental_logging(
+            p_action => 'ADD',
+            p_type   => 'PRIMARY KEY');
+    end;
+    /
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
   </div>
-    <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
-  {{% includeMarkdown "./rds-oracle.md" %}}
-  </div>
+  <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone PostgreSQL" %}}
+
+1. yb_voyager requires `wal_level` to be logical. You can check this using following the steps:
+
+    1. Run the command `SHOW wal_level` on the database to check the value.
+
+    1. If the value is anything other than logical, run the command `SHOW config_file` to know the path of your configuration file.
+
+    1. Modify the configuration file by uncommenting the parameter `wal_level` and set the value to logical.
+
+    1. Restart PostgreSQL.
+
+1. Check that the replica identity is "FULL" for all tables on the database.
+
+    1. Run the following query to check the replica identity:
+
+        ```sql
+        SELECT relname, relreplident
+        FROM pg_class
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        ```
+
+    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+
+        ```sql
+        DO $$
+        DECLARE
+          table_name_var text;
+        BEGIN
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          LOOP
+            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+          END LOOP;
+        END $$;
+        ```
+
+1. Create user `ybvoyager` for the migration using the following command:
+
+    ```sql
+    CREATE USER ybvoyager PASSWORD 'password' REPLICATION;
+    ```
+
+1. Switch to the database that you want to migrate.
+
+   ```sql
+   \c <database_name>
+   ```
+
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+
+   ```sql
+   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+
+1. Grant `SELECT` permission on all the tables and sequences.
+
+   ```sql
+   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+
+   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The `ybvoyager` user can now be used for migration.
+
+1. Create a replication group.
+
+    ```sql
+    CREATE ROLE replication_group;
+    ```
+
+1. Add the original owner of the table to the group.
+
+    ```sql
+    GRANT replication_group TO <original_owner>;
+    ```
+
+1. Add the user `ybvoyager` to the replication group.
+
+    ```sql
+    GRANT replication_group TO ybvoyager;
+    ```
+
+1. Transfer ownership of the tables to the role <replication_group>.
+
+    ```sql
+    DO $$
+    DECLARE
+      cur_table text;
+    BEGIN
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      LOOP
+        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+      END LOOP;
+    END $$;
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
+    ```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS PostgreSQL" %}}
+
+1. yb_voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
+
+    1. Run the command `SHOW rds.logical_replication` on the database to check whether the parameter is set.
+
+    1. If the parameter is not set, you can change the parameter value to 1 from the RDS console of the database; navigate to **Configuration** > **Parameter group** > `rds.logical_replication`.
+
+    1. If the `rds.logical_replication` errors out (after the change), create a new parameter group with the value as 1, and assign it to the database instance from the **Modify** option on the RDS console.
+
+    1. Restart RDS.
+
+1. Check that the replica identity is "FULL" for all tables on the database.
+
+    1. Run the query to check the Replica identity for all the tables on the database:
+
+        ```sql
+        SELECT relname, relreplident
+        FROM pg_class
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        ```
+
+    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+
+        ```sql
+        DO $$
+        DECLARE
+          table_name_var text;
+        BEGIN
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          LOOP
+            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+          END LOOP;
+        END $$;
+        ```
+
+1. Create user `ybvoyager` for the migration using the following command:
+
+    ```sql
+    CREATE USER ybvoyager PASSWORD 'password';
+    GRANT rds_replication to ybvoyager;
+    ```
+
+1. Switch to the database that you want to migrate.
+
+   ```sql
+   \c <database_name>
+   ```
+
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+
+   ```sql
+   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+
+1. Grant `SELECT` permission on all the tables and sequences.
+
+   ```sql
+   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+
+   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The `ybvoyager` user can now be used for migration.
+
+1. Create a replication group.
+
+    ```sql
+    CREATE ROLE replication_group;
+    ```
+
+1. Add the original owner of the table to the group.
+
+    ```sql
+    GRANT replication_group TO <original_owner>;
+    ```
+
+1. Add the user `ybvoyager` to the replication group.
+
+    ```sql
+    GRANT replication_group TO ybvoyager;
+    ```
+
+1. Transfer ownership of the tables to the role <replication_group>.
+
+    ```sql
+    DO $$
+    DECLARE
+      cur_table text;
+    BEGIN
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      LOOP
+        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+      END LOOP;
+    END $$;
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
 </div>
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
@@ -145,6 +629,25 @@ The export directory has the following sub-directories and files:
 ## Prepare source-replica database
 
 Perform the following steps to prepare your source-replica database:
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#oracle-source-replica" class="nav-link active" id="oracle-source-replica-tab" data-toggle="tab"
+      role="tab" aria-controls="oracle-source-replica" aria-selected="true">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      Oracle
+    </a>
+  </li>
+  <li >
+    <a href="#pg-source-replica" class="nav-link" id="pg-source-replica-tab" data-toggle="tab"
+      role="tab" aria-controls="pg-source-replica" aria-selected="false">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="oracle-source-replica" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
 
 1. Create `ybvoyager_metadata` schema or user, and tables as follows:
 
@@ -227,6 +730,42 @@ Perform the following steps to prepare your source-replica database:
     export LD_LIBRARY_PATH=$ORACLE_HOME/lib
     export PATH=$PATH:$ORACLE_HOME/bin
     ```
+
+  </div>
+  <div id="pg-source-replica" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-source-replica-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone PostgreSQL" %}}
+
+Create a user `ybvoyager_ff` for the migration with superuser privileges using the following command:
+
+```sql
+CREATE USER ybvoyager_ff with password 'password' superuser;
+```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS PostgreSQL" %}}
+
+1. Create user `ybvoyager_ff` for the migration using the following command:
+
+    ```sql
+    CREATE USER ybvoyager_ff with password 'password';
+    GRANT rds_superuser to ybvoyager_ff;
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager_ff`:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager_ff;
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+</div>
 
 ## Migrate your database to YugabyteDB
 
@@ -367,6 +906,10 @@ The export data from source command first ensures that it exports a snapshot of 
 
 Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
+
+{{<note title="Important">}}
+yb-voyager creates a replication slot in the source database where disk space can be used up rapidly. To avoid this, execute the [Cutover to the target](#cutover-to-the-target) or [End Migration](#end-migration) steps to delete the replication slot. If you choose to skip the steps, then you must delete the replication slot manually to reduce disk usage.
+{{</note>}}
 
 #### Caveats
 

@@ -73,7 +73,7 @@ The valid *arguments* for import data are described in the following table:
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| --target-ssl-mode string | Specify the target YugabyteDB SSL mode from one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
@@ -214,7 +214,7 @@ The valid *arguments* for import data to source-replica are described in the fol
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --batch-size <number> | Size of batches in the number of rows generated for ingestion when you import data to source-replica database. <br> Default: 10,000,000 |
+| --batch-size <number> | Size of batches in the number of rows generated for ingestion when you import data to source-replica database. <br> Default: Oracle (10,000,000) and PostgreSQL(100,000) |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | --source-replica-db-host <hostname> | Domain name or IP address of the machine on which source-replica database server is running. <br>Default: 127.0.0.1 |
@@ -232,8 +232,8 @@ The valid *arguments* for import data to source-replica are described in the fol
 | -h, --help | Command line help for import data to source-replica. |
 | --oracle-home <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --parallel-jobs <connectionCount> | The number of parallel batches issued to the source-replica database. <br> Default: 1 |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--exclude-table-list`, or truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --parallel-jobs <connectionCount> | The number of parallel batches issued to the source-replica database. <br> Default: Oracle(16) and PostgreSQL (If yb-voyager can determine the total number of cores N, then use N/2 as parallel jobs, else it falls back to 8) |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If target YugabyteDB database has any non-empty tables, you get a prompt to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
 

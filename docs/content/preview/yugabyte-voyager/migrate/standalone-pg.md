@@ -100,7 +100,7 @@ private=true
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to ybvoyager:
+1. Grant `CREATE` privilege on the source database to `ybvoyager`:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; -- required to create publication.

@@ -35,6 +35,7 @@ YugabyteDB Voyager has the following features:
 - Parallelism of data across tables.
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
 - Live migration of Oracle databases with fall-forward and fall-back. {{<badge/tp>}}
+- Live migration of PostgreSQL databases with fall-forward. {{<badge/tp>}}
 
 ## Migration types
 
@@ -42,7 +43,7 @@ You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - Take your applications offline to perform the migration.
 - [Live migration](../migrate/live-migrate/) {{<badge/tp>}} - Migrate your data while your application is running (currently Oracle only).
-- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Fall forward to the source-replica database for your live migration (currently Oracle only).
+- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Fall forward to the source-replica database for your live migration (currently Oracle and PostgreSQL only).
 - [Live migration with fall-back](../migrate/live-fall-back/) {{<badge/tp>}} - Fall back to the source database for your live migration (currently Oracle only).
 
 ## Source databases
@@ -51,7 +52,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 | Source database type | Migration type | Supported versions and flavors |
 | :--------------------| :------------- |:----------------------------------- |
-| PostgreSQL | Offline | PostgreSQL 9.x - 11.x <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure Database for PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) |
+| PostgreSQL | Offline and Live| PostgreSQL 9.x - 11.x <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure Database for PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) |
 | MySQL | Offline | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) |
 | Oracle | Offline and Live |Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) |
 
