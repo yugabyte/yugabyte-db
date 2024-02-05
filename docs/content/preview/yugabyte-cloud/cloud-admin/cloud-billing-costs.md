@@ -40,7 +40,7 @@ Instance vCPU capacity cost is the cost for the use of the total number of vCPUs
 
 {{< tip title="Rate card" >}}
 
-$0.25/hour ($.00416666666/minute)
+$0.17/hour ($.00283333333/minute)
 
 {{< /tip >}}
 
@@ -48,7 +48,7 @@ You can reduce the cost by reducing the number of vCPUs, which may have a negati
 
 ### Calculating instance minutes
 
-Yugabyte measures vCPU use in "Instance-Minutes," which are added up at the end of the month to generate your monthly charges. The total instance capacity cost across all your clusters is the sum of instance-minutes across all clusters multiplied by the base per minute rate card ($.00416666666/minute).
+Yugabyte measures vCPU use in "Instance-Minutes," which are added up at the end of the month to generate your monthly charges. The total instance capacity cost across all your clusters is the sum of instance-minutes across all clusters multiplied by the base per minute rate card ($.00283333333/minute).
 
 Pricing is per instance minute consumed for each instance, from the time an instance is launched until it is terminated.
 
@@ -64,7 +64,7 @@ Total vCPU cost/month
 : Total instance minutes x Per minute base rate
 
 Total vCPU cost/month
-: 388800 x $.00416666666 ~ $1619.99
+: 388800 x $.00283333333 ~ $1101.60
 
 ## Disk storage cost
 
