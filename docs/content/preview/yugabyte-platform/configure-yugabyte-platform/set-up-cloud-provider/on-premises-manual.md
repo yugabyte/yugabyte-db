@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
+Use the following procedure to manually provision nodes for your on-premises provider configuration:
 
-- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Assisted manual**.
+- Your [SSH user](../on-premises-provider/#ssh-key-pairs) has sudo privileges that require a password - **Assisted manual**.
 - Your SSH user does not have sudo privileges at all - **Fully manual**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

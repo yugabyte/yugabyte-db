@@ -12,11 +12,13 @@ menu:
 type: indexpage
 ---
 
-After installing YugabyteDB Anywhere (YBA), the next step is to create provider configurations. Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+After installing YugabyteDB Anywhere (YBA), the next step is to create provider configurations.
 
 A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, SSH credentials for connecting to VMs for provisioning, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-| I want to deploy YugbayteDB universes to | Create provider |
+ Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+| To deploy YugbayteDB universes to | Create provider |
 | :--- | :--- |
 | Cloud provider | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
 | Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzugcp/)<br>[OpenShift](openshift/) |

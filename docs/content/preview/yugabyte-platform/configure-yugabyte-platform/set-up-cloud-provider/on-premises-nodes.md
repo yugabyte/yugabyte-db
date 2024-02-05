@@ -19,14 +19,36 @@ After creating the on-premises provider, you can add instances to its free pool 
 
 This displays the configured instance types and instances for the selected provider.
 
+{{< tabpane text=true >}}
+
+  {{% tab header="Automatic Provisioning" lang="automatic" %}}
+
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
 To add nodes, do the following:
 
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
 1. [Add the compute instances](#add-instances).
+1. [Run preflight checks](#run-preflight-checks).
 
-### Add instance types
+  {{% /tab %}}
+
+  {{% tab header="Manual Provisioning" lang="manual" %}}
+
+![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+
+To add nodes, do the following:
+
+1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+1. [Manually provision the nodes](../on-premises-script/).
+1. [Add the compute instances](#add-instances).
+1. [Run preflight checks](#run-preflight-checks).
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+## Add instance types
 
 An instance type defines some basic properties of a VM.
 
@@ -44,19 +66,21 @@ To add an instance type, do the following:
 
 1. Click **Add Instance Type**.
 
-### Add instances
+## Add instances
 
 Before you add instances, you need the following:
 
 - The IP addresses of your VMs.
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
 
-In addition, if either of the following conditions is true (and **Manually Provision Nodes** is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
+### Manually provision nodes
 
-- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Manual setup with script](../on-premises-script/).
-- Your SSH user does not have sudo privileges. See [Fully manual setup](../on-premises-manual/).
+In addition, if either of the following conditions is true (and the **Manually Provision Nodes** option is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
 
-#### Add instances to the on-prem provider
+- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Assisted manual](../on-premises-script/).
+- Your SSH user does not have sudo privileges. See [Fully manual](../on-premises-manual/).
+
+### Add instances to the on-prem provider
 
 To add the instances, do the following:
 
@@ -79,8 +103,12 @@ To add the instances, do the following:
 
     The instances are added to the **Instances** list.
 
-1. After the instances are available in the **Instances** list, validate them by performing a preflight check. For each instance, click **Actions**, choose **Perform check**, and click **Apply**.
+## Run preflight checks
+
+After the instances are available in the **Instances** list, validate them by performing a preflight check.
+
+- For each instance, click **Actions**, choose **Perform check**, and click **Apply**.
 
 YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
 
-If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready.
+If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can begin [deploying universes](../../../create-deployments/).

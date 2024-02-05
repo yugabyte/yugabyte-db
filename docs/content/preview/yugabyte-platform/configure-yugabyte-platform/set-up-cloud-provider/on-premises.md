@@ -16,14 +16,14 @@ type: docs
 
 Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs, and then add them to the provider's free pool of nodes.
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
 YBA supports 3 ways of preparing nodes for running YugabyteDB depending upon the level of access provided to YBA:
 
 | Provisioning | Description |
 | :--- | :--- |
-| Automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the ec2-user for AWS EC2 instances. |
-| Assisted&nbsp;manual via a script | YBA doesn't have access to an SSH user with sudo access BUT the user can run a script interactively on YBA and provide the script with parameters for credentials for the SSH user with sudo access. |
+| Automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. |
+| Assisted&nbsp;manual | YBA doesn't have access to an SSH user with sudo access, but the user can run a script interactively on YBA and provide the script with parameters for credentials for the SSH user with sudo access. |
 | Fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. In this case the user has to follow manual steps (link to fully manual provisioning) to provision the node. |
 
 ## Overview

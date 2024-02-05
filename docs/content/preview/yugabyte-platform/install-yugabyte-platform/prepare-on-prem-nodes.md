@@ -3,7 +3,7 @@ title: Prepare nodes for on-premises deployment
 headerTitle: Prepare your network
 linkTitle: Prepare your network
 description: Prepare YugabyteDB nodes for on-premises deployments.
-headContent: Make sure nodes can communicate
+headContent: Port settings for YugabyteDB Anywhere and universes
 menu:
   preview_yugabyte-platform:
     identifier: prepare-on-prem-nodes
