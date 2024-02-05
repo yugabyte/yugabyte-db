@@ -38,6 +38,7 @@ import { Replication } from './pages/Replication';
 import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { SecondaryDashboard } from './pages/SecondaryDashboard';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
@@ -249,6 +250,10 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
+          <Route
+            path="/universes/:uuid/troubleshoot/:troubleshootUUID"
+            component={SecondaryDashboard}
+          />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}

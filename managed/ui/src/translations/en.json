@@ -34,6 +34,8 @@
       "reload": "Reload",
       "default": "Default",
       "seconds": "Seconds",
+      "startDate": "Start Date",
+      "endDate": "End Date",
       "dot": "."
     },
     "task": {
@@ -44,6 +46,8 @@
       "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
@@ -503,6 +507,20 @@
       }
     },
     "clusterDetail": {
+      "troubleshoot": {
+        "Troubleshoot": "Troubleshoot",
+        "resolved": "Resolved",
+        "Details": "Refer to details",
+        "startTimeError": "Start Date is greater than end date",
+        "advisor": {
+          "typeTag": {
+            "AppIssue": "APPLICATION ISSUE",
+            "NodeIssue": "NODE ISSUE",
+            "InfraIssue": "INFRASTRUCTURE ISSUE",
+            "SQLIssue ": "SQL ISSUE"
+          }
+        }
+      },
       "performance": {
         "advisor": {
           "Recommendation": "Recommendation",
@@ -619,7 +637,9 @@
         },
         "error": {
           "failToFetchUniverse": "Error fetching details for the universe with the UUID: {{universeUuid}}",
-          "failToFetchDrConfig": "Error fetching details for the DR config with the UUID: {{drConfigUuid}}"
+          "failToFetchDrConfig": "Error fetching details for the DR config with the UUID: {{drConfigUuid}}",
+          "undefinedDrPrimaryUniveresUuid": "The DR config does not have an associated DR primary universe.",
+          "undefinedDrReplicaUniveresUuid": "The DR config does not have an associated DR replica universe"
         },
         "backupStorageConfig": {
           "currentStorageConfigInfo": "<bold>{{storageConfigName}}</bold> will be used as the storage config for this operation. To use a different storage config, edit the DR config.",

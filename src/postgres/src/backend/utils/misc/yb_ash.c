@@ -26,6 +26,7 @@
 
 #include "yb_ash.h"
 
+#include "access/hash.h"
 #include "executor/executor.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -74,8 +75,9 @@ typedef struct YbAsh
 static YbAsh *yb_ash = NULL;
 
 static int yb_ash_cb_max_entries(void);
-static void yb_set_ash_metadata(uint64_t query_id);
+static void yb_set_ash_metadata(uint64 query_id);
 static void yb_unset_ash_metadata();
+static uint64 yb_ash_utility_query_id(const char *str, int len);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 
@@ -191,8 +193,20 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
 
-	/* query_id will be set to zero if pg_stat_statements is disabled. */
-	yb_set_ash_metadata(query->queryId);
+	/*
+	 * query->queryId will be zero when it's a utility statement, in that case
+	 * pg_stat_statements calculates a query id based on the redacted query
+	 * string and stores that on it's hash table, but it doesn't set it in
+	 * query->queryId. We need to store the same query id in ASH metadata,
+	 * so that we can join the ASH view with pg_stat_statements.
+	 * yb_ash_utility_query_id calculates the query id in the same way that
+	 * pg_stat_statements does. query_id can also be zero when pg_stat_statements
+	 * is disabled, then this field won't be useful for ASH users at all.
+	 */
+	uint64 query_id = query->queryId != 0
+					  ? query->queryId
+					  : yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len);
+	yb_set_ash_metadata(query_id);
 }
 
 static void
@@ -203,7 +217,13 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * We set the ASH metadata here if it's not been set yet.
 	 */
 	if (MyProc->yb_is_ash_metadata_set == false)
-		yb_set_ash_metadata(queryDesc->plannedstmt->queryId);
+	{
+		uint64 query_id = queryDesc->plannedstmt->queryId != 0
+						  ? queryDesc->plannedstmt->queryId
+						  : yb_ash_utility_query_id(queryDesc->sourceText,
+					   								queryDesc->plannedstmt->stmt_len);
+		yb_set_ash_metadata(query_id);
+	}
 
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
@@ -250,7 +270,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-yb_set_ash_metadata(uint64_t query_id)
+yb_set_ash_metadata(uint64 query_id)
 {
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 
@@ -273,6 +293,21 @@ yb_unset_ash_metadata()
 	MyProc->yb_is_ash_metadata_set = false;
 
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Calculate the query id for utility statements like pg_stat_statements.
+ */
+static uint64
+yb_ash_utility_query_id(const char *str, int len)
+{
+	const char *redacted_query;
+	int			redacted_query_len;
+
+	Assert(str != NULL);
+	YbGetRedactedQueryString(str, len, &redacted_query, &redacted_query_len);
+	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
+											redacted_query_len, 0));
 }
 
 static void

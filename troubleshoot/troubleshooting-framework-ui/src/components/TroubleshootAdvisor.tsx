@@ -1,156 +1,77 @@
 import { useState } from 'react';
-import { Box, makeStyles } from '@material-ui/core';
-import { DiagnosticBox } from './DiagnosticBox';
+import { useQuery } from 'react-query';
+import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
+import { YBErrorIndicator } from '@yugabytedb/ui-components';
+import { PrimaryDashboardData } from './PrimaryDashboardData';
+import { TroubleshootAPI, QUERY_KEY } from '../api';
+import { Anomaly, AppName, Universe } from '../helpers/dtos';
 
-const MOCK_DATA = [
-  {
-    data: {
-      entityType: 'NODE',
-      isStale: false,
-      new: false,
-      observation:
-        'Node yb-admin-test-master-placement-n2 processed 39410.69% more queries than average of other 2 nodes',
-      recommendationPriority: 'MEDIUM',
-      recommendationState: 'OPEN',
-      recommendationInfo: {
-        node_with_highest_query_load_details: {
-          DeleteStmt: 24,
-          InsertStmt: 15685,
-          SelectStmt: 15702,
-          UpdateStmt: 0
-        },
-        other_nodes_average_query_load_details: {
-          DeleteStmt: 24,
-          InsertStmt: 24,
-          SelectStmt: 31.5,
-          UpdateStmt: 0
-        }
-      },
-      recommendationTimestamp: 1702047631.751105,
-      suggestion: 'Redistribute queries to other nodes in the cluster.',
-      target: 'yb-admin-test-master-placement-n2',
-      type: 'NODE_ISSUE'
-    },
-    key: 'NODE_ISSUE-yb-admin-test-master-placement-n2-08cbf046a0505',
-    uuid: '6e2f-779e'
-  },
-  {
-    data: {
-      entityType: 'NODE',
-      isStale: false,
-      new: false,
-      observation:
-        'Node yb-admin-test-master-placement-n1 processed 3008.71% more queries than average of other 2 nodes',
-      recommendationPriority: 'MEDIUM',
-      recommendationState: 'OPEN',
-      recommendationInfo: {
-        node_with_highest_query_load_details: {
-          DeleteStmt: 11000,
-          InsertStmt: 9020,
-          SelectStmt: 37,
-          UpdateStmt: 0
-        },
-        other_nodes_average_query_load_details: {
-          DeleteStmt: 150,
-          InsertStmt: 21,
-          SelectStmt: 31.5,
-          UpdateStmt: 0
-        }
-      },
-      recommendationTimestamp: 1702047631.751105,
-      suggestion: 'Redistribute queries to other nodes in the cluster.',
-      target: 'yb-admin-test-master-placement-n1',
-      type: 'NODE_ISSUE'
-    },
-    key: 'NODE_ISSUE-yb-admin-test-master-placement-n1-08cbf046a0505',
-    uuid: '6e9l-30dw'
-  },
-  {
-    data: {
-      entityType: 'NODE',
-      isStale: false,
-      new: false,
-      observation:
-        'Node yb-admin-test-master-placement-n3 processed 1055.26% more queries than average of other 2 nodes',
-      recommendationPriority: 'MEDIUM',
-      recommendationState: 'OPEN',
-      recommendationInfo: {
-        node_with_highest_query_load_details: {
-          DeleteStmt: 24,
-          InsertStmt: 6300,
-          SelectStmt: 4075,
-          UpdateStmt: 0
-        },
-        other_nodes_average_query_load_details: {
-          DeleteStmt: 24,
-          InsertStmt: 24,
-          SelectStmt: 31.5,
-          UpdateStmt: 0
-        }
-      },
-      recommendationTimestamp: 1702047631.751105,
-      suggestion: 'Redistribute queries to other nodes in the cluster.',
-      target: 'yb-admin-test-master-placement-n3',
-      type: 'NODE_ISSUE'
-    },
-    key: 'NODE_ISSUE-yb-admin-test-master-placement-n3-08cbf046a0505',
-    uuid: '11k3-56qq'
-  }
-];
+import LoadingIcon from '../assets/loading.svg';
 
 interface TroubleshootAdvisorProps {
-  universeUUID?: string;
-  clusterUUID?: string;
-  data: any;
+  universeUuid: string;
+  // TODO: any should be replaced with YBM Node Response
+  universeData: Universe | any;
+  appName: AppName;
+  baseUrl?: string;
+  timezone?: string;
 }
 
-const useStyles = makeStyles((theme) => ({
-  troubleshootAdvisorBox: {
-    marginRight: theme.spacing(1)
+const useStyles = makeStyles((theme: Theme) => ({
+  icon: {
+    width: theme.spacing(3),
+    height: theme.spacing(3),
+    minWidth: theme.spacing(3),
+    minHeight: theme.spacing(3)
+  },
+  inProgressIcon: {
+    color: theme.palette.success[700]
   }
 }));
 
-interface TroubleshootDetailProps {
-  data: any;
-  key: string;
-  isResolved?: boolean;
-}
-
 export const TroubleshootAdvisor = ({
-  data,
-  universeUUID,
-  clusterUUID
+  universeUuid,
+  universeData,
+  appName,
+  baseUrl,
+  timezone
 }: TroubleshootAdvisorProps) => {
   const classes = useStyles();
-  const [displayedRecomendations, setDisplayedRecommendations] = useState<
-    TroubleshootDetailProps[]
-  >(MOCK_DATA);
+  const [anomalyList, setAnomalyList] = useState<Anomaly[] | null>(null);
 
-  const handleResolve = (id: string, isResolved: boolean) => {
-    const copyRecommendations: any = [...MOCK_DATA];
-    const userSelectedRecommendation = copyRecommendations.find((rec: any) => rec.key === id);
-    if (userSelectedRecommendation) {
-      userSelectedRecommendation.isResolved = isResolved;
+  const { isLoading, isError, isIdle } = useQuery(
+    [QUERY_KEY.fetchAnamolies, universeUuid],
+    () => TroubleshootAPI.fetchAnamolies(universeUuid),
+    {
+      onSuccess: (data: Anomaly[]) => {
+        setAnomalyList(data);
+      },
+      onError: (error: any) => {
+        console.error('Failed to fetch anomalies', error);
+      }
     }
-    setDisplayedRecommendations(copyRecommendations);
-  };
+  );
+
+  // TODO: Display Error and Loading indicator based on API response
+  // if (isLoading) {
+  //   return <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list'} />;
+  // }
+  // if (isError || (isIdle && anomalyData === undefined)) {
+  //   return <LoadingIcon />;
+  // }
 
   return (
-    // This dialog is shown is when the last run API fails with 404
-    <Box className={classes.troubleshootAdvisorBox}>
-      {displayedRecomendations.map((rec: any) => (
-        <>
-          <DiagnosticBox
-            key={rec.key}
-            idKey={rec.key}
-            uuid={rec.uuid}
-            type={rec.data.type}
-            data={rec.data}
-            resolved={!!rec.isResolved}
-            onResolve={handleResolve}
+    <Box sx={{ width: '100%' }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box m={2}>
+          <PrimaryDashboardData
+            anomalyData={anomalyList}
+            appName={appName}
+            baseUrl={baseUrl}
+            timezone={timezone}
           />
-        </>
-      ))}
+        </Box>
+      </Box>
     </Box>
   );
 };

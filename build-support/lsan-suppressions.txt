@@ -56,6 +56,9 @@ leak:ThreadSafeObjectPool
 # memory context, so this suppression will not be needed.
 # Ref: https://github.com/postgres/postgres/commit/bea3d7e3831fa6a1395eadbad7d97cebc7aa8aee and
 # https://github.com/postgres/postgres/commit/a28269708844246fb1ec00a536b391cac0a64972.
-# We suppress leaks from parse_ident_line instead of pg_regcomp since pg_regcomp is a common 
+# We suppress leaks from parse_ident_line instead of pg_regcomp since pg_regcomp is a common
 # function which is used in other areas of the code as well.
 leak:parse_ident_line
+
+# https://github.com/yugabyte/yugabyte-db/issues/20788
+leak:call_string_check_hook

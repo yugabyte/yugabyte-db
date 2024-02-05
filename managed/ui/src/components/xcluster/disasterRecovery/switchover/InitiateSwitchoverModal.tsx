@@ -57,6 +57,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const MODAL_NAME = 'InitiateSwitchoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.switchover.initiateModal';
 
 export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitchoverModalProps) => {
@@ -134,43 +135,6 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (targetUniverseQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchTargetuniverse', {
-          keyPrefix: 'queryError.error',
-          universeUuid: drConfig.drReplicaUniverseUuid
-        })}
-      />
-    );
-  }
-  if (targetUniverseQuery.isLoading || targetUniverseQuery.isIdle) {
-    return <YBLoading />;
-  }
-
-  const resetModal = () => {
-    setIsSubmitting(false);
-    setConfirmationText('');
-  };
-  const onSubmit = () => {
-    setIsSubmitting(true);
-    initiateSwitchoverMutation.mutate(drConfig, { onSettled: () => resetModal() });
-  };
-
-  const targetUniverseName = targetUniverseQuery.data.name;
-  const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   const modalTitle = (
     <Typography variant="h4" component="span" className={classes.modalTitle}>
       {t('title')}
@@ -188,6 +152,57 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
       </YBTooltip>
     </Typography>
   );
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    targetUniverseQuery.isError
+  ) {
+    const customErrorMessage = !drConfig.primaryUniverseUuid
+      ? t('undefinedDrPrimaryUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : !drConfig.drReplicaUniverseUuid
+      ? t('undefinedDrReplicaUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : targetUniverseQuery.isError
+      ? t('failedToFetchDrReplicaUniverse', {
+          keyPrefix: 'queryError',
+          universeUuid: drConfig.drReplicaUniverseUuid
+        })
+      : '';
+
+    return (
+      <YBModal
+        customTitle={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
+    );
+  }
+
+  if (targetUniverseQuery.isLoading || targetUniverseQuery.isIdle) {
+    return <YBLoading />;
+  }
+
+  const resetModal = () => {
+    setIsSubmitting(false);
+    setConfirmationText('');
+  };
+  const onSubmit = () => {
+    setIsSubmitting(true);
+    initiateSwitchoverMutation.mutate(drConfig, { onSettled: () => resetModal() });
+  };
+
+  const targetUniverseName = targetUniverseQuery.data.name;
+  const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
+
   return (
     <YBModal
       customTitle={modalTitle}
