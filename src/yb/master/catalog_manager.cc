@@ -13213,7 +13213,7 @@ void CatalogManager::ProcessTabletMetadata(
         // If the reported ht lease from the leader is expired for more than
         // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
         // as a valid leader.
-        if (ht_lease_exp > existing_leader_lease_info->ht_lease_expiration &&
+        if (ht_lease_exp >= existing_leader_lease_info->ht_lease_expiration &&
             !IsHtLeaseExpiredForTooLong(
                 master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
           tablet->UpdateLastTimeWithValidLeader();
