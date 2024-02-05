@@ -635,6 +635,7 @@ other			.
 				}
 {typecast}		{
 					SET_YYLLOC();
+					yylval.val.str = yytext;
 					yylval.val.modificator = "typecast";
 					yylval.val.keycode = X_TYPECAST;
 					yylval.val.sep = NULL;

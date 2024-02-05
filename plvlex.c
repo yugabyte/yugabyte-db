@@ -129,7 +129,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 
 		if (qnames)
 		{
-			bool		isdot = (IsType(nd, OTHERS) && (nd->str[0] == '.'));
+			bool		isdot = (IsType(nd, OTHERS) && (nd->str) && (nd->str[0] == '.'));
 
 			if (IsType(nd, IDENT) && dot && a)
 			{
