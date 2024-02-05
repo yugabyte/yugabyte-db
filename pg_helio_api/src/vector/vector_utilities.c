@@ -67,8 +67,6 @@ typedef struct PgVectorHnswOptions
 
 extern SearchQueryEvalDataWorker *VectorEvaluationData;
 
-PG_FUNCTION_INFO_V1(command_bson_search_param);
-
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -131,9 +129,25 @@ EvaluateMetaSearchScore(pgbson *document)
 {
 	if (VectorEvaluationData == NULL)
 	{
-		ereport(ERROR, (errcode(MongoLocation40218),
-						errmsg(
-							"query requires search score metadata, but it is not available")));
+		/*
+		 * If VectorEvaluationData is NULL, it means that the execution is outside of the custom scan.
+		 * This can happen when vector search with a filter
+		 * We get the similarity score from the metadata field __cosmos_meta__.score in the document.
+		 * If the metadata field is not available, we throw an error.
+		 */
+		const char *metaScorePathName =
+			VECTOR_METADATA_FIELD_NAME "." VECTOR_METADATA_SCORE_FIELD_NAME;
+		bson_iter_t documentIterator;
+		if (PgbsonInitIteratorAtPath(document, metaScorePathName, &documentIterator))
+		{
+			return BsonValueAsDouble(bson_iter_value(&documentIterator));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation40218),
+							errmsg(
+								"query requires search score metadata, but it is not available")));
+		}
 	}
 
 	bool isNull = false;
@@ -183,16 +197,6 @@ EvaluateMetaSearchScore(pgbson *document)
 
 
 /*
- * Dummy function used to send search parameters to the workers.
- */
-Datum
-command_bson_search_param(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_BOOL(true);
-}
-
-
-/*
  * This function parses the user specified filters and returns the filters that are not
  * 1. mongo_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
  * 2. shard_key_value OPERATOR(pg_catalog.=) ::bigint
@@ -207,9 +211,10 @@ command_bson_search_param(PG_FUNCTION_ARGS)
  *			ORDER BY (...)
  *			LIMIT ...
  */
-void
-TryParseUserFilterClause(RelOptInfo *rel, List **userFilters)
+List *
+TryParseUserFilterClause(RelOptInfo *rel)
 {
+	List *userFilters = NIL;
 	ListCell *cell;
 	foreach(cell, rel->baserestrictinfo)
 	{
@@ -242,8 +247,10 @@ TryParseUserFilterClause(RelOptInfo *rel, List **userFilters)
 		}
 
 		/* Filters specified in the search - track them */
-		*userFilters = lappend(*userFilters, rinfo->clause);
+		userFilters = lappend(userFilters, rinfo->clause);
 	}
+
+	return userFilters;
 }
 
 

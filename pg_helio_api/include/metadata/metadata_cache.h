@@ -150,12 +150,15 @@ Oid VectorHNSWIPSimilarityOperatorFamilyId(void);
 Oid VectorHNSWL2SimilarityOperatorFamilyId(void);
 Oid BsonRumTextPathOperatorFamily(void);
 Oid BsonRumSinglePathOperatorFamily(void);
+Oid Float8MinusOperatorId(void);
+Oid Float8MultiplyOperatorId(void);
 
 /* Vector Functions */
 Oid PgDoubleToVectorFunctionOid(void);
 Oid VectorAsVectorFunctionOid(void);
 Oid ApiCatalogBsonExtractVectorFunctionId(void);
 Oid ApiBsonSearchParamFunctionId(void);
+Oid ApiBsonDocumentAddScoreFieldFunctionId(void);
 
 /* Vector Operators */
 Oid VectorOrderByQueryOperatorId(void);

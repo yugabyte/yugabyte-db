@@ -74,6 +74,11 @@ typedef struct BsonQueryOperatorContext
 	 * Coerce expressions to runtime OpExpr if available
 	 */
 	bool coerceOperatorExprIfApplicable;
+
+	/* Required path names for vector search
+	 * it is set only when the filter of vector search is specified
+	 */
+	HTAB *requiredFilterPathNameHashSet;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);

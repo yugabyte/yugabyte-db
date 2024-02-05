@@ -165,7 +165,8 @@ static bool FindMatchingSimilarityIndexAndRewriteOrderByOpExpr(Relation indexRel
 															   vectorQuerySpecNodeConst,
 															   OpExpr *sortExpr,
 															   TargetEntry *tle);
-static Oid GetOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid);
+static Oid GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid
+											   accessMethodOid);
 static void RewriteVectorSimilaritySearchOrderBy(OpExpr *sortExpr,
 												 TargetEntry *tle,
 												 SortGroupClause *orderingClause,
@@ -337,6 +338,7 @@ CreateQualForBsonValueExpression(const bson_value_t *expression)
 	context.inputType = MongoQueryOperatorInputType_BsonValue;
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
+	context.requiredFilterPathNameHashSet = NULL;
 
 	const char *traversedPath = NULL;
 	const char *basePath = "";
@@ -367,6 +369,7 @@ CreateQualForBsonValueArrayExpression(const bson_value_t *expression)
 	context.inputType = MongoQueryOperatorInputType_BsonValue;
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
+	context.requiredFilterPathNameHashSet = NULL;
 
 	const char *traversedPath = NULL;
 	const char *basePath = "";
@@ -417,6 +420,7 @@ CreateQualsForBsonValueTopLevelQuery(const pgbson *query)
 	context.inputType = MongoQueryOperatorInputType_BsonValue;
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
+	context.requiredFilterPathNameHashSet = NULL;
 
 	bson_iter_t queryDocIterator;
 	PgbsonInitIterator(query, &queryDocIterator);
@@ -449,6 +453,8 @@ CreateQualForBsonExpression(const bson_value_t *expression, const
 	context.inputType = MongoQueryOperatorInputType_Bson;
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
+	context.requiredFilterPathNameHashSet = NULL;
+
 	const char *traversedPath = queryPath;
 	const char *basePath = queryPath;
 	return CreateQualForBsonValueExpressionCore(expression, &context, traversedPath,
@@ -705,6 +711,7 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.inputType = MongoQueryOperatorInputType_Bson;
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = true;
+	context.requiredFilterPathNameHashSet = NULL;
 
 	Node *queryExpr = queryNode;
 
@@ -849,7 +856,8 @@ ValidateQueryDocument(pgbson *queryDocument)
 		.documentExpr = (Expr *) MakeSimpleDocumentVar(),
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
-		.coerceOperatorExprIfApplicable = false
+		.coerceOperatorExprIfApplicable = false,
+		.requiredFilterPathNameHashSet = NULL
 	};
 
 	CreateQualsFromQueryDocIterator(&queryDocIter, &context);
@@ -871,7 +879,8 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.documentExpr = (Expr *) MakeSimpleDocumentVar(),
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
-		.coerceOperatorExprIfApplicable = false
+		.coerceOperatorExprIfApplicable = false,
+		.requiredFilterPathNameHashSet = NULL
 	};
 
 	List *leftDocumentQuals = CreateQualsFromQueryDocIterator(&leftDocumentIter,
@@ -884,7 +893,8 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.documentExpr = (Expr *) MakeSimpleDocumentVar(),
 		.inputType = MongoQueryOperatorInputType_Bson,
 		.simplifyOperators = false,
-		.coerceOperatorExprIfApplicable = false
+		.coerceOperatorExprIfApplicable = false,
+		.requiredFilterPathNameHashSet = NULL
 	};
 
 	List *rightDocumentQuals = CreateQualsFromQueryDocIterator(&rightDocumentIter,
@@ -2084,6 +2094,23 @@ CreateFuncExprForQueryOperator(BsonQueryOperatorContext *context, const char *pa
 							   const MongoQueryOperator *operator,
 							   const bson_value_t *value)
 {
+	/* check if the operator requires an index for given path */
+	if (context->requiredFilterPathNameHashSet != NULL)
+	{
+		bool found = false;
+		StringView hashEntry = CreateStringViewFromString(path);
+		hash_search(context->requiredFilterPathNameHashSet, &hashEntry, HASH_FIND,
+					&found);
+
+		if (!found)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"The index for filter path '%s' was not found, please check whether the index is created.",
+								path)));
+		}
+	}
+
 	Expr *comparison = NULL;
 
 	/* construct left and right side of the comparison */
@@ -2930,10 +2957,11 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 							  InvalidOid,
 							  COERCE_EXPLICIT_CALL);
 
+	Oid similaritySearchOpOid = GetSimilarityOperatorOidByFamilyOid(
+		indexRelation->rd_opfamily[0], indexRelation->rd_rel->relam);
 
 	OpExpr *opExpr = (OpExpr *) make_opclause(
-		GetOperatorOidByFamilyOid(indexRelation->rd_opfamily[0],
-								  indexRelation->rd_rel->relam), FLOAT8OID,
+		similaritySearchOpOid, FLOAT8OID,
 		false, vectorExractionFuncWithCast, vectorExractionFromQueryFuncWithCast,
 		InvalidOid, InvalidOid);
 	return (Expr *) opExpr;
@@ -3034,7 +3062,7 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
 
 
 static Oid
-GetOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
+GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
 {
 	if (accessMethodOid == PgVectorIvfFlatIndexAmId())
 	{

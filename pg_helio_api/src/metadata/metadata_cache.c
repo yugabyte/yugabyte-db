@@ -209,6 +209,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the pg_vector hnsw ip similarity operator */
 	Oid VectorHNSWIPSimilarityOperatorFamilyId;
 
+	/* OID of the <float8> - <float8> operator */
+	Oid Float8MinusOperatorId;
+
+	/* OID of the <float8> * <float8> operator */
+	Oid Float8MultiplyOperatorId;
+
 	/* OID of gin_bson_exclusion_pre_consistent function */
 	Oid BsonExclusionPreconsistentFunctionId;
 
@@ -418,6 +424,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_search_param function to wrap search parameter. */
 	Oid ApiBsonSearchParamFunctionId;
+
+	/* OID of the bson_document_add_score_field function add vector score to document */
+	Oid ApiBsonDocumentAddScoreFieldFunctionId;
 
 	/* OID of the websearch_to_tsquery function. */
 	Oid WebSearchToTsQueryFunctionId;
@@ -2639,6 +2648,30 @@ ApiBsonSearchParamFunctionId(void)
 
 
 /*
+ * Returns the OID of the bson_document_add_score_field function.
+ */
+Oid
+ApiBsonDocumentAddScoreFieldFunctionId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiBsonDocumentAddScoreFieldFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString(
+												"bson_document_add_score_field"));
+		Oid paramOids[2] = { BsonTypeId(), FLOAT8OID };
+		bool missingOK = false;
+
+		Cache.ApiBsonDocumentAddScoreFieldFunctionId =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.ApiBsonDocumentAddScoreFieldFunctionId;
+}
+
+
+/*
  * BsonDollarGeowithinFunctionOid returns the OID of ApiCatalogSchemaName.bson_dollar_geowithin
  */
 Oid
@@ -3040,6 +3073,46 @@ VectorOrderByQueryOperatorId(void)
 {
 	return GetBinaryOperatorId(&Cache.VectorOrderByQueryOperatorId,
 							   BsonTypeId(), "|=<>|", BsonTypeId());
+}
+
+
+/*
+ * Float8MinusOperatorId returns the OID of the <float8> - <float8> operator.
+ */
+Oid
+Float8MinusOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8MinusOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"), makeString("-"));
+
+		Cache.Float8MinusOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8MinusOperatorId;
+}
+
+
+/*
+ * Float8MultiplyOperatorId returns the OID of the <float8> * <float8> operator.
+ */
+Oid
+Float8MultiplyOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.Float8MultiplyOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"), makeString("*"));
+
+		Cache.Float8MultiplyOperatorId =
+			OpernameGetOprid(operatorNameList, FLOAT8OID, FLOAT8OID);
+	}
+
+	return Cache.Float8MultiplyOperatorId;
 }
 
 

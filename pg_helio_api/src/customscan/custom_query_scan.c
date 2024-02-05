@@ -22,6 +22,8 @@
 #include <utils/rel.h>
 #include <access/detoast.h>
 #include <miscadmin.h>
+#include <optimizer/paths.h>
+#include <access/ginblock.h>
 
 #include "io/helio_bson_core.h"
 #include "customscan/helio_custom_query_scan.h"
@@ -91,14 +93,8 @@ typedef struct ExtensionQueryScanState
 	/* The execution state of the inner path */
 	ScanState *innerScanState;
 
-	/* The execution state of the filter path */
-	ScanState *filterScanState;
-
 	/* The planning state of the inner path */
 	Plan *innerPlan;
-
-	/* An optional filter plan if available */
-	Plan *filterPlan;
 
 	/* The immutable state for this query */
 	InputQueryState *inputState;
@@ -141,7 +137,8 @@ static TupleTableSlot * ExtensionQueryScanNext(CustomScanState *node);
 static bool ExtensionQueryScanNextRecheck(ScanState *state, TupleTableSlot *slot);
 
 
-static List * AddCustomPathForVectorCore(List *pathList, RelOptInfo *rel,
+static List * AddCustomPathForVectorCore(PlannerInfo *info, List *pathList,
+										 RelOptInfo *rel,
 										 InputQueryState *queryState, bool
 										 failIfNotFound);
 
@@ -208,13 +205,14 @@ AddExtensionQueryScanForVectorQuery(PlannerInfo *root, RelOptInfo *rel,
 	if (EnableVectorPreFilter)
 	{
 		bool failIfNotFound = true;
-		rel->pathlist = AddCustomPathForVectorCore(rel->pathlist, rel, inputState,
+		rel->pathlist = AddCustomPathForVectorCore(root, rel->pathlist, rel, inputState,
 												   failIfNotFound);
 
 		if (rel->partial_pathlist != NIL)
 		{
 			bool failIfNotFound = false;
-			rel->partial_pathlist = AddCustomPathForVectorCore(rel->partial_pathlist, rel,
+			rel->partial_pathlist = AddCustomPathForVectorCore(root,
+															   rel->partial_pathlist, rel,
 															   inputState,
 															   failIfNotFound);
 		}
@@ -318,15 +316,15 @@ AddCustomPathCore(List *pathList, InputQueryState *queryState)
  * and checks if the given user specified filter path is matching with any of the index paths.
  */
 static List *
-AddCustomPathForVectorCore(List *pathList, RelOptInfo *rel, InputQueryState *queryState,
+AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel,
+						   InputQueryState *queryState,
 						   bool failIfNotFound)
 {
 	ListCell *cell;
 
 	Path *vectorSearchPath = NULL;
-	List *filterIndexPaths = NIL;
 
-	/* Find the vector search path and other BitmapHeapPaths */
+	/* Find the vector search path */
 	foreach(cell, pathList)
 	{
 		Path *inputPath = lfirst(cell);
@@ -341,17 +339,7 @@ AddCustomPathForVectorCore(List *pathList, RelOptInfo *rel, InputQueryState *que
 			}
 
 			vectorSearchPath = inputPath;
-		}
-		else if (IsA(inputPath, BitmapHeapPath))
-		{
-			/* BitmapHeapPath on current collection */
-			filterIndexPaths = lappend(filterIndexPaths, inputPath);
-		}
-		else if (inputPath->pathtype == T_SeqScan)
-		{
-			/* TODO handle SeqScan */
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("$filter is not supported for SeqScan yet.")));
+			break;
 		}
 	}
 
@@ -366,13 +354,6 @@ AddCustomPathForVectorCore(List *pathList, RelOptInfo *rel, InputQueryState *que
 						errmsg(
 							"Similarity index was not found for a vector similarity search query during planning.")));
 	}
-
-	/* Walk the base restrict info for valid clauses */
-	List *userFilters = NIL;
-	TryParseUserFilterClause(rel, &userFilters);
-
-	/* TODO check if the user specified filters are all on a single path */
-	/* TODO check if filter path is matching with any of the index paths */
 
 	/* Need to figure out default params */
 	pgbson *searchBson = NULL;
@@ -441,6 +422,7 @@ AddCustomPathForVectorCore(List *pathList, RelOptInfo *rel, InputQueryState *que
 
 	/* custom scan inner paths */
 	customPath->custom_paths = list_make1(vectorSearchPath);
+
 	customPath->path.pathkeys = vectorSearchPath->pathkeys;
 
 #if (PG_VERSION_NUM >= 150000)
@@ -522,12 +504,6 @@ ExtensionQueryScanPlanCustomPath(PlannerInfo *root,
 	/* necessary to avoid extra Result node in PG15 */
 	cscan->flags = CUSTOMPATH_SUPPORT_PROJECTION;
 #endif
-
-	if (list_length(custom_plans) == 2)
-	{
-		Plan *filterPlan = (Plan *) lsecond(custom_plans);
-		filterPlan->qual = NIL;
-	}
 
 	return (Plan *) cscan;
 }
@@ -673,11 +649,6 @@ ExtensionQueryScanEndCustomScan(CustomScanState *node)
 	}
 
 	ExecEndNode((PlanState *) queryScanState->innerScanState);
-
-	if (queryScanState->filterScanState != NULL)
-	{
-		ExecEndNode((PlanState *) queryScanState->filterScanState);
-	}
 }
 
 
@@ -688,11 +659,6 @@ ExtensionQueryScanReScanCustomScan(CustomScanState *node)
 
 	/* reset any scanstate state here */
 	ExecReScan((PlanState *) queryScanState->innerScanState);
-
-	if (queryScanState->filterScanState != NULL)
-	{
-		ExecReScan((PlanState *) queryScanState->filterScanState);
-	}
 }
 
 

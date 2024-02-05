@@ -21,7 +21,7 @@ void CalculateDefaultNumProbesAndSearch(IndexPath *vectorSearchPath, double
 										indexRows, int *defaultNumProbes,
 										int *defaultEfSearch);
 
-void TryParseUserFilterClause(RelOptInfo *rel, List **userFilters);
+List * TryParseUserFilterClause(RelOptInfo *rel);
 
 void SetSearchParametersToGUC(pgbson *searchParamBson);
 

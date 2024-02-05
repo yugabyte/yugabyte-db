@@ -45,6 +45,12 @@
 #define VECTOR_SEARCH_SMALL_COLLECTION_ROWS 10000
 #define VECTOR_SEARCH_1M_COLLECTION_ROWS 1000000
 
+/* metadata field names */
+#define VECTOR_METADATA_FIELD_NAME "__cosmos_meta__"
+#define VECTOR_METADATA_FIELD_NAME_STR_LEN 15
+#define VECTOR_METADATA_SCORE_FIELD_NAME "score"
+#define VECTOR_METADATA_SCORE_FIELD_NAME_STR_LEN 5
+
 /*
  * helioapi.enableVectorHNSWIndex GUC determines vector indexes
  * and queries are enabled in pg_helio_api or not.

@@ -64,6 +64,11 @@ typedef struct
 	 * BSON_TYPE_EOD if not available.
 	 */
 	bson_value_t sortSpec;
+
+	/* The path name of the collection, used for filtering of vector search
+	 * it is set only when the filter of vector search is specified
+	 */
+	HTAB *requiredFilterPathNameHashSet;
 } AggregationPipelineBuildContext;
 
 
@@ -121,6 +126,10 @@ Query * HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 
 bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 								const StringView *lookupPath);
+
+/* vector search related aggregation stages */
+Query * HandleSearch(const bson_value_t *existingValue, Query *query,
+					 AggregationPipelineBuildContext *context);
 
 /* Metadata based query generators */
 Query * GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context);
