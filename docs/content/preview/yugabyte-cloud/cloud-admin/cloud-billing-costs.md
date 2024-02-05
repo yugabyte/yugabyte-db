@@ -32,6 +32,8 @@ Your bill is calculated based on your usage of the following dimensions:
 - Backup storage
 - Data transfer
 
+The following calculations reflect the Standard plan rate card.
+
 ## Instance vCPU capacity costs
 
 Instance vCPU capacity cost is the cost for the use of the total number of vCPUs in your account.
