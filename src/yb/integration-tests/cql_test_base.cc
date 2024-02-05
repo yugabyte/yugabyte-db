@@ -58,8 +58,10 @@ void CqlTestBase<ExternalMiniCluster>::SetUp() {
 }
 
 template <>
-Status CqlTestBase<MiniCluster>::StartCQLServer() {
-  auto* mini_tserver = YBMiniClusterTestBase<MiniCluster>::cluster_->mini_tablet_server(0);
+std::unique_ptr<cqlserver::CQLServer> CqlTestBase<MiniCluster>::MakeCQLServerForTServer(
+    MiniCluster* cluster, int idx, client::YBClient* client, std::string* cql_host,
+    uint16_t* cql_port) {
+  auto* mini_tserver = cluster->mini_tablet_server(idx);
   auto* tserver = mini_tserver->server();
 
   const auto& tserver_options = tserver->options();
@@ -68,16 +70,21 @@ Status CqlTestBase<MiniCluster>::StartCQLServer() {
   cql_server_options.master_addresses_flag = tserver_options.master_addresses_flag;
   cql_server_options.SetMasterAddresses(tserver_options.GetMasterAddresses());
 
-  if (cql_port_ == 0) {
-    cql_port_ = YBMiniClusterTestBase<MiniCluster>::cluster_->AllocateFreePort();
+  if (*cql_port == 0) {
+    *cql_port = cluster->AllocateFreePort();
   }
-  cql_host_ = mini_tserver->bound_rpc_addr().address().to_string();
-  cql_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cql_host_, cql_port_);
+  if (cql_host->empty()) {
+    *cql_host = mini_tserver->bound_rpc_addr().address().to_string();
+  }
+  cql_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", *cql_host, *cql_port);
 
-  cql_server_ = std::make_unique<cqlserver::CQLServer>(
-      cql_server_options,
-      &client_->messenger()->io_service(), tserver);
+  return std::make_unique<cqlserver::CQLServer>(
+      cql_server_options, &client->messenger()->io_service(), tserver);
+}
 
+template <>
+Status CqlTestBase<MiniCluster>::StartCQLServer() {
+  cql_server_ = MakeCQLServerForTServer(cluster_.get(), 0, client_.get(), &cql_host_, &cql_port_);
   return cql_server_->Start();
 }
 

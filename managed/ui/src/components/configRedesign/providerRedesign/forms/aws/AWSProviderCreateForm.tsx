@@ -68,7 +68,10 @@ import { getInvalidFields, useValidationStyles } from './utils';
 import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
@@ -97,7 +100,7 @@ export interface AWSProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybImageType: YBImageType;
-  imageBundles: ImageBundle[]
+  imageBundles: ImageBundle[];
 }
 
 export type QuickValidationErrorKeys = {
@@ -195,7 +198,7 @@ export const AWSProviderCreateForm = ({
   });
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
-  
+
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
@@ -415,10 +418,7 @@ export const AWSProviderCreateForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -432,19 +432,17 @@ export const AWSProviderCreateForm = ({
                 ) : null
               }
             >
-              {
-                !isOsPatchingEnabled && (
-                  <FormField>
-                    <FieldLabel>AMI Type</FieldLabel>
-                    <YBRadioGroupField
-                      name="ybImageType"
-                      control={formMethods.control}
-                      options={YB_IMAGE_TYPE_OPTIONS}
-                      orientation={RadioGroupOrientation.HORIZONTAL}
-                    />
-                  </FormField>
-                )
-              }
+              {!isOsPatchingEnabled && (
+                <FormField>
+                  <FieldLabel>AMI Type</FieldLabel>
+                  <YBRadioGroupField
+                    name="ybImageType"
+                    control={formMethods.control}
+                    options={YB_IMAGE_TYPE_OPTIONS}
+                    orientation={RadioGroupOrientation.HORIZONTAL}
+                  />
+                </FormField>
+              )}
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -470,7 +468,11 @@ export const AWSProviderCreateForm = ({
                 </FormHelperText>
               ) : null}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control} providerType={ProviderCode.AWS} viewMode='CREATE' />
+            <LinuxVersionCatalog
+              control={formMethods.control}
+              providerType={ProviderCode.AWS}
+              viewMode="CREATE"
+            />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
@@ -631,7 +633,7 @@ export const AWSProviderCreateForm = ({
           ybImageType={ybImageType}
           imageBundles={imagebundles}
           onImageBundleSubmit={(images) => {
-            formMethods.setValue("imageBundles", images);
+            formMethods.setValue('imageBundles', images);
           }}
         />
       )}
@@ -653,7 +655,7 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+      formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -695,8 +697,8 @@ const constructProviderPayload = async (
           [ProviderCode.AWS]: {
             ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
               ? {
-                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
-              }
+                  ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                }
               : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
             ...(regionFormValues.securityGroupId && {
               securityGroupId: regionFormValues.securityGroupId

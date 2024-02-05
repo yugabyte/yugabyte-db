@@ -413,18 +413,18 @@ TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
 
   LOG(INFO) << "Connected to YSQL";
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
 
   ASSERT_OK(
       conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES((100), "
-                   "(200), (300), (3000));"));
+                   "(200), (300), (3000))"));
 
   const auto table_oid = ASSERT_RESULT(
       conn.FetchRow<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
 
   ASSERT_OK(conn.Execute(
-      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp;"));
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp"));
 
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
 
@@ -457,7 +457,7 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
       conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kColocatedDatabaseName));
   conn = ASSERT_RESULT(PgConnect(kColocatedDatabaseName));
 
-  const auto db_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", kColocatedDatabaseName)));
 
   for (int i = 0; i < kNumTables; ++i) {

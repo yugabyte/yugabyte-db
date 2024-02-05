@@ -44,6 +44,8 @@
 #include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
@@ -258,6 +260,7 @@ void Batcher::FlushAsync(
     }
   }
 
+  SET_WAIT_STATUS(YBC_WaitingOnDocdb);
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()
                         << " partition key: " << Slice(op.partition_key).ToDebugHexString();
@@ -312,9 +315,12 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
 void Batcher::LookupTabletFor(InFlightOp* op) {
   auto shared_this = shared_from_this();
   TracePtr trace(Trace::CurrentTrace());
+  ash::WaitStateInfoPtr wait_state{ash::WaitStateInfo::CurrentWaitState()};
+  SET_WAIT_STATUS(YBC_LookingUpTablet);
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
-      [shared_this, op, trace](const auto& lookup_result) {
+      [shared_this, op, trace, wait_state](const auto& lookup_result) {
+        ADOPT_WAIT_STATE(wait_state);
         ADOPT_TRACE(trace.get());
         shared_this->TabletLookupFinished(op, lookup_result);
       },
@@ -413,6 +419,8 @@ void Batcher::AllLookupsDone() {
   // 1. The batcher is in the "resolving tablets" state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
+  SET_WAIT_STATUS(YBC_WaitingOnDocdb);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
   if (state_ != BatcherState::kResolvingTablets) {
     LOG(DFATAL) << __func__ << " is invoked in wrong state: " << state_;

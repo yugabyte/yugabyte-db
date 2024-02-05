@@ -73,7 +73,10 @@ import {
   ImageBundle,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
@@ -128,7 +131,9 @@ const VALIDATION_SCHEMA = object().shape({
   azuClientId: string().required('Azure Client ID is required.'),
   azuClientSecret: mixed().test({
     test: (value, context) => {
-      if (context.parent.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL) {
+      if (
+        context.parent.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
+      ) {
         if (!value) {
           return false;
         }
@@ -205,7 +210,7 @@ export const AZUProviderEditForm = ({
   if (hostInfoQuery.isLoading || customerRuntimeConfigQuery.isLoading) {
     return <YBLoading />;
   }
-  
+
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
     setRegionOperation(RegionOperation.ADD);
@@ -271,7 +276,7 @@ export const AZUProviderEditForm = ({
       disabled: hostInfoQuery.data === undefined || getYBAHost(hostInfoQuery.data) !== YBAHost.AZU
     }
   ];
-  
+
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const keyPairManagement = formMethods.watch('sshKeypairManagement');
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
@@ -292,7 +297,8 @@ export const AZUProviderEditForm = ({
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
-    getIsFormDisabled(formMethods.formState, providerConfig);
+    getIsFormDisabled(formMethods.formState, providerConfig) ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -317,7 +323,7 @@ export const AZUProviderEditForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
-            <FormField>
+              <FormField>
                 <FieldLabel>Client ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
@@ -378,17 +384,17 @@ export const AZUProviderEditForm = ({
                     <>
                       <FormField>
                         <FieldLabel>Client Secret</FieldLabel>
-                          <YBInputField
-                            control={formMethods.control}
-                            name="azuClientSecret"
-                            disabled={getIsFieldDisabled(
-                              ProviderCode.AZU,
-                              'azuClientSecret',
-                              isFormDisabled,
-                              isProviderInUse
-                            )}
-                            fullWidth
-                          />
+                        <YBInputField
+                          control={formMethods.control}
+                          name="azuClientSecret"
+                          disabled={getIsFieldDisabled(
+                            ProviderCode.AZU,
+                            'azuClientSecret',
+                            isFormDisabled,
+                            isProviderInUse
+                          )}
+                          fullWidth
+                        />
                       </FormField>
                     </>
                   )}
@@ -483,10 +489,7 @@ export const AZUProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -530,7 +533,12 @@ export const AZUProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={CloudType.azu}
+              viewMode="EDIT"
+              providerStatus={providerConfig.usabilityState}
+            />
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -692,7 +700,10 @@ export const AZUProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />
@@ -760,7 +771,9 @@ const constructDefaultFormValues = (
   sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  providerCredentialType: providerConfig.details.cloudInfo.azu.azuClientSecret ? ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL : ProviderCredentialType.HOST_INSTANCE_MI,
+  providerCredentialType: providerConfig.details.cloudInfo.azu.azuClientSecret
+    ? ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
+    : ProviderCredentialType.HOST_INSTANCE_MI,
   editClientSecret: false
 });
 
@@ -805,8 +818,11 @@ const constructProviderPayload = async (
       cloudInfo: {
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
-          ...(formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
-            azuClientSecret: formValues.editClientSecret ? formValues.azuClientSecret : providerConfig.details.cloudInfo.azu.azuClientSecret
+          ...(formValues.providerCredentialType ===
+            ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
+            azuClientSecret: formValues.editClientSecret
+              ? formValues.azuClientSecret
+              : providerConfig.details.cloudInfo.azu.azuClientSecret
           }),
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,

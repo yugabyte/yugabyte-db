@@ -32,6 +32,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/db/compaction_iterator.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -49,10 +51,9 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
-
-#include "yb/util/flags/flag_tags.h"
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 
@@ -103,6 +104,7 @@ namespace {
       const yb::IOPriority io_priority, Env* env,
       std::shared_ptr<WritableFileWriter>* file_writer) {
     std::unique_ptr<WritableFile> file;
+    SET_WAIT_STATUS(RocksDB_OpenFile);
     Status s = NewWritableFile(env, filename, &file, env_options);
     if (!s.ok()) {
       return s;
@@ -181,6 +183,7 @@ Status BuildTable(const std::string& dbname,
           meta->UpdateKey(c_iter.key(), UpdateBoundariesType::kSmallest);
         }
 
+        SET_WAIT_STATUS(RocksDB_WriteToFile);
         boost::container::small_vector<UserBoundaryValueRef, 0x10> user_values;
         for (; c_iter.Valid(); c_iter.Next()) {
           const Slice& key = c_iter.key();
@@ -228,6 +231,10 @@ Status BuildTable(const std::string& dbname,
           }
           RETURN_NOT_OK(base_file_writer->Sync(ioptions.use_fsync));
         }
+        // Status holds for the duration of file close, and also for
+        // when we are doing the post-close checks. We can refine and
+        // further split the wait-state in future, if necessary.
+        SET_WAIT_STATUS(RocksDB_CloseFile);
         if (s.ok() && !empty && is_split_sst) {
           s = data_file_writer->Close();
         }

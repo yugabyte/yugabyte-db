@@ -324,11 +324,10 @@ void GeoTransactionsTestBase::ValidateAllTabletLeaderinZone(std::vector<TabletId
   }
 }
 
-Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) {
+Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {
   auto conn = EXPECT_RESULT(Connect());
-  uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+  return EXPECT_RESULT(conn.FetchRow<pgwrapper::PGOid>(strings::Substitute(
       "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
-  return tablespace_oid;
 }
 
 Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(

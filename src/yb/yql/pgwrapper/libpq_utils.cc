@@ -13,6 +13,7 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -45,6 +46,12 @@ const std::string& DefaultColumnSeparator() {
 
 const std::string& DefaultRowSeparator() {
   static const std::string result = "; ";
+  return result;
+}
+
+const MonoTime& PGPostgresEpoch() {
+  // Jan 01 2000 00:00:00 GMT+0000
+  static const auto result = MonoTime::FromDuration(946684800s);
   return result;
 }
 
@@ -210,26 +217,72 @@ Result<std::string> RowToString(PGresult* result, int row, const std::string& se
   return line;
 }
 
-}  // namespace
+constexpr Oid BOOLOID = 16;
+constexpr Oid CHAROID = 18;
+constexpr Oid NAMEOID = 19;
+constexpr Oid INT8OID = 20;
+constexpr Oid INT2OID = 21;
+constexpr Oid INT4OID = 23;
+constexpr Oid TEXTOID = 25;
+constexpr Oid OIDOID = 26;
+constexpr Oid FLOAT4OID = 700;
+constexpr Oid FLOAT8OID = 701;
+constexpr Oid BPCHAROID = 1042;
+constexpr Oid VARCHAROID = 1043;
+constexpr Oid TIMESTAMPOID = 1114;
+constexpr Oid TIMESTAMPTZOID = 1184;
+constexpr Oid CSTRINGOID = 2275;
+constexpr Oid UUIDOID = 2950;
 
 template<BasePGType T>
-GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
-  if constexpr (IsPGNonNeg<T>) {
-    const auto value = VERIFY_RESULT(GetValue<typename T::Type>(result, row, column));
-    SCHECK_GE(value, 0, Corruption, "Bad narrow cast");
-    return value;
-  } if constexpr (IsPGFloatType<T>) {
-    using FloatType = typename FloatTraits<T>::FloatType;
-    using IntType = typename FloatTraits<T>::IntType;
-    static_assert(sizeof(FloatType) == sizeof(IntType), "Wrong sizes");
-    const auto value = VERIFY_RESULT(GetValueImpl<IntType>(result, row, column));
-    return *pointer_cast<const FloatType*>(&value);
-  } else if constexpr (IsPGIntType<T>) {
-    return GetValueImpl<std::make_unsigned_t<T>>(result, row, column);
-  } else {
-    return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
+bool IsValidType(Oid pg_type) {
+  if constexpr (std::is_same_v<T, std::string>) {
+    switch(pg_type) {
+      case NAMEOID: [[fallthrough]];
+      case TEXTOID: [[fallthrough]];
+      case BPCHAROID: [[fallthrough]];
+      case VARCHAROID: [[fallthrough]];
+      case CSTRINGOID: return true;
+    }
+    return false;
+  } else if constexpr (std::is_same_v<T, char>) { // NOLINT
+    switch(pg_type) {
+      case CHAROID:  [[fallthrough]];
+      case BPCHAROID: return true;
+    }
+    return false;
+  } else if constexpr (std::is_same_v<T, MonoDelta>) { // NOLINT
+    switch(pg_type) {
+      case TIMESTAMPOID:  [[fallthrough]];
+      case TIMESTAMPTZOID: return true;
+    }
+    return false;
+  } else if constexpr (std::is_same_v<T, bool>) {
+    return pg_type == BOOLOID;
+  } else if constexpr (std::is_same_v<T, int16_t>) {
+    return pg_type == INT2OID;
+  } else if constexpr (std::is_same_v<T, int32_t>) {
+    return pg_type == INT4OID;
+  } else if constexpr (std::is_same_v<T, int64_t>) {
+    return pg_type == INT8OID;
+  } else if constexpr (std::is_same_v<T, float>) {
+    return pg_type == FLOAT4OID;
+  } else if constexpr (std::is_same_v<T, double>) {
+    return pg_type == FLOAT8OID;
+  } else if constexpr (std::is_same_v<T, PGOid>) {
+    return pg_type == OIDOID;
+  } else if constexpr (std::is_same_v<T, Uuid>) {
+    return pg_type == UUIDOID;
   }
 }
+
+template<BasePGType T>
+requires(IsPGNonNeg<T>)
+bool IsValidType(Oid pg_type) {
+  return IsValidType<typename T::Type>(pg_type);
+}
+
+}  // namespace
 
 void PGConnClose::operator()(PGconn* conn) const {
   PQfinish(conn);
@@ -601,21 +654,7 @@ Result<PGResultPtr> PGConn::CopyEnd() {
   return PGResultPtr(PQgetResult(impl_.get()));
 }
 
-Result<std::string> ToString(PGresult* result, int row, int column) {
-  constexpr Oid BOOLOID = 16;
-  constexpr Oid NAMEOID = 19;
-  constexpr Oid INT8OID = 20;
-  constexpr Oid INT2OID = 21;
-  constexpr Oid INT4OID = 23;
-  constexpr Oid TEXTOID = 25;
-  constexpr Oid OIDOID = 26;
-  constexpr Oid FLOAT4OID = 700;
-  constexpr Oid FLOAT8OID = 701;
-  constexpr Oid BPCHAROID = 1042;
-  constexpr Oid VARCHAROID = 1043;
-  constexpr Oid CSTRINGOID = 2275;
-  constexpr Oid UUIDOID = 2950;
-
+Result<std::string> ToString(const PGresult* result, int row, int column) {
   if (PQgetisnull(result, row, column)) {
     return "NULL";
   }
@@ -634,19 +673,21 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return AsString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
       return AsString(VERIFY_RESULT(GetValue<double>(result, row, column)));
-    case NAMEOID: FALLTHROUGH_INTENDED;
-    case TEXTOID: FALLTHROUGH_INTENDED;
-    case BPCHAROID: FALLTHROUGH_INTENDED;
-    case VARCHAROID: FALLTHROUGH_INTENDED;
+    case NAMEOID: [[fallthrough]];
+    case TEXTOID: [[fallthrough]];
+    case BPCHAROID: [[fallthrough]];
+    case VARCHAROID: [[fallthrough]];
     case CSTRINGOID:
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:
       return AsString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
     case UUIDOID:
       return AsString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
-    default:
-      return Format("Type not supported: $0", type);
+    case TIMESTAMPOID: [[fallthrough]];
+    case TIMESTAMPTZOID:
+      return AsString(VERIFY_RESULT(GetValue<MonoDelta>(result, row, column)));
   }
+  return Format("Type not supported: $0", type);
 }
 
 // Escape literals in postgres (e.g. to make a libpq connection to a database named
@@ -782,18 +823,57 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .connect_timeout = connect_timeout});
 }
 
-template GetValueResult<int16_t> GetValue<int16_t>(const PGresult*, int, int);
-template GetValueResult<int32_t> GetValue<int32_t>(const PGresult*, int, int);
-template GetValueResult<int64_t> GetValue<int64_t>(const PGresult*, int, int);
-template GetValueResult<PGUint16> GetValue<PGUint16>(const PGresult*, int, int);
-template GetValueResult<PGUint32> GetValue<PGUint32>(const PGresult*, int, int);
-template GetValueResult<PGUint64> GetValue<PGUint64>(const PGresult*, int, int);
-template GetValueResult<float> GetValue<float>(const PGresult*, int, int);
-template GetValueResult<double> GetValue<double>(const PGresult*, int, int);
-template GetValueResult<bool> GetValue<bool>(const PGresult*, int, int);
-template GetValueResult<std::string> GetValue<std::string>(const PGresult*, int, int);
-template GetValueResult<char> GetValue<char>(const PGresult*, int, int);
-template GetValueResult<PGOid> GetValue<PGOid>(const PGresult*, int, int);
-template GetValueResult<Uuid> GetValue<Uuid>(const PGresult*, int, int);
+namespace libpq_utils::internal {
 
+template<BasePGType T>
+Status GetValueHelper<T>::CheckType(const PGresult* result, int column) {
+  const auto pg_type = PQftype(result, column);
+  SCHECK(
+      IsValidType<T>(pg_type), Corruption,
+      "Unexpected type $0 of column #$1 ('$2')", pg_type, column, PQfname(result, column));
+  return Status::OK();
+}
+
+template<BasePGType T>
+GetValueResult<T> GetValueHelper<T>::Get(const PGresult* result, int row, int column) {
+  SCHECK(
+      (!PQgetisnull(result, row, column)),
+      Corruption, "Unexpected NULL value at row: $0, column: $1", row, column);
+
+  if constexpr (IsPGNonNeg<T>) {
+    const auto value = VERIFY_RESULT(GetValueHelper<typename T::Type>::Get(result, row, column));
+    SCHECK_GE(value, 0, Corruption, "Bad narrow cast");
+    return value;
+  } else if constexpr (IsPGFloatType<T>) { // NOLINT
+    using FloatType = typename FloatTraits<T>::FloatType;
+    using IntType = typename FloatTraits<T>::IntType;
+    static_assert(sizeof(FloatType) == sizeof(IntType), "Wrong sizes");
+    const auto value = VERIFY_RESULT(GetValueImpl<IntType>(result, row, column));
+    return *pointer_cast<const FloatType*>(&value);
+  } else if constexpr (IsPGIntType<T>) {
+    return GetValueImpl<std::make_unsigned_t<T>>(result, row, column);
+  } else if constexpr (std::is_same_v<T, MonoDelta>) { // NOLINT
+    return MonoDelta::FromMicroseconds(
+        VERIFY_RESULT(GetValueHelper<int64_t>::Get(result, row, column)));
+  } else {
+    return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
+  }
+}
+
+template struct GetValueHelper<int16_t>;
+template struct GetValueHelper<int32_t>;
+template struct GetValueHelper<int64_t>;
+template struct GetValueHelper<PGUint16>;
+template struct GetValueHelper<PGUint32>;
+template struct GetValueHelper<PGUint64>;
+template struct GetValueHelper<float>;
+template struct GetValueHelper<double>;
+template struct GetValueHelper<bool>;
+template struct GetValueHelper<std::string>;
+template struct GetValueHelper<char>;
+template struct GetValueHelper<PGOid>;
+template struct GetValueHelper<Uuid>;
+template struct GetValueHelper<MonoDelta>;
+
+} // namespace libpq_utils::internal
 } // namespace yb::pgwrapper

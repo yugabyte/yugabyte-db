@@ -17,6 +17,11 @@ import { ConfigureOnPremRegionFormValues } from '../forms/configureRegion/Config
 import { RegionOperation } from '../forms/configureRegion/constants';
 import { getRegionToInUseAz } from '../utils';
 import { UniverseItem } from '../providerView/providerDetails/UniverseTable';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { SupportedRegionField } from '../forms/configureRegion/types';
 
@@ -126,36 +131,47 @@ const contextualHelpers = ({
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(disabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={disabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={disabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };
@@ -189,36 +205,47 @@ const contextualHelpers = ({
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(disabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={disabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={disabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };
@@ -252,36 +279,47 @@ const contextualHelpers = ({
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(disabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={disabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
                 className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={disabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };

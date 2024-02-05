@@ -424,6 +424,9 @@ TEST_F(PgMiniAsh, YB_DISABLE_TEST_IN_TSAN(Ash)) {
 
   int kNumCalls = 100;
   tserver::PgActiveSessionHistoryRequestPB req;
+  req.set_fetch_tserver_states(true);
+  req.set_fetch_flush_and_compaction_states(true);
+  req.set_fetch_cql_states(true);
   tserver::PgActiveSessionHistoryResponsePB resp;
   rpc::RpcController controller;
   std::unordered_map<std::string, size_t> method_counts;

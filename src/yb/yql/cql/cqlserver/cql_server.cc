@@ -57,6 +57,8 @@ TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);
 
 DEFINE_UNKNOWN_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
+DECLARE_bool(TEST_yb_enable_ash);
+
 namespace yb {
 namespace cqlserver {
 
@@ -89,6 +91,10 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
 
   if (tserver_) {
     tserver_->RegisterCertificateReloader(std::bind(&CQLServer::ReloadKeysAndCertificates, this));
+
+    if (GetAtomicFlag(&FLAGS_TEST_yb_enable_ash) && tserver) {
+      tserver->SetCQLServer(this);
+    }
   }
 }
 

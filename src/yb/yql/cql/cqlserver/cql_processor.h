@@ -114,6 +114,8 @@ class CQLProcessor : public ql::QLProcessor {
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
   void SendResponse(const ql::CQLResponse& response);
 
+  void UpdateAshQueryId(const ql::CQLMessage::QueryId& query_id);
+
   ql::CQLMessage::QueryId GetPrepQueryId() const {
     return request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE
         ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";

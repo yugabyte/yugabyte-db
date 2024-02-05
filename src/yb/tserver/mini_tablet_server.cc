@@ -233,12 +233,12 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) -> Status {
     auto tablet = tablet_peer->shared_tablet();
-    if (tablet) {
-      CHECK_OK(tablet->ForceManualRocksDBCompact(skip_flush));
+    if (!tablet) {
+      return Status::OK();
     }
-    return Status::OK();
+    return tablet->ForceManualRocksDBCompact(skip_flush);
   });
 }
 

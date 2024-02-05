@@ -68,6 +68,7 @@ void RpczPathHandler(Messenger* messenger,
   DumpRunningRpcsRequestPB dump_req;
   DumpRunningRpcsResponsePB dump_resp;
 
+  dump_req.set_get_wait_state(GetBool(req.parsed_args, "get_wait_state", false));
   dump_req.set_include_traces(GetBool(req.parsed_args, "include_traces", false));
   dump_req.set_dump_timed_out(GetBool(req.parsed_args, "timed_out", false));
   dump_req.set_get_local_calls(true);

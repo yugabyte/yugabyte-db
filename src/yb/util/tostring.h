@@ -128,38 +128,10 @@ std::string ToString(const Float& value) {
   return buffer;
 }
 
-template <class Pointer>
-struct PointerToString {
-  template<class P>
-  static std::string Apply(const P& ptr);
-};
-
-template <>
-struct PointerToString<const void*> {
-  static std::string Apply(const void* ptr) {
-    if (ptr) {
-      char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x
-      buffer[0] = '0';
-      buffer[1] = 'x';
-      FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer + 2);
-      return buffer;
-    } else {
-      return "<NULL>";
-    }
-  }
-};
-
-template <>
-struct PointerToString<void*> {
-  static std::string Apply(const void* ptr) {
-    return PointerToString<const void*>::Apply(ptr);
-  }
-};
-
 template <class T>
 concept TypeWithStronglyDefinedToString =
     TypeWith_ToString<T> || TypeWith_to_string<T> || yb_tostring::TypeWithFree_to_string<T> ||
-    TypeWith_ShortDebugString<T> || OptionalType<T> ||
+    TypeWith_ShortDebugString<T> || TupleLikeType<T> || OptionalType<T> ||
     std::is_integral_v<T> || std::is_floating_point_v<T>;
 
 template <class T>
@@ -169,21 +141,11 @@ template <class T>
 concept TypeForToStringAsCollection = IsCollection<T>::value && !TypeWithStronglyDefinedToString<T>;
 
 template <TypeForToStringAsPointer T>
-decltype(auto) ToString(const T& value) {
-  return PointerToString<std::remove_cv_t<T>>::Apply(value);
-}
-
-template <class Value>
-decltype(auto) ToString(std::reference_wrapper<Value> value) {
-  return ToString(value.get());
-}
+std::string ToString(const T& ptr);
 
 inline std::string_view ToString(std::string_view str) { return str; }
 inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
-
-template <class First, class Second>
-std::string ToString(const std::pair<First, Second>& pair);
 
 template <class Collection, class Transform>
 std::string CollectionToString(const Collection& collection, const Transform& transform);
@@ -227,49 +189,16 @@ decltype(auto) ToString(const T& value) {
   return out.str();
 }
 
-// Definition of functions that use ToString chaining should be declared after all declarations.
-template <class Pointer>
-template <class P>
-std::string PointerToString<Pointer>::Apply(const P& ptr) {
-  if (ptr) {
-    char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
-    char* end = buffer + strlen(buffer);
-    memcpy(end, " -> ", 5);
-    return buffer + ToString(*ptr);
-  } else {
-    return "<NULL>";
-  }
-}
+template <OptionalType T>
+std::string ToString(const T& t);
 
-template <class First, class Second>
-std::string ToString(const std::pair<First, Second>& pair) {
-  return "{" + ToString(pair.first) + ", " + ToString(pair.second) + "}";
-}
+template <size_t Index, TupleLikeType Tuple>
+void TupleToString(const Tuple& tuple, std::string* out);
 
-template <class Tuple, size_t index, bool exist>
-struct TupleToString {
-  static void Apply(const Tuple& tuple, std::string* out) {
-    if (index) {
-      *out += ", ";
-    }
-    *out += ToString(std::get<index>(tuple));
-    TupleToString<Tuple, index + 1, (index + 1 < std::tuple_size_v<Tuple>)>::Apply(tuple, out);
-  }
-};
-
-template <class Tuple, size_t index>
-struct TupleToString<Tuple, index, false> {
-  static void Apply(const Tuple& tuple, std::string* out) {}
-};
-
-template <class... Args>
-std::string ToString(const std::tuple<Args...>& tuple) {
-  using Tuple = std::tuple<Args...>;
+template <TupleLikeType Tuple>
+std::string ToString(const Tuple& tuple) {
   std::string result = "{";
-  TupleToString<Tuple, 0, (0 < std::tuple_size_v<Tuple>)>::Apply(tuple, &result);
+  TupleToString<0>(tuple, &result);
   result += "}";
   return result;
 }
@@ -285,12 +214,45 @@ decltype(auto) ToString(const std::chrono::duration<Rep, Period>& duration) {
 std::string ToString(const std::chrono::steady_clock::time_point& time_point);
 std::string ToString(const std::chrono::system_clock::time_point& time_point);
 
+// Definition of functions that use ToString chaining should be declared after all declarations.
+template <class Value>
+decltype(auto) ToString(std::reference_wrapper<Value> value) {
+  return ToString(value.get());
+}
+
+template <TypeForToStringAsPointer T>
+std::string ToString(const T& ptr) {
+  if (!ptr) {
+    return "<NULL>";
+  }
+  char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
+  buffer[0] = '0';
+  buffer[1] = 'x';
+  if constexpr (std::is_same_v<T, void*> || std::is_same_v<T, const void*>) {
+    FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer + 2);
+    return buffer;
+  } else {
+    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
+    auto* end = buffer + strlen(buffer);
+    memcpy(end, " -> ", 5);
+    return buffer + ToString(*ptr);
+  }
+}
+
+template <size_t Index, TupleLikeType Tuple>
+void TupleToString(const Tuple& tuple, std::string* out) {
+  if constexpr (Index) {
+    *out += ", ";
+  }
+  *out += ToString(std::get<Index>(tuple));
+  if constexpr (Index + 1 < std::tuple_size_v<Tuple>) {
+    TupleToString<Index + 1>(tuple, out);
+  }
+}
+
 template <OptionalType T>
 std::string ToString(const T& t) {
-  if (!t) {
-    return "<nullopt>";
-  }
-  return ToString(*t);
+  return t ? ToString(*t) : "<nullopt>";
 }
 
 template <class Collection, class Transform>

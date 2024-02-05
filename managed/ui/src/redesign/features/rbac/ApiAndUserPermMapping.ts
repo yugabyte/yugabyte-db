@@ -301,7 +301,7 @@ export const ApiPermissionMap = {
         endpoint: '/nodes/$nodeUUID<[^/]+>/list'
     },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
-    CREATE_PROVIDERS: { requestType: ApiRequestType.POST, endpoint: '/providers' },
+    CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
         requestType: ApiRequestType.GET,
         endpoint: '/providers/$pUUID<[^/]+>'

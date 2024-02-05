@@ -445,7 +445,7 @@ YBTransactionsEnabled()
 }
 
 bool
-IsYBReadCommitted()
+YBIsReadCommittedSupported()
 {
 	static int cached_value = -1;
 	if (cached_value == -1)
@@ -457,7 +457,13 @@ IsYBReadCommitted()
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
 #endif
 	}
-	return IsYugaByteEnabled() && cached_value &&
+	return cached_value;
+}
+
+bool
+IsYBReadCommitted()
+{
+	return IsYugaByteEnabled() && YBIsReadCommittedSupported() &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
 }
 
@@ -4384,4 +4390,13 @@ YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
 	}
 
 	return ordering;
+}
+
+void
+YbGetRedactedQueryString(const char* query, int query_len,
+						 const char** redacted_query, int* redacted_query_len)
+{
+	*redacted_query = pnstrdup(query, query_len);
+	*redacted_query = RedactPasswordIfExists(*redacted_query);
+	*redacted_query_len = strlen(*redacted_query);
 }

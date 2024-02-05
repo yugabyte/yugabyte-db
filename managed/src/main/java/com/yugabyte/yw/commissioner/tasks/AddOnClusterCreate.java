@@ -46,7 +46,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                 // Set non on-prem node UUIDs.
                 setCloudNodeUuids(u);
                 // Update on-prem node UUIDs.
-                updateOnPremNodeUuidsOnTaskParams();
+                updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
                 // Set the prepared data to universe in-memory.
                 updateUniverseNodesAndSettings(u, taskParams(), true);
                 u.getUniverseDetails()

@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -200,9 +201,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private TaskInfo submitTask(UUID universeUUID, Provider provider, String nodeName, int version) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
-
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), NodeTaskParams.class);
     taskParams.expectedUniverseVersion = version;
     taskParams.nodeName = nodeName;
     taskParams.setUniverseUUID(universe.getUniverseUUID());
@@ -284,6 +285,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> ADD_NODE_TASK_DECOMISSIONED_NODE_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.PreflightNodeCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
@@ -512,7 +514,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     assertThat(
         taskInfo.getSubTasks().stream()
-            .filter(t -> t.getTaskType() == TaskType.FreezeUniverse)
+            .filter(t -> t.getTaskType() == TaskType.PreflightNodeCheck)
             .findFirst()
             .get()
             .getErrorMessage(),

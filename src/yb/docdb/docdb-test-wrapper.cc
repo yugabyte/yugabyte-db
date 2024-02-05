@@ -1855,7 +1855,8 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   tablet::TabletOptions tablet_options;
   rocksdb::Options options;
   docdb::InitRocksDBOptions(
-      &options, "" /* log_prefix */, rocksdb::CreateDBStatisticsForTests(), tablet_options);
+      &options, "" /* log_prefix */, tablet_id(), rocksdb::CreateDBStatisticsForTests(),
+      tablet_options);
 
   rocksdb::DB* rocksdb = nullptr;
   std::string db_path = "";

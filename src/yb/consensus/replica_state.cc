@@ -1393,7 +1393,6 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
-    SCOPED_WAIT_STATUS(ReplicaState_WaitForMajorityReplicatedHtLeaseExpiration);
     if (deadline == CoarseTimePoint::max()) {
       cond_.wait(l, predicate);
     } else if (!cond_.wait_until(l, deadline, predicate)) {

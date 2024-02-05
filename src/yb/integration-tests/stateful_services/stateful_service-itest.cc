@@ -282,7 +282,7 @@ TEST_F(StatefulServiceTest, TestEchoService) {
 }
 
 TEST_F(StatefulServiceTest, TestLeadershipChange) {
-  // If the tablet leader changes in the middle of a RPC, but after the write then the RPC should
+  // If the tablet leader changes in the middle of an RPC, but after the write then the RPC should
   // still fail. The StatefulServiceClient should retry the RPC on the new leader such that the
   // client is unaware of the leader change.
   // Note: This will lead to double write in our TestEchoService. If this behavior is undesirable

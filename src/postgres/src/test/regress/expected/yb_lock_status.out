@@ -144,6 +144,8 @@ SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, '10000000-2000-3000-1
 -- READ COMMITTED
 -- Basic insert
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 INSERT INTO yb_lock_tests VALUES (1, 1, 1, 'one', 1, 1);
 INSERT INTO yb_lock_tests VALUES (2, 2, 2, 'two', 2, 2);
 SELECT * FROM validate_and_return_lock_status('yb_lock_tests'::regclass, null);
@@ -175,6 +177,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 COMMIT;
 -- Basic Column Update
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 UPDATE yb_lock_tests SET v1 = 2 WHERE k1 = 1 AND k2 = 1;
 SELECT * FROM validate_and_return_lock_status('yb_lock_tests'::regclass, null);
  locktype |   relation    |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols |  range_cols   | attnum | column_id | multiple_rows_locked | num_blocking
@@ -195,6 +199,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 ABORT;
 -- Basic primary key update
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 UPDATE yb_lock_tests SET r1 = 2 WHERE k1 = 1 AND k2 = 1;
 SELECT * FROM validate_and_return_lock_status('yb_lock_tests'::regclass, null);
  locktype |   relation    |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols |  range_cols   | attnum | column_id | multiple_rows_locked | num_blocking
@@ -222,6 +228,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 
 ABORT;
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 UPDATE yb_lock_tests SET k2 = 2 WHERE k1 = 1 AND k2 = 1;
 SELECT * FROM validate_and_return_lock_status('yb_lock_tests'::regclass, null);
  locktype |   relation    |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols |  range_cols   | attnum | column_id | multiple_rows_locked | num_blocking
@@ -249,6 +257,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 ABORT;
 -- SELECT FOR SHARE
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 SELECT * FROM yb_lock_tests FOR SHARE;
  k1 | k2 | r1 | r2  | v1 | v2
 ----+----+----+-----+----+----
@@ -277,6 +287,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 COMMIT;
 -- SELECT FOR KEY SHARE
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 SELECT * FROM yb_lock_tests FOR KEY SHARE;
  k1 | k2 | r1 | r2  | v1 | v2
 ----+----+----+-----+----+----
@@ -305,6 +317,8 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, n
 COMMIT;
 -- SELECT FOR UPDATE
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 SELECT * FROM yb_lock_tests FOR UPDATE;
  k1 | k2 | r1 | r2  | v1 | v2
 ----+----+----+-----+----+----
