@@ -120,7 +120,7 @@ This page allows you to do the following:
 
 - Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is helpful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
-- Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustration to select the tables or database for which to restart the replication:
+- Restart the replication by clicking **Actions > Restart Replication**. For YCQL, additionally use the dialog shown in the following illustration to select the tables or database for which to restart the replication:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
