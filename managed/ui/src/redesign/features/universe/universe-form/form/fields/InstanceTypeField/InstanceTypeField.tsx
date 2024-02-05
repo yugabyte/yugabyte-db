@@ -135,7 +135,7 @@ export const InstanceTypeField = ({
     }
   );
 
-  useEffect(() => {
+  useUpdateEffect(() => {
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
       //Reset instance type after provider change
