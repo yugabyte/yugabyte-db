@@ -153,8 +153,9 @@ get_ephemeral_drives() {
   fi
 
   declare -g eph_idx=0
+  declare -g max_iterations=$((num_devices+1))
   # iterate through 1 more than num_devices to skip over root volume
-  for (( i=0; i<num_devices+1; ++i )); do
+  for (( i=0; i<max_iterations; ++i )); do
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
     # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
@@ -171,11 +172,34 @@ get_ephemeral_drives() {
         device_path=$(echo $device_path | sed "s/sd/$DRIVE_SCHEME/")
     fi
 
+    echo "Device path $device_path"
+
+    if ! [[ -b "$device_path" ]]; then
+      echo "Ephemeral disk $e, $device_path is not present. Skipping."
+      continue
+    fi
+
+    # In aws we cannot clearly identify whether disk is provided with ami or added by yba
+    # So if we see that disk is already mounted to some mount point that is not managed by yba
+    # then we skip it
+    declare -g active_mount_points=$(lsblk -o MOUNTPOINT -nr "$device_path" | grep -v '^$')
+    if ! [[ -z "$active_mount_points" ]]; then
+      declare -g mount_points_arr=(${active_mount_points})
+      for value in "${mount_points_arr[@]}"
+      do
+        if ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
+          echo "$device_path is mounted at $value, which is not expected to be managed by yba"
+          max_iterations=$((max_iterations+1))
+          continue 2
+        fi
+      done
+    fi
+
     # Test that the device actually exists since you can request more ephemeral drives than are
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
+    if ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
       # NOTE: This does not seem to return the actual file system
@@ -246,7 +270,7 @@ get_ephemeral_drives() {
         break
       fi
     else
-      echo "Ephemeral disk $e, $device_path is not present or part of root $root_drive. Skipping."
+      echo "Ephemeral disk $e, $device_path is a part of root $root_drive. Skipping."
     fi
   done
 

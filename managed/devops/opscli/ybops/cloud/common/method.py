@@ -840,7 +840,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
@@ -865,6 +865,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                                 host_port_user["host"],
                                                 host_port_user["user"],
                                                 host_port_user["port"]))
+
+    def get_device_names(self, args, host_info):
+        return self.cloud.get_device_names(args)
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
