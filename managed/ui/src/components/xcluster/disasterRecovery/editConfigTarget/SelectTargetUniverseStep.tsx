@@ -16,6 +16,7 @@ import { Universe } from '../../../../redesign/helpers/dtos';
 interface SelectTargetUniverseStepProps {
   isFormDisabled: boolean;
   sourceUniverseUuid: string;
+  targetUniverseUuid: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -33,7 +34,8 @@ const TRANSLATION_KEY_PREFIX =
  */
 export const SelectTargetUniverseStep = ({
   isFormDisabled,
-  sourceUniverseUuid
+  sourceUniverseUuid,
+  targetUniverseUuid
 }: SelectTargetUniverseStepProps) => {
   const { control } = useFormContext<EditConfigTargetFormValues>();
   const classes = useStyles();
@@ -54,10 +56,13 @@ export const SelectTargetUniverseStep = ({
     );
   }
 
+  // Remove DR primary and current DR replica from the list of universe options in addition
+  // to the universes which are unavailable for new tasks.
   const universeOptions = universeListQuery.data
     .filter(
       (universe) =>
         universe.universeUUID !== sourceUniverseUuid &&
+        universe.universeUUID !== targetUniverseUuid &&
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {

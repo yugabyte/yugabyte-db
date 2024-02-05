@@ -5,6 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
+import { TroubleshootAdvisor } from '@yugabytedb/troubleshoot-ui';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -43,6 +44,7 @@ import {
   isNonAvailable,
   isDisabled,
   isNotHidden,
+  isHidden,
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
@@ -529,6 +531,29 @@ class UniverseDetail extends Component {
               refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
+          </Tab.Pane>
+        ),
+        isHidden(currentCustomer.data.features, 'universes.details.troubleshooting') && (
+          <Tab.Pane
+            eventKey={'troubleshoot'}
+            tabtitle="Troubleshoot"
+            key="troubleshoot-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(
+              currentCustomer.data.features,
+              'universes.details.troubleshooting'
+            )}
+          >
+            {featureFlags.released.enableTroubleshooting &&
+              featureFlags.test.enableTroubleshooting && (
+                <TroubleshootAdvisor
+                  universeUuid={currentUniverse.data.universeUUID}
+                  universeData={currentUniverse.data.universeDetails}
+                  appName={'YBA'}
+                  timezone={currentUser.data.timezone}
+                />
+              )}
           </Tab.Pane>
         )
       ],

@@ -2,8 +2,8 @@ import { ChangeEvent } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import TextField from '@material-ui/core/TextField';
 import clsx from 'clsx';
-import { YBTimeFormats, formatDatetime } from '../utils/dateUtils';
-import { isNonEmptyString } from '../utils/objectUtils';
+import { YBTimeFormats, formatDatetime } from '../helpers/DateUtils';
+import { isNonEmptyString } from '../helpers/ObjectUtils';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -18,7 +18,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface YBDateTimePickerProps {
-  defaultDateTimeValue: string;
+  defaultDateTimeValue?: string;
   dateTimeLabel: string;
   className?: any;
   errorMsg?: string;

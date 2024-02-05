@@ -71,6 +71,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const MODAL_NAME = 'InitiateFailoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.failover.initiateModal';
 
 export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailoverrModalProps) => {
@@ -169,44 +170,65 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (targetUniverseQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchTargetuniverse', {
-          keyPrefix: 'queryError.error',
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    targetUniverseQuery.isError ||
+    currentSafetimesQuery.isError
+  ) {
+    const customErrorMessage = !drConfig.primaryUniverseUuid
+      ? t('undefinedDrPrimaryUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : !drConfig.drReplicaUniverseUuid
+      ? t('undefinedDrReplicaUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : targetUniverseQuery.isError
+      ? t('failedToFetchDrReplicaUniverse', {
+          keyPrefix: 'queryError',
           universeUuid: drConfig.drReplicaUniverseUuid
-        })}
-      />
-    );
-  }
-  if (currentSafetimesQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchCurrentSafetimes', {
+        })
+      : currentSafetimesQuery.isError
+      ? t('failedToFetchCurrentSafetimes', {
           keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
+        })
+      : '';
+
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
     );
   }
+
   if (
     targetUniverseQuery.isLoading ||
     targetUniverseQuery.isIdle ||
     currentSafetimesQuery.isLoading ||
     currentSafetimesQuery.isIdle
   ) {
-    return <YBLoading />;
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
   }
 
   const namespaceIdSafetimeEpochUsMap = getNamespaceIdSafetimeEpochUsMap(
@@ -228,9 +250,11 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   return (
     <YBModal
-      title={t('title')}
+      title={modalTitle}
+      cancelLabel={cancelLabel}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={isSubmitting}

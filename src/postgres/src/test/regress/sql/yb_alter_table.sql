@@ -277,8 +277,22 @@ SELECT * FROM temp_table_rewrite_test ORDER BY a;
 -- Test rewrite on a colocated table.
 CREATE DATABASE mydb WITH colocation = true;
 \c mydb;
-CREATE TABLE base (col int);
-CREATE INDEX base_idx ON base(col);
-ALTER TABLE base ADD COLUMN col2 SERIAL;
-\d base;
-\d base_idx;
+CREATE TABLE base (col int PRIMARY KEY, col2 int);
+CREATE INDEX base_idx ON base(col2);
+INSERT INTO base VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base ADD COLUMN col3 SERIAL;
+SELECT * FROM base;
+SELECT * FROM base WHERE col2 = 1;
+\d+ base;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base_idx'::regclass);
+SELECT * FROM base;
+CREATE TABLE base2 (col int PRIMARY KEY, col2 int) WITH (COLOCATION=false);
+CREATE INDEX base2_idx ON base2(col2);
+INSERT INTO base VALUES (1), (2), (3);
+ALTER TABLE base2 ADD COLUMN col3 SERIAL;
+SELECT * FROM base;
+SELECT * FROM base WHERE col2 = 1;
+\d+ base2;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base2_idx'::regclass);

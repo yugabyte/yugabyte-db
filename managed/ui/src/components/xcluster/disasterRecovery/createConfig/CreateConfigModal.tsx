@@ -205,6 +205,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size='md'
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBLoading />
@@ -219,6 +222,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size='md'
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBErrorIndicator

@@ -737,6 +737,14 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 			YbGetTableProperties(OldHeap);
 			dummyStmt->split_options = YbGetSplitOptions(OldHeap);
 		}
+		bool is_null;
+		HeapTuple tuple = SearchSysCache1(RELOID,
+			ObjectIdGetDatum(RelationGetRelid(OldHeap)));
+		Datum datum = SysCacheGetAttr(RELOID,
+			tuple, Anum_pg_class_reloptions, &is_null);
+		if (!is_null)
+			dummyStmt->options = untransformRelOptions(datum);
+		ReleaseSysCache(tuple);
 		YBCCreateTable(dummyStmt, RelationGetRelationName(OldHeap),
 					   OldHeap->rd_rel->relkind, OldHeapDesc, OIDNewHeap,
 					   namespaceid,
