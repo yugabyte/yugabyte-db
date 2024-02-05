@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -85,7 +86,6 @@ import play.mvc.Http.Status;
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
 
   protected final XClusterUniverseService xClusterUniverseService;
-  private static final int POLL_TIMEOUT_SECONDS = 300;
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
   public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
@@ -410,16 +410,23 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected void waitForXClusterOperation(
       XClusterConfig xClusterConfig, IPollForXClusterOperation p) {
+
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Duration xclusterWaitTimeout =
+        this.confGetter.getConfForScope(universe, UniverseConfKeys.xclusterSetupAlterTimeout);
+
     try {
       IsSetupUniverseReplicationDoneResponse doneResponse = null;
       int numAttempts = 1;
       long startTime = System.currentTimeMillis();
-      while (((System.currentTimeMillis() - startTime) / 1000) < POLL_TIMEOUT_SECONDS) {
+      log.info("Waiting for xcluster operation for {}", xclusterWaitTimeout);
+      while ((System.currentTimeMillis() - startTime) < xclusterWaitTimeout.toMillis()) {
         if (numAttempts % 10 == 0) {
           log.info(
-              "Wait for XClusterConfig({}) operation to complete (attempt {})",
+              "Wait for XClusterConfig({}) operation to complete (attempt {}, total timeout {})",
               xClusterConfig.getUuid(),
-              numAttempts);
+              numAttempts,
+              xclusterWaitTimeout);
         }
 
         doneResponse = p.poll(xClusterConfig.getReplicationGroupName());
@@ -428,7 +435,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         }
         if (doneResponse.hasError()) {
           log.warn(
-              "Failed to wait for XClusterConfig({}) operation: {}",
+              "Hit failure during wait for XClusterConfig({}) operation: {}, will continue",
               xClusterConfig.getUuid(),
               doneResponse.getError().toString());
         }
@@ -447,8 +454,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         // TODO: Add unit tests (?) -- May be difficult due to wait
         throw new RuntimeException(
             String.format(
-                "Timed out waiting for XClusterConfig(%s) operation to complete",
-                xClusterConfig.getUuid()));
+                "Timed out waiting for XClusterConfig(%s) operation to complete after %d ms",
+                xClusterConfig.getUuid(), xclusterWaitTimeout.toMillis()));
       }
       if (doneResponse.hasReplicationError()
           && doneResponse.getReplicationError().getCode() != ErrorCode.OK) {

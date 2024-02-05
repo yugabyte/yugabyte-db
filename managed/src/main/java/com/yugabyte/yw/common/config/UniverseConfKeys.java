@@ -970,4 +970,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Notify peers in cluster on a master node removal",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.operation_timeout",
+          ScopeType.UNIVERSE,
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
