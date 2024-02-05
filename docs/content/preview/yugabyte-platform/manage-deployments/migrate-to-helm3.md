@@ -28,8 +28,8 @@ You can perform migration as follows:
    Expect the following output:
 
    ```output
-   NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-   yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test
+   NAME     REVISION  UPDATED                   STATUS    CHART           APP VERSION  NAMESPACE
+   yw-test  1         Tue May 12 22:21:16 2020  DEPLOYED  yugaware-2.2.0  2.2.0.0-76   yw-test
    ```
 
 2. Execute the following command to migrate the chart to Helm 3 using the `2to3` plugin:
@@ -62,13 +62,13 @@ You can perform migration as follows:
    Expect the following output:
 
    ```output
-   NAME   	NAMESPACE	REVISION	UPDATED                               	STATUS  	CHART         	APP VERSION
-   yw-test	yw-test  	1       	2020-06-16 16:51:16.44463488 +0000 UTC	deployed	yugaware-2.2.0	2.2.0.0-b80
+   NAME     NAMESPACE REVISION  UPDATED                                 STATUS    CHART           APP VERSION
+   yw-test  yw-test   1         2020-06-16 16:51:16.44463488 +0000 UTC  deployed  yugaware-2.2.0  2.2.0.0-b80
    ```
 
 ## Upgrade YugabyteDB Anywhere and YugabyteDB using Helm 3
 
-Helm charts versions 2.1.4 and earlier had the `clusterIP` field in the `services.yaml` file. Since the Helm 3 binary does not support leaving the `clusterIP` field empty (see [github issue 6378](https://github.com/helm/helm/issues/6378)), you need to manually specify value for this field. The following command allows you to obtain the `clusterIP` of the service:
+Helm charts versions 2.1.4 and earlier had the `clusterIP` field in the `services.yaml` file. Because the Helm 3 binary does not support leaving the `clusterIP` field empty (see [github issue 6378](https://github.com/helm/helm/issues/6378)), you need to manually specify value for this field. The following command allows you to obtain the `clusterIP` of the service:
 
 ```sh
 kubectl get svc -n yw-test
@@ -180,10 +180,10 @@ You can perform the migration as follows:
 
    ```output
    helm2 ls
-   NAME              REVISION  UPDATED                 	       STATUS  	CHART                  APP VERSION	NAMESPACE
-   yb-admin-test-a	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-a
-   yb-admin-test-b	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-b
-   yb-admin-test-c	1       Tue May 12 23:08:30 2020    DEPLOYED	yugabyte-2.1.2       2.1.2.0-b10	yb-admin-test-c
+   NAME              REVISION  UPDATED                   STATUS   CHART           APP VERSION  NAMESPACE
+   yb-admin-test-a   1         Tue May 12 23:08:30 2020  DEPLOYED yugabyte-2.1.2  2.1.2.0-b10  yb-admin-test-a
+   yb-admin-test-b   1         Tue May 12 23:08:30 2020  DEPLOYED yugabyte-2.1.2  2.1.2.0-b10  yb-admin-test-b
+   yb-admin-test-c   1         Tue May 12 23:08:30 2020  DEPLOYED yugabyte-2.1.2  2.1.2.0-b10  yb-admin-test-c
    ```
 
 2. Migrate all releases using the `2to3` plugin by running the following command:
@@ -225,10 +225,10 @@ You can perform the migration as follows:
    Expect the following output:
 
    ```output
-   NAME           	NAMESPACE     REVISION   UPDATED                 STATUS    CHART         	APP VERSION
-   yb-admin-test-a	yb-admin-test-a	1       	2020-05-12	deployed	  yugabyte-2.1.2	2.1.2.0-b10
-   yb-admin-test-b	yb-admin-test-b	1       	2020-05-12	deployed	  yugabyte-2.1.2	2.1.2.0-b10
-   yb-admin-test-c	yb-admin-test-c	1       	2020-05-12	deployed	  yugabyte-2.1.2	2.1.2.0-b10
+   NAME             NAMESPACE       REVISION  UPDATED     STATUS    CHART           APP VERSION
+   yb-admin-test-a  yb-admin-test-a 1         2020-05-12  deployed  yugabyte-2.1.2  2.1.2.0-b10
+   yb-admin-test-b  yb-admin-test-b 1         2020-05-12  deployed  yugabyte-2.1.2  2.1.2.0-b10
+   yb-admin-test-c  yb-admin-test-c 1         2020-05-12  deployed  yugabyte-2.1.2  2.1.2.0-b10
    ```
 
 4. Make the following API call for each universe that has been migrated:

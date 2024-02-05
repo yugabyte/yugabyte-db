@@ -262,7 +262,7 @@ To migrate your installation from Replicated, do the following:
     $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
-    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start. After the migration finishes, YBA is installed.
+    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
 
 1. Validate YBA is up and running with the correct data, including Prometheus.
 
@@ -280,7 +280,7 @@ To migrate your installation from Replicated, do the following:
 
 ### Migration and high availability
 
-If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+If you have YBA [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
 If Replicated is using HTTPS, migrate as follows:
 

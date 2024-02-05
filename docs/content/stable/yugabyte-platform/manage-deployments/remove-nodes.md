@@ -68,13 +68,14 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 1. Select a node in the same availability zone as the removed node.
 
-2. Click **Actions > Start Master** corresponding to the node, as per the following illustration. 
+2. Click **Actions > Start Master** corresponding to the node, as per the following illustration.
 
    This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
 
 ![Start master](/images/yp/start-master.png)
 
 When you execute the start Master action, YugabyteDB Anywhere performs the following:
+
 1. Configures the Master on the subject node.
 
 2. Starts a new Master process on the subject node (in Shell mode).
@@ -82,7 +83,6 @@ When you execute the start Master action, YugabyteDB Anywhere performs the follo
 3. Adds the new Master to the existing Master quorum.
 
 4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
-
 
 ## Release node instance
 
