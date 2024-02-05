@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useEffect } from 'react';
+import { ChangeEvent, ReactElement } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -103,7 +103,12 @@ export const InstanceTypeField = ({
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
   const { data, isLoading, refetch } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones), isOsPatchingEnabled ? cpuArch : null],
+    [
+      QUERY_KEY.getInstanceTypes,
+      provider?.uuid,
+      JSON.stringify(zones),
+      isOsPatchingEnabled ? cpuArch : null
+    ],
     () => api.getInstanceTypes(provider?.uuid, zones, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid && zones.length > 0,
