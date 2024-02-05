@@ -1,9 +1,11 @@
 *.o
 *.so
 build.sh
-age--*.*.*.sql
 .idea
 .deps
 .DS_Store
 *.tokens
 *.interp
+*.dylib
+age--*.*.*.sql
+!age--*--*sql
