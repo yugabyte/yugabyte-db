@@ -657,6 +657,14 @@ typedef struct AshSample {
   uint64_t sample_time;
 } YBCAshSample;
 
+// A struct to pass ASH postgres config to PgClient
+typedef struct PgAshConfig {
+  YBCAshMetadata* metadata;
+  bool* is_metadata_set;
+  bool* yb_enable_ash;
+  unsigned char yql_endpoint_tserver_uuid[16];
+} YBCPgAshConfig;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;

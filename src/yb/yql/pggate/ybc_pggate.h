@@ -30,7 +30,7 @@ typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
                    YBCPgCallbacks pg_callbacks, uint64_t *session_id,
-                   const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+                   const YBCPgAshConfig* ash_config);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -834,7 +834,7 @@ struct PgApiContext;
 void YBCInitPgGateEx(
     const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
     PgApiContext *context, std::optional<uint64_t> session_id,
-    const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set);
+    const YBCPgAshConfig* ash_config);
 
 } // namespace pggate
 } // namespace yb
