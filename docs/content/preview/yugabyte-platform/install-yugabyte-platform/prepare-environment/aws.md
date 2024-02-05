@@ -170,7 +170,7 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
 
 - Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration:
 
-  ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
+  ![Ubuntu Server boot disk image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
 
@@ -194,7 +194,7 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
 
   You should see an instance being created, as shown in the following illustration:
 
-  ![Image](/images/ee/aws-setup/yugaware-machine-creation.png)
+  ![Launch instance](/images/ee/aws-setup/yugaware-machine-creation.png)
 
 ### Deploy the YugabyteDB universe using an IAM role
 
