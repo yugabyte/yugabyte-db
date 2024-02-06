@@ -14,7 +14,7 @@ rightNav:
 type: docs
 ---
 
-Here we describe how to modify existing [_syntax diagrams_](#syntax-diagram) or add new ones.
+This document describes how to make changes to YSQL API [_syntax diagrams_](#syntax-diagram) or add new ones.
 
 {{< note >}}
 The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YCQL diagrams.
