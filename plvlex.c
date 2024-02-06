@@ -201,7 +201,6 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 
 		fctx->values = (char **) palloc (6 * sizeof (char *));
 		fctx->values  [0] = (char*) palloc (16 * sizeof (char));
-		fctx->values  [1] = (char*) palloc (1024 * sizeof (char));
 		fctx->values  [2] = (char*) palloc (16 * sizeof (char));
 		fctx->values  [3] = (char*) palloc (16 * sizeof (char));
 		fctx->values  [4] = (char*) palloc (255 * sizeof (char));
@@ -248,7 +247,9 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 		back_vals[5] = values[5];
 
 		snprintf(values[0],    16, "%d", nd->lloc);
-		snprintf(values[1], 10000, "%s", SF(nd->str));
+
+		values[1] = nd->str;
+
 		snprintf(values[2],    16, "%d", nd->keycode);
 		snprintf(values[3],    16, "%s", nd->classname);
 		snprintf(values[4],   255, "%s", SF(nd->sep));

@@ -315,7 +315,7 @@ other			.
 
 {whitespace}	{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -324,7 +324,7 @@ other			.
 
 {comment}	{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "sc";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -554,7 +554,7 @@ other			.
 					/* throw back all but the initial "$" */
 					yyless(1);
 					/* and treat it as {other} */
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "dolqf";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -635,7 +635,7 @@ other			.
 				}
 {typecast}		{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "typecast";
 					yylval.val.keycode = X_TYPECAST;
 					yylval.val.sep = NULL;
@@ -644,7 +644,7 @@ other			.
 
 {self}			{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "self";
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
@@ -712,7 +712,7 @@ other			.
 						if (nchars == 1 &&
 							strchr(",()[].;:+-*/%^<>=", yytext[0]))
 						{
-							yylval.val.str = yytext;
+							yylval.val.str = pstrdup(yytext);
 							yylval.val.modificator = NULL;
 							yylval.val.keycode = yytext[0];
 							yylval.val.sep = NULL;
@@ -743,7 +743,7 @@ other			.
 {param}			{
 					SET_YYLLOC();
 					yylval.val.modificator = NULL;
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
 					return X_PARAM;
@@ -770,7 +770,7 @@ other			.
 						yylval.val.sep = NULL;
 						return X_NCONST;
 					}
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = "i";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
@@ -854,7 +854,7 @@ other			.
 
 {other}			{
 					SET_YYLLOC();
-					yylval.val.str = yytext;
+					yylval.val.str = pstrdup(yytext);
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
