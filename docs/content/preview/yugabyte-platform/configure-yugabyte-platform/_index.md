@@ -9,6 +9,9 @@ menu:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 620
+aliases:
+  - /preview/yugabyte-platform/overview/configure/
+  - /preview/yugabyte-platform/configure-yugabyte-platform/configure/
 type: indexpage
 ---
 

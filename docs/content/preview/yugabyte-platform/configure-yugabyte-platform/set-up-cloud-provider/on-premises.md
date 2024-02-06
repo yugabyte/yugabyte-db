@@ -53,7 +53,7 @@ Refer to [Create the provider configuration](../on-premises-provider/).
 
 ### Stage 3: Add nodes to the provider free pool
 
-In YBA, you navigate to the provider you created and do the following:
+In YBA, navigate to the provider you created in Stage 2 and do the following:
 
 1. Define instance types. An instance type defines some basic properties of the VMs you will be adding.
 1. Add the VMs (instances). How you do this depends on whether you are using automatic or manual provisioning.
