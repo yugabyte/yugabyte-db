@@ -49,7 +49,22 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
     YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
 
-- Python v3.8 to 3.11 must be installed.
+- Python v3.8 to 3.11 must be installed, and both `python` and `python3` must point to the selected Python3 version. One way to achieve this is to use `alternatives` - see example:
+
+```
+sudo yum install @python38 -y
+sudo alternatives --config python
+# choose Python 3.8 from list
+
+sudo alternatives --config python3
+# choose Python 3.8 from list
+
+python -V
+# output: Python 3.8.16
+
+python3 -V
+# output: Python 3.8.16
+```
 
 ## Hardware requirements
 
