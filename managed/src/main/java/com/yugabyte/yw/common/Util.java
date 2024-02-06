@@ -900,7 +900,8 @@ public class Util {
     }
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
-        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+        new DigestInputStream(
+            new BufferedInputStream(new FileInputStream(filePath.toFile())), md)) {
       while (dis.read() != -1)
         ; // Empty loop to clear the data
       md = dis.getMessageDigest();
