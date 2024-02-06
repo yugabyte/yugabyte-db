@@ -746,7 +746,7 @@ testShardSize := 30
 Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
 def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
-  tests.sortWith(_.name < _.name).grouped(shardSize).zipWithIndex map {
+  tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
     case (tests, index) =>
       val options = ForkOptions().withRunJVMOptions(Vector(
         "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",

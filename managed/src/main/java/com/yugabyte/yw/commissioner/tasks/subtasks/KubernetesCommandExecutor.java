@@ -1143,7 +1143,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 ? taskUniverseDetails.getReadOnlyClusters().get(0).uuid
                 : taskUniverseDetails.getPrimaryCluster().uuid);
       }
-      GFlagsUtil.mergeCSVs(tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      GFlagsUtil.mergeCSVs(
+          tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV, false);
       tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
