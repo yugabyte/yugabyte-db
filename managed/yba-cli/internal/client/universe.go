@@ -15,6 +15,12 @@ func (a *AuthAPIClient) ListUniverses() (
 	return a.APIClient.UniverseManagementApi.ListUniverses(a.ctx, a.CustomerUUID)
 }
 
+// GetUniverse fetches of universe associated with the universeUUID
+func (a *AuthAPIClient) GetUniverse(uUUID string) (
+	ybaclient.UniverseManagementApiApiGetUniverseRequest) {
+	return a.APIClient.UniverseManagementApi.GetUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // DeleteUniverse deletes universe associated with the universeUUID
 func (a *AuthAPIClient) DeleteUniverse(uUUID string) (
 	ybaclient.UniverseManagementApiApiDeleteUniverseRequest) {

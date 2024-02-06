@@ -99,6 +99,15 @@ const (
 	StorageCustomerConfigType = "STORAGE"
 )
 
+// Different resource types that are supported in CLI
+const (
+	// UniverseType resource
+	UniverseType = "universe"
+
+	// ProviderType resource
+	ProviderType = "provider"
+)
+
 // CompletedStates returns set of states that mark the task as completed
 func CompletedStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

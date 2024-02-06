@@ -13,6 +13,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/task"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/tools"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -93,6 +94,7 @@ func init() {
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
 	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
+	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 }
