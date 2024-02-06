@@ -4248,10 +4248,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Inserted new table and tablet info into CatalogManager maps");
   VLOG_WITH_PREFIX(1) << "Inserted new table and tablet info into CatalogManager maps";
 
-  // Write tablets to sys-tablets.
-  // If new tablets are created, they will be in PREPARING state.
   if (!joining_colocation_group) {
+    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
+    if (opt_wal_retention) {
+      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
+    }
+
     for (const auto& tablet : tablets) {
+      // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
     }
   }

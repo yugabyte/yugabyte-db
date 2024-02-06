@@ -22,6 +22,8 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/util/scope_exit.h"
 
+DECLARE_uint32(cdc_wal_retention_time_secs);
+
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -191,7 +193,6 @@ Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
       master::CreateCDCStreamResponsePB create_stream_resp;
       create_stream_req.set_table_id(table_info->id());
 
-      // TODO: #20769 Apply appropriate WAL retention on the table.
       RETURN_NOT_OK(catalog_manager_.CreateNewXReplStream(
           create_stream_req, CreateNewCDCStreamMode::kXClusterTableIds, {table_id},
           /*namespace_id=*/std::nullopt, &create_stream_resp, epoch, /*rpc=*/nullptr));
@@ -264,6 +265,18 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   }
 
   return tasks;
+}
+
+std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
+    const NamespaceId& namespace_id) const {
+  SharedLock l(outbound_replication_group_map_mutex_);
+  for (const auto& [_, outbound_replication_group] : outbound_replication_group_map_) {
+    if (outbound_replication_group && outbound_replication_group->HasNamespace(namespace_id)) {
+      return FLAGS_cdc_wal_retention_time_secs;
+    }
+  }
+
+  return std::nullopt;
 }
 
 Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicationGroup(

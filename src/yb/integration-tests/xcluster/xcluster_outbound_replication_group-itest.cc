@@ -16,8 +16,10 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
 
 DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 
 namespace yb {
 namespace master {
@@ -115,6 +117,21 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return promise.get_future().get();
   }
 
+  Status VerifyWalRetentionOfTable(
+      const TableId& table_id, uint32 wal_retention_secs = FLAGS_cdc_wal_retention_time_secs) {
+    auto tablets = ListTableActiveTabletLeadersPeers(producer_cluster(), table_id);
+    SCHECK_GE(
+        tablets.size(), static_cast<size_t>(1), IllegalState,
+        Format("No active tablets found for table $0", table_id));
+    for (const auto& tablet : tablets) {
+      SCHECK_EQ(
+          tablet->tablet_metadata()->wal_retention_secs(), wal_retention_secs, IllegalState,
+          Format("Tablet: $0", tablet->tablet_metadata()->LogPrefix()));
+    }
+
+    return Status::OK();
+  }
+
   CatalogManager* catalog_manager_;
   LeaderEpoch epoch_;
   YBClient* client_;
@@ -161,6 +178,9 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
   ASSERT_EQ(resp.table_infos(1).pg_schema_name(), kPgSchemaName);
   ASSERT_EQ(resp.table_infos(0).table_name(), kTableName2);
   ASSERT_EQ(resp.table_infos(1).table_name(), kTableName1);
+
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 
   ASSERT_OK(client_->XClusterDeleteOutboundReplicationGroup(kReplicationGroupId));
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
@@ -238,21 +258,26 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
 }
 
 TEST_F(XClusterOutboundReplicationGroupTest, AddTable) {
-  auto ns1_table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1, 0));
 
   ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
 
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), 1);
 
-  auto ns1_table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
+
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
 
   all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
 
   auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
-      ns1_table_id_1, ns1_table_id_2, all_xcluster_streams_initial, ns1_info));
+      table_id_1, table_id_2, all_xcluster_streams_initial, ns1_info));
+
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }
 
 }  // namespace master
