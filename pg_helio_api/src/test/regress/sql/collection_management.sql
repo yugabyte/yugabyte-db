@@ -63,12 +63,8 @@ INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index
 VALUES (:drop_collection_test_id, 2020, ('invalid_index_2', '{"a": 1}', null, null, false, true, 2, 10), false);
 
 -- drop the database
--- remove the drop collection below when uncommented
--- SELECT helio_api.drop_database('collection_management');
--- SELECT count(*) FROM helio_api_catalog.collections WHERE database_name = 'collection_management';
-
-SELECT helio_api.drop_collection('collection_management', 'drop_collection_test');
-
+SELECT helio_api.drop_database('collection_management');
+SELECT count(*) FROM helio_api_catalog.collections WHERE database_name = 'collection_management';
 
 SELECT COUNT(*)=0 FROM helio_api_catalog.collection_indexes
 WHERE collection_id = :drop_collection_test_id;

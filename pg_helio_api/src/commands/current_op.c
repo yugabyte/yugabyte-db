@@ -862,7 +862,8 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 							   activity->processedMongoCollection);
 		return "command";
 	}
-	else if (strstr(query, "mongo_api_v1.drop_database(") != NULL)
+	else if (strstr(query, "helio_api.drop_database(") != NULL ||
+			 strstr(query, "mongo_api_v1.drop_database(") != NULL)
 	{
 		PgbsonWriterAppendUtf8(commandWriter, "dropDatabase", 13,
 							   activity->processedMongoDatabase);
