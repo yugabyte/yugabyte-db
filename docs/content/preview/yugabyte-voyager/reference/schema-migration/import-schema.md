@@ -54,7 +54,7 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| --target-ssl-mode string | Specify the target YugabyteDB SSL mode from one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
+| --target-ssl-mode | Specify the target YugabyteDB SSL mode from one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 

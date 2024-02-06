@@ -367,22 +367,22 @@ Create a new database user, and assign the necessary user permissions.
 
 1. Check that the replica identity is "FULL" for all tables on the database.
 
-    1. Run the following query to check the replica identity:
+    1. Check the replica identity using the following query:
 
         ```sql
         SELECT relname, relreplident
         FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
-    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
 
         ```sql
         DO $$
         DECLARE
           table_name_var text;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
           LOOP
             EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
           END LOOP;
@@ -407,7 +407,7 @@ Create a new database user, and assign the necessary user permissions.
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
 1. Grant `SELECT` permission on all the tables and sequences.
 
@@ -444,14 +444,14 @@ Create a new database user, and assign the necessary user permissions.
     DECLARE
       cur_table text;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
       LOOP
         EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
       END LOOP;
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+1. Grant `CREATE` privilege on the source database to `ybvoyager`.
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
@@ -473,22 +473,22 @@ Create a new database user, and assign the necessary user permissions.
 
 1. Check that the replica identity is "FULL" for all tables on the database.
 
-    1. Run the query to check the Replica identity for all the tables on the database:
+    1. Check the replica identity for all the tables on the database using the following query:
 
         ```sql
         SELECT relname, relreplident
         FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
-    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
 
         ```sql
         DO $$
         DECLARE
           table_name_var text;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
           LOOP
             EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
           END LOOP;
@@ -508,13 +508,13 @@ Create a new database user, and assign the necessary user permissions.
    \c <database_name>
    ```
 
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database:
 
    ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
 1. Grant `SELECT` permission on all the tables and sequences.
 
@@ -551,14 +551,14 @@ Create a new database user, and assign the necessary user permissions.
     DECLARE
       cur_table text;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
       LOOP
         EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
       END LOOP;
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+1. Grant `CREATE` privilege on the source database to `ybvoyager`.
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
@@ -862,7 +862,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
 
 - Snapshot exported is imported completely on the target.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot phase are imported in the target and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
 After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
@@ -969,3 +969,4 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - Reserved keywords such as "group", "user", and so on, as table names, or column names are unsupported.
 - Tables or column names having more than 30 characters are not supported.
+- For PostgreSQL migrations, multiple schemas, partition tables, and case-sensitive tables are unsupported.

@@ -361,7 +361,7 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         SELECT relname, relreplident
         FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
     1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
@@ -371,7 +371,7 @@ Create a new database user, and assign the necessary user permissions.
         DECLARE
           table_name_var text;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
           LOOP
             EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
           END LOOP;
@@ -433,7 +433,7 @@ Create a new database user, and assign the necessary user permissions.
     DECLARE
       cur_table text;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
       LOOP
         EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
       END LOOP;
@@ -467,7 +467,7 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         SELECT relname, relreplident
         FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'your_schema_name') AND relkind = 'r';
+        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
     1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
@@ -477,7 +477,7 @@ Create a new database user, and assign the necessary user permissions.
         DECLARE
           table_name_var text;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>' AND table_type = 'BASE TABLE')
+          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
           LOOP
             EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
           END LOOP;
@@ -540,7 +540,7 @@ Create a new database user, and assign the necessary user permissions.
     DECLARE
       cur_table text;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<your_schema>')
+      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
       LOOP
         EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
       END LOOP;
@@ -989,6 +989,28 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
+#### Import indexes and triggers
+
+Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
+
+- Snapshot exported is imported completely on the source replica.
+- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
 ### Import data to source-replica
 
 Note that the import data to source-replica is applicable for data migration only (schema migration needs to be done manually).
@@ -1022,28 +1044,6 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --source-replica-db-password <SOURCE_REPLICA_DB_PASSWORD>
 ```
-
-#### Import indexes and triggers
-
-Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to source replica`:
-
-- Snapshot exported is imported completely on the source replica.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot phase are imported in the target and [import data to source replica](#import-data-to-source-replica) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
-
-After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to source replica` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \
-        --post-snapshot-import true
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 ### Archive changes (Optional)
 
@@ -1086,7 +1086,7 @@ Perform the following steps as part of the cutover process:
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
 
        {{<note title="Event duplication">}}
-The `export data from target` command may result in duplicated events if you restart Voyager, or the YugabyteDB database server. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
+The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
        {{</note>}}
 
 1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.

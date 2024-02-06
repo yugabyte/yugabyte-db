@@ -430,7 +430,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
 
 - Snapshot exported is imported completely on the target.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot phase are imported in the target and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
 After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
@@ -484,7 +484,7 @@ Perform the following steps as part of the cutover process:
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
 
        {{<note title="Event duplication">}}
-The `export data from target` command may result in duplicated events if you restart Voyager, or the YugabyteDB database server. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
+The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
         {{</note>}}
 
     1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.

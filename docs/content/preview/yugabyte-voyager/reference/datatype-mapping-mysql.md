@@ -25,12 +25,12 @@ type: docs
 
 The following table includes a list of supported data type mappings for migrating data from MySQL to YugabyteDB using YugabyteDB Voyager:
 
-| MySQL data type | Maps to YugabyeDB as | Description |
+| MySQL data type | Maps to YugabyteDB as | Description |
 | :-------------- | :------------------- | :---------- |
 | BINARY | BYTEA |
 | VARBINARY | BYTEA |
 | BIT | BIT |
-| BOOLEAN | SMALLINT | As BOOLEAN type is a synonym of TINYINT(1) in MySQL, it is converted to SMALLINT in YugabyteDB, but if your use case needs it to be converted to BOOLEAN in YugabyteDB, modify the schema manually for all the respective BOOLEAN columns. |
+| BOOLEAN | SMALLINT | As BOOLEAN type is a synonym of TINYINT(1) in [MySQL](https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html), it is converted to SMALLINT in YugabyteDB, but if your use case needs it to be converted to BOOLEAN in YugabyteDB, modify the schema manually for all the respective BOOLEAN columns. |
 | CHAR | CHAR |
 | VARCHAR | VARCHAR |
 | TINYTEXT | TEXT |

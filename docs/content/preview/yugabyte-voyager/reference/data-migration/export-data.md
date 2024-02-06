@@ -194,7 +194,7 @@ The valid *arguments* for export data from target are described in the following
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | --exclude-table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 | --target-db-password <password>| Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-|  --target-ssl-mode string | Specify the target YugabyteDB SSL mode from one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
+|  --target-ssl-mode | Specify the target YugabyteDB SSL mode from one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
