@@ -76,6 +76,8 @@ YugabyteDB Anywhere proceeds to set up DR for the universe. How long this takes 
 
 After DR is set up, the **Disaster Recovery** tab displays the DR status.
 
+![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-status.png)
+
 ### Metrics
 
 In addition, you can monitor the following metrics on the **Metrics** tab:
@@ -113,6 +115,8 @@ In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1
 ### Tables
 
 The **Disaster Recovery** tab also lists all the tables in replication and their status on the **Tables** tab.
+
+![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-tables.png)
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
@@ -199,6 +203,6 @@ In these cases, restart replication as follows:
 
 1. Navigate to the universe **Disaster Recovery** tab.
 
-1. Click **Actions** and choose **Advanced** and **Restart Replication**.
+1. Click **Actions** and choose **Advanced** and **Full Copy DR Primary**.
 
 This performs a full copy of the databases involved from the DR primary to the DR replica.
