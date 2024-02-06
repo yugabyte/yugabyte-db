@@ -160,6 +160,8 @@ message CreateTabletRequestPB {
   // In case the table was rewritten, explicitly store the TableId containing the PG table OID
   // (as the table's TableId no longer matches).
   optional bytes pg_table_id = 18;
+
+  optional uint32 wal_retention_secs = 19;
 }
 
 message CreateTabletResponsePB {

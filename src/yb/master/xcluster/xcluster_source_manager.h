@@ -36,6 +36,8 @@ class SysCatalogTable;
 
 class XClusterSourceManager {
  public:
+  std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
+
  protected:
   explicit XClusterSourceManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);

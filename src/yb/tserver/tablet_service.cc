@@ -1584,6 +1584,11 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema, req->pg_table_id());
+
+  if (req->has_wal_retention_secs()) {
+    table_info->wal_retention_secs = req->wal_retention_secs();
+  }
+
   std::vector<SnapshotScheduleId> snapshot_schedules;
   snapshot_schedules.reserve(req->snapshot_schedules().size());
   for (const auto& id : req->snapshot_schedules()) {
