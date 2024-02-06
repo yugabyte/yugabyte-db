@@ -44,4 +44,6 @@ struct IsOperationDoneResult {
   Status status;  // If the operation completed and it failed, this will contain the error.
 };
 
+YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
+
 }  // namespace yb::master
