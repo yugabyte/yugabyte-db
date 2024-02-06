@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { Typography } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { useState } from 'react';
