@@ -62,7 +62,7 @@ The syntax diagram appears as a (member of a) tabbed pair which gives the reader
 
 ### Syntax diagram set
 
-A set of `ebnf` syntax rule names grouped and displayed together on a content page.
+A set of syntax rule names grouped and displayed together on a content page.
 
 ### Diagram definition file
 
@@ -108,7 +108,7 @@ If you are developing on a local machine, you need to restart Hugo after modifyi
 
 To add a syntax diagram to a page, use the `ebnf` shortcode and specify each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
 
-For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you would add the following:
+For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you would add the following syntax diagram set:
 
 ```ebnf
 {{%/*ebnf*/%}}
