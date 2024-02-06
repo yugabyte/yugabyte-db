@@ -624,6 +624,16 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of node in given cluster for this universe.
+   *
+   * @return a list of Nodes
+   */
+  public List<NodeDetails> getServerTypeNodesInCluster(ServerType serverType, UUID placementUuid) {
+    List<NodeDetails> servers = getServers(serverType);
+    return servers.parallelStream().filter(nD -> nD.placementUuid.equals(placementUuid)).toList();
+  }
+
+  /**
    * Return the list of live TServers in the primary cluster. TODO: junit tests for this
    * functionality (UniverseTest.java)
    *

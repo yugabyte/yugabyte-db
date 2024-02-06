@@ -160,16 +160,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
       UpgradeContext context,
       boolean isYbcPresent) {
-    createUpgradeTaskFlow(
-        lambda, mastersAndTServers, context, isYbcPresent, false /* processTServersFirst */);
-  }
-
-  public void createUpgradeTaskFlow(
-      IUpgradeSubTask lambda,
-      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
-      UpgradeContext context,
-      boolean isYbcPresent,
-      boolean processTServersFirst) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(lambda, mastersAndTServers, context, isYbcPresent);
@@ -887,7 +877,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Value
   @Builder
-  protected static class UpgradeContext {
+  public static class UpgradeContext {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
