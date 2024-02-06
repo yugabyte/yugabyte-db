@@ -6,7 +6,6 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import javax.validation.Valid;
 import lombok.ToString;
-import play.data.validation.Constraints.Required;
 
 @ApiModel(description = "dr config restart form")
 @ToString
@@ -16,7 +15,6 @@ public class DrConfigRestartForm {
       value = "Primary Universe DB IDs",
       example = "[\"0000412b000030008000000000000000\", \"0000412b000030008000000000000001\"]",
       required = true)
-  @Required
   public Set<String> dbs;
 
   @Valid

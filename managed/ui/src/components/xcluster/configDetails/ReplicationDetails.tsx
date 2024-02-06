@@ -698,6 +698,7 @@ export function ReplicationDetails({
                   <ReplicationTables
                     xClusterConfig={xClusterConfig}
                     isActive={window.location.search === '?tab=tables'}
+                    isDrInterface={false}
                   />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
