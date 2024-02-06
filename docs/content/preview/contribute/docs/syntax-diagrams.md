@@ -17,32 +17,30 @@ type: docs
 This document describes how to make changes to YSQL API [_syntax diagrams_](#syntax-diagram) or add new ones.
 
 {{< note >}}
-The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YCQL diagrams.
+The following describes how to create and edit the syntax grammar and diagrams for the [YSQL documentation](../../../api/ysql/the-sql-language/). The YCQL documentation uses a different method. Take advice from colleagues if you need to work on YCQL diagrams.
 {{< /note >}}
 
 ## Terminology
 
-Let's go over a few terminology before understanding how to modify syntax diagrams.
+It's useful to understand some basic terminology before understanding how to modify syntax diagrams.
 
 ### Syntax rule
 
-A [_syntax rule_](#syntax-rule) is the formal definition of the grammar of a SQL statement, or a component of a SQL statement.
+A syntax rule is the formal definition of the grammar of a SQL statement, or a component of a SQL statement.
 
-Every [_syntax rule_](#syntax-rule) is defined textually in the single [_diagram definition file_](#diagram-definition-file). The set of all these rules is intended to define the entirety of the YSQL grammar—but nothing beyond this. Presently, the definitions of some [_syntax rules_](#syntax-rule) (while these are implemented in the YSQL subsystem of YugabyteDB) remain to be written down.
+Every syntax rule is defined textually in the single [_diagram definition file_](#diagram-definition-file).
 
-Sometimes, the grammar of an entire SQL statement can be comfortably described by a single, self-contained [_syntax rule_](#syntax-rule). The [Syntax section](/preview/api/ysql/the-sql-language/statements/txn_commit/#syntax) of the account of the `COMMIT` statement provides an example. More commonly, the grammar of a SQL statement includes references (by name) to the definition(s) of one or more other rule(s). And often such referenced [_syntax rules_](#syntax-rule) are the targets of references from many other [_syntax rules_](#syntax-rule). The complete account of a very flexible SQL statement can end up as a very large closure of multiple referenced rules. [`SELECT`](/preview/api/ysql/the-sql-language/statements/dml_select/#syntax) is the canonical example of complexity. For example, a terminal like [`integer`](/preview/api/ysql/syntax_resources/grammar_diagrams/#integer) can end up as the reference target in very many distinct syntax spots within the total definition of the `SELECT` statement, and of other statements.
+A syntax rule is specified using [EBNF notation](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form).
 
-A [_syntax rule_](#syntax-rule) is specified using EBNF notation. EBNF stands for "extended Backus–Naur form". See this [Wikipedia article](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form). Here is an example of the [`PREPARE`](/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
+The following is an example of the syntax for the [`PREPARE`](../../../api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
 ```ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
 ```
 
-> **Note:** When this is presented on the "Grammar" tab in the [_syntax diagram_](#syntax-diagram), it is transformed into the PostgreSQL notation. This is widely used in database documentation. But it is not suitable as input for a program that generate diagrams.
+When this is presented on the "Grammar" tab in the [_syntax diagram_](#syntax-diagram), it is transformed into the PostgreSQL notation. This is widely used in database documentation. But it is not suitable as input for a program that generate diagrams.
 
-Notice the following:
-
-- The LHS of `::=` is the rule's name. The RHS is its definition. The definition has three kinds of element:
+The left-hand side of `::=` is the rule's name. The right-hand side is its definition. The definition has three kinds of element:
 
 - _EBNF syntax elements_ like these: `[  ]  (  )  '  {  }  ,`
 
@@ -50,23 +48,27 @@ Notice the following:
 
 - _References to other rule names_. These become clickable links in the generated diagrams (but not in the generated grammars). Rule names are spelled in lower case. Notice how underscore is used between the individual English words.
 
-- The single space before the `;` terminator is significant.
+The single space before the `;` terminator is significant.
 
 ### Syntax diagram
 
-- **The result, in the published documentation, of a [_syntax rule_](#syntax-rule) that is contained in the [_diagram definition file_](#diagram-definition-file)**.
+The result, in the published documentation, of a [_syntax rule_](#syntax-rule) that is contained in the [_diagram definition file_](#diagram-definition-file).
 
-The [_syntax diagram_](#syntax-diagram) and the [_syntax rule_](#syntax-rule) bear a one-to-one mutual relationship.
+The syntax diagram and the syntax rule bear a one-to-one mutual relationship.
 
-The [Syntax section](/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](/preview/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the "Grammar" form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the "Diagram" form (a so-called "railroad diagram" that again is used commonly in the documentation for several other databases).
+The [Syntax section](../../../api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](../../../api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example.
+
+The syntax diagram appears as a (member of a) tabbed pair which gives the reader the choice to see a syntax rule as either the "Grammar" form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the "Diagram" form (a so-called "railroad diagram" that again is used commonly in the documentation for several other databases).
 
 ### Syntax diagram set
 
-A set of `ebnf` rule names grouped and displayed together on a content page.
+A set of `ebnf` syntax rule names grouped and displayed together on a content page.
 
 ### Diagram definition file
 
-The `ysql_grammar.ebnf` located at `/docs/content/preview/api/ysql/syntax_resources/` holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule). This file in all its entirety is manually typed.
+The `ysql_grammar.ebnf` file located at `/docs/content/preview/api/ysql/syntax_resources/` holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule). This file in all its entirety is manually typed.
+
+You create a syntax rule by adding it to this file.
 
 The order in which the rules are specified in this file is reproduced in the [_grammar diagrams file_](#grammar-diagrams-file). This, in turn, reflects decisions made by authors about what makes a convenient reading order. Try to spot what informs the present ordering and insert new rules in a way that respects this. In the limit, insert a new rule at the end as the last new properly-defined rule and before this comment:
 
@@ -76,52 +78,61 @@ The order in which the rules are specified in this file is reproduced in the [_g
 
 ### Grammar diagrams file
 
-The grammar [diagrams file](/preview/api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
+The grammar [diagrams file](../../../api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
 
+This file is automatically generated.
 
-## Add or Modify rules
+## Add or modify syntax diagrams
 
-The grammar and diagrams are generated dynamically on the docs site. The diagram/grammar pair are automatically populated based on the syntax rules. There are typically 2 workflows here.
+[Syntax diagrams](#syntax-diagram) are generated dynamically. The diagram/grammar pair are automatically populated based on the [syntax rules](#syntax-rule).
 
-1. Add or modify grammar definitions
-1. Add or modify the syntax rules to be displayed on a page
+There are typically two workflows:
 
-### Add/Modify grammar definition
+1. Add or modify syntax rules.
 
-To add a new grammar definition or modify an existing grammar, edit the [_diagram definition file_](#diagram-definition-file).
+    You do this by editing the [_diagram definition file_](#diagram-definition-file).
+
+1. Add or modify the syntax diagrams to be displayed on a page.
+
+    You do this by adding an `ebnf` block to the page.
+
+### Add and modify syntax rules
+
+To add a new syntax rule or modify an existing one, edit the [_diagram definition file_](#diagram-definition-file).
 
 {{<note title="Note">}}
 If you are developing on a local machine, you need to restart Hugo after modifying the [_diagram definition file_](#diagram-definition-file) for the changes to be reflected on the local preview.
 {{</note>}}
 
-### Add/Modify syntax rules on a page
+### Add and modify syntax diagrams displayed on a page
 
-To add a syntax rule on a page, use the `ebnf` shortcode and specify each rule in a line terminated with a comma in the content of the shortcode. For example, for [window function invocations](/preview/api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on a page, you need to do the following.
+To add a syntax diagram to a page, use the `ebnf` shortcode and specify each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
+
+For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you need to do the following.
 
 ```ebnf
 {{%/*ebnf*/%}}
   select_start,
   window_clause
-{{%/*ebnf*/%}}
+{{%/*/ebnf*/%}}
 ```
 
-This would add the grammar and syntax tabs like this:
+This would add the grammar and syntax tabs as follows:
 
 {{%ebnf%}}
   select_start,
   window_clause
 {{%/ebnf%}}
 
-The syntax and grammar diagrams are generated in the same order as included in the `ebnf` shortcode. Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_syntax rule_](#syntax-rule). If the referenced [_syntax rule_](#syntax-rule) is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the [_syntax rule_](#syntax-rule) in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the [_syntax rule_](#syntax-rule) in that same [_syntax diagram set_](#syntax-diagram-set). Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated [_syntax diagram_](#syntax-diagram).
+The syntax and grammar diagrams are generated in the same order as included in the `ebnf` shortcode. Suppose that a syntax rule includes a reference to another syntax rule. If the referenced syntax rule is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the syntax rule in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the syntax rule in that same syntax diagram set. Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated syntax diagram.
 
-In the case you have multiple [_syntax diagram sets_](#syntax-diagram-set) on the same page and would like to cross-reference each other on the same page, specify the local rules that need to be cross referenced as comma separated values in the `localrefs` argument of the `ebnf` shortcode. For example,
+In the case you have multiple syntax diagram sets on the same page and would like to cross-reference each other on the same page, specify the local rules that need to be cross referenced as comma separated values in the `localrefs` argument of the `ebnf` shortcode. For example,
 
 ```ebnf
 {{%/*ebnf localrefs="window_definition,frame_clause"*/%}}
 ```
 
-This will ensure that any reference to `window_definition` or `frame_clause` in this [_syntax diagram set_](#syntax-diagram-set) will link to another [_syntax diagram set_](#syntax-diagram-set) on the same page and not to the [_grammar diagrams file_](#grammar-diagrams-file).
-
+This will ensure that any reference to `window_definition` or `frame_clause` in this syntax diagram set will link to another syntax diagram set on the same page and not to the grammar diagrams file.
 
 ## Caveats
 
@@ -160,7 +171,7 @@ declare = 'DECLARE' cursor_name [ 'BINARY' ] [ 'INSENSITIVE' ] [ [ 'NO' ] 'SCROL
           'CURSOR' [ ( 'WITH' | 'WITHOUT' ) 'HOLD' ] 'FOR' subquery ;
 ```
 
-Remove the single quotes that surround `'INSENSITIVE'`. This will change its status in EBNF's grammar from _keyword_ to _syntax rule_. Most people find it hard to spot such a typo just by proofreading. Now re-run the diagram generator. You won't see any errors reported on _stderr_. But if you look carefully at the _stdout_ report, you'll see this warning:
+Remove the single quotes that surround `'INSENSITIVE'`. This will change its status in EBNF's grammar from _keyword_ to _syntax rule_. Most people find it hard to spot such a typo just by proofreading. Now restart Hugo. You won't see any errors reported on _stderr_. But if you look carefully at the _stdout_ report, you'll see this warning:
 
 ```bash
 WARNING: Undefined rules referenced in rule 'declare': [INSENSITIVE]
@@ -180,20 +191,20 @@ Edit it to change, say, the first `]` character to `}`. It's easy to do this typ
 
 ```java
 Exception in thread "main" java.lang.IllegalStateException: This element must not be nested and should have been processed before entering generation.
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRBreak.computeLayoutInfo(RRBreak.java:19)
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRChoice.computeLayoutInfo(RRChoice.java:30)
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagram.toSVG(RRDiagram.java:333)
-	at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagramToSVG.convert(RRDiagramToSVG.java:30)
-	at net.nextencia.rrdiagram.Main.regenerateReferenceFile(Main.java:139)
-	at net.nextencia.rrdiagram.Main.regenerateFolder(Main.java:72)
-	at net.nextencia.rrdiagram.Main.main(Main.java:54)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRBreak.computeLayoutInfo(RRBreak.java:19)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRChoice.computeLayoutInfo(RRChoice.java:30)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagram.toSVG(RRDiagram.java:333)
+  at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagramToSVG.convert(RRDiagramToSVG.java:30)
+  at net.nextencia.rrdiagram.Main.regenerateReferenceFile(Main.java:139)
+  at net.nextencia.rrdiagram.Main.regenerateFolder(Main.java:72)
+  at net.nextencia.rrdiagram.Main.main(Main.java:54)
 ```
 
 The error will cause the notorious _Hugo black screen_ in the browser. It's best to _\<ctrl\>-C_ Hugo now.
 
-This is hardly user-friendly! You'll also see several warnings on _stdout_. Almost all of these are simple consequences of the actual problem and so tell you nothing. Here's the significant information:
+This is hardly user-friendly! You'll also see several warnings on _stdout_. Almost all of these are basic consequences of the actual problem and so tell you nothing. Here's the significant information:
 
 ```sql
 WARNING: Exception occurred while exporting rule savepoint_rollback
