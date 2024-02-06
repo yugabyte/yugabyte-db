@@ -25,6 +25,17 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ai-llamaindex-openai">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/ai/icons/llamaindex-icon.svg" aria-hidden="true" />
+        <div class="title">LangChain and OpenAI</div>
+      </div>
+      <div class="body">
+        Build a scalable RAG (Retrieval-Augmented Generation) app using LlamaIndex and OpenAI.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="../azure/azure-openai/">
       <div class="head">
         <img class="icon" src="/images/tutorials/azure/icons/OpenAI-Icon.svg" aria-hidden="true" />
