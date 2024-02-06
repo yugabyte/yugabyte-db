@@ -15,6 +15,8 @@ type: docs
 
 This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP).
 
+(For information on using OIDC to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/).)
+
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.

@@ -1,8 +1,8 @@
 ---
-title: LDAP authentication
-headerTitle: LDAP authentication
+title: LDAP authentication for universes
+headerTitle: LDAP authentication for universes
 linkTitle: LDAP authentication
-description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
+description: Configure YugabyteDB Anywhere to use LDAP authentication for databases.
 headcontent: Manage database users using LDAP
 menu:
   stable_yugabyte-platform:
@@ -22,6 +22,8 @@ type: docs
 </ul>
 
 This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
+
+(For information on using LDAP to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via LDAP](../../../administer-yugabyte-platform/ldap-authentication/).)
 
 ## Bind to the LDAP server using TLS
 
