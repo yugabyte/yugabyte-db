@@ -488,6 +488,7 @@ func setYamlValue(root *yaml.Node, findPath, setPath string, value interface{}) 
 // Function to parse an arbitrary value and set the correct tag in a yaml Node
 func setValue(node *yaml.Node, value interface{}) error {
 	node.Kind = yaml.ScalarNode
+	node.Style = 0
 	switch t := value.(type) {
 	case int:
 		vint := value.(int)

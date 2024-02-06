@@ -9,7 +9,7 @@ import (
 
 const (
 	StateFileName     = ".yba_installer.state"
-	schemaVersion int = 3
+	schemaVersion int = 4
 )
 
 type State struct {
