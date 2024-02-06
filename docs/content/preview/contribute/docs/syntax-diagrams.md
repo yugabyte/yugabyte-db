@@ -108,7 +108,7 @@ If you are developing on a local machine, you need to restart Hugo after modifyi
 
 To add a syntax diagram to a page, use the `ebnf` shortcode and specify each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
 
-For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you need to do the following.
+For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you would add the following:
 
 ```ebnf
 {{%/*ebnf*/%}}
