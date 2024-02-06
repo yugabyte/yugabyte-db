@@ -69,6 +69,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
@@ -381,9 +382,13 @@ public class DrConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
     // Todo: Always add non existing tables to the xCluster config on restart.
+    // Empty `dbs` field indicates a request to restart the entire config.
+    // This is consistent with the restart xCluster config behaviour.
     Set<String> tableIds =
-        XClusterConfigTaskBase.getTableIds(
-            getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
+        CollectionUtils.isEmpty(restartForm.dbs)
+            ? xClusterConfig.getTableIds()
+            : XClusterConfigTaskBase.getTableIds(
+                getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
 
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getRestartTaskParams(
