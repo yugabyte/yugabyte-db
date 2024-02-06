@@ -1,13 +1,13 @@
 DO $$
 BEGIN
-   IF current_database() <> current_setting('cron.database_name') AND current_database() <> 'contrib_regression' THEN
+   IF pg_catalog.current_database() OPERATOR(pg_catalog.<>) pg_catalog.current_setting('cron.database_name') AND pg_catalog.current_database() OPERATOR(pg_catalog.<>) 'contrib_regression' THEN
       RAISE EXCEPTION 'can only create extension in database %',
-                      current_setting('cron.database_name')
-      USING DETAIL = 'Jobs must be scheduled from the database configured in '||
-                     'cron.database_name, since the pg_cron background worker '||
+                      pg_catalog.current_setting('cron.database_name')
+      USING DETAIL = 'Jobs must be scheduled from the database configured in 'OPERATOR(pg_catalog.||)
+                     'cron.database_name, since the pg_cron background worker 'OPERATOR(pg_catalog.||)
                      'reads job descriptions from this database.',
-            HINT = format('Add cron.database_name = ''%s'' in postgresql.conf '||
-                          'to use the current database.', current_database());
+            HINT = pg_catalog.format('Add cron.database_name = ''%s'' in postgresql.conf 'OPERATOR(pg_catalog.||)
+                          'to use the current database.', pg_catalog.current_database());
    END IF;
 END;
 $$;
@@ -16,17 +16,17 @@ CREATE SCHEMA cron;
 CREATE SEQUENCE cron.jobid_seq;
 
 CREATE TABLE cron.job (
-  jobid bigint primary key default nextval('cron.jobid_seq'),
-  schedule text not null,
-  command text not null,
-  nodename text not null default 'localhost',
-  nodeport int not null default inet_server_port(),
-  database text not null default current_database(),
-  username text not null default current_user
+	jobid bigint primary key default pg_catalog.nextval('cron.jobid_seq'),
+	schedule text not null,
+	command text not null,
+	nodename text not null default 'localhost',
+	nodeport int not null default pg_catalog.inet_server_port(),
+	database text not null default pg_catalog.current_database(),
+	username text not null default current_user
 );
 GRANT SELECT ON cron.job TO public;
 ALTER TABLE cron.job ENABLE ROW LEVEL SECURITY;
-CREATE POLICY cron_job_policy ON cron.job USING (username = current_user);
+CREATE POLICY cron_job_policy ON cron.job USING (username OPERATOR(pg_catalog.=) current_user);
 
 CREATE FUNCTION cron.schedule(schedule text, command text)
     RETURNS bigint
