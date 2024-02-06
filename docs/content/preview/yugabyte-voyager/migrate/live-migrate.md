@@ -859,7 +859,12 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 #### Import indexes and triggers
 
-After the snapshot import completes on the target by the [import data to target](#import-data-to-target) command, and voyager starts to catch up in CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric) for importing change events from the source to the target, import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
+
+- Snapshot exported is imported completely on the target.
+- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot phase are imported in the target and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.

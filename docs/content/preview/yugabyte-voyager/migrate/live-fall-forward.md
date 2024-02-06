@@ -1025,7 +1025,12 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 #### Import indexes and triggers
 
-After the snapshot import completes on the target by the [import data to source replica](#import-data-to-source-replica) command, and voyager starts to catch up in CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric) for importing change events from the source to the targetImport indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to source replica`:
+
+- Snapshot exported is imported completely on the source replica.
+- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot phase are imported in the target and [import data to source replica](#import-data-to-source-replica) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to source replica` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -1080,6 +1085,10 @@ Perform the following steps as part of the cutover process:
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database to the source-replica database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
 
+       {{<note title="Event duplication">}}
+The `export data from target` command may result in duplicated events if you restart Voyager, or the YugabyteDB database server. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
+       {{</note>}}
+
 1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
@@ -1126,6 +1135,8 @@ Perform the following steps as part of the cutover process:
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
+
+    **Note** that for Oracle migrations, restoring sequences after cutover on the source-replica database is currently unsupported, and you need to restore sequences manually.
 
 1. Set up indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
 
