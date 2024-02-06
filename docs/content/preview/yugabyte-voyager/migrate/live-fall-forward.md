@@ -354,9 +354,9 @@ Create a new database user, and assign the necessary user permissions.
 
     1. Restart PostgreSQL.
 
-1. Check that the replica identity is "FULL" for all tables on the database.
+1. Check that the replica identity is FULL (`f`)  for all tables on the database.
 
-    1. Run the following query to check the replica identity:
+    1. Check the replica identity using the following query:
 
         ```sql
         SELECT relname, relreplident
@@ -364,7 +364,7 @@ Create a new database user, and assign the necessary user permissions.
         WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
-    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
 
         ```sql
         DO $$
@@ -384,21 +384,21 @@ Create a new database user, and assign the necessary user permissions.
     CREATE USER ybvoyager PASSWORD 'password' REPLICATION;
     ```
 
-1. Switch to the database that you want to migrate.
+1. Switch to the database that you want to migrate as follows:
 
    ```sql
    \c <database_name>
    ```
 
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
 
    ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
-1. Grant `SELECT` permission on all the tables and sequences.
+1. Grant `SELECT` permission on all the tables and sequences as follows:
 
    ```sql
    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -408,25 +408,25 @@ Create a new database user, and assign the necessary user permissions.
 
    The `ybvoyager` user can now be used for migration.
 
-1. Create a replication group.
+1. Create a replication group as follows:
 
     ```sql
     CREATE ROLE replication_group;
     ```
 
-1. Add the original owner of the table to the group.
+1. Add the original owner of the table to the group as follows:
 
     ```sql
     GRANT replication_group TO <original_owner>;
     ```
 
-1. Add the user `ybvoyager` to the replication group.
+1. Add the user `ybvoyager` to the replication group as follows:
 
     ```sql
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group>.
+1. Transfer ownership of the tables to the role <replication_group> as follows:
 
     ```sql
     DO $$
@@ -440,7 +440,7 @@ Create a new database user, and assign the necessary user permissions.
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
@@ -460,9 +460,9 @@ Create a new database user, and assign the necessary user permissions.
 
     1. Restart RDS.
 
-1. Check that the replica identity is "FULL" for all tables on the database.
+1. Check that the replica identity is FULL (`f`) for all tables on the database.
 
-    1. Run the query to check the Replica identity for all the tables on the database:
+    1. Check the Replica identity for all the tables on the database as follows:
 
         ```sql
         SELECT relname, relreplident
@@ -470,7 +470,7 @@ Create a new database user, and assign the necessary user permissions.
         WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
         ```
 
-    1. Run the following query to change the replica identity of all tables if the tables have an identity other than FULL (`f`):
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
 
         ```sql
         DO $$
@@ -491,13 +491,13 @@ Create a new database user, and assign the necessary user permissions.
     GRANT rds_replication to ybvoyager;
     ```
 
-1. Switch to the database that you want to migrate.
+1. Switch to the database that you want to migrate as follows:
 
    ```sql
    \c <database_name>
    ```
 
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
 
    ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -505,7 +505,7 @@ Create a new database user, and assign the necessary user permissions.
 
    The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
-1. Grant `SELECT` permission on all the tables and sequences.
+1. Grant `SELECT` permission on all the tables and sequences as follows:
 
    ```sql
    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -513,27 +513,25 @@ Create a new database user, and assign the necessary user permissions.
    SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The `ybvoyager` user can now be used for migration.
-
-1. Create a replication group.
+1. Create a replication group as follows:
 
     ```sql
     CREATE ROLE replication_group;
     ```
 
-1. Add the original owner of the table to the group.
+1. Add the original owner of the table to the group as follows:
 
     ```sql
     GRANT replication_group TO <original_owner>;
     ```
 
-1. Add the user `ybvoyager` to the replication group.
+1. Add the user `ybvoyager` to the replication group as follows:
 
     ```sql
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group>.
+1. Transfer ownership of the tables to the role <replication_group> as follows:
 
     ```sql
     DO $$
@@ -547,11 +545,13 @@ Create a new database user, and assign the necessary user permissions.
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`:
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
     ```
+
+    The `ybvoyager` user can now be used for migration.
 
   {{% /tab %}}
 
@@ -738,7 +738,7 @@ Perform the following steps to prepare your source-replica database:
 
   {{% tab header="Standalone PostgreSQL" %}}
 
-Create a user `ybvoyager_ff` for the migration with superuser privileges using the following command:
+Create a user `ybvoyager_ff` for the migration with superuser privileges as follows:
 
 ```sql
 CREATE USER ybvoyager_ff with password 'password' superuser;
@@ -748,14 +748,14 @@ CREATE USER ybvoyager_ff with password 'password' superuser;
 
   {{% tab header="RDS PostgreSQL" %}}
 
-1. Create user `ybvoyager_ff` for the migration using the following command:
+1. Create user `ybvoyager_ff` for the migration as follows:
 
     ```sql
     CREATE USER ybvoyager_ff with password 'password';
     GRANT rds_superuser to ybvoyager_ff;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager_ff`:
+1. Grant `CREATE` privilege on the source database to `ybvoyager_ff` as follows:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager_ff;

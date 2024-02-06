@@ -395,13 +395,13 @@ Create a new database user, and assign the necessary user permissions.
     CREATE USER ybvoyager PASSWORD 'password' REPLICATION;
     ```
 
-1. Switch to the database that you want to migrate.
+1. Switch to the database that you want to migrate as follows:
 
    ```sql
    \c <database_name>
    ```
 
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
 
    ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -409,7 +409,7 @@ Create a new database user, and assign the necessary user permissions.
 
    The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
-1. Grant `SELECT` permission on all the tables and sequences.
+1. Grant `SELECT` permission on all the tables and sequences as follows:
 
    ```sql
    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -417,27 +417,25 @@ Create a new database user, and assign the necessary user permissions.
    SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The `ybvoyager` user can now be used for migration.
-
-1. Create a replication group.
+1. Create a replication group as follows:
 
     ```sql
     CREATE ROLE replication_group;
     ```
 
-1. Add the original owner of the table to the group.
+1. Add the original owner of the table to the group as follows:
 
     ```sql
     GRANT replication_group TO <original_owner>;
     ```
 
-1. Add the user `ybvoyager` to the replication group.
+1. Add the user `ybvoyager` to the replication group as follows:
 
     ```sql
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group>.
+1. Transfer ownership of the tables to the role <replication_group> as follows:
 
     ```sql
     DO $$
@@ -451,11 +449,13 @@ Create a new database user, and assign the necessary user permissions.
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`.
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
     ```
+
+    The `ybvoyager` user can now be used for migration.
 
   {{% /tab %}}
 
@@ -502,13 +502,13 @@ Create a new database user, and assign the necessary user permissions.
     GRANT rds_replication to ybvoyager;
     ```
 
-1. Switch to the database that you want to migrate.
+1. Switch to the database that you want to migrate as follows:
 
    ```sql
    \c <database_name>
    ```
 
-1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database:
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
 
    ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -516,7 +516,7 @@ Create a new database user, and assign the necessary user permissions.
 
    The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
-1. Grant `SELECT` permission on all the tables and sequences.
+1. Grant `SELECT` permission on all the tables and sequences as follows:
 
    ```sql
    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
@@ -524,27 +524,25 @@ Create a new database user, and assign the necessary user permissions.
    SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The `ybvoyager` user can now be used for migration.
-
-1. Create a replication group.
+1. Create a replication group as follows:
 
     ```sql
     CREATE ROLE replication_group;
     ```
 
-1. Add the original owner of the table to the group.
+1. Add the original owner of the table to the group as follows:
 
     ```sql
     GRANT replication_group TO <original_owner>;
     ```
 
-1. Add the user `ybvoyager` to the replication group.
+1. Add the user `ybvoyager` to the replication group as follows:
 
     ```sql
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group>.
+1. Transfer ownership of the tables to the role <replication_group> as follows:
 
     ```sql
     DO $$
@@ -558,11 +556,13 @@ Create a new database user, and assign the necessary user permissions.
     END $$;
     ```
 
-1. Grant `CREATE` privilege on the source database to `ybvoyager`.
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
 
     ```sql
     GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
     ```
+
+    The `ybvoyager` user can now be used for migration.
 
   {{% /tab %}}
 
