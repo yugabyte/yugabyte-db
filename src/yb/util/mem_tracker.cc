@@ -255,6 +255,7 @@ void MemTracker::CreateRootTracker() {
             << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
 #endif
 
+  LOG(INFO) << "Root memory limit is " << limit;
   root_tracker = std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
       CreateMetrics::kFalse);
