@@ -7737,6 +7737,12 @@
   prorettype => 'float8', proargtypes => 'jsonb float8', proargnames => '{hist,percentile}',
   prosrc => 'yb_get_percentile' },
 
+# logging memory contexts of the specified backend
+{ oid => '4543', descr => 'log memory contexts of the specified backend',
+  proname => 'pg_log_backend_memory_contexts',
+  provolatile => 'v', prorettype => 'bool',
+  proargtypes => 'int4', prosrc => 'pg_log_backend_memory_contexts' },
+
 # non-persistent series generator
 { oid => '1066', descr => 'non-persistent series generator',
   proname => 'generate_series', prorows => '1000', proretset => 't',
