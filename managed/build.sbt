@@ -3,6 +3,7 @@ import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 import java.nio.charset.StandardCharsets
 import java.nio.file.{FileSystems, Files}
+import sbt.complete.Parsers.spaceDelimited
 import sbt.Tests._
 
 import scala.collection.JavaConverters._
@@ -327,6 +328,7 @@ externalResolvers := {
 
 (Compile / compilePlatform) := {
   Def.sequential(
+    buildVenv,
     (Compile / compile),
     releaseModulesLocally
   ).value
@@ -364,11 +366,23 @@ versionGenerate := {
   status
 }
 
+lazy val ybLogTask = inputKey[Unit]("Task to log a message")
+ybLogTask := {
+  val msg: String = spaceDelimited("<arg>").parsed.mkString(" ")
+  ybLog(msg)
+}
+
+buildVenv / fileInputs += baseDirectory.value.toGlob /
+    "devops/python3_requirements*.txt"
 buildVenv := {
-  ybLog("Building virtual env...")
-  val status = Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops").!
-  Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops").!
-  status
+  if (buildVenv.inputFileChanges.hasChanges) {
+    ybLog("Building virtual env...")
+    Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops") #&&
+      Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops") !
+  } else {
+    ybLog("buildVenv already done. Call 'cleanVenv' to force build again.")
+    0
+  }
 }
 
 buildUI := {
@@ -385,10 +399,7 @@ releaseModulesLocally := {
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
-  Def.sequential(
-      buildVenv,
-      openApiProcess
-    ).value
+  openApiProcessServer.value
   generateCrdObjects.value
   generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
@@ -415,12 +426,20 @@ generateOssConfig := {
   0 // Assuming success
 }
 
+generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
+    "src/main/java/com/yugabyte/yw/common/operator/resources/" / ** / "*.yaml"
+// Process and compile open api files
 generateCrdObjects := {
-  ybLog("Generating crd classes...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
-  val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
-  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
-  status
+  if (generateCrdObjects.inputFileChanges.hasChanges) {
+    ybLog("Generating crd classes...")
+    val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
+    val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
+    val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
+    status
+  } else {
+    ybLog("Generated crd classes are up to date. Run 'cleanCrd' to force generate.")
+    0
+  }
 }
 
 downloadThirdPartyDeps := {
@@ -521,15 +540,27 @@ openApiLint := {
   }
 }
 
-lazy val openApiProcess = taskKey[Unit]("Process OpenApi files")
+lazy val openApiProcessServer = taskKey[Unit]("Process OpenApi files")
+openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi" / ** / "[!_]*.yaml"
+openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi_templates" / ** / "*.mustache"
 // Process and compile open api files
-openApiProcess := Def.sequential(
-  openApiFormat,
-  openApiBundle,
-  javaGenV2Server / openApiGenerate,
-  javaGenV2Server / openApiStyleValidate,
-  openApiLint
-).value
+openApiProcessServer := {
+  if (openApiProcessServer.inputFileChanges.hasChanges) {
+    Def.sequential(
+      ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
+      openApiFormat,
+      openApiBundle,
+      javaGenV2Server / openApiGenerate,
+      javaGenV2Server / openApiStyleValidate,
+      openApiLint
+    ).value
+  } else {
+    ybLog("Server stubs already generated for openapi.yaml." +
+        " Run 'cleanV2ServerStubs' to force regenerate.")
+  }
+}
 
 // Generate a Java v1 API client.
 lazy val javagen = project.in(file("client/java"))
@@ -627,13 +658,20 @@ compileGoGenClient := {
 
 // Require sbt to first generate clients and install in local mvn repo
 // so that unit tests libraryDependencies can depend on them
-update := update.dependsOn(openApiClients).value
+update := update.dependsOn(openApiProcessClients).value
 
-lazy val openApiClients = taskKey[Unit]("Generate and compile openapi clients")
-openApiClients := Def.sequential(
-  openApiGenClients,
-  openApiCompileClients,
-).value
+lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi clients")
+openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
+openApiProcessClients := {
+  if (openApiProcessClients.inputFileChanges.hasChanges)
+    Def.sequential(
+      ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
+      openApiGenClients,
+      openApiCompileClients,
+    ).value
+  else
+    ybLog("Generated Openapi clients are up to date. Run 'cleanClients' to force generation.")
+}
 
 lazy val openApiGenClients = taskKey[Unit]("Generating openapi clients")
 openApiGenClients := {
@@ -770,37 +808,7 @@ topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
-playMonitoredFiles := {
-  val dirs = playMonitoredFiles.value
-  if (autoReload) {
-    // remove java and resources dirs and instead add sub-dirs later
-    val dirsFiltered = dirs.filterNot{
-      f: File =>
-        f.getPath().endsWith("src/main/java") ||
-        f.getPath().endsWith("src/main/resources")
-    }
-    // Don't monitor dirs where openapi generates files. Since it leads to infinite auto reload.
-    // add all dirs under src/main/java except api
-    // TODO: Editing the imp files under src/main/java/api/v2/controllers should trigger auto reload
-    val srcDir = FileSystems.getDefault.getPath(baseDirectory.value + "/src/main/java")
-    val srcSubDirs = Files.list(srcDir).iterator().asScala
-                     .filter(Files.isDirectory(_))
-                     .filterNot(_.endsWith("api/v2"))
-                     .map(_.toFile).toList
-
-    // add all dirs under src/main/resources except openapi
-    // TODO: Editing files directly under src/main/resources should trigger auto reload
-    val resDir = FileSystems.getDefault.getPath(baseDirectory.value + "/src/main/resources")
-    val resSubDirs = Files.list(resDir).iterator().asScala
-                    .filter(Files.isDirectory(_))
-                    .filterNot(_.endsWith("openapi"))
-                    .map(_.toFile).toList
-
-    ybLog("playMonitoredFiles for auto reload: " + (dirsFiltered.toList ::: resSubDirs ::: srcSubDirs))
-    dirsFiltered.toList ::: resSubDirs ::: srcSubDirs
-  }: @sbtUnchecked
-  else Seq()
-}
+playMonitoredFiles := { if (autoReload) playMonitoredFiles.value: @sbtUnchecked else Seq() }
 
 consoleSetting := {
   object PlayConsoleInteractionModeNew extends PlayInteractionMode {
