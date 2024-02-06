@@ -101,7 +101,7 @@ There are typically two workflows:
 To add a new syntax rule or modify an existing one, edit the [_diagram definition file_](#diagram-definition-file).
 
 {{<note title="Note">}}
-If you are developing on a local machine, you need to restart Hugo after modifying the [_diagram definition file_](#diagram-definition-file) for the changes to be reflected on the local preview.
+If you are developing on a local machine, you need to restart Hugo after modifying the [_diagram definition file_](#diagram-definition-file) for the changes to be reflected on the local preview. Note that regenerating diagrams can take upwards of a minute or more, and longer if there are errors. Check the syntax of your rule carefully; refer to [Caveats](#caveats) for examples of errors you can encounter.
 {{</note>}}
 
 ### Add and modify syntax diagrams displayed on a page
