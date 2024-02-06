@@ -5,14 +5,11 @@ SELECT extversion FROM pg_extension WHERE extname='pg_cron';
  1.0
 (1 row)
 
+-- Test binary compatibility with v1.4 function signature.
 ALTER EXTENSION pg_cron UPDATE TO '1.4';
-SELECT extversion FROM pg_extension WHERE extname='pg_cron';
- extversion 
-------------
- 1.4
-(1 row)
-
-SET cron.enable_superuser_jobs TO on;
+SELECT cron.unschedule(job_name := 'no_such_job');
+ERROR:  could not find valid entry for job 'no_such_job'
+ALTER EXTENSION pg_cron UPDATE;
 -- Vacuum every day at 10:00am (GMT)
 SELECT cron.schedule('0 10 * * *', 'VACUUM');
  schedule 
@@ -30,9 +27,35 @@ SELECT cron.unschedule(1);
 -- Invalid input: input too long
 SELECT cron.schedule(repeat('a', 1000), '');
 ERROR:  invalid schedule: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+-- Invalid input: missing parts
+SELECT cron.schedule('* * * *', 'SELECT 1'); 
+ERROR:  invalid schedule: * * * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+-- Invalid input: trailing characters
+SELECT cron.schedule('5 secondc', 'SELECT 1'); 
+ERROR:  invalid schedule: 5 secondc
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('50 seconds c', 'SELECT 1'); 
+ERROR:  invalid schedule: 50 seconds c
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+-- Invalid input: seconds out of range
+SELECT cron.schedule('-1 seconds', 'SELECT 1'); 
+ERROR:  invalid schedule: -1 seconds
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('0 seconds', 'SELECT 1'); 
+ERROR:  invalid schedule: 0 seconds
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('60 seconds', 'SELECT 1'); 
+ERROR:  invalid schedule: 60 seconds
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
+SELECT cron.schedule('10000000000 seconds', 'SELECT 1'); 
+ERROR:  invalid schedule: 10000000000 seconds
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- Try to update pg_cron on restart
 SELECT cron.schedule('@restar', 'ALTER EXTENSION pg_cron UPDATE');
 ERROR:  invalid schedule: @restar
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 SELECT cron.schedule('@restart', 'ALTER EXTENSION pg_cron UPDATE');
  schedule 
 ----------
@@ -190,27 +213,78 @@ SELECT username FROM cron.job where jobid=7;
  pgcron_cront
 (1 row)
 
--- Try to schedule a job as superuser when it is not allowed
-SET cron.enable_superuser_jobs TO off;
-SELECT cron.schedule(job_name:='disallowed-superuser', schedule:='* * * * *', command:='drop database pg_crondbno');
-ERROR:  cannot schedule jobs as superuser
-DETAIL:  Scheduling jobs as superuser is disallowed when cron.enable_superuser_jobs is set to off.
-SELECT cron.alter_job(7, username := current_user);
-ERROR:  cannot schedule jobs as superuser
-DETAIL:  Scheduling jobs as superuser is disallowed when cron.enable_superuser_jobs is set to off.
--- Scheduling as other users is allowed as superuser
-SELECT cron.schedule_in_database(job_name:='more vacuum', schedule:='0 12 * * *', command:='VACUUM', database:=current_database(), username:='pgcron_cront');
- schedule_in_database 
-----------------------
-                    8
+-- Override function
+DROP EXTENSION IF EXISTS pg_cron cascade;
+CREATE TABLE test (data text);
+DROP TYPE IF EXISTS current_setting cascade;
+NOTICE:  type "current_setting" does not exist, skipping
+CREATE TYPE current_setting AS ENUM ('cron.database_name');
+CREATE OR REPLACE FUNCTION public.func1(text, current_setting) RETURNS text
+    LANGUAGE sql volatile AS 'INSERT INTO test(data) VALUES (current_user); SELECT current_database()::text;';
+CREATE OR REPLACE FUNCTION public.func1(current_setting) RETURNS text
+    LANGUAGE sql volatile AS 'INSERT INTO test(data) VALUES (current_user); SELECT current_database()::text;';
+CREATE CAST (current_setting AS text) WITH FUNCTION public.func1(current_setting) AS IMPLICIT;
+CREATE EXTENSION pg_cron;
+select * from public.test;
+ data 
+------
+(0 rows)
+
+-- valid interval jobs
+SELECT cron.schedule('1 second', 'SELECT 1'); 
+ schedule 
+----------
+        1
 (1 row)
 
-SELECT cron.alter_job(7, username := 'pgcron_cront');
- alter_job 
------------
- 
+SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1'); 
+ schedule 
+----------
+        2
 (1 row)
 
+SELECT cron.schedule('59 seconds', 'SELECT 1'); 
+ schedule 
+----------
+        3
+(1 row)
+
+SELECT cron.schedule('17  seconds ', 'SELECT 1'); 
+ schedule 
+----------
+        4
+(1 row)
+
+SELECT jobid, jobname, schedule, command FROM cron.job ORDER BY jobid;
+ jobid | jobname |   schedule   | command  
+-------+---------+--------------+----------
+     1 |         | 1 second     | SELECT 1
+     2 |         |  30 sEcOnDs  | SELECT 1
+     3 |         | 59 seconds   | SELECT 1
+     4 |         | 17  seconds  | SELECT 1
+(4 rows)
+
+-- valid last of day job
+SELECT cron.schedule('last-day-of-month-job1', '0 11 $ * *', 'SELECT 1');
+ schedule 
+----------
+        5
+(1 row)
+
+SELECT jobid, jobname, schedule, command FROM cron.job ORDER BY jobid;
+ jobid |        jobname         |   schedule   | command  
+-------+------------------------+--------------+----------
+     1 |                        | 1 second     | SELECT 1
+     2 |                        |  30 sEcOnDs  | SELECT 1
+     3 |                        | 59 seconds   | SELECT 1
+     4 |                        | 17  seconds  | SELECT 1
+     5 | last-day-of-month-job1 | 0 11 $ * *   | SELECT 1
+(5 rows)
+
+-- invalid last of day job
+SELECT cron.schedule('bad-last-dom-job1', '0 11 $foo * *', 'VACUUM FULL');
+ERROR:  invalid schedule: 0 11 $foo * *
+HINT:  Use cron format (e.g. 5 4 * * *), or interval format '[1-59] seconds'
 -- cleaning
 DROP EXTENSION pg_cron;
 drop user pgcron_cront;
