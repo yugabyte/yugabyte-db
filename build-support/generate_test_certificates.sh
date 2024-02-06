@@ -195,47 +195,64 @@ EOT
                        -nocrypt
 }
 
-temp_dir="$(mktemp -d)"
+generate_test_certificates() {
+  local out_dir="$1"
 
-mkdir -p "$temp_dir/CA1" "$temp_dir/CA2" "$temp_dir/named" "$out_dir"
+  set -euo pipefail
 
-generate_ca "$temp_dir/CA1" 'YugabyteDB CA 1'
-for i in $(seq 2 2 254); do
-  generate_node_cert "$temp_dir/CA1" "$i"
-done
-generate_ysql_cert "$temp_dir/CA1" ysql
+  temp_dir="$(mktemp -d)"
+  mkdir -p "$temp_dir/CA1" "$temp_dir/CA2" "$temp_dir/named" "$out_dir"
 
-cp "$temp_dir/CA1/ca.crt" \
-   "$temp_dir/CA1/node."*".crt" \
-   "$temp_dir/CA1/node."*".key" \
-   "$temp_dir/CA1/ysql.crt" \
-   "$temp_dir/CA1/ysql.key" \
-   "$temp_dir/CA1/ysql.key.der" \
-   "$out_dir/"
+  generate_ca "$temp_dir/CA1" 'YugabyteDB CA 1'
+  for i in $(seq 2 2 254); do
+    generate_node_cert "$temp_dir/CA1" "$i"
+  done
+  generate_ysql_cert "$temp_dir/CA1" ysql
 
-generate_ca "$temp_dir/CA2" 'YugabyteDB CA 2'
-for i in $(seq 2 2 254); do
-  generate_node_cert "$temp_dir/CA2" "$i"
-done
+  cp "$temp_dir/CA1/ca.crt" \
+     "$temp_dir/CA1/node."*".crt" \
+     "$temp_dir/CA1/node."*".key" \
+     "$temp_dir/CA1/ysql.crt" \
+     "$temp_dir/CA1/ysql.key" \
+     "$temp_dir/CA1/ysql.key.der" \
+     "$out_dir/"
 
-cat "$temp_dir/CA2/ca.crt" "$temp_dir/CA1/ca.crt" > "$temp_dir/combinedCA.crt"
+  generate_ca "$temp_dir/CA2" 'YugabyteDB CA 2'
+  for i in $(seq 2 2 254); do
+    generate_node_cert "$temp_dir/CA2" "$i"
+  done
 
-mkdir -p "$out_dir/CA2"
-cp "$temp_dir/CA2/ca.crt" \
-   "$temp_dir/CA2/node."*".crt" \
-   "$temp_dir/CA2/node."*".key" \
-   "$temp_dir/combinedCA.crt" \
-   "$out_dir/CA2"
+  cat "$temp_dir/CA2/ca.crt" "$temp_dir/CA1/ca.crt" > "$temp_dir/combinedCA.crt"
 
-generate_ca "$temp_dir/named" 'YugabyteDB CA'
-for i in 2 4 6 52 ; do
-  generate_node_named_cert "$temp_dir/named" $i
-done
+  mkdir -p "$out_dir/CA2"
+  cp "$temp_dir/CA2/ca.crt" \
+     "$temp_dir/CA2/node."*".crt" \
+     "$temp_dir/CA2/node."*".key" \
+     "$temp_dir/combinedCA.crt" \
+     "$out_dir/CA2"
 
-mkdir -p "$out_dir/named"
-cp "$temp_dir/named/ca.crt" \
-   "$temp_dir/named/node."*".crt" \
-   "$temp_dir/named/node."*".key" \
-   "$out_dir/named"
+  generate_ca "$temp_dir/named" 'YugabyteDB CA'
+  for i in 2 4 6 52 ; do
+    generate_node_named_cert "$temp_dir/named" $i
+  done
 
-rm -rf "$temp_dir"
+  mkdir -p "$out_dir/named"
+  cp "$temp_dir/named/ca.crt" \
+     "$temp_dir/named/node."*".crt" \
+     "$temp_dir/named/node."*".key" \
+     "$out_dir/named"
+
+  rm -rf "$temp_dir"
+}
+
+report_error() {
+  local error=$?
+  local output="$1"
+  echo >&2 "Failed to generate test certificates. Command output:"
+  echo >&2
+  echo >&2 "$output"
+  exit $error
+}
+trap 'report_error "$out"' ERR
+out=$(generate_test_certificates "$out_dir" 2>&1)
+trap - ERR
