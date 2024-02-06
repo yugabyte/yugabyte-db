@@ -1554,6 +1554,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
 
+  Status CreateNewXReplStream(
+      const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
+      const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
+      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2728,12 +2733,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       SysSnapshotEntryPB::State state, SysSnapshotEntryPB* snapshot_pb);
 
   Status CreateNewCDCStreamForNamespace(
-      const CreateCDCStreamRequestPB& req,
-      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-  Status CreateNewXReplStream(
-      const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
-      const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
-      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
+      const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
 
   Status PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                const std::vector<TableId>& table_ids,
