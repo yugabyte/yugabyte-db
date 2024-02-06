@@ -35,7 +35,7 @@ var deleteProviderCmd = &cobra.Command{
 				formatter.Colorize("No provider name found to delete\n", formatter.RedColor))
 		}
 		err := util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to delete %s: %s", "provider", providerName),
+			fmt.Sprintf("Are you sure you want to delete %s: %s", util.ProviderType, providerName),
 			viper.GetBool("force"))
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -83,10 +83,10 @@ var deleteProviderCmd = &cobra.Command{
 			formatter.Colorize(providerName, formatter.GreenColor))
 
 		if viper.GetBool("wait") {
-			if rDelete.TaskUUID != nil {
+			if len(rDelete.GetTaskUUID()) > 0 {
 				logrus.Info(fmt.Sprintf("Waiting for provider %s (%s) to be deleted\n",
 					formatter.Colorize(providerName, formatter.GreenColor), providerUUID))
-				err = authAPI.WaitForTask(*rDelete.TaskUUID, msg)
+				err = authAPI.WaitForTask(rDelete.GetTaskUUID(), msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
