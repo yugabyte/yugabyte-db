@@ -30,6 +30,8 @@ YBA supports 3 ways of preparing nodes for running YugabyteDB depending upon the
 
 To create, provision, and add nodes to your on-premises provider, you will perform tasks in roughly three stages.
 
+![Create on-premises provider](/images/yb-platform/config/yba-onprem-config-flow.png)
+
 ### Stage 1: Prepare your infrastructure
 
 - Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Prepare your network](../../../install-yugabyte-platform/prepare-on-prem-nodes/).
