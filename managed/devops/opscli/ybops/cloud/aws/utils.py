@@ -1093,6 +1093,10 @@ def create_instance(args):
         vars["InstanceMarketOptions"] = options
         logging.info(f"[app] Using AWS spot instances with {options} options")
 
+    if args.imdsv2required:
+        vars["MetadataOptions"] = {"HttpTokens": "required",
+                                   "HttpEndpoint": "enabled"}
+
     # Newer instance types have Credit Specification set to unlimited by default
     if is_burstable(instance):
         vars["CreditSpecification"] = {
