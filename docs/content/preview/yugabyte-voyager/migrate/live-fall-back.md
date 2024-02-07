@@ -445,6 +445,20 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-snapshot-import true
 ```
 
+If the preceding command with `--post-snapshot-import true` fails, retry the command with the argument `--ignore exist` to ignore already created indexes and create new ones instead.
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true \
+        --ignore-exist true
+```
+
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 ### Archive changes (Optional)
