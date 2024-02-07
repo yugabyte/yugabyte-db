@@ -1,5 +1,5 @@
 ---
-title: Set up transactional xCluster replication
+title: Set up Disaster Recovery for a universe
 headerTitle: Set up Disaster Recovery
 linkTitle: Setup
 description: Setting up Disaster Recovery for a universe
