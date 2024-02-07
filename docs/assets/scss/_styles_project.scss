@@ -137,7 +137,15 @@ html {
   }
 
   > i[class^="fa-"] {
-    font-size: 50px;
+    font-size: 65px;
+  }
+
+  > i.fa-brands {
+    font-size: 86px;
+  }
+
+  > i.fa-solid {
+    font-size: 70px;
   }
 }
 
