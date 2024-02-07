@@ -338,8 +338,10 @@ Starting with Apache AGE is very simple. You can easily select your platform and
 Join the AGE community for help, questions, discussions, and contributions. 
 
 - Check our [website](https://age.apache.org/)
-- Join the Live Chat on [Discord](https://discord.gg/EuK6EEg3k7)
-- Follow us on [Twitter](https://twitter.com/apache_age?s=20&t=7Hu8Txk4vjvuEp-ryakacg)
+- Ask your AGE-related questions and answers on [Stack overflow](https://stackoverflow.com/questions/tagged/apache-age)
+- Discuss about AGE on [GitHub Discussions](https://github.com/apache/age/discussions)
+- Share your feedback on [GitHub Issues](https://github.com/apache/age/issues)
+- Follow us on [X](https://twitter.com/apache_age)
 - Subscribe to our developer mailing list by sending an email to dev-subscribe@age.apache.org
 - Subscribe to our user mailing list by sending an email to users-subscribe@age.apache.org
 - Subscribe to our committer mailing list (To become a committer) by sending an email to commits-subscribe@age.apache.org
