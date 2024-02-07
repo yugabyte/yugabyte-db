@@ -85,7 +85,7 @@ Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account
 
 - Cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
 
-### GCP instance templates
+## GCP instance templates
 
 You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YugabyteDB Anywhere.
 
@@ -105,7 +105,7 @@ Using an instance template allows you to customize instance features that are no
 
 For instructions on creating an instance template on Google Cloud, refer to [Create instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
 
-When creating the template, ensure that you create the template under the right project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
+When creating the template in Google Cloud, ensure that you create the template under the right GCP project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
 
 Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following properties can't be overridden by an instance template:
 
@@ -143,8 +143,7 @@ To edit the provider, select **Config Details**, make changes, and click **Apply
 
     If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
 
-- Regions - You can add regions and zones to an in-use provider.
-Note that you cannot edit existing region details, or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
+- Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
 
 To view the universes created using the provider, select **Universes**.
 
