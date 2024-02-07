@@ -736,6 +736,14 @@ class YBClient {
   Status XClusterReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
 
+  Status AddTablesToUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+  Status RemoveTablesFromUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const NamespaceId& namespace_id, const master::XClusterSafeTimeFilter& filter);
+
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
       PartitionsOnly partitions_only, GetTableLocationsCallback callback);

@@ -124,6 +124,16 @@ Result<XClusterNamespaceToSafeTimeMap> XClusterTargetManager::GetXClusterNamespa
   return result;
 }
 
+Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
+    const GetXClusterSafeTimeForNamespaceRequestPB* req,
+    GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch) {
+  SCHECK(!req->namespace_id().empty(), InvalidArgument, "Namespace id must be provided");
+  auto safe_time_ht = VERIFY_RESULT(xcluster_safe_time_service_->GetXClusterSafeTimeForNamespace(
+      epoch.leader_term, req->namespace_id(), req->filter()));
+  resp->set_safe_time_ht(safe_time_ht.ToUint64());
+  return Status::OK();
+}
+
 Result<XClusterNamespaceToSafeTimeMap>
 XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(const LeaderEpoch& epoch) {
   return xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);

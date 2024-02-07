@@ -16,6 +16,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 
 #include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -77,6 +78,7 @@ DEFINE_test_flag(
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(enable_xcluster_stat_collection);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 using namespace std::placeholders;
 
@@ -141,6 +143,15 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
   output_client_ = CreateXClusterOutputClient(
       this, consumer_tablet_info_, producer_tablet_info_, local_client_, thread_pool_, rpcs_,
       use_local_tserver, rate_limiter);
+}
+
+void XClusterPoller::InitDDLQueuePoller(
+    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
+    const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func) {
+  Init(use_local_tserver, rate_limiter);
+
+  ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
+      local_client_, namespace_name, namespace_id, std::move(connect_to_pg_func));
 }
 
 void XClusterPoller::StartShutdown() {
@@ -456,10 +467,11 @@ void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse&& respons
   }
 
   ScheduleFunc(
-      BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
+      BIND_FUNCTION_AND_ARGS(XClusterPoller::VerifyApplyChangesResponse, std::move(response)));
 }
 
-void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse& response) {
+void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse response) {
+  // Verify if the ApplyChanges failed, in which case we need to reschedule it.
   if (!response.status.ok() ||
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
@@ -475,7 +487,27 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse& re
     return;
   }
 
+  HandleApplyChangesResponse(std::move(response));
+}
+
+void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
   DCHECK(response.get_changes_response);
+
+  if (ddl_queue_handler_) {
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+    auto s = ddl_queue_handler_->ProcessDDLQueueTable(response);
+    if (!s.ok()) {
+      // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
+      YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+      if (FLAGS_enable_xcluster_stat_collection) {
+        poll_stats_history_.SetError(std::move(s));
+      }
+      ScheduleFuncWithDelay(
+          GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
+          BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
+      return;
+    }
+  }
 
   if (FLAGS_enable_xcluster_stat_collection) {
     size_t resp_size = 0;
