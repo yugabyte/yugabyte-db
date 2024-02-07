@@ -1,9 +1,8 @@
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -13,8 +12,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPCreateSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Release;
-import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -25,17 +22,9 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.DateFormat;
-import java.text.ParseException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
@@ -43,11 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.map.LRUMap;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 import org.apache.commons.io.FileUtils;
-import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -60,6 +45,7 @@ import play.mvc.Result;
 public class ReleasesExtractMetadataController extends AuthenticatedController {
 
   @Inject WSClient wsClient;
+  @Inject ReleasesUtils releasesUtils;
 
   public final int MaxPoolSize = 5;
   private ThreadPoolExecutor threadPool =
@@ -158,94 +144,9 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
       file.deleteOnExit(); // set delete on exit in case we crash before we can delete the file.
       log.debug("downloading to temp file {}", file.getAbsolutePath());
       FileUtils.copyURLToFile(url, file);
-      log.info("calculating file {} sha256", file.getAbsolutePath());
-      String sha256 = null;
-      try {
-        Path fp = Paths.get(file.getAbsolutePath());
-        sha256 = Util.computeFileChecksum(fp, "SHA256");
-        log.debug("calculated sha {}", sha256);
-      } catch (Exception e) {
-        log.warn("failed to compute file checksum", e);
-      }
-      log.info("extracting metadata from {}", file.getAbsolutePath());
-      try (InputStream fIn = new BufferedInputStream(new FileInputStream(file));
-          GzipCompressorInputStream gzIn = new GzipCompressorInputStream(fIn);
-          TarArchiveInputStream tarInput = new TarArchiveInputStream(gzIn)) {
-        TarArchiveEntry entry;
-        while ((entry = tarInput.getNextEntry()) != null) {
-          if (entry.getName().endsWith("version_metadata.json")) {
-            log.debug("found version_metadata.json");
-            // We can reasonably assume that the version metadata json is small enough to read in
-            // oneshot
-            byte[] fileContent = new byte[(int) entry.getSize()];
-            tarInput.read(fileContent, 0, fileContent.length);
-            log.debug("read version_metadata.json string: {}", new String(fileContent));
-            JsonNode node = Json.parse(fileContent);
-            metadata.yb_type = Release.YbType.YBDB;
-            metadata.sha256 = sha256;
-
-            // Populate required fields from version metadata. Bad Request if required fields do not
-            // exist.
-            if (node.has("version_number") && node.has("build_number")) {
-              metadata.version =
-                  String.format(
-                      "%s-b%s",
-                      node.get("version_number").asText(), node.get("build_number").asText());
-            } else {
-              log.error("no 'version_number' and 'build_number' found in metadata");
-              metadata.status = ResponseExtractMetadata.Status.failure;
-              return;
-            }
-            if (node.has("platform")) {
-              metadata.platform =
-                  ReleaseArtifact.Platform.valueOf(node.get("platform").asText().toUpperCase());
-            } else {
-              log.error("no 'platform' found in metadata");
-              metadata.status = ResponseExtractMetadata.Status.failure;
-              return;
-            }
-            // TODO: release type should be mandatory
-            if (node.has("release_type")) {
-              metadata.release_type = node.get("release_type").asText();
-            } else {
-              log.warn("no release type, default to PREVIEW");
-              metadata.release_type = "PREVIEW (DEFAULT)";
-            }
-            // Only Linux platform has architecture. K8S expects null value for architecture.
-            if (metadata.platform.equals(ReleaseArtifact.Platform.LINUX)) {
-              if (node.has("architecture")) {
-                metadata.architecture = Architecture.valueOf(node.get("architecture").asText());
-              } else {
-                log.error("no 'architecture' for linux platform");
-                metadata.status = ResponseExtractMetadata.Status.failure;
-              }
-            }
-
-            // Populate optional sections if available.
-            if (node.has("release_date")) {
-              DateFormat df = DateFormat.getDateInstance();
-              try {
-                metadata.release_date = df.parse(node.get("release_date").asText());
-                // best effort parse.
-              } catch (ParseException e) {
-                log.warn("invalid date format", e);
-              }
-            }
-            if (node.has("release_notes")) {
-              metadata.release_notes = node.get("release_notes").asText();
-            }
-            log.info("finished extracting metadata " + metadataUuid);
-            metadata.status = ResponseExtractMetadata.Status.success;
-            return;
-          }
-        }
-        // While loop completed, mark as failure since no version metadata was found.
-        metadata.status = ResponseExtractMetadata.Status.failure;
-        log.error("no version_metadata.json found");
-      } catch (IOException e) {
-        log.error("failed extracting metadata", e);
-        metadata.status = ResponseExtractMetadata.Status.failure;
-      }
+      ReleasesUtils.ExtractedMetadata em = releasesUtils.metadataFromPath(file.toPath());
+      metadata.populateFromExtractedMetadata(em);
+      metadata.status = ResponseExtractMetadata.Status.success;
     } catch (Exception e) {
       metadata.status = ResponseExtractMetadata.Status.failure;
       log.error("failed to extract metadata", e);
