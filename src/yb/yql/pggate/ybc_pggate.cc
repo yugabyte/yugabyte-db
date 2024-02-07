@@ -348,6 +348,14 @@ void AshCopyTServerSample(
       tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
 }
 
+void AshCopyTServerSamples(
+    YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
+    uint64_t& sample_time) {
+  for (const auto& sample : samples.wait_states()) {
+    AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
+  }
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -1955,9 +1963,10 @@ void YBCStoreTServerAshSamples(
     // We don't return error status to avoid a restart loop of the ASH collector
     LOG(ERROR) << result.status();
   } else {
-    for (const auto& sample : result->tserver_wait_states().wait_states()) {
-      AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
-    }
+    AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->flush_and_compaction_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->raft_log_appender_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
   }
 }
 

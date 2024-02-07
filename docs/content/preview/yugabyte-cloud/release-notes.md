@@ -19,6 +19,16 @@ On this page:
 
 ## Change log
 
+### January 31, 2024
+
+**New Features**
+
+- Support for Okta [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their Okta identities.
+
+**Database**
+
+- Innovation track updated to 2.18.5.0.
+
 ### December 27, 2023
 
 **New Features**

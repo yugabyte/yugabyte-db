@@ -27,11 +27,11 @@ type: docs
   </li>
 </ul>
 
-OpenID Connect (OIDC) is an authentication protocol that allows client applications to confirm the user's identity via authentication by an authorization server.
+You can configure YugabyteDB Anywhere to use OpenID Connect (OIDC) for single sign-on (SSO) authentication to access to your YugabyteDB Anywhere instance.
 
-YugabyteDB Anywhere uses OIDC to enable single sign-on (SSO) authentication for access to your YugabyteDB Anywhere instance.
+OIDC is an authentication protocol that allows client applications to confirm the user's identity via authentication by an authorization server.
 
-For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP), refer to [OIDC authentication with Microsoft Entra](../../security/authentication/oidc-authentication-aad/).
+(For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP), refer to [OIDC authentication with Microsoft Entra](../../security/authentication/oidc-authentication-aad/).)
 
 To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin.
 

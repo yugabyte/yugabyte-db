@@ -1,7 +1,10 @@
 import { MenuItem, makeStyles, Divider } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBSelect } from '../common/YBSelect';
-import TreeIcon from '../assets/tree-icon.svg';
+import { YBSelect } from './YBSelect';
+import { isNonEmptyArray, isNonEmptyString } from '../helpers/ObjectUtils';
+import { ALL_REGIONS } from '../helpers/constants';
+
+import treeIcon from '../assets/tree-icon.svg';
 
 interface ClusterRegionSelectorProps {
   selectedItem: string;
@@ -46,8 +49,6 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const ALL_REGIONS = 'All Regions and Clusters';
-
 export const ClusterRegionSelector = ({
   selectedItem,
   primaryClusterToRegionMap,
@@ -77,21 +78,29 @@ export const ClusterRegionSelector = ({
 
     renderedItems.push(<Divider />);
 
+    const primaryMapValues = primaryClusterToRegionMap.values();
+    const primaryMapValueObject = primaryMapValues.next().value;
+    const primaryCluster = primaryMapValueObject.cluster;
+    const primaryClusterRegions = primaryMapValueObject.regions;
+
     // Add Primary Zones and Nodes
-    for (const [cluster, clusterAttr] of primaryClusterToRegionMap.entries()) {
+    if (isNonEmptyString(primaryCluster)) {
       renderedItems.push(
         <MenuItem
-          key={clusterAttr.cluster}
-          value={clusterAttr.cluster}
+          key={primaryCluster}
+          value={primaryCluster}
           onClick={(e: any) => {
-            onClusterRegionSelected(true, false, clusterAttr.cluster, true);
+            onClusterRegionSelected(true, false, primaryCluster, true);
           }}
           className={clsx(classes.menuItem, classes.boldText)}
         >
-          {clusterAttr.cluster}
+          {primaryCluster}
         </MenuItem>
       );
-      clusterAttr.regions.forEach((region: string) => {
+    }
+
+    if (isNonEmptyArray(primaryClusterRegions)) {
+      primaryClusterRegions.forEach((region: string) => {
         renderedItems.push(
           <MenuItem
             key={region}
@@ -103,7 +112,7 @@ export const ClusterRegionSelector = ({
           >
             <img
               className={classes.icon}
-              src={TreeIcon}
+              src={treeIcon}
               alt="Indicator towards metric measure to use"
             />
             {region}
@@ -112,43 +121,51 @@ export const ClusterRegionSelector = ({
       });
     }
 
+    // Add Read Replica Zones and Nodes
     if (asyncClusterToRegionMap?.size > 0) {
       renderedItems.push(<Divider />);
-    }
-    // Add Read Replica Zones and Nodes
-    // Add Primary Zones and Nodes
-    for (const [cluster, clusterAttr] of asyncClusterToRegionMap.entries()) {
-      renderedItems.push(
-        <MenuItem
-          key={clusterAttr.cluster}
-          value={clusterAttr.cluster}
-          onClick={(e: any) => {
-            onClusterRegionSelected(true, false, clusterAttr.cluster, false);
-          }}
-          className={clsx(classes.menuItem, classes.boldText)}
-        >
-          {clusterAttr.cluster}
-        </MenuItem>
-      );
-      clusterAttr.regions.forEach((region: string) => {
+
+      const asyncMapValues = asyncClusterToRegionMap.values();
+      const asyncMapValueObject = asyncMapValues.next().value;
+      const asyncCluster = asyncMapValueObject.cluster;
+      const asyncClusterRegions = asyncMapValueObject.regions;
+
+      if (isNonEmptyString(asyncCluster)) {
         renderedItems.push(
           <MenuItem
-            key={region}
-            value={region}
+            key={asyncCluster}
+            value={asyncCluster}
             onClick={(e: any) => {
-              onClusterRegionSelected(false, true, region, false);
+              onClusterRegionSelected(true, false, asyncCluster, true);
             }}
-            className={clsx(classes.menuItem, classes.regularText)}
+            className={clsx(classes.menuItem, classes.boldText)}
           >
-            <img
-              className={classes.icon}
-              src={TreeIcon}
-              alt="Indicator towards metric measure to use"
-            />
-            {region}
+            {asyncCluster}
           </MenuItem>
         );
-      });
+      }
+
+      if (isNonEmptyArray(asyncClusterRegions)) {
+        asyncClusterRegions.forEach((region: string) => {
+          renderedItems.push(
+            <MenuItem
+              key={region}
+              value={region}
+              onClick={(e: any) => {
+                onClusterRegionSelected(false, true, region, true);
+              }}
+              className={clsx(classes.menuItem, classes.regularText)}
+            >
+              <img
+                className={classes.icon}
+                src={treeIcon}
+                alt="Indicator towards metric measure to use"
+              />
+              {region}
+            </MenuItem>
+          );
+        });
+      }
     }
 
     return renderedItems;
@@ -160,7 +177,8 @@ export const ClusterRegionSelector = ({
       data-testid="cluster-region-select"
       value={selectedItem}
     >
-      {renderClusterAndRegionItems(primaryClusterToRegionMap, asyncClusterToRegionMap)}
+      {primaryClusterToRegionMap.size > 0 &&
+        renderClusterAndRegionItems(primaryClusterToRegionMap, asyncClusterToRegionMap)}
     </YBSelect>
   );
 };

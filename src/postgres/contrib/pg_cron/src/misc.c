@@ -33,138 +33,130 @@
 /* get_char(file) : like getc() but increment LineNumber on newlines
  */
 int
-get_char(file)
-  FILE  *file;
+get_char(FILE *file)
 {
-  int  ch;
+	int	ch;
 
-  /*
-   * Sneaky hack: we wrapped an in-memory buffer into a FILE*
-   * to minimize changes to cron.c.
-   *
-   * This code replaces:
-   * ch = getc(file);
-   */
-  file_buffer *buffer = (file_buffer *) file;
+	/*
+	 * Sneaky hack: we wrapped an in-memory buffer into a FILE*
+	 * to minimize changes to cron.c.
+	 *
+	 * This code replaces:
+	 * ch = getc(file);
+	 */
+	file_buffer *buffer = (file_buffer *) file;
 
-  if (buffer->unget_count > 0)
-  {
-    ch = buffer->unget_data[--buffer->unget_count];
-  }
-  else if (buffer->pointer == buffer->length)
-  {
-    ch = '\0';
-    buffer->pointer++;
-  }
-  else if (buffer->pointer > buffer->length)
-  {
-    ch = EOF;
-  }
-  else
-  {
-    ch = buffer->data[buffer->pointer++];
-  }
+	if (buffer->unget_count > 0)
+	{
+		ch = buffer->unget_data[--buffer->unget_count];
+	}
+	else if (buffer->pointer == buffer->length)
+	{
+		ch = '\0';
+		buffer->pointer++;
+	}
+	else if (buffer->pointer > buffer->length)
+	{
+		ch = EOF;
+	}
+	else
+	{
+		ch = buffer->data[buffer->pointer++];
+	}
 
-  if (ch == '\n')
-    Set_LineNum(LineNumber + 1);
-  return ch;
+	if (ch == '\n')
+		Set_LineNum(LineNumber + 1);
+	return ch;
 }
 
 
 /* unget_char(ch, file) : like ungetc but do LineNumber processing
  */
 void
-unget_char(ch, file)
-  int  ch;
-  FILE  *file;
+unget_char(int ch, FILE *file)
 {
 
-  /*
-   * Sneaky hack: we wrapped an in-memory buffer into a FILE*
-   * to minimize changes to cron.c.
-   *
-   * This code replaces:
-   * ungetc(ch, file);
-   */
-  file_buffer *buffer = (file_buffer *) file;
+	/*
+	 * Sneaky hack: we wrapped an in-memory buffer into a FILE*
+	 * to minimize changes to cron.c.
+	 *
+	 * This code replaces:
+	 * ungetc(ch, file);
+	 */
+	file_buffer *buffer = (file_buffer *) file;
 
-  if (buffer->unget_count >= 1024)
-  {  
-    perror("ungetc limit exceeded");
-    exit(ERROR_EXIT);
-  }
+	if (buffer->unget_count >= 1024)
+	{	
+		perror("ungetc limit exceeded");
+		exit(ERROR_EXIT);
+	}
 
-  buffer->unget_data[buffer->unget_count++] = ch;
+	buffer->unget_data[buffer->unget_count++] = ch;
 
-  if (ch == '\n')
-         Set_LineNum(LineNumber - 1);
+	if (ch == '\n')
+	       Set_LineNum(LineNumber - 1);
 }
 
 
 /* get_string(str, max, file, termstr) : like fgets() but
- *    (1) has terminator string which should include \n
- *    (2) will always leave room for the null
- *    (3) uses get_char() so LineNumber will be accurate
- *    (4) returns EOF or terminating character, whichever
+ *		(1) has terminator string which should include \n
+ *		(2) will always leave room for the null
+ *		(3) uses get_char() so LineNumber will be accurate
+ *		(4) returns EOF or terminating character, whichever
  */
 int
-get_string(string, size, file, terms)
-  char  *string;
-  int  size;
-  FILE  *file;
-  char  *terms;
+get_string(char *string, int size, FILE *file, char *terms)
 {
-  int  ch;
+	int	ch;
 
-  while (EOF != (ch = get_char(file)) && !strchr(terms, ch)) {
-    if (size > 1) {
-      *string++ = (char) ch;
-      size--;
-    }
-  }
+	while (EOF != (ch = get_char(file)) && !strchr(terms, ch)) {
+		if (size > 1) {
+			*string++ = (char) ch;
+			size--;
+		}
+	}
 
-  if (size > 0)
-    *string = '\0';
+	if (size > 0)
+		*string = '\0';
 
-  return ch;
+	return ch;
 }
 
 
 /* skip_comments(file) : read past comment (if any)
  */
 void
-skip_comments(file)
-  FILE  *file;
+skip_comments(FILE *file)
 {
-  int  ch;
+	int	ch;
 
-  while (EOF != (ch = get_char(file))) {
-    /* ch is now the first character of a line.
-     */
+	while (EOF != (ch = get_char(file))) {
+		/* ch is now the first character of a line.
+		 */
 
-    while (ch == ' ' || ch == '\t')
-      ch = get_char(file);
+		while (ch == ' ' || ch == '\t')
+			ch = get_char(file);
 
-    if (ch == EOF)
-      break;
+		if (ch == EOF)
+			break;
 
-    /* ch is now the first non-blank character of a line.
-     */
+		/* ch is now the first non-blank character of a line.
+		 */
 
-    if (ch != '\n' && ch != '#')
-      break;
+		if (ch != '\n' && ch != '#')
+			break;
 
-    /* ch must be a newline or comment as first non-blank
-     * character on a line.
-     */
+		/* ch must be a newline or comment as first non-blank
+		 * character on a line.
+		 */
 
-    while (ch != '\n' && ch != EOF)
-      ch = get_char(file);
+		while (ch != '\n' && ch != EOF)
+			ch = get_char(file);
 
-    /* ch is now the newline of a line which we're going to
-     * ignore.
-     */
-  }
-  if (ch != EOF)
-    unget_char(ch, file);
+		/* ch is now the newline of a line which we're going to
+		 * ignore.
+		 */
+	}
+	if (ch != EOF)
+		unget_char(ch, file);
 }

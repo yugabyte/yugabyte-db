@@ -24,7 +24,12 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
-import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
+import {
+  api,
+  drConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
 import {
   XClusterModalName,
   XClusterTableStatus,
@@ -48,22 +53,22 @@ import { XClusterConfig } from '../dtos';
 
 import styles from './ReplicationTables.module.scss';
 
-interface props {
+interface CommonReplicationTablesProps {
   xClusterConfig: XClusterConfig;
 
   // isActive determines whether the component will make periodic
   // queries for metrics.
   isActive?: boolean;
-  isDrInterface?: boolean;
 }
+
+type ReplicationTablesProps =
+  | (CommonReplicationTablesProps & { isDrInterface: true; drConfigUuid: string })
+  | (CommonReplicationTablesProps & { isDrInterface: false });
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({
-  xClusterConfig,
-  isActive = true,
-  isDrInterface = false
-}: props) {
+export function ReplicationTables(props: ReplicationTablesProps) {
+  const { xClusterConfig, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
@@ -87,31 +92,44 @@ export function ReplicationTables({
 
   const removeTableFromXCluster = useMutation(
     (replication: XClusterConfig) => {
-      return editXClusterConfigTables(replication.uuid, replication.tables);
+      return props.isDrInterface
+        ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
+        : editXClusterConfigTables(replication.uuid, replication.tables);
     },
     {
       onSuccess: (response, xClusterConfig) => {
         fetchTaskUntilItCompletes(response.taskUUID, (err: boolean) => {
           if (!err) {
             queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+            if (props.isDrInterface) {
+              queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+              toast.success(
+                deleteTableDetails
+                  ? `"${getTableName(deleteTableDetails)}" table removed successully.`
+                  : 'Table removed successfully.'
+              );
+            } else {
+              toast.success(
+                deleteTableDetails
+                  ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
+                      xClusterConfig.name
+                    }.`
+                  : `Table removed successfully from ${xClusterConfig.name}`
+              );
+            }
             dispatch(closeDialog());
-            toast.success(
-              deleteTableDetails
-                ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
-                    xClusterConfig.name
-                  }.`
-                : `Table removed successfully from ${xClusterConfig.name}`
-            );
           } else {
             toast.error(
               <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
                 <span>
                   {deleteTableDetails
-                    ? `Failed to remove table "${getTableName(deleteTableDetails)}" from ${
-                        xClusterConfig.name
-                      }.`
-                    : `Failed to remove table from ${xClusterConfig.name}.`}
+                    ? `Failed to remove table "${getTableName(deleteTableDetails)}"${
+                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
+                      }`
+                    : `Failed to remove table${
+                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
+                      }`}
                 </span>
                 <a href={`/tasks/${response.taskUUID}`} target="_blank" rel="noopener noreferrer">
                   View Details
@@ -122,7 +140,7 @@ export function ReplicationTables({
         });
       },
       onError: (error: Error | AxiosError) => {
-        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' });
+        handleServerError(error, { customErrorLabel: 'Remove table request failed' });
       }
     }
   );
@@ -155,7 +173,7 @@ export function ReplicationTables({
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   return (
     <div className={styles.rootContainer}>
-      {!isDrInterface && (
+      {!props.isDrInterface && (
         <div className={styles.headerSection}>
           <span className={styles.infoText}>Tables selected for Replication</span>
           <div className={styles.actionBar}>
@@ -205,7 +223,7 @@ export function ReplicationTables({
           >
             Schema Name
           </TableHeaderColumn>
-          {!isDrInterface && (
+          {!props.isDrInterface && (
             <TableHeaderColumn
               dataField="tableType"
               dataFormat={(cell: TableType) => TableTypeLabel[cell]}
@@ -303,7 +321,7 @@ export function ReplicationTables({
       </div>
       {isAddTableModalVisible && (
         <AddTableModal
-          isDrInterface={isDrInterface}
+          isDrInterface={props.isDrInterface}
           isVisible={isAddTableModalVisible}
           onHide={hideModal}
           xClusterConfig={xClusterConfig}

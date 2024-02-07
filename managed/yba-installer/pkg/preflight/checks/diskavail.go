@@ -61,7 +61,7 @@ func (r diskAvailCheck) Execute() Result {
 	}
 	if bytesAvail < minDiskReq {
 		res.Error = fmt.Errorf(
-			"Availabile disk space on volume %s is less than minimum required %s",
+			"Available disk space on volume %s is less than minimum required %s",
 			humanize.IBytes(bytesAvail), humanize.IBytes(minDiskReq))
 		res.Status = StatusCritical
 		return res

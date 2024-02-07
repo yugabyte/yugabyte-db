@@ -105,6 +105,14 @@ preflight_provision_check() {
   else
     update_result_json "sudo_access" false
   fi
+
+  # Check Locale
+  result=$(locale -a | grep -q -E "en_US.utf8|en_US.UTF-8")
+  if [[ "$?" -eq 0 ]]; then
+    update_result_json "locale_present" true
+  else
+    update_result_json "locale_present" false
+  fi
 }
 
 check_ntp_synchronization() {

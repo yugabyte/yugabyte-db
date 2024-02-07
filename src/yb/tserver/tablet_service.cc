@@ -47,6 +47,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -1322,6 +1323,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   tablet.tablet->transaction_coordinator()->Abort(
       txn_id,
       tablet.leader_term,
+      req->has_deadlock_reason() ? StatusFromPB(req->deadlock_reason()) : Status::OK(),
       [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
         resp->set_propagated_hybrid_time(clock->Now().ToUint64());
         Status status;
@@ -1584,6 +1586,11 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema, req->pg_table_id());
+
+  if (req->has_wal_retention_secs()) {
+    table_info->wal_retention_secs = req->wal_retention_secs();
+  }
+
   std::vector<SnapshotScheduleId> snapshot_schedules;
   snapshot_schedules.reserve(req->snapshot_schedules().size());
   for (const auto& id : req->snapshot_schedules()) {

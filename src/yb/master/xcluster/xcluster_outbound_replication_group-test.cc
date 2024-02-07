@@ -163,8 +163,10 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return namespace_tables[namespace_id]; },
       .bootstrap_tables_func =
-          [this](const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline)
-          -> Result<std::vector<xrepl::StreamId>> {
+          [this](
+              const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+              StreamCheckpointLocation checkpoint_location,
+              const LeaderEpoch& epoch) -> Result<std::vector<xrepl::StreamId>> {
         std::vector<xrepl::StreamId> stream_ids;
         for (const auto& table_info : table_infos) {
           stream_ids.emplace_back(CreateXClusterStream(table_info->id()));
@@ -228,8 +230,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, TestMultipleTable) {
   auto outbound_rg_ptr = CreateReplicationGroup();
   auto& outbound_rg = *outbound_rg_ptr;
 
+  ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   auto namespace_id = ASSERT_RESULT(outbound_rg.AddNamespace(kEpoch, kNamespaceName, kDeadline));
   ASSERT_EQ(namespace_id, kNamespaceId);
+  ASSERT_TRUE(outbound_rg.HasNamespace(kNamespaceId));
 
   auto ns_info_opt = ASSERT_RESULT(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
   ASSERT_TRUE(ns_info_opt.has_value());
@@ -322,6 +326,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(ns2_table_id_1, ns2_table_id_2, *ns2_info_opt));
 
   ASSERT_OK(outbound_rg.RemoveNamespace(kEpoch, kNamespaceId));
+  ASSERT_FALSE(outbound_rg.HasNamespace(kNamespaceId));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(kNamespaceId));
 
   // We should only have only the streams from second namespace.
@@ -333,6 +338,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, AddDeleteNamespaces) {
   }
 
   ASSERT_OK(outbound_rg.Delete(kEpoch));
+  ASSERT_FALSE(outbound_rg.HasNamespace(namespace_id_2));
   ASSERT_NOK(outbound_rg.GetNamespaceCheckpointInfo(namespace_id_2));
   ASSERT_TRUE(xcluster_streams.empty());
 }
@@ -397,6 +403,41 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   ASSERT_EQ(
       pb.target_universe_info().state(),
       SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING);
+}
+
+TEST_F(XClusterOutboundReplicationGroupMockedTest, AddTable) {
+  auto table_info1 = CreateTable(kNamespaceId, kTableId1, kTableName1, kPgSchemaName);
+  CreateTable(kNamespaceId, kTableId2, kTableName2, kPgSchemaName2);
+
+  auto outbound_rg = CreateReplicationGroup();
+  auto namespace_id = ASSERT_RESULT(outbound_rg->AddNamespace(kEpoch, kNamespaceName, kDeadline));
+  ASSERT_TRUE(outbound_rg->HasNamespace(kNamespaceId));
+  ASSERT_EQ(xcluster_streams.size(), 2);
+
+  auto ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
+  ASSERT_EQ(ns_info->table_infos.size(), 2);
+
+  std::promise<Status> promise;
+  auto completion_cb = [&promise](const Status& status) { promise.set_value(status); };
+
+  // Same table should not get added twice.
+  outbound_rg->AddTable(table_info1, kEpoch, completion_cb);
+  ASSERT_OK(promise.get_future().get());
+
+  ASSERT_EQ(ns_info->table_infos.size(), 2);
+
+  const TableName table_3 = "table3";
+  const TableId table_id_3 = "table_id_3";
+  auto table_info3 = CreateTable(kNamespaceId, table_id_3, table_3, kPgSchemaName);
+
+  promise = {};
+  outbound_rg->AddTable(table_info3, kEpoch, completion_cb);
+  ASSERT_OK(promise.get_future().get());
+
+  ASSERT_EQ(xcluster_streams.size(), 3);
+  ns_info = ASSERT_RESULT(outbound_rg->GetNamespaceCheckpointInfo(kNamespaceId));
+  ASSERT_TRUE(ns_info.has_value());
+  ASSERT_EQ(ns_info->table_infos.size(), 3);
 }
 
 }  // namespace yb::master

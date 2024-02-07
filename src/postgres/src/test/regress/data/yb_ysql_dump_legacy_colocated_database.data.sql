@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.17.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.17.1.0-b0
+-- Dumped from database version 11.2-YB-2.21.0.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -17,7 +17,15 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
-SET default_tablespace = '';
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 SET default_with_oids = false;
 

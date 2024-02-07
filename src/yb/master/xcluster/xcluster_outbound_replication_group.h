@@ -37,7 +37,8 @@ class XClusterOutboundReplicationGroup
     const std::function<Result<NamespaceName>(const NamespaceId&)> get_namespace_name_func;
     const std::function<Result<std::vector<TableInfoPtr>>(const NamespaceId&)> get_tables_func;
     const std::function<Result<std::vector<xrepl::StreamId>>(
-        const std::vector<TableInfoPtr>&, CoarseTimePoint)>
+        const std::vector<TableInfoPtr>&, CoarseTimePoint,
+        StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch)>
         bootstrap_tables_func;
     const std::function<Result<DeleteCDCStreamResponsePB>(
         const DeleteCDCStreamRequestPB&, const LeaderEpoch&)>
@@ -97,6 +98,12 @@ class XClusterOutboundReplicationGroup
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
+  bool HasNamespace(const NamespaceId& namespace_id) const EXCLUDES(mutex_);
+
+  void AddTable(
+      const TableInfoPtr& table_info, const LeaderEpoch& epoch, StdStatusCallback completion_cb)
+      EXCLUDES(mutex_);
+
  private:
   friend class XClusterOutboundReplicationGroupMocked;
 
@@ -110,7 +117,8 @@ class XClusterOutboundReplicationGroup
 
   Result<NamespaceId> AddNamespaceInternal(
       const NamespaceName& namespace_name, CoarseTimePoint deadline,
-      XClusterOutboundReplicationGroupInfo::WriteLock& l) REQUIRES(mutex_);
+      XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch)
+      REQUIRES(mutex_);
 
   Status Upsert(XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch)
       REQUIRES(mutex_);
@@ -121,13 +129,22 @@ class XClusterOutboundReplicationGroup
       const SysXClusterOutboundReplicationGroupEntryPB& pb) REQUIRES(mutex_);
 
   Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTables(
-      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline) REQUIRES(mutex_);
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+      const LeaderEpoch& epoch) REQUIRES(mutex_);
 
   virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const;
 
+  // Checks if the namespace is part of this replication group. Caller must hold the read or write
+  // lock on outbound_rg_info_. Checks the old_pb
+  bool HasNamespaceUnlocked(const NamespaceId& namespace_id) const REQUIRES_SHARED(mutex_);
+
+  Status AddTableInternal(TableInfoPtr table_info, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
   HelperFunctions helper_functions_;
 
+  // Mutex used to ensure reads are not allowed when writes are happening.
   mutable std::shared_mutex mutex_;
   std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
 

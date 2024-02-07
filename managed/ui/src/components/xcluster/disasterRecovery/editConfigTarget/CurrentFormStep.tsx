@@ -5,21 +5,24 @@ import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 interface CurrentFormStepProps {
   currentFormStep: FormStep;
   isFormDisabled: boolean;
-  sourceUniverseUUID: string;
   storageConfigUuid: string;
+  sourceUniverseUuid: string;
+  targetUniverseUuid: string;
 }
 
 export const CurrentFormStep = ({
   currentFormStep,
   isFormDisabled,
-  sourceUniverseUUID,
-  storageConfigUuid
+  storageConfigUuid,
+  sourceUniverseUuid,
+  targetUniverseUuid
 }: CurrentFormStepProps) => {
   switch (currentFormStep) {
     case FormStep.SELECT_TARGET_UNIVERSE:
       return (
         <SelectTargetUniverseStep
-          sourceUniverseUuid={sourceUniverseUUID}
+          sourceUniverseUuid={sourceUniverseUuid}
+          targetUniverseUuid={targetUniverseUuid}
           isFormDisabled={isFormDisabled}
         />
       );

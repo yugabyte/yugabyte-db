@@ -69,6 +69,9 @@ import static org.yb.AssertionWrappers.fail;
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
+  // This value must be synced with the same variable in `yb_backup.py` script.
+  private static final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
+
   @Before
   public void initYBBackupUtil() {
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
@@ -1150,7 +1153,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean backupTablespaces)
       throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
@@ -1198,8 +1201,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
       String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
-      if (useTablespaces) {
-        args.add("--use_tablespaces");
+      if (backupTablespaces) {
+        args.add("--backup_tablespaces");
+
+        if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+          args.add("--use_tablespaces");
+        }
       }
 
       switch (numRegions) {
@@ -1239,12 +1246,12 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doTestGeoPartitionedBackup(
-      String targetDB, int numRegions, boolean useTablespaces, boolean dropTablespaces,
-      String restoreFlag) throws Exception {
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces, boolean dropTablespaces,
+      String restoreFlag, boolean useTablespaces) throws Exception {
     String output = null;
     try (Statement stmt = connection.createStatement()) {
-      output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+      output = doCreateGeoPartitionedBackup(numRegions, backupAndRestoreTablespaces);
       JSONObject json = new JSONObject(output);
       String backupDir = json.getString("snapshot_url");
 
@@ -1255,12 +1262,20 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
       List<String> args = new ArrayList<>();
-      if (useTablespaces) {
-        args.add("--use_tablespaces");
+      if (backupAndRestoreTablespaces) {
+        args.add("--restore_tablespaces");
       }
 
       if (restoreFlag != null) {
         args.add(restoreFlag);
+      }
+
+      if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+        useTablespaces = backupAndRestoreTablespaces;
+      }
+
+      if (useTablespaces) {
+        args.add("--use_tablespaces");
       }
 
       if (!targetDB.equals("yugabyte")) {
@@ -1297,13 +1312,15 @@ public class TestYbBackup extends BasePgSQLTest {
       assertEquals(null, getTablespaceForTable(stmt, "tbl"));
       // Check global TABLESPACEs.
       Set<Row> expectedTablespaces = asSet(new Row("pg_default"), new Row("pg_global"));
-      if (useTablespaces || targetDB.equals("yugabyte")) {
+      if (backupAndRestoreTablespaces || targetDB.equals("yugabyte")) {
+        expectedTablespaces.addAll(
+            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
+      }
+
+      if ((backupAndRestoreTablespaces && useTablespaces) || targetDB.equals("yugabyte")) {
         assertEquals("region1_ts", getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
         assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
-
-        expectedTablespaces.addAll(
-            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
       } else {
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r2"));
@@ -1322,60 +1339,59 @@ public class TestYbBackup extends BasePgSQLTest {
     return output;
   }
 
-  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
-      throws Exception {
-    return doTestGeoPartitionedBackup(
-        targetDB, numRegions, useTablespaces, /* dropTablespaces */ true, /* restoreFlag */ null);
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces) throws Exception {
+    return doTestGeoPartitionedBackupAndRestore(
+        targetDB, numRegions, backupAndRestoreTablespaces, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ true);
   }
 
   @Test
   public void testGeoPartitioning() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 3, false);
   }
 
   @Test
   public void testGeoPartitioningNoRegions() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 0, false);
   }
 
   @Test
   public void testGeoPartitioningOneRegion() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 1, false);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, false);
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, false);
   }
 
   @Test
   public void testGeoPartitioningWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 3, true);
   }
 
   @Test
   public void testGeoPartitioningNoRegionsWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 0, true);
   }
 
   @Test
   public void testGeoPartitioningOneRegionWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 1, true);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, true);
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, true);
   }
 
   @Test
   public void testFailureOnExistingTablespaces() throws Exception {
-    // This value must be synced with the same variable in `yb_backup.py` script.
-    final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
-
     try {
-      doTestGeoPartitionedBackup("db2", 3,
-          /* useTablespaces */ true, /* dropTablespaces */ false, /* restoreFlag */ null);
+      doTestGeoPartitionedBackupAndRestore(
+          "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+          /* restoreFlag */ null, /* useTablespaces */ true);
 
       if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
         fail("Backup restoring did not fail as expected");
@@ -1388,13 +1404,22 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testIgnoreExistingTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3,
-        /* useTablespaces */ true, /* dropTablespaces */ false, "--ignore_existing_tablespaces");
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+        "--ignore_existing_tablespaces", /* useTablespaces */ true);
+  }
+
+  @Test
+  public void testBackupRestoreTablespaces() throws Exception {
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ false);
+    // Case with useTablespaces = true: testGeoPartitioningWithTablespaces().
   }
 
   @Test
   public void testGeoPartitioningDeleteBackup() throws Exception {
-    String output = doCreateGeoPartitionedBackup(3, false);
+    String output = doCreateGeoPartitionedBackup(3, /* backupTablespaces */ false);
     JSONObject json = new JSONObject(output);
     String backupDir = json.getString("snapshot_url");
     List<String> backupDirs = new ArrayList<String>(Arrays.asList(

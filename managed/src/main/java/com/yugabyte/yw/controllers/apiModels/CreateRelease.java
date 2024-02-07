@@ -17,7 +17,7 @@ public class CreateRelease {
     public UUID package_file_id;
     public String package_url;
     @Constraints.Required public ReleaseArtifact.Platform platform;
-    @Constraints.Required public PublicCloudConstants.Architecture architecture;
+    public PublicCloudConstants.Architecture architecture;
     public String sha256;
   }
 

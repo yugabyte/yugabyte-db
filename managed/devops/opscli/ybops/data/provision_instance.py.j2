@@ -163,10 +163,10 @@ if __name__ == '__main__':
             print(output)
             sys.exit(1)
         print("Preflight checks passed!")
-    if INSTALL_NODE_AGENT and args.install_node_agent:
-        print('Installing node agent on instance with IP {}...'.format(args.ip))
-        execute_command(construct_node_agent_command(args), password=password)
-        print("Installation successful!")
     print('Executing provision now for instance with IP {}...'.format(args.ip))
     execute_command(construct_instance_command(args), password=password)
     print("Provisioning successful!")
+    if INSTALL_NODE_AGENT and args.install_node_agent:
+        print('Installing node agent on instance with IP {}...'.format(args.ip))
+        execute_command(construct_node_agent_command(args), password=password)
+        print("Node Agent installation successful!")

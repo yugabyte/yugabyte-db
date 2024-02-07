@@ -42,7 +42,7 @@ If no universes have been created yet, the **Dashboard** does not display any.
 
 Click **Create Universe** to create a universe and then enter your intent.
 
-The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the [configured cloud providers](../../configure-yugabyte-platform/set-up-cloud-provider/). When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
+The **Provider**, **Regions**, and **Instance Type** fields are initialized based on the configured cloud providers. When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
 To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/), perform the following:
 
@@ -50,7 +50,7 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Enter the region (**Oregon**).
 
-- Accept default values for all of the remaining fields (Master Placement,replication factor = 3, Total nodes = 3), as per the following illustration:
+- Accept default values for all of the remaining fields (Master Placement, replication factor = 3, Total nodes = 3), as per the following illustration:
 
   ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
 

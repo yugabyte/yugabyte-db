@@ -36,6 +36,8 @@ class SysCatalogTable;
 
 class XClusterSourceManager {
  public:
+  std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
+
  protected:
   explicit XClusterSourceManager(
       Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
@@ -102,7 +104,8 @@ class XClusterSourceManager {
   Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
 
   Result<std::vector<xrepl::StreamId>> BootstrapTables(
-      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+      StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch);
 
   Master& master_;
   CatalogManager& catalog_manager_;

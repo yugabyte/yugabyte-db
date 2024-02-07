@@ -34,7 +34,7 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Override
   public UserTaskDetails.SubTaskGroupType getTaskSubGroupType() {
-    return UserTaskDetails.SubTaskGroupType.UpgradingSoftware;
+    return UserTaskDetails.SubTaskGroupType.RollingBackSoftware;
   }
 
   public NodeDetails.NodeState getNodeState() {
