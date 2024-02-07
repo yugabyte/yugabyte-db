@@ -328,9 +328,6 @@ class UniverseDetail extends Component {
       )?.value === 'true';
     const isDrEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_UI_FEATURE_FLAG
-      )?.value === 'true' &&
-      runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
       )?.value === 'true';
     const isAuthEnforced =
