@@ -28,7 +28,7 @@ type: indexpage
     <a class="section-link icon-offset" href="ai-llamaindex-openai">
       <div class="head">
         <img class="icon" src="/images/tutorials/ai/icons/llamaindex-icon.svg" aria-hidden="true" />
-        <div class="title">LangChain and OpenAI</div>
+        <div class="title">LlamaIndex and OpenAI</div>
       </div>
       <div class="body">
         Build a scalable RAG (Retrieval-Augmented Generation) app using LlamaIndex and OpenAI.

@@ -1,10 +1,10 @@
 ---
 title: How to Develop RAG Apps with LlamaIndex, OpenAI and YugabyteDB
-headerTitle: Build RAG applications with LlamaIndex, OpenAI, and YugaybteDB
+headerTitle: Build RAG applications with LlamaIndex, OpenAI, and YugabyteDB
 linkTitle: LlamaIndex and OpenAI
 description: Learn to build RAG applications using LlamaIndex and OpenAI.
 image: /images/tutorials/ai/icons/llamaindex-icon.svg
-headcontent: Use YugaybteDB as the database backend for RAG applications
+headcontent: Use YugabyteDB as the database backend for RAG applications
 menu:
   preview:
     identifier: tutorials-ai-llamaindex-openai
@@ -49,7 +49,7 @@ Download the application and provide settings specific to your deployment:
         # pip install psycopg2-binary
         pip install python-dotenv
         ```
-3. Create an [OpenAI API Key](https://platform.openai.com/api-keys) and store it's value in a secure location. This will be used to connect the application to the LLM to generate SQL queries, infer results and generate the proper response.
+3. Create an [OpenAI API Key](https://platform.openai.com/api-keys). This will be used to connect the application to the LLM to generate SQL queries, infer results and generate the proper response.
 
 4. Configure the application environment variables in `{project_directory/.env}`.
 
@@ -68,21 +68,21 @@ docker network create custom-network
 docker run -d --name yugabytedb-node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -97,18 +97,18 @@ This application requires a database table with financial information for compan
 
 1. Copy the schema to the first node's Docker container.
     ```sh
-    docker cp {project_dir}/sql/schema_simplified.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
     ```   
 
 2. Copy the seed data file to the Docker container.
     ```sh
-    docker cp {project_dir}/sql/data_simplified.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/data.sql yugabytedb-node1:/home
     ```
 
 3. Execute the SQL files against the database.
     ```sh
-     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/schema_simplified.sql'
-     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/data_simplified.sql'
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/schema.sql
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/data.sql
     ```
 
 ## Start the Application
@@ -133,12 +133,14 @@ What is your question?
 Provide a detailed company history for the company with the highest marketcap.
 ```
 
+The AI agent will now combine insights from YugabyteDB and the Wikipedia vector store to provide an appropriate response.
+
 ```output
 Querying SQL database: The first choice seems more relevant as it mentions translating a natural language query into a SQL query over a table containing companies' stats. This could potentially include the company with the highest marketcap and provide a detailed history. The second choice is more about answering semantic questions, which doesn't necessarily imply detailed company history.
 
 SQL query: SELECT * 
-FROM companies_simplified 
-WHERE marketcap = (SELECT MAX(marketcap) FROM companies_simplified)
+FROM companies 
+WHERE marketcap = (SELECT MAX(marketcap) FROM companies)
 
 SQL response: The company with the highest marketcap is Microsoft Corporation. It was founded on April 4, 1975, and is headquartered at One Microsoft Way, Redmond, Washington, United States. Microsoft is a technology company that specializes in software infrastructure. It has a marketcap of $1,043,526,401,920 and employs 221,000 people. The company's contact number is 425-882-8080.
 
@@ -153,7 +155,7 @@ Microsoft Corporation offers a wide range of products and services. Some of its 
 
 ## Review the Application
 
-The python application relies on both structured and unstructured data to provide an appropriate response. By connecting to the database and providing contextual information, LlamaIndex is able to infer which tables to query and report their columns to the LLM.
+The Python application relies on both structured and unstructured data to provide an appropriate response. By connecting to the database and providing contextual information, LlamaIndex is able to infer which tables to query and report their columns to the LLM.
 
 ```python
 ...
