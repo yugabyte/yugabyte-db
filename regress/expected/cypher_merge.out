@@ -817,7 +817,9 @@ SELECT * FROM cypher('cypher_merge', $$CREATE (n)$$) AS (a agtype);
 
 --test query
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) OPTIONAL MATCH (n)-[:e]->(m) MERGE (m)$$) AS (a agtype);
-ERROR:  Existing variable m cannot be NULL in MERGE clause
+ERROR:  variable m already exists
+LINE 1: ..., $$MATCH (n) OPTIONAL MATCH (n)-[:e]->(m) MERGE (m)$$) AS (...
+                                                             ^
 -- validate only 1 vertex exits
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (a agtype);
                                a                                
@@ -1182,6 +1184,85 @@ NOTICE:  graph "issue_1219" has been dropped
  
 (1 row)
 
+--
+-- the following tests should fail due to invalid variable reuse (issue#1513)
+--
+SELECT * FROM cypher('cypher_merge', $$
+  MERGE (n) MERGE (n) RETURN n
+$$) as (a agtype);
+ERROR:  variable n already exists
+LINE 2:   MERGE (n) MERGE (n) RETURN n
+                           ^
+SELECT * FROM cypher('cypher_merge', $$
+  MATCH (n) MERGE (n) RETURN n
+$$) as (a agtype);
+ERROR:  variable n already exists
+LINE 2:   MATCH (n) MERGE (n) RETURN n
+                           ^
+SELECT * FROM cypher('cypher_merge', $$
+  CREATE (n) MERGE (n) RETURN n
+$$) as (a agtype);
+ERROR:  variable n already exists
+LINE 2:   CREATE (n) MERGE (n) RETURN n
+                            ^
+SELECT * FROM cypher('cypher_merge', $$
+  MATCH (n) WITH n AS r MERGE (r) RETURN r
+$$) as (a agtype);
+ERROR:  variable r already exists
+LINE 2:   MATCH (n) WITH n AS r MERGE (r) RETURN r
+                                       ^
+SELECT * FROM cypher('cypher_merge', $$
+  WITH {id: 281474976710657, label: "", properties: {}}::vertex AS n MERGE (n) RETURN n
+$$) as (a agtype);
+ERROR:  variable n already exists
+LINE 2: ...7, label: "", properties: {}}::vertex AS n MERGE (n) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_merge', $$
+	MERGE (n)-[e:edge]->(n)-[e1:edge]->(n) MERGE(n) RETURN e
+$$) as (a agtype);
+ERROR:  variable n already exists
+LINE 2:  MERGE (n)-[e:edge]->(n)-[e1:edge]->(n) MERGE(n) RETURN e
+                                                      ^
+SELECT * FROM cypher('cypher_merge', $$
+  MERGE (n)-[e:edge]->(m) MERGE (e)-[:edge]->() RETURN e
+$$) as (a agtype);
+ERROR:  variable 'e' is for an edge
+LINE 2:   MERGE (n)-[e:edge]->(m) MERGE (e)-[:edge]->() RETURN e
+                                         ^
+SELECT * FROM cypher('cypher_merge', $$
+	WITH {id: 1407374883553281, label: "edge", end_id: 281474976710658, start_id: 281474976710657, properties: {}}::edge AS e MERGE ()-[e:edge]->() RETURN e
+$$) as (a agtype);
+ERROR:  variable e already exists
+LINE 2: ...474976710657, properties: {}}::edge AS e MERGE ()-[e:edge]->...
+                                                             ^
+SELECT * FROM cypher('cypher_merge', $$
+  MATCH (n) WITH n AS r MERGE (r) RETURN r
+$$) as (a agtype);
+ERROR:  variable r already exists
+LINE 2:   MATCH (n) WITH n AS r MERGE (r) RETURN r
+                                       ^
+-- valid variable reuse
+SELECT * FROM cypher('cypher_merge', $$
+  MERGE (n)-[e1:edge]->(m) MERGE (n)-[e2:edge]->()
+$$) as (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$
+  MERGE (n) WITH n AS r MERGE (r)-[e:edge]->()
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$
+  CREATE (n), (m) WITH n AS r MERGE (m)
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 
@@ -1192,7 +1273,7 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtyp
  * Clean up graph
  */
 SELECT drop_graph('cypher_merge', true);
-NOTICE:  drop cascades to 18 other objects
+NOTICE:  drop cascades to 19 other objects
 DETAIL:  drop cascades to table cypher_merge._ag_label_vertex
 drop cascades to table cypher_merge._ag_label_edge
 drop cascades to table cypher_merge.e
@@ -1211,6 +1292,7 @@ drop cascades to table cypher_merge."P"
 drop cascades to table cypher_merge."Q"
 drop cascades to table cypher_merge."R"
 drop cascades to table cypher_merge."E1"
+drop cascades to table cypher_merge.edge
 NOTICE:  graph "cypher_merge" has been dropped
  drop_graph 
 ------------

@@ -404,6 +404,78 @@ SELECT * FROM cypher('cypher_create', $$
 $$) as (a agtype);
 
 --
+-- the following tests should fail due to invalid variable reuse (issue#1513)
+--
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n) CREATE (n) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (n) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  MATCH (n) CREATE (n) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (n)-[:edge]->(n), (n) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (n), (m) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (), (m) RETURN m
+$$) as (m agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (), (e) RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (n)-[e:edge]->(m) RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  WITH {id: 281474976710657, label: "", properties: {}}::vertex AS n CREATE (n) RETURN n
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n)-[e:edge]->(n)-[e:edge]->(n) RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE ()-[e:edge]->(), (n)-[e:edge]->(n)-[e:edge]->(n) RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (e)-[:edge]->() RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	WITH {id: 1407374883553281, label: "edge", end_id: 281474976710658, start_id: 281474976710657, properties: {}}::edge AS e CREATE ()-[e:edge]->() RETURN e
+$$) as (e agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n) WITH n AS r CREATE (r) RETURN r
+$$) as (r agtype);
+
+-- valid variable reuse
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e1:edge]->(m) CREATE (n)-[e2:edge]->(m)
+$$) as (n agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n) WITH n AS r CREATE (r)-[e:edge]->() RETURN r
+$$) as (r agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (m) WITH n AS r CREATE (m) RETURN m
+$$) as (m agtype);
+
+--
 -- Clean up
 --
 DROP TABLE simple_path;

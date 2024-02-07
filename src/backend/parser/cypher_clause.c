@@ -181,7 +181,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
                              cypher_path *cp);
 static cypher_target_node *
 transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
-                             cypher_node *node);
+                             cypher_node *node, bool has_edge);
 static cypher_target_node *
 transform_create_cypher_new_node(cypher_parsestate *cpstate,
                                  List **target_list, cypher_node *node);
@@ -255,7 +255,7 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
                             cypher_relationship *edge);
 static cypher_target_node *
 transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
-                            cypher_node *node);
+                            cypher_node *node, bool has_edge);
 static Node *transform_clause_for_join(cypher_parsestate *cpstate,
                                        cypher_clause *clause,
                                        RangeTblEntry **rte,
@@ -5307,7 +5307,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
                              cypher_path *path)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    ListCell *lc;
+    ListCell *lc, *prev_node = NULL;
     List *transformed_path = NIL;
     cypher_create_path *ccp = make_ag_node(cypher_create_path);
     bool in_path = path->var_name != NULL;
@@ -5332,9 +5332,11 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
         {
             cypher_node *node = lfirst(lc);
             transform_entity *entity;
+            ListCell *next_node = lnext(path->path, lc);
 
             cypher_target_node *rel =
-                transform_create_cypher_node(cpstate, target_list, node);
+                transform_create_cypher_node(cpstate, target_list, node,
+                                             (next_node || prev_node));
 
             if (in_path)
             {
@@ -5389,6 +5391,7 @@ transform_cypher_create_path(cypher_parsestate *cpstate, List **target_list,
             ereport(ERROR,
                     (errmsg_internal("unrecognized node in create pattern")));
         }
+        prev_node = lc;
     }
 
     ccp->target_nodes = transformed_path;
@@ -5460,7 +5463,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
 
         entity = find_variable(cpstate, edge->name);
 
-        if ((entity && entity->type != ENT_EDGE) || variable_exists(cpstate, edge->name))
+        if (entity || variable_exists(cpstate, edge->name))
         {
                 ereport(ERROR,
                         (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -5573,7 +5576,7 @@ static bool variable_exists(cypher_parsestate *cpstate, char *name)
 // transform nodes, check to see if the variable name already exists.
 static cypher_target_node *
 transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
-                             cypher_node *node)
+                             cypher_node *node, bool has_edge)
 {
     ParseState *pstate = (ParseState *)cpstate;
 
@@ -5607,7 +5610,7 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
          */
         if (entity && te)
         {
-            if (entity->type != ENT_VERTEX)
+            if (entity->type != ENT_VERTEX || !has_edge)
             {
                 ereport(ERROR,
                         (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -5620,6 +5623,13 @@ transform_create_cypher_node(cypher_parsestate *cpstate, List **target_list,
         }
         else if (te)
         {
+            if (!has_edge)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                         errmsg("variable %s already exists", node->name),
+                         parser_errposition(pstate, node->location)));
+            }
             /*
              * Here we are not sure if the te is a vertex, path or something
              * else. So we will let it pass and the execution stage will catch
@@ -6645,7 +6655,7 @@ transform_cypher_merge_path(cypher_parsestate *cpstate, List **target_list,
                             cypher_path *path)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    ListCell *lc;
+    ListCell *lc, *prev_node = NULL;
     List *transformed_path = NIL;
     cypher_create_path *ccp = make_ag_node(cypher_create_path);
     bool in_path = path->var_name != NULL;
@@ -6658,6 +6668,7 @@ transform_cypher_merge_path(cypher_parsestate *cpstate, List **target_list,
         {
             cypher_node *node = lfirst(lc);
             cypher_target_node *rel = NULL;
+            ListCell *next_node = lnext(path->path, lc);
 
             if (path->var_name != NULL && node->name != NULL &&
                 strcmp(path->var_name, node->name) == 0)
@@ -6679,7 +6690,8 @@ transform_cypher_merge_path(cypher_parsestate *cpstate, List **target_list,
             /* if there wasn't a transformed variable, transform the node */
             if (rel == NULL)
             {
-                rel = transform_merge_cypher_node(cpstate, target_list, node);
+                rel = transform_merge_cypher_node(cpstate, target_list, node,
+                                                  (next_node || prev_node));
             }
 
             if (in_path)
@@ -6735,6 +6747,7 @@ transform_cypher_merge_path(cypher_parsestate *cpstate, List **target_list,
             ereport(ERROR,
                     (errmsg_internal("unrecognized node in create pattern")));
         }
+        prev_node = lc;
     }
 
     // store the path's variable name
@@ -6770,7 +6783,7 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
                                                          ENT_EDGE);
 
         // We found a variable with this variable name, throw an error.
-        if (entity != NULL)
+        if (entity || variable_exists(cpstate, edge->name))
         {
             ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -6871,8 +6884,9 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
  */
 static cypher_target_node *
 transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
-                            cypher_node *node)
+                            cypher_node *node, bool has_edge)
 {
+    ParseState *pstate = (ParseState *)cpstate;
     cypher_target_node *rel = make_ag_node(cypher_target_node);
     Relation label_relation;
     RangeVar *rv;
@@ -6883,19 +6897,35 @@ transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
     {
         transform_entity *entity = find_transform_entity(cpstate, node->name,
                                                          ENT_VERTEX);
+        bool var_exists = variable_exists(cpstate, node->name);
         /*
          *  the vertex was previously declared, we do not need to do any setup
          *  to create the node.
          */
-        if (entity != NULL)
+        if (entity && var_exists)
         {
-                rel->type = LABEL_KIND_VERTEX;
-                rel->tuple_position = InvalidAttrNumber;
-                rel->variable_name = node->name;
-                rel->resultRelInfo = NULL;
+            if (!has_edge)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                         errmsg("variable %s already exists", node->name),
+                         parser_errposition(pstate, node->location)));
+            }
 
-                rel->flags |= CYPHER_TARGET_NODE_MERGE_EXISTS;
-                return rel;
+            rel->type = LABEL_KIND_VERTEX;
+            rel->tuple_position = InvalidAttrNumber;
+            rel->variable_name = node->name;
+            rel->resultRelInfo = NULL;
+
+            rel->flags |= CYPHER_TARGET_NODE_MERGE_EXISTS;
+            return rel;
+        }
+        else if (var_exists && !has_edge)
+        {
+            ereport(ERROR,
+                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                         errmsg("variable %s already exists", node->name),
+                         parser_errposition(pstate, node->location)));
         }
         rel->flags |= CYPHER_TARGET_NODE_IS_VAR;
     }

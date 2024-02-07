@@ -714,7 +714,9 @@ LINE 2:  CREATE p=(p)
 SELECT * FROM cypher('cypher_create', $$
 	CREATE p=() CREATE (p)
 $$) as (a agtype);
-ERROR:  agtype must resolve to a vertex
+ERROR:  variable p already exists
+LINE 2:  CREATE p=() CREATE (p)
+                             ^
 SELECT * FROM cypher('cypher_create', $$
 	CREATE p=(a)-[p:b]->(a)
 $$) as (a agtype);
@@ -748,7 +750,7 @@ LINE 2:  MATCH (p) CREATE (a)-[p:b]->(a)
 SELECT * FROM cypher('cypher_create', $$
 	CREATE (a)-[e:new]->(p)-[e]->(a)
 $$) as (a agtype);
-ERROR:  relationships must be specify a label in CREATE.
+ERROR:  variable e already exists
 LINE 2:  CREATE (a)-[e:new]->(p)-[e]->(a)
                                  ^
 SELECT * FROM cypher('cypher_create', $$
@@ -794,12 +796,123 @@ $$) as (a agtype);
 (1 row)
 
 --
+-- the following tests should fail due to invalid variable reuse (issue#1513)
+--
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n) CREATE (n) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2:   CREATE (n) CREATE (n) RETURN n
+                             ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (n) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2:   CREATE (n), (n) RETURN n
+                       ^
+SELECT * FROM cypher('cypher_create', $$
+  MATCH (n) CREATE (n) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2:   MATCH (n) CREATE (n) RETURN n
+                            ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (n)-[:edge]->(n), (n) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2:   CREATE (n), (n)-[:edge]->(n), (n) RETURN n
+                                         ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (n), (m) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2:   CREATE (n)-[e:edge]->(m) CREATE (n), (m) RETURN n
+                                           ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (), (m) RETURN m
+$$) as (m agtype);
+ERROR:  variable m already exists
+LINE 2:   CREATE (n)-[e:edge]->(m) CREATE (), (m) RETURN m
+                                               ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (), (e) RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2:   CREATE (n)-[e:edge]->(m) CREATE (), (e) RETURN e
+                                               ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (n)-[e:edge]->(m) RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2:   CREATE (n)-[e:edge]->(m) CREATE (n)-[e:edge]->(m) RETURN e
+                                              ^
+SELECT * FROM cypher('cypher_create', $$
+  WITH {id: 281474976710657, label: "", properties: {}}::vertex AS n CREATE (n) RETURN n
+$$) as (n agtype);
+ERROR:  variable n already exists
+LINE 2: ..., label: "", properties: {}}::vertex AS n CREATE (n) RETURN ...
+                                                             ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n)-[e:edge]->(n)-[e:edge]->(n) RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2:  CREATE (n)-[e:edge]->(n)-[e:edge]->(n) RETURN e
+                                  ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE ()-[e:edge]->(), (n)-[e:edge]->(n)-[e:edge]->(n) RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2:  CREATE ()-[e:edge]->(), (n)-[e:edge]->(n)-[e:edge]->(n) RET...
+                                     ^
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e:edge]->(m) CREATE (e)-[:edge]->() RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2:   CREATE (n)-[e:edge]->(m) CREATE (e)-[:edge]->() RETURN e
+                                           ^
+SELECT * FROM cypher('cypher_create', $$
+	WITH {id: 1407374883553281, label: "edge", end_id: 281474976710658, start_id: 281474976710657, properties: {}}::edge AS e CREATE ()-[e:edge]->() RETURN e
+$$) as (e agtype);
+ERROR:  variable e already exists
+LINE 2: ...74976710657, properties: {}}::edge AS e CREATE ()-[e:edge]->...
+                                                             ^
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n) WITH n AS r CREATE (r) RETURN r
+$$) as (r agtype);
+ERROR:  variable r already exists
+LINE 2:  CREATE (n) WITH n AS r CREATE (r) RETURN r
+                                        ^
+-- valid variable reuse
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n)-[e1:edge]->(m) CREATE (n)-[e2:edge]->(m)
+$$) as (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_create', $$
+	CREATE (n) WITH n AS r CREATE (r)-[e:edge]->() RETURN r
+$$) as (r agtype);
+                               r                                
+----------------------------------------------------------------
+ {"id": 281474976710685, "label": "", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+  CREATE (n), (m) WITH n AS r CREATE (m) RETURN m
+$$) as (m agtype);
+                               m                                
+----------------------------------------------------------------
+ {"id": 281474976710689, "label": "", "properties": {}}::vertex
+(1 row)
+
+--
 -- Clean up
 --
 DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 19 other objects
+NOTICE:  drop cascades to 20 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -819,6 +932,7 @@ drop cascades to table cypher_create.n1
 drop cascades to table cypher_create."CREATE"
 drop cascades to table cypher_create."create"
 drop cascades to table cypher_create."CrEaTe"
+drop cascades to table cypher_create.edge
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------
