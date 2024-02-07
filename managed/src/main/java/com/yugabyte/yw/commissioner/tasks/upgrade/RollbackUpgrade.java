@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -30,6 +31,11 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   protected RollbackUpgradeParams taskParams() {
     return (RollbackUpgradeParams) taskParams;
+  }
+
+  @Override
+  public SubTaskGroupType getTaskSubGroupType() {
+    return SubTaskGroupType.RollingBackSoftware;
   }
 
   @Override
