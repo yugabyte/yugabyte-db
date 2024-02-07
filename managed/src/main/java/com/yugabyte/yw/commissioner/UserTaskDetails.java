@@ -68,6 +68,9 @@ public class UserTaskDetails {
     // Updating GFlags
     UpdatingGFlags,
 
+    // Updating YBC GFlags
+    UpdatingYbcGFlags,
+
     // Bootstrap Cloud
     BootstrappingCloud,
 
@@ -343,6 +346,10 @@ public class UserTaskDetails {
       case UpdatingGFlags:
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
+        break;
+      case UpdatingYbcGFlags:
+        title = "Updating YBC GFlags";
+        description = "Updating YBC GFlags on provisioned nodes.";
         break;
       case UpdatingKubernetesOverrides:
         title = "Updating kubernetes overrides";

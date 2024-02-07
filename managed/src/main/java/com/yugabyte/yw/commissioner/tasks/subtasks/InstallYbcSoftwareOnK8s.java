@@ -39,7 +39,11 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       allTservers.addAll(primaryTservers);
       /* This calls kubectl cp, it is idempotent */
       installYbcOnThePods(
-          universe.getName(), primaryTservers, false, taskParams().getYbcSoftwareVersion());
+          universe.getName(),
+          primaryTservers,
+          false,
+          taskParams().getYbcSoftwareVersion(),
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
       if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
         Set<NodeDetails> replicaTservers =
@@ -48,7 +52,11 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
                     universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
         allTservers.addAll(replicaTservers);
         installYbcOnThePods(
-            universe.getName(), replicaTservers, true, taskParams().getYbcSoftwareVersion());
+            universe.getName(),
+            replicaTservers,
+            true,
+            taskParams().getYbcSoftwareVersion(),
+            universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         performYbcAction(replicaTservers, true, "stop");
       }
 

@@ -330,8 +330,11 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlags(
-      AnsibleConfigureServers.Params taskParam, Config config) {
-    Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
+      Universe universe,
+      AnsibleConfigureServers.Params taskParam,
+      RuntimeConfGetter confGetter,
+      Config config,
+      Map<String, String> customYbcGflags) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
@@ -347,7 +350,6 @@ public class GFlagsUtil {
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", serverAddresses);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
@@ -387,12 +389,24 @@ public class GFlagsUtil {
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
+    boolean enableVerbose =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
+    if (enableVerbose) {
+      ybcFlags.put("v", "1");
+    }
+    String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
+    ybcFlags.put("nfs_dirs", nfsDirs);
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
+      UUID universeUUID,
+      String nodeName,
+      boolean listenOnAllInterfaces,
+      int hardwareConcurrency,
+      Map<String, String> customYbcGflags) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -429,6 +443,7 @@ public class GFlagsUtil {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
       ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 

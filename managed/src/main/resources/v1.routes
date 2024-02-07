@@ -584,6 +584,7 @@ POST     /customers/:cUUID/cloud/:cloud/buckets                                c
 PUT /customers/:cUUID/universes/:uniUUID/ybc/disable                           com.yugabyte.yw.controllers.YbcController.disable(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade                           com.yugabyte.yw.controllers.YbcController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "", request: Request)
 PUT /customers/:cUUID/universes/:uniUUID/ybc/install                           com.yugabyte.yw.controllers.YbcController.install(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "", request: Request)
+PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade/gflags                    com.yugabyte.yw.controllers.YbcController.upgradeYbcGflags(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # YB-Controller throttle parameters
 GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)

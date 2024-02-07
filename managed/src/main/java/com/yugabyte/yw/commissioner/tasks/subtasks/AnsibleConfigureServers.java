@@ -92,6 +92,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // This sets the flag master_join_existing_universe to true by default in the conf file, unless
     // it is overridden e.g in CreateUniverse.
     public boolean masterJoinExistingCluster = true;
+
+    public Map<String, String> ybcGflags = new HashMap<>();
   }
 
   @Override

@@ -312,37 +312,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(podsWait);
   }
 
-  public void installYbcOnThePods(
-      String universeName,
-      Set<NodeDetails> servers,
-      boolean isReadOnlyCluster,
-      String ybcSoftwareVersion) {
-    SubTaskGroup ybcUpload =
-        createSubTaskGroup(
-            KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName());
-    createKubernetesYbcExecutorTask(
-        ybcUpload,
-        universeName,
-        KubernetesCommandExecutor.CommandType.COPY_PACKAGE,
-        servers,
-        isReadOnlyCluster,
-        ybcSoftwareVersion);
-    getRunnableTask().addSubTaskGroup(ybcUpload);
-  }
-
-  public void performYbcAction(
-      Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
-    SubTaskGroup ybcAction =
-        createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName());
-    createKubernetesYbcExecutorTask(
-        ybcAction,
-        KubernetesCommandExecutor.CommandType.YBC_ACTION,
-        servers,
-        isReadOnlyCluster,
-        command);
-    getRunnableTask().addSubTaskGroup(ybcAction);
-  }
-
   /*
   Performs the updates to the helm charts to modify the master addresses as well as
   update the instance type.
@@ -1114,6 +1083,97 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         universeName, commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
+      CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster) {
+    return createKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        ServerType.EITHER,
+        config,
+        0 /* master partition */,
+        0 /* tserver partition */,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        false);
+  }
+
+  // Create the Kubernetes Executor task for the helm deployments. (USED)
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
+      CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
+    return createKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        ServerType.EITHER,
+        config,
+        0 /* master partition */,
+        0 /* tserver partition */,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        enableYbc);
+  }
+
+  public void installYbcOnThePods(
+      String universeName,
+      Set<NodeDetails> servers,
+      boolean isReadOnlyCluster,
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflags) {
+    SubTaskGroup ybcUpload =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.COPY_PACKAGE.getSubTaskGroupName());
+    createKubernetesYbcExecutorTask(
+        ybcUpload,
+        universeName,
+        KubernetesCommandExecutor.CommandType.COPY_PACKAGE,
+        servers,
+        isReadOnlyCluster,
+        ybcSoftwareVersion,
+        ybcGflags);
+    getRunnableTask().addSubTaskGroup(ybcUpload);
+  }
+
+  public void performYbcAction(
+      Set<NodeDetails> servers, boolean isReadOnlyCluster, String command) {
+    SubTaskGroup ybcAction =
+        createSubTaskGroup(KubernetesCommandExecutor.CommandType.YBC_ACTION.getSubTaskGroupName());
+    createKubernetesYbcExecutorTask(
+        ybcAction,
+        KubernetesCommandExecutor.CommandType.YBC_ACTION,
+        servers,
+        isReadOnlyCluster,
+        command);
+    getRunnableTask().addSubTaskGroup(ybcAction);
+  }
+
   // Create Kubernetes Executor task for copying YBC package and conf file to the pod
   public void createKubernetesYbcExecutorTask(
       SubTaskGroup subTaskGroup,
@@ -1121,7 +1181,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesCommandExecutor.CommandType commandType,
       Set<NodeDetails> servers,
       boolean isReadOnlyCluster,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflags) {
     for (NodeDetails node : servers) {
       KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
       Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -1133,9 +1194,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.ybcServerName = node.nodeName;
       params.setYbcSoftwareVersion(ybcSoftwareVersion);
+      params.ybcGflags = ybcGflags;
+      List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
+      if (isReadOnlyCluster && readOnlyClusters.size() == 0) {
+        readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      }
       params.providerUUID =
           isReadOnlyCluster
-              ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+              ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
               : UUID.fromString(primaryCluster.userIntent.provider);
       KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
       task.initialize(params);
@@ -1209,64 +1275,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       task.setUserTaskUUID(userTaskUUID);
       subTaskGroup.addSubTask(task);
     }
-  }
-
-  public KubernetesCommandExecutor createKubernetesExecutorTask(
-      String universeName,
-      CommandType commandType,
-      PlacementInfo pi,
-      String az,
-      String masterAddresses,
-      String ybSoftwareVersion,
-      Map<String, String> config,
-      Map<String, Object> universeOverrides,
-      Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster) {
-    return createKubernetesExecutorTaskForServerType(
-        universeName,
-        commandType,
-        pi,
-        az,
-        masterAddresses,
-        ybSoftwareVersion,
-        ServerType.EITHER,
-        config,
-        0 /* master partition */,
-        0 /* tserver partition */,
-        universeOverrides,
-        azOverrides,
-        isReadOnlyCluster,
-        false);
-  }
-
-  // Create the Kubernetes Executor task for the helm deployments. (USED)
-  public KubernetesCommandExecutor createKubernetesExecutorTask(
-      String universeName,
-      CommandType commandType,
-      PlacementInfo pi,
-      String az,
-      String masterAddresses,
-      String ybSoftwareVersion,
-      Map<String, String> config,
-      Map<String, Object> universeOverrides,
-      Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster,
-      boolean enableYbc) {
-    return createKubernetesExecutorTaskForServerType(
-        universeName,
-        commandType,
-        pi,
-        az,
-        masterAddresses,
-        ybSoftwareVersion,
-        ServerType.EITHER,
-        config,
-        0 /* master partition */,
-        0 /* tserver partition */,
-        universeOverrides,
-        azOverrides,
-        isReadOnlyCluster,
-        enableYbc);
   }
 
   // Create and return the Kubernetes Executor task for deployment of a k8s universe.

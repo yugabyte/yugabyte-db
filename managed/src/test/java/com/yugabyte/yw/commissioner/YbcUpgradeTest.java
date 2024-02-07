@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -45,13 +46,14 @@ import org.yb.ybc.RpcControllerStatus;
 import org.yb.ybc.UpgradeResponse;
 import org.yb.ybc.UpgradeResultResponse;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(MockitoJUnitRunner.Silent.class)
 public class YbcUpgradeTest extends FakeDBApplication {
 
   @Mock PlatformScheduler mockPlatformScheduler;
   @Mock RuntimeConfGetter mockConfGetter;
   @Mock Config mockAppConfig;
   @Mock NodeUniverseManager mockNodeUniverseManager;
+  @Mock NodeManager mockNodeManager;
   @Mock ReleaseManager mockReleaseManager;
   @Mock KubernetesManagerFactory mockKubernetesManagerFactory;
 
@@ -94,7 +96,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
-            mockNodeUniverseManager);
+            mockNodeUniverseManager,
+            mockNodeManager);
 
     mockedUtil = Mockito.mockStatic(Util.class);
     mockedUtil.when(() -> Util.getNodeHomeDir(any(), any())).thenReturn("/home/yugabyte");
@@ -169,7 +172,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
-            mockNodeUniverseManager)
+            mockNodeUniverseManager,
+            mockNodeManager)
         .scheduleRunner();
     Set<String> universeYbcVersions = new HashSet<>();
     universeYbcVersions.add(
@@ -217,7 +221,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
-            mockNodeUniverseManager)
+            mockNodeUniverseManager,
+            mockNodeManager)
         .scheduleRunner();
     Set<String> universeYbcVersions = new HashSet<>();
     universeYbcVersions.add(
@@ -264,7 +269,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             mockConfGetter,
             mockYbcClientService,
             mockYbcManager,
-            mockNodeUniverseManager)
+            mockNodeUniverseManager,
+            mockNodeManager)
         .scheduleRunner();
     assertEquals(
         NEW_YBC_VERSION,
