@@ -109,28 +109,31 @@ The copied location provides the full path to the backup.
 YugabyteDB Anywhere universe backups are stored using the following folder structure:
 
 ```output
-<storage-address>
-   /<universe-uuid>
-     /<backup-series-name>-<backup-series-uuid>
-       /<backup-type>
-         /<creation-time>
-           /<backup-name>_<backup-uuid>
+<storage-config>
+  /sub-directories
+    /<universe-uuid>
+      /<backup-series-name>-<backup-series-uuid>
+        /<backup-type>
+          /<creation-time>
+            /<backup-name>_<backup-uuid>
 ```
 
 For example:
 
 ```output
-s3://user_bucket/some/sub/folders
-   /univ-a85b5b01-6e0b-4a24-b088-478dafff94e4
-     /ybc_backup-92317948b8e444ba150616bf182a061
-       /incremental
-         /20204-01-04T12: 11: 03
-           /multi-table-postgres_40522fc46c69404893392b7d92039b9e
+s3://user_bucket
+  /some/sub/folders
+    /univ-a85b5b01-6e0b-4a24-b088-478dafff94e4
+      /ybc_backup-92317948b8e444ba150616bf182a061
+        /incremental
+          /20204-01-04T12: 11: 03
+            /multi-table-postgres_40522fc46c69404893392b7d92039b9e
 ```
 
 | Component | Description |
 | :-------- | :---------- |
-| Storage address | The address of the backup storage as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
+| Storage address | The name of the bucket as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
+| sub-directories | The path of the sub-folders (if any) in a bucket. |
 | Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder or any of its contents. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
@@ -139,7 +142,12 @@ s3://user_bucket/some/sub/folders
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
-Although you can move a backup from its location, for a successful restore, none of the sub-components and folder names can be modified (from the universe UUID folder on down).
+Although you can move a backup from its location, for a successful restore, only the bucket can be changed, and none of the sub-components and folder names can be modified (from the sub-directories on down).
+
+
+
+
+
 
 When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 

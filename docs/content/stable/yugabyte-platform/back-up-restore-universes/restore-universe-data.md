@@ -107,6 +107,8 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 
 In addition to the basic restore, an advanced option is available for when you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
 
+You can also use the advanced restore procedure to move backups from one bucket to another among different cloud providers. For information on scenarios with examples, refer to [Moving backups between buckets](../back-up-universe-data/#moving-backups-between-buckets).
+
 ### Prerequisites
 
 To perform an advanced restore, you need the following:
@@ -131,7 +133,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. Choose the type of API.
 
-1. In the **Backup location** field, paste the location of the backup you copied from your other installation.
+1. In the **Backup location** field, paste the location of the backup you copied from your other installation, or when you want to move your backup from one bucket to another.
 
 1. Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 
