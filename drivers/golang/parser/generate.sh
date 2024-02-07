@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# Please be aware that this is used by the CI scripts
+#
 GRAMMAR_LOC="$(dirname $(pwd))/parser"
 
 mkdir -p ~/tmp/antlr
