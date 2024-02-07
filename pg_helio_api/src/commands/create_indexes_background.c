@@ -232,6 +232,9 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId)));
 
+			/* remove any stale entry from PG */
+			TryDropCollectionIndex(indexCmdRequest->indexId);
+
 			/* remove the request permanently */
 			RemoveRequestFromIndexQueue(indexCmdRequest->indexId,
 										CREATE_INDEX_COMMAND_TYPE);

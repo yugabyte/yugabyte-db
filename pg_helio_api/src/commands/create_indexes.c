@@ -4048,7 +4048,8 @@ IndexBuildIsInProgress(int indexId)
 
 		/* When we can acquire lock index might still building by a background worker check for real state in the queue */
 		IndexCmdStatus indexCmdStatus = GetIndexBuildStatusFromIndexQueue(indexId);
-		return indexCmdStatus != IndexCmdStatus_Unknown;
+		return (indexCmdStatus != IndexCmdStatus_Unknown && indexCmdStatus !=
+				IndexCmdStatus_Skippable);
 	}
 
 	/*

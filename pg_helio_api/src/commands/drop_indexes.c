@@ -824,9 +824,6 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 							concurrently, bool missingOk, DropIndexesResult *result,
 							MemoryContext oldMemContext)
 {
-	/* Clean up existing running create index job. */
-	CleanUpIndexBuildRequest(indexId);
-
 	/*
 	 * We commit the transaction to prevent concurrent index creation
 	 * getting blocked on that transaction due to any snapshots that
@@ -865,6 +862,9 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 	if (indexDropped)
 	{
 		DeleteCollectionIndexRecord(collectionId, indexId);
+
+		/* Clean up existing running create index job. */
+		CleanUpIndexBuildRequest(indexId);
 	}
 }
 
