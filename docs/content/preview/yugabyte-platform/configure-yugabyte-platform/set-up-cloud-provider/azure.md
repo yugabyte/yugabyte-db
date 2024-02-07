@@ -91,7 +91,11 @@ If you encounter problems, see [Troubleshoot Azure cloud provider configuration]
 
 To view a provider, select it in the list of AZU Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+
+- Provider Name
+- Client Secret
+- Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -130,16 +134,12 @@ You can specify a region as follows:
 
 ### SSH Key Pairs
 
-- **SSH User** represents the user name for the **SSH Port**.
-- **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
+To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
-<!--
-- **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
-  - Select an existing Virtual Private Cloud (VPC).
-  - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
-    - Configure more than one Azure cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
-    - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
--->
+- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
+
+If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given cloud account.
 
 ### Advanced
 

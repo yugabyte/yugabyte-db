@@ -116,7 +116,22 @@ Now you are ready to create a YugabyteDB universe on GCP.
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+
+- Provider Name
+- Credential Type. You can upload a new Google Service Account JSON file (`gceApplicationCredentials`). Note that the `project_id` field can't have a new entry. For example:
+
+    ```json
+    {
+      "type": "service_account",
+      "project_id": "new-project-yb",
+       ...
+    }
+    ```
+
+    If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
+
+- Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -161,6 +176,15 @@ For each region that you want to use for this configuration, do the following:
 - Optionally, specify a **Custom Machine Image**. YugabyteDB Anywhere allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 - Enter the ID of a shared subnet.
 - Optionally, if you have an [instance template](#gcp-instance-templates), specify the template name in the **Instance Template** field.
+
+### SSH Key Pairs
+
+To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
+
+- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
+
+If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given cloud account.
 
 ### Advanced
 
