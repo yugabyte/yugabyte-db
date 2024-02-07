@@ -17,10 +17,7 @@ import {
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
-import {
-  fetchTaskUntilItCompletes,
-  restartXClusterConfig
-} from '../../../../actions/xClusterReplication';
+import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
@@ -204,9 +201,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
   const xClusterConfig = getXClusterConfig(drConfig);
   const restartConfigMutation = useMutation(
     (storageConfigUuid: string) => {
-      return restartXClusterConfig(xClusterConfig.uuid, [], {
-        backupRequestParams: { storageConfigUUID: storageConfigUuid }
-      });
+      return api.restartDrConfig(drConfig.uuid, { dbs: [] });
     },
     {
       onSuccess: (response) => {

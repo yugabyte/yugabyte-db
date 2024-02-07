@@ -41,6 +41,10 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor == 1) {
+      log.warn("Skipping check for RF1 cluster");
+      return;
+    }
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     Duration timeout =

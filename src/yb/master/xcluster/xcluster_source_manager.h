@@ -102,7 +102,8 @@ class XClusterSourceManager {
   Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
 
   Result<std::vector<xrepl::StreamId>> BootstrapTables(
-      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+      StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch);
 
   Master& master_;
   CatalogManager& catalog_manager_;

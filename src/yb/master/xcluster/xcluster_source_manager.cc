@@ -15,6 +15,8 @@
 
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 #include "yb/rpc/rpc_context.h"
@@ -128,9 +130,11 @@ XClusterSourceManager::InitOutboundReplicationGroup(
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return GetTablesToReplicate(namespace_id); },
       .bootstrap_tables_func =
-          [this](const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline)
-          -> Result<std::vector<xrepl::StreamId>> {
-        return BootstrapTables(table_infos, deadline);
+          [this](
+              const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+              StreamCheckpointLocation checkpoint_location,
+              const LeaderEpoch& epoch) -> Result<std::vector<xrepl::StreamId>> {
+        return BootstrapTables(table_infos, deadline, checkpoint_location, epoch);
       },
       .delete_cdc_stream_func = [&catalog_manager = catalog_manager_](
                                     const DeleteCDCStreamRequestPB& req,
@@ -177,7 +181,34 @@ Result<std::vector<TableInfoPtr>> XClusterSourceManager::GetTablesToReplicate(
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
-    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline) {
+    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+    StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch) {
+  if (checkpoint_location == StreamCheckpointLocation::kOpId0) {
+    std::vector<xrepl::StreamId> stream_ids;
+    for (const auto& table_info : table_infos) {
+      const auto& table_id = table_info->id();
+      master::CreateCDCStreamRequestPB create_stream_req;
+      master::CreateCDCStreamResponsePB create_stream_resp;
+      create_stream_req.set_table_id(table_info->id());
+
+      // TODO: #20769 Apply appropriate WAL retention on the table.
+      RETURN_NOT_OK(catalog_manager_.CreateNewXReplStream(
+          create_stream_req, CreateNewCDCStreamMode::kXClusterTableIds, {table_id},
+          /*namespace_id=*/std::nullopt, &create_stream_resp, epoch, /*rpc=*/nullptr));
+
+      if (create_stream_resp.has_error()) {
+        return StatusFromPB(create_stream_resp.error().status());
+      }
+      stream_ids.emplace_back(
+          VERIFY_RESULT(xrepl::StreamId::FromString(create_stream_resp.stream_id())));
+    }
+
+    return stream_ids;
+  }
+
+  LOG_IF(DFATAL, checkpoint_location != StreamCheckpointLocation::kCurrentEndOfWAL)
+      << "Not implemented yet. Checkpoint location: " << checkpoint_location;
+
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptor* ts = nullptr;
   for (const auto& table_info : table_infos) {
@@ -216,7 +247,23 @@ Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>>
 XClusterSourceManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
-  return {};
+  if (!ShouldReplicateTable(table_info)) {
+    return {};
+  }
+
+  // Create a AddTableToXClusterSourceTask for each outbound replication group that has the
+  // tables namespace.
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
+  const auto namespace_id = table_info->namespace_id();
+  SharedLock l(outbound_replication_group_map_mutex_);
+  for (const auto& [_, outbound_replication_group] : outbound_replication_group_map_) {
+    if (outbound_replication_group && outbound_replication_group->HasNamespace(namespace_id)) {
+      tasks.emplace_back(std::make_shared<AddTableToXClusterSourceTask>(
+          outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));
+    }
+  }
+
+  return tasks;
 }
 
 Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicationGroup(

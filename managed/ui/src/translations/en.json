@@ -671,7 +671,7 @@
             "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
-              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during failover."
+              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during switchover."
             },
             "error": {
               "taskFailure": "Switchover task failed.",

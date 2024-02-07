@@ -39,7 +39,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.put("enable_wait_queues", "false");
+    flagMap.putAll(FailOnConflictTestGflags);
     return flagMap;
   }
 

@@ -57,7 +57,7 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
 
 For more information on setting up a GCP service account, refer to [Cloud prerequisites](../../../install-yugabyte-platform/prepare-environment/gcp/).
 
-### GCP instance templates
+## GCP instance templates
 
 You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YugabyteDB Anywhere.
 
@@ -77,7 +77,7 @@ Using an instance template allows you to customize instance features that are no
 
 For instructions on creating an instance template on Google Cloud, refer to [Create instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
 
-When creating the template, ensure that you create the template under the right project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
+When creating the template in Google Cloud, ensure that you create the template under the right GCP project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
 
 Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following properties can't be overridden by an instance template:
 

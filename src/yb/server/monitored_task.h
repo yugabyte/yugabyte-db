@@ -84,7 +84,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
   (kAddTableToXClusterTarget)
-  (kMarkTableAsRunning));
+  (kMarkTableAsRunning)
+  (kAddTableToXClusterSource));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:

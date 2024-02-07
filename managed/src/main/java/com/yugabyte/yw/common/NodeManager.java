@@ -791,23 +791,23 @@ public class NodeManager extends DevopsBase {
       Map<String, String> gflags,
       boolean useHostname,
       boolean allowOverrideAll) {
-    if (!config.getBoolean("yb.cloud.enabled")) {
-      allowOverrideAll |=
-          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
-      GFlagsUtil.processUserGFlags(
-          node,
-          gflags,
-          GFlagsUtil.getAllDefaultGFlags(
-              taskParam,
-              universe,
-              getUserIntentFromParams(taskParam),
-              useHostname,
-              appConfig,
-              confGetter),
-          allowOverrideAll,
-          confGetter,
-          taskParam);
-    }
+    allowOverrideAll |=
+        confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
+    allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
+
+    GFlagsUtil.processUserGFlags(
+        node,
+        gflags,
+        GFlagsUtil.getAllDefaultGFlags(
+            taskParam,
+            universe,
+            getUserIntentFromParams(taskParam),
+            useHostname,
+            appConfig,
+            confGetter),
+        allowOverrideAll,
+        confGetter,
+        taskParam);
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {

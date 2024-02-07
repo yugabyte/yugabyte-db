@@ -4,6 +4,7 @@ headerTitle: OIDC authentication with Microsoft Entra
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Microsoft Entra accounts for database access
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -13,6 +14,8 @@ type: docs
 ---
 
 This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP).
+
+(For information on using OIDC to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/).)
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -190,7 +193,7 @@ The following illustration shows an example of setting the `ysql_hba_conf_csv` f
 The following shows an example `ysql_hba_conf_csv` flag configuration for OIDC:
 
 ```sh
-host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
+host all all 0.0.0.0/0 jwt_map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
 ```
 
 For more information on host authentication in YugabyteDB using `ysql_hba_conf_csv`, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).

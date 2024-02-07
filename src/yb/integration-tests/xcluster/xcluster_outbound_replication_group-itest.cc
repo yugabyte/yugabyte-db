@@ -237,5 +237,23 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   ASSERT_TRUE(final_xcluster_streams.empty());
 }
 
+TEST_F(XClusterOutboundReplicationGroupTest, AddTable) {
+  auto ns1_table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+
+  ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
+
+  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  ASSERT_EQ(all_xcluster_streams_initial.size(), 1);
+
+  auto ns1_table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+
+  all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
+
+  auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
+      ns1_table_id_1, ns1_table_id_2, all_xcluster_streams_initial, ns1_info));
+}
+
 }  // namespace master
 }  // namespace yb
