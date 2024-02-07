@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -65,6 +66,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -2418,6 +2420,49 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public void createValidateDiskSizeOnNodeRemovalTasks(
+      Universe universe, Cluster cluster, Set<NodeDetails> clusterNodes) {
+    if (config.getBoolean("yb.cloud.enabled")) {
+      // This is not enabled for cloud.
+      return;
+    }
+    int targetDiskUsagePercentage =
+        confGetter.getConfForScope(universe, UniverseConfKeys.targetNodeDiskUsagePercentage);
+    if (targetDiskUsagePercentage <= 0) {
+      log.info(
+          "Downsize disk size validation is disabled (usageMultiplierPercentage = {})",
+          targetDiskUsagePercentage);
+      return;
+    }
+    Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(clusterNodes);
+    if (nodesToBeRemoved.isEmpty()) {
+      log.debug("No nodes are getting removed");
+      if (cluster.userIntent.providerType != CloudType.onprem) {
+        DeviceInfo taskDeviceInfo = cluster.userIntent.deviceInfo;
+        DeviceInfo existingDeviceInfo = universe.getCluster(cluster.uuid).userIntent.deviceInfo;
+        if (taskDeviceInfo == null
+            || existingDeviceInfo == null
+            || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+                && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+          log.debug("No change in the volume configuration");
+          return;
+        }
+      }
+    }
+    SubTaskGroup validateSubTaskGroup =
+        createSubTaskGroup(
+            ValidateNodeDiskSize.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
+    ValidateNodeDiskSize.Params params =
+        Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
+    params.clusterUuid = cluster.uuid;
+    params.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    params.targetDiskUsagePercentage = targetDiskUsagePercentage;
+    ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
+    task.initialize(params);
+    validateSubTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(validateSubTaskGroup);
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(

@@ -1046,4 +1046,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable YBC for universes during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> targetNodeDiskUsagePercentage =
+      new ConfKeyInfo<>(
+          "yb.checks.node_disk_size.target_usage_percentage",
+          ScopeType.UNIVERSE,
+          "Target Node Disk Usage Percentage",
+          "Percentage of current disk usage that may consume on the target nodes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

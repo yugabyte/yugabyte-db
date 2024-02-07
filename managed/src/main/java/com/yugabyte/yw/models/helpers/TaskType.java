@@ -929,7 +929,9 @@ public enum TaskType {
 
   CheckForClusterServers(CheckClusterConsistency.class),
 
-  CheckLeaderlessTablets(CheckLeaderlessTablets.class);
+  CheckLeaderlessTablets(CheckLeaderlessTablets.class),
+
+  ValidateNodeDiskSize(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize.class);
 
   private final Class<? extends ITask> taskClass;
 
