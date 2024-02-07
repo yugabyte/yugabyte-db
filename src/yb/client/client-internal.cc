@@ -294,6 +294,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, DeleteRole);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GetPermissions);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokePermission);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokeRole);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, AlterUniverseReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTimeForNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);

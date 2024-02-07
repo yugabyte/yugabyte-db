@@ -36,6 +36,7 @@
 #include <limits>
 #include <list>
 #include <thread>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
@@ -103,6 +104,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::make_shared;
@@ -1174,9 +1176,24 @@ Status TabletServer::CreateXClusterConsumer() {
     }
     return tablet_peer->LeaderTerm();
   };
+  auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
+    return pgwrapper::CreateInternalPGConnBuilder(
+               pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
+               deadline)
+        .Connect();
+  };
+  auto get_namespace_info =
+      [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
+    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
+    SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
+    return std::make_pair(
+        tablet_peer->tablet_metadata()->namespace_id(),
+        tablet_peer->tablet_metadata()->namespace_name());
+  };
 
-  xcluster_consumer_ = VERIFY_RESULT(
-      tserver::CreateXClusterConsumer(std::move(get_leader_term), proxy_cache_.get(), this));
+  xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
+      std::move(get_leader_term), std::move(connect_to_pg), std::move(get_namespace_info),
+      proxy_cache_.get(), this));
   return Status::OK();
 }
 

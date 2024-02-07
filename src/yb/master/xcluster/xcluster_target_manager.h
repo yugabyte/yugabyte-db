@@ -43,6 +43,10 @@ class XClusterTargetManager {
 
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const;
 
+  Status GetXClusterSafeTimeForNamespace(
+      const GetXClusterSafeTimeForNamespaceRequestPB* req,
+      GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch);
+
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
       const LeaderEpoch& epoch);
 

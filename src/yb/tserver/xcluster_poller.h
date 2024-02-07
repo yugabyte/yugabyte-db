@@ -11,16 +11,15 @@
 // under the License.
 //
 
-#include <stdlib.h>
 #include <string>
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/tserver/xcluster_async_executor.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/tserver/xcluster_poller_id.h"
 #include "yb/tserver/xcluster_poller_stats.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 
@@ -46,6 +45,7 @@ namespace tserver {
 
 class AutoFlagsCompatibleVersion;
 class XClusterConsumer;
+class XClusterDDLQueueHandler;
 
 class XClusterPoller : public XClusterAsyncExecutor {
  public:
@@ -60,6 +60,10 @@ class XClusterPoller : public XClusterAsyncExecutor {
   ~XClusterPoller();
 
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+  void InitDDLQueuePoller(
+      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
+      const NamespaceName& namespace_name, const NamespaceId& namespace_id,
+      ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -122,7 +126,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
       EXCLUDES(data_mutex_);
-  void HandleApplyChangesResponse(XClusterOutputClientResponse& response) EXCLUDES(data_mutex_);
+  void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
+  void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
@@ -153,6 +158,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   const std::shared_ptr<XClusterClient> local_client_;
   std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
+  std::shared_ptr<XClusterDDLQueueHandler> ddl_queue_handler_;
 
   // Unsafe to use after shutdown.
   XClusterConsumer* const xcluster_consumer_;

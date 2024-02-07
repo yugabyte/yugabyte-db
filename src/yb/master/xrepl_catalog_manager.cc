@@ -4171,6 +4171,13 @@ Status CatalogManager::InitXClusterConsumer(
         mapping->schema_version_mapping().consumer_schema_version());
     }
 
+    // Mark this stream as special if it is for the ddl_queue table.
+    auto table_info = GetTableInfo(stream_info.consumer_table_id);
+    stream_entry.set_is_ddl_queue_table(
+        table_info->GetTableType() == PGSQL_TABLE_TYPE &&
+        table_info->name() == xcluster::kDDLQueueTableName &&
+        table_info->pgschema_name() == xcluster::kDDLQueuePgSchemaName);
+
     (*producer_entry.mutable_stream_map())[stream_info.stream_id.ToString()] =
         std::move(stream_entry);
   }

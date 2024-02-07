@@ -79,7 +79,8 @@ class XClusterConsumer : public XClusterConsumerIf {
  public:
   XClusterConsumer(
       std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-      const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client);
+      const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
+      ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func);
 
   ~XClusterConsumer();
   Status Init();
@@ -184,6 +185,7 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   std::unordered_set<xrepl::StreamId> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
+  std::unordered_set<xrepl::StreamId> ddl_queue_streams_ GUARDED_BY(master_data_mutex_);
 
   // Pair of validated_schema_version and last_compatible_consumer_schema_version.
   using SchemaVersionMapping = std::pair<uint32_t, uint32_t>;
@@ -242,6 +244,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   FlagCallbackRegistration rate_limiter_callback_;
 
   std::unique_ptr<AutoFlagsVersionHandler> auto_flags_version_handler_;
+
+  ConnectToPostgresFunc connect_to_pg_func_;
+
+  GetNamespaceInfoFunc get_namespace_info_func_;
 };
 
 } // namespace tserver
