@@ -210,6 +210,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  action="store_true",
                                  help="Offload ansible tasks to the DB node")
+        self.parser.add_argument("--imdsv2required",
+                                 action="store_true",
+                                 default=False,
+                                 help="IMDSv2 Required.")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -280,6 +284,7 @@ class AbstractInstancesMethod(AbstractMethod):
         updated_args["offload_ansible"] = args.offload_ansible
 
         self.extra_vars.update(updated_args)
+        self.extra_vars["imdsv2required"] = args.imdsv2required
 
     def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
         """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
