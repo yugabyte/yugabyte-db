@@ -80,6 +80,9 @@ DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
 
 DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
+DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
+                 "When set, transition all delete replica tasks to a failed state.");
+
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
@@ -992,7 +995,35 @@ void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
 // ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
+Status AsyncDeleteReplica::SetPendingDelete(AddPendingDelete add_pending_delete) {
+  TSDescriptorPtr ts_desc;
+  if (!master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
+    return STATUS(IllegalState, Format("Could not find tserver with uuid $0", permanent_uuid_));
+  }
+
+  if (add_pending_delete) {
+    ts_desc->AddPendingTabletDelete(tablet_id());
+  } else {
+    ts_desc->ClearPendingTabletDelete(tablet_id());
+  }
+  return Status::OK();
+}
+
+Status AsyncDeleteReplica::BeforeSubmitToTaskPool() {
+  return SetPendingDelete(AddPendingDelete::kTrue);
+}
+
+Status AsyncDeleteReplica::OnSubmitFailure() {
+  return SetPendingDelete(AddPendingDelete::kFalse);
+}
+
 void AsyncDeleteReplica::HandleResponse(int attempt) {
+  if (FLAGS_TEST_fail_async_delete_replica_task) {
+    auto s = STATUS(IllegalState, "TEST_fail_async_delete_replica_task set to true");
+    TransitionToFailedState(MonitoredTaskState::kRunning, s);
+    return;
+  }
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -1073,9 +1104,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
 
 void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
   // Only notify if we are in a success state.
-  if (state() == MonitoredTaskState::kComplete) {
+  if (state() == MonitoredTaskState::kComplete || state() == MonitoredTaskState::kFailed) {
     master_->catalog_manager()->NotifyTabletDeleteFinished(
-        permanent_uuid_, tablet_id_, table(), epoch());
+        permanent_uuid_, tablet_id_, table(), epoch(), state());
   }
 }
 
