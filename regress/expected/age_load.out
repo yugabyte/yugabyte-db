@@ -233,3 +233,127 @@ NOTICE:  graph "agload_test_graph" has been dropped
  
 (1 row)
 
+--
+-- Test property type conversion
+--
+SELECT create_graph('agload_conversion');
+NOTICE:  graph "agload_conversion" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- vertex: load as agtype
+SELECT create_vlabel('agload_conversion','Person1');
+NOTICE:  VLabel "Person1" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT load_labels_from_file('agload_conversion', 'Person1', 'age_load/conversion_vertices.csv', true, true);
+ load_labels_from_file 
+-----------------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agload_conversion', $$ MATCH (n:Person1) RETURN properties(n) $$) as (a agtype);
+                                         a                                          
+------------------------------------------------------------------------------------
+ {"id": 1, "bool": true, "__id__": 1, "string": "John Smith", "numeric": 1}
+ {"id": 2, "bool": false, "__id__": 2, "string": "John", "numeric": -2}
+ {"id": 3, "bool": true, "__id__": 3, "string": "John Smith", "numeric": 1.4}
+ {"id": 4, "bool": false, "__id__": 4, "string": "John", "numeric": -10000000000.0}
+ {"id": 5, "bool": false, "__id__": 5, "string": null, "numeric": 0}
+ {"id": 6, "bool": false, "__id__": 6, "string": "nUll", "numeric": 3.14}
+(6 rows)
+
+-- vertex: load as string
+SELECT create_vlabel('agload_conversion','Person2');
+NOTICE:  VLabel "Person2" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT load_labels_from_file('agload_conversion', 'Person2', 'age_load/conversion_vertices.csv', true, false);
+ load_labels_from_file 
+-----------------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agload_conversion', $$ MATCH (n:Person2) RETURN properties(n) $$) as (a agtype);
+                                          a                                          
+-------------------------------------------------------------------------------------
+ {"id": "1", "bool": "true", "__id__": 1, "string": "John Smith", "numeric": "1"}
+ {"id": "2", "bool": "false", "__id__": 2, "string": "John", "numeric": "-2"}
+ {"id": "3", "bool": "true", "__id__": 3, "string": "John Smith", "numeric": "1.4"}
+ {"id": "4", "bool": "false", "__id__": 4, "string": "\"John\"", "numeric": "-1e10"}
+ {"id": "5", "bool": "false", "__id__": 5, "string": "null", "numeric": "0"}
+ {"id": "6", "bool": "false", "__id__": 6, "string": "nUll", "numeric": "3.14"}
+(6 rows)
+
+-- edge: load as agtype
+SELECT create_elabel('agload_conversion','Edges1');
+NOTICE:  ELabel "Edges1" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT load_edges_from_file('agload_conversion', 'Edges1', 'age_load/conversion_edges.csv', true);
+ load_edges_from_file 
+----------------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agload_conversion', $$ MATCH ()-[e:Edges1]->() RETURN properties(e) $$) as (a agtype);
+                              a                               
+--------------------------------------------------------------
+ {"bool": true, "string": "John Smith", "numeric": 1}
+ {"bool": false, "string": "John", "numeric": -2}
+ {"bool": true, "string": "John Smith", "numeric": 1.4}
+ {"bool": false, "string": "John", "numeric": -10000000000.0}
+ {"bool": false, "string": null, "numeric": 0}
+ {"bool": false, "string": "nUll", "numeric": 3.14}
+(6 rows)
+
+-- edge: load as string
+SELECT create_elabel('agload_conversion','Edges2');
+NOTICE:  ELabel "Edges2" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT load_edges_from_file('agload_conversion', 'Edges2', 'age_load/conversion_edges.csv', false);
+ load_edges_from_file 
+----------------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agload_conversion', $$ MATCH ()-[e:Edges2]->() RETURN properties(e) $$) as (a agtype);
+                              a                              
+-------------------------------------------------------------
+ {"bool": "true", "string": "John Smith", "numeric": "1"}
+ {"bool": "false", "string": "John", "numeric": "-2"}
+ {"bool": "true", "string": "John Smith", "numeric": "1.4"}
+ {"bool": "false", "string": "\"John\"", "numeric": "-1e10"}
+ {"bool": "false", "string": "null", "numeric": "0"}
+ {"bool": "false", "string": "nUll", "numeric": "3.14"}
+(6 rows)
+
+SELECT drop_graph('agload_conversion', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table agload_conversion._ag_label_vertex
+drop cascades to table agload_conversion._ag_label_edge
+drop cascades to table agload_conversion."Person1"
+drop cascades to table agload_conversion."Person2"
+drop cascades to table agload_conversion."Edges1"
+drop cascades to table agload_conversion."Edges2"
+NOTICE:  graph "agload_conversion" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

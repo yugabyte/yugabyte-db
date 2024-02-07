@@ -1,0 +1,7 @@
+id,    string,           bool,        numeric,
+1,     "John Smith",     "true",      1
+2,     "John",           "false",     "-2"
+3,     John Smith,       true,        1.4
+4,     """John""",       false,       -1e10
+5,     null,             false,       0
+6,     nUll,             false,       "3.14"

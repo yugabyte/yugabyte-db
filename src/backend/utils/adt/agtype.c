@@ -87,7 +87,6 @@ typedef enum /* type categories for datum_to_agtype */
 } agt_type_category;
 
 static inline Datum agtype_from_cstring(char *str, int len);
-static inline agtype_value *agtype_value_from_cstring(char *str, int len);
 size_t check_string_length(size_t len);
 static void agtype_in_agtype_annotation(void *pstate, char *annotation);
 static void agtype_in_object_start(void *pstate);
@@ -352,7 +351,7 @@ Datum agtype_out(PG_FUNCTION_ARGS)
  * Uses the agtype parser (with hooks) to construct an agtype.
  */
 
-static inline agtype_value *agtype_value_from_cstring(char *str, int len)
+agtype_value *agtype_value_from_cstring(char *str, int len)
 {
     agtype_lex_context *lex;
     agtype_in_state state;

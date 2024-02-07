@@ -28,3 +28,21 @@
 -- Please add all additions, deletions, and modifications to the end of this
 -- file. We need to keep the order of these changes.
 
+DROP FUNCTION IF EXISTS ag_catalog.load_labels_from_file(name, name, text, bool);
+CREATE FUNCTION ag_catalog.load_labels_from_file(graph_name name,
+                                                 label_name name,
+                                                 file_path text,
+                                                 id_field_exists bool default true,
+                                                 load_as_agtype bool default false)
+    RETURNS void
+    LANGUAGE c
+    AS 'MODULE_PATHNAME';
+
+DROP FUNCTION IF EXISTS ag_catalog.load_edges_from_file(name, name, text);
+CREATE FUNCTION ag_catalog.load_edges_from_file(graph_name name,
+                                                label_name name,
+                                                file_path text,
+                                                load_as_agtype bool default false)
+    RETURNS void
+    LANGUAGE c
+    AS 'MODULE_PATHNAME';

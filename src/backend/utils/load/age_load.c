@@ -18,10 +18,16 @@
  */
 
 #include "postgres.h"
+#include "utils/json.h"
+#include "utils/jsonfuncs.h"
+#include "common/jsonapi.h"
 
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
 #include "utils/load/age_load.h"
+
+static agtype_value *csv_value_to_agtype_value(char *csv_val);
+static bool json_validate(text *json);
 
 agtype *create_empty_agtype(void)
 {
@@ -40,8 +46,68 @@ agtype *create_empty_agtype(void)
     return out;
 }
 
+/*
+ * Validate JSON text.
+ *
+ * Note: this function is borrowed from PG16. It is simplified
+ * by removing two parameters as they are not used in age.
+ */
+static bool json_validate(text *json)
+{
+    JsonLexContext *lex = makeJsonLexContext(json, false);
+    JsonParseErrorType result;
+
+    result = pg_parse_json(lex, &nullSemAction);
+
+    return result == JSON_SUCCESS;
+}
+
+/*
+ * Converts the given csv value to an agtype_value.
+ *
+ * If csv_val is not a valid json, it is wrapped by double-quotes to make it a
+ * string value. Because agtype is jsonb-like, the token should be a valid
+ * json in order to be parsed into an agtype_value of appropriate type.
+ * Finally, agtype_value_from_cstring() is called for parsing.
+ */
+static agtype_value *csv_value_to_agtype_value(char *csv_val)
+{
+    char *new_csv_val;
+    agtype_value *res;
+
+    if (!json_validate(cstring_to_text(csv_val)))
+    {
+        // wrap the string with double-quote
+        int oldlen;
+        int newlen;
+
+        oldlen = strlen(csv_val);
+        newlen = oldlen + 2; // +2 for double-quotes
+        new_csv_val = (char *)palloc(sizeof(char) * (newlen + 1));
+
+        new_csv_val[0] = '"';
+        strncpy(&new_csv_val[1], csv_val, oldlen);
+        new_csv_val[oldlen + 1] = '"';
+        new_csv_val[oldlen + 2] = '\0';
+    }
+    else
+    {
+        new_csv_val = csv_val;
+    }
+
+    res = agtype_value_from_cstring(new_csv_val, strlen(new_csv_val));
+
+    // extract from top-level row scalar array
+    if (res->type == AGTV_ARRAY && res->val.array.raw_scalar)
+    {
+        res = &res->val.array.elems[0];
+    }
+
+    return res;
+}
+
 agtype *create_agtype_from_list(char **header, char **fields, size_t fields_len,
-                                int64 vertex_id)
+                                int64 vertex_id, bool load_as_agtype)
 {
     agtype* out;
     agtype_value* key_agtype;
@@ -74,7 +140,15 @@ agtype *create_agtype_from_list(char **header, char **fields, size_t fields_len,
                                        WAGT_KEY,
                                        key_agtype);
 
-        value_agtype = string_to_agtype_value(fields[i]);
+        if (load_as_agtype)
+        {
+            value_agtype = csv_value_to_agtype_value(fields[i]);
+        }
+        else
+        {
+            value_agtype = string_to_agtype_value(fields[i]);
+        }
+
         result.res = push_agtype_value(&result.parse_state,
                                        WAGT_VALUE,
                                        value_agtype);
@@ -93,7 +167,8 @@ agtype *create_agtype_from_list(char **header, char **fields, size_t fields_len,
 }
 
 agtype* create_agtype_from_list_i(char **header, char **fields,
-                                  size_t fields_len, size_t start_index)
+                                  size_t fields_len, size_t start_index,
+                                  bool load_as_agtype)
 {
     agtype* out;
     agtype_value* key_agtype;
@@ -117,7 +192,16 @@ agtype* create_agtype_from_list_i(char **header, char **fields,
         result.res = push_agtype_value(&result.parse_state,
                                        WAGT_KEY,
                                        key_agtype);
-        value_agtype = string_to_agtype_value(fields[i]);
+
+        if (load_as_agtype)
+        {
+            value_agtype = csv_value_to_agtype_value(fields[i]);
+        }
+        else
+        {
+            value_agtype = string_to_agtype_value(fields[i]);
+        }
+
         result.res = push_agtype_value(&result.parse_state,
                                        WAGT_VALUE,
                                        value_agtype);
@@ -209,6 +293,7 @@ Datum load_labels_from_file(PG_FUNCTION_ARGS)
     Oid graph_oid;
     int32 label_id;
     bool id_field_exists;
+    bool load_as_agtype;
 
     if (PG_ARGISNULL(0))
     {
@@ -232,6 +317,7 @@ Datum load_labels_from_file(PG_FUNCTION_ARGS)
     label_name = PG_GETARG_NAME(1);
     file_path = PG_GETARG_TEXT_P(2);
     id_field_exists = PG_GETARG_BOOL(3);
+    load_as_agtype = PG_GETARG_BOOL(4);
 
 
     graph_name_str = NameStr(*graph_name);
@@ -242,7 +328,8 @@ Datum load_labels_from_file(PG_FUNCTION_ARGS)
     label_id = get_label_id(label_name_str, graph_oid);
 
     create_labels_from_csv_file(file_path_str, graph_name_str, graph_oid,
-                                label_name_str, label_id, id_field_exists);
+                                label_name_str, label_id, id_field_exists,
+                                load_as_agtype);
     PG_RETURN_VOID();
 
 }
@@ -259,6 +346,7 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     char* file_path_str;
     Oid graph_oid;
     int32 label_id;
+    bool load_as_agtype;
 
     if (PG_ARGISNULL(0))
     {
@@ -281,6 +369,7 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     graph_name = PG_GETARG_NAME(0);
     label_name = PG_GETARG_NAME(1);
     file_path = PG_GETARG_TEXT_P(2);
+    load_as_agtype = PG_GETARG_BOOL(3);
 
     graph_name_str = NameStr(*graph_name);
     label_name_str = NameStr(*label_name);
@@ -290,7 +379,7 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     label_id = get_label_id(label_name_str, graph_oid);
 
     create_edges_from_csv_file(file_path_str, graph_name_str, graph_oid,
-                               label_name_str, label_id);
+                               label_name_str, label_id, load_as_agtype);
     PG_RETURN_VOID();
 
 }

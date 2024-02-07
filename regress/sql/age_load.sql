@@ -79,3 +79,30 @@ SELECT * FROM cypher('agload_test_graph', $$
 $$) AS (result_1 agtype, result_2 agtype);
 
 SELECT drop_graph('agload_test_graph', true);
+
+--
+-- Test property type conversion
+--
+SELECT create_graph('agload_conversion');
+
+-- vertex: load as agtype
+SELECT create_vlabel('agload_conversion','Person1');
+SELECT load_labels_from_file('agload_conversion', 'Person1', 'age_load/conversion_vertices.csv', true, true);
+SELECT * FROM cypher('agload_conversion', $$ MATCH (n:Person1) RETURN properties(n) $$) as (a agtype);
+
+-- vertex: load as string
+SELECT create_vlabel('agload_conversion','Person2');
+SELECT load_labels_from_file('agload_conversion', 'Person2', 'age_load/conversion_vertices.csv', true, false);
+SELECT * FROM cypher('agload_conversion', $$ MATCH (n:Person2) RETURN properties(n) $$) as (a agtype);
+
+-- edge: load as agtype
+SELECT create_elabel('agload_conversion','Edges1');
+SELECT load_edges_from_file('agload_conversion', 'Edges1', 'age_load/conversion_edges.csv', true);
+SELECT * FROM cypher('agload_conversion', $$ MATCH ()-[e:Edges1]->() RETURN properties(e) $$) as (a agtype);
+
+-- edge: load as string
+SELECT create_elabel('agload_conversion','Edges2');
+SELECT load_edges_from_file('agload_conversion', 'Edges2', 'age_load/conversion_edges.csv', false);
+SELECT * FROM cypher('agload_conversion', $$ MATCH ()-[e:Edges2]->() RETURN properties(e) $$) as (a agtype);
+
+SELECT drop_graph('agload_conversion', true);

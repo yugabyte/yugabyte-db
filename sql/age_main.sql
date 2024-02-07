@@ -122,17 +122,23 @@ CREATE FUNCTION ag_catalog.drop_label(graph_name name, label_name name,
     LANGUAGE c
     AS 'MODULE_PATHNAME';
 
+--
+-- If `load_as_agtype` is true, property values are loaded as agtype; otherwise
+-- loaded as string.
+--
 CREATE FUNCTION ag_catalog.load_labels_from_file(graph_name name,
                                                  label_name name,
                                                  file_path text,
-                                                 id_field_exists bool default true)
+                                                 id_field_exists bool default true,
+                                                 load_as_agtype bool default false)
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.load_edges_from_file(graph_name name,
                                                 label_name name,
-                                                file_path text)
+                                                file_path text,
+                                                load_as_agtype bool default false)
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';
