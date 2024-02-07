@@ -217,6 +217,21 @@ ReplaceExtensionFunctionOperatorsInPaths(List *pathsList,
 }
 
 
+/*
+ * Returns true if the index is the primary key index for
+ * the collections.
+ */
+bool
+IsBtreePrimaryKeyIndex(IndexOptInfo *indexInfo)
+{
+	return indexInfo->relam == BTREE_AM_OID &&
+		   indexInfo->nkeycolumns == 2 &&
+		   indexInfo->unique &&
+		   indexInfo->indexkeys[0] == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+		   indexInfo->indexkeys[1] == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER;
+}
+
+
 /* --------------------------------------------------------- */
 /* Private functions */
 /* --------------------------------------------------------- */
@@ -529,6 +544,12 @@ ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *
 		context->hasVectorSearchQuery = context->hasVectorSearchQuery ||
 										hasVectorSearch;
 
+		if (IsBtreePrimaryKeyIndex(indexPath->indexinfo) &&
+			list_length(indexPath->indexclauses) > 1)
+		{
+			context->hasPrimaryKeyLookup = true;
+		}
+
 		if (hasVectorSearch)
 		{
 			/*
@@ -599,7 +620,7 @@ ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *
 				}
 
 				ReplaceExtensionFunctionContext childContext = {
-					{ 0 }, { 0 }, false, false, context->inputData
+					{ 0 }, { 0 }, false, false, false, context->inputData
 				};
 				childContext.indexOptionsForText.indexOptions = options;
 				rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
@@ -609,7 +630,7 @@ ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *
 			else
 			{
 				ReplaceExtensionFunctionContext childContext = {
-					{ 0 }, { 0 }, false, false, context->inputData
+					{ 0 }, { 0 }, false, false, false, context->inputData
 				};
 				rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
 																		 &childContext);

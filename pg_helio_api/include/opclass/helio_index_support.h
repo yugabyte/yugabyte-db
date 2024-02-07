@@ -14,6 +14,8 @@
 #include <opclass/helio_bson_text_gin.h>
 #include <vector/vector_utilities.h>
 
+struct IndexOptInfo;
+
 /*
  * Input immutable data for the ReplaceExtensionFunctionContext
  */
@@ -47,6 +49,9 @@ typedef struct ReplaceExtensionFunctionContext
 	/* Whether or not the index paths/restriction paths have vector search query */
 	bool hasVectorSearchQuery;
 
+	/* Whether or not the index paths already has a primary key lookup */
+	bool hasPrimaryKeyLookup;
+
 	/* The input data context for the call */
 	ReplaceFunctionContextInput inputData;
 } ReplaceExtensionFunctionContext;
@@ -57,4 +62,6 @@ List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 void ReplaceExtensionFunctionOperatorsInPaths(List *pathsList,
 											  ReplaceExtensionFunctionContext *context);
 
+
+bool IsBtreePrimaryKeyIndex(struct IndexOptInfo *indexInfo);
 #endif

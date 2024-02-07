@@ -14,9 +14,11 @@
 #include <miscadmin.h>
 #include <bson.h>
 
+#include <catalog/pg_am.h>
 #include <catalog/pg_class.h>
 #include <storage/lmgr.h>
 #include <optimizer/planner.h>
+#include "optimizer/pathnode.h"
 #include <nodes/nodes.h>
 #include <nodes/makefuncs.h>
 #include <nodes/nodeFuncs.h>
@@ -178,6 +180,128 @@ HelioApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 }
 
 
+/*
+ * Given that our RUM index cost is 0, currently, the planner may prefer putting in
+ * the RUM index over other indexes that may be available. This is bad for primary key
+ * lookup scenarios. Consequently, in cases where we have the primary key available
+ * force-add a btree lookup.
+ * TODO: Remove once we have proper statistics and costs for RUM index.
+ */
+static void
+AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
+{
+	RestrictInfo *shardKeyFilter = NULL;
+	RestrictInfo *objectIdFilter = NULL;
+
+	ListCell *cell;
+	foreach(cell, restrictInfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
+
+		if (IsA(rinfo->clause, OpExpr))
+		{
+			OpExpr *opExpr = (OpExpr *) rinfo->clause;
+			if (list_length(opExpr->args) != 2)
+			{
+				continue;
+			}
+
+			Expr *leftExpr = linitial(opExpr->args);
+			Expr *rightExpr = lsecond(opExpr->args);
+			if (!IsA(leftExpr, Var))
+			{
+				continue;
+			}
+
+			Var *leftVar = (Var *) leftExpr;
+			if (leftVar->varattno == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+				opExpr->opno == BigintEqualOperatorId() &&
+				IsA(rightExpr, Const))
+			{
+				shardKeyFilter = rinfo;
+			}
+
+			if (leftVar->varattno == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+				opExpr->opno == BsonEqualOperatorId() &&
+				IsA(rightExpr, Const))
+			{
+				objectIdFilter = rinfo;
+			}
+		}
+		else if (IsA(rinfo->clause, ScalarArrayOpExpr))
+		{
+			/* Object_id IN fields */
+			ScalarArrayOpExpr *arrayExpr = (ScalarArrayOpExpr *) rinfo->clause;
+			if (!arrayExpr->useOr)
+			{
+				continue;
+			}
+
+			if (list_length(arrayExpr->args) != 2)
+			{
+				continue;
+			}
+
+			Expr *leftExpr = linitial(arrayExpr->args);
+			if (!IsA(leftExpr, Var))
+			{
+				continue;
+			}
+
+			Var *leftVar = (Var *) leftExpr;
+			if (leftVar->varattno == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+				arrayExpr->opno == BsonEqualOperatorId())
+			{
+				objectIdFilter = rinfo;
+			}
+		}
+	}
+
+	if (shardKeyFilter != NULL && objectIdFilter != NULL && rel->indexlist != NIL)
+	{
+		ListCell *index;
+		foreach(index, rel->indexlist)
+		{
+			IndexOptInfo *indexInfo = lfirst(index);
+			if (IsBtreePrimaryKeyIndex(indexInfo))
+			{
+				IndexClause *shardKeyClause = makeNode(IndexClause);
+				shardKeyClause->rinfo = shardKeyFilter;
+				shardKeyClause->indexquals = list_make1(shardKeyFilter);
+				shardKeyClause->lossy = false;
+				shardKeyClause->indexcol = 0;
+				shardKeyClause->indexcols = NIL;
+
+				IndexClause *objectIdClause = makeNode(IndexClause);
+				objectIdClause->rinfo = objectIdFilter;
+				objectIdClause->indexquals = list_make1(objectIdFilter);
+				objectIdClause->lossy = false;
+				objectIdClause->indexcol = 1;
+				objectIdClause->indexcols = NIL;
+
+				List *clauses = list_make2(shardKeyClause, objectIdClause);
+				List *orderbys = NIL;
+				List *orderbyCols = NIL;
+				List *pathKeys = NIL;
+				bool indexOnly = false;
+				Relids outerRelids = NULL;
+				double loopCount = 1;
+				bool partialPath = false;
+				IndexPath *path = create_index_path(root, indexInfo, clauses, orderbys,
+													orderbyCols, pathKeys,
+													NoMovementScanDirection, indexOnly,
+													outerRelids,
+													loopCount, partialPath);
+				path->indextotalcost = 0;
+				path->path.startup_cost = 0;
+				path->path.total_cost = 0;
+				add_path(rel, (Path *) path);
+			}
+		}
+	}
+}
+
+
 static void
 ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 							 RangeTblEntry *rte)
@@ -198,6 +322,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		.hasVectorSearchQuery = false,
 		.hasTextIndexQuery = false,
 		.indexOptionsForText = { 0 },
+		.hasPrimaryKeyLookup = false,
 		.inputData = {
 			.collectionId = collectionId,
 			.isRuntimeTextScan = false,
@@ -216,6 +341,11 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	 */
 	if (isShardQuery)
 	{
+		if (!indexContext.hasPrimaryKeyLookup)
+		{
+			AddPointLookupQuery(rel->baserestrictinfo, root, rel);
+		}
+
 		rel->baserestrictinfo =
 			ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
 																&indexContext);
