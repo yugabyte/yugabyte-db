@@ -30,6 +30,9 @@ public class UserTaskDetails {
     // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
 
+    // Rolling back software upgrade on Yugabyte Clusters.
+    RollingBackSoftware,
+
     // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
     FinalizingUpgrade,
 
@@ -278,6 +281,10 @@ public class UserTaskDetails {
       case UpgradingSoftware:
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
+        break;
+      case RollingBackSoftware:
+        title = "Rolling back Software";
+        description = "Rolling back software upgrade on existing clusters.";
         break;
       case FinalizingUpgrade:
         title = "Finalizing upgrade";
