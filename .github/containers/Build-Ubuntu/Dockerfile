@@ -1,6 +1,4 @@
 FROM --platform=linux/amd64 mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
-ARG POSTGRES_INSTALL_ARG=
-ARG PG_VERSION
 
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get install -qy \
@@ -51,8 +49,17 @@ RUN rm -rf /var/lib/apt/lists/* \
 
 ENV LANG en_US.utf8
 
-RUN useradd -ms /bin/bash heliodb -G sudo
-RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask
+RUN adduser --disabled-password --gecos "" --uid 1001 runner \
+    && groupadd docker --gid 123 \
+    && usermod -aG sudo runner \
+    && usermod -aG docker runner \
+    && echo "%sudo   ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers \
+    && echo "Defaults env_keep += \"DEBIAN_FRONTEND\"" >> /etc/sudoers
 
-USER heliodb
-WORKDIR /home/heliodb
+WORKDIR /home/runner
+
+USER runner
+
+LABEL org.opencontainers.image.source=https://github.com/microsoft/heliodb
+LABEL org.opencontainers.image.description="Heliodb ubuntu build image"
+LABEL org.opencontainers.image.licenses=MIT

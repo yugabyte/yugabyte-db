@@ -1,0 +1,44 @@
+name: Build and Test
+run-name: ${{ github.event.pull_request.title || '' }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - 'docs/**'
+      - '.github/containers/**'
+      - '.devcontainer/**'
+      - '*.md'
+  pull_request:
+    types: [opened, reopened,synchronize]
+    paths-ignore:
+      - 'docs/**'
+      - '.github/containers/**'
+      - '.devcontainer/**'
+      - '*.md'
+  merge_group:
+
+jobs:
+  ubuntu_build:
+
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/safern/heliodb/build_ubuntu:safern-setup_build_action_latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build and install
+      run: sudo make install
+
+    - name: Run Tests
+      run: make check
+
+    - name: Citus Indent
+      run: |
+        citus_indent --check || (echo ""; echo "citus_indent failed, refer to CONTRIBUTING.md on how to use citus_indent"; exit 1)
