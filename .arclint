@@ -25,6 +25,7 @@
      "(^managed/src/main/resources/metric/Dashboard[.]json$)",
      "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
      "(^managed/devops/replicated[.]yml$)",
+     "(^managed/devops/roles/.*$)",
      "(^python/yb/py[.]typed$)",
      "(^managed/RUNTIME-FLAGS[.]md$)",
      "(^[.]clang-tidy)",

@@ -200,6 +200,12 @@ public class NodeManager extends DevopsBase {
     return getUserIntentFromParams(universe, nodeTaskParam);
   }
 
+  private boolean imdsv2required(CloudType cloudType, Provider provider) {
+    return (cloudType.equals(CloudType.aws)
+        && provider.getDetails().getCloudInfo() != null
+        && provider.getDetails().getCloudInfo().getAws().useIMDSv2);
+  }
+
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
@@ -1694,6 +1700,10 @@ public class NodeManager extends DevopsBase {
               }
             }
 
+            if (imdsv2required(userIntent.providerType, provider)) {
+              commandArgs.add("--imdsv2required");
+            }
+
             if (!bootScript.isEmpty()) {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
@@ -1897,6 +1907,10 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          if (imdsv2required(userIntent.providerType, provider)) {
+            commandArgs.add("--imdsv2required");
           }
 
           if (!bootScript.isEmpty()) {
