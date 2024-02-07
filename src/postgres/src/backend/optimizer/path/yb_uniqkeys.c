@@ -189,10 +189,17 @@ yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
  * Determines whether the key at 'indexcol' is a constant as decided
  * by 'index_clauses'.
  *
- * The definition of a constant follows the function match_clause_to_indexcol
- * in indxpath.c very closely. Clauses such as 'WHERE indexkey = constant'
- * implies that 'indexkey' is a constant after filtering. Do the same for
- * boolean variables, see indexcol_is_bool_constant_for_query.
+ * Caveat: Do NOT use the match_clause_to_indexcol definition of a constant
+ * since that definition is too permissive for our purposes.
+ *
+ * We wish to exploit the constantness of the index column to ignore the column
+ * from the prefix. This can be done safely when we are guaranteed no more than
+ * one unique element per scan.
+ *
+ * Caveat: Do NOT mark indexkeys as constant when the constantness is not
+ * part of index conditions. We can NOT ignore index keys that are constant
+ * but not pushed down beyond the DISTINCT operation to the index. This may
+ * change in the future when we start supporting remote filters for DISTINCT.
  */
 static bool
 yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
@@ -230,14 +237,12 @@ yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
 
 		/* Check whether the clause is of the form indexkey = constant. */
 		if (equal(indexkey, left_op) &&
-			!bms_is_member(index->rel->relid, rinfo->right_relids) &&
-			!contain_volatile_functions(right_op))
+			EC_MUST_BE_REDUNDANT(rinfo->right_ec))
 			return true;
 
 		/* Check whether the indexkey is on the right. */
 		if (equal(indexkey, right_op) &&
-			!bms_is_member(index->rel->relid, rinfo->left_relids) &&
-			!contain_volatile_functions(left_op))
+			EC_MUST_BE_REDUNDANT(rinfo->left_ec))
 			return true;
 	}
 
@@ -276,6 +281,9 @@ yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
 	foreach(lc, index->indextlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+		if (indexcol >= index->nkeycolumns)
+			break;
 
 		/*
 		 * We only consider range columns since all hash columns need to be
