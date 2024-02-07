@@ -138,6 +138,8 @@ s3://user_bucket/some/sub/folders
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
+Although you can move a backup from its location, for a successful restore, only the bucket can be changed, and none of the sub-components and folder names can be modified (from the sub-directories on down). For examples, see [Moving backups between buckets](#moving-backups-between-buckets).
+
 When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 
 ![Success file metadata](/images/yp/success-file-backup.png)
@@ -146,7 +148,7 @@ When YBA writes a backup, the last step after all parallel tasks complete is to 
 
 #### Scenario 1 : Same bucket name with different sub-components
 
-Although you can move a backup from its location, for a successful restore, only the bucket can be changed, and none of the sub-components and folder names can be modified (from the sub-directories on down).
+When moving backups you can change the bucket, however the sub-directories and all other components of your backup set need to remain the same.
 
 For example, if you have a backup as follows:
 
