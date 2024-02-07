@@ -641,9 +641,6 @@ class GraphPanelHeader extends Component {
     const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
     const isDrEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_UI_FEATURE_FLAG
-      )?.value === 'true' &&
-      runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
       )?.value === 'true';
     return (
