@@ -3,7 +3,7 @@ import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.nio.file.{FileSystems, Files}
+import java.nio.file.{FileSystems, Files, Paths}
 import sbt.complete.Parsers.spaceDelimited
 import sbt.Tests._
 
@@ -335,6 +335,7 @@ externalResolvers := {
   ).value
   buildUI.value
   versionGenerate.value
+  compileYbaCliBinary.value
   downloadThirdPartyDeps.value
 }
 
@@ -347,6 +348,7 @@ cleanPlatform := {
   cleanUI.value
   cleanModules.value
   cleanV2ServerStubs.value
+  cleanYbaCliBinary.value
   cleanClients.value
 }
 
@@ -665,6 +667,41 @@ compileGoGenClient := {
   status
 }
 
+// Compile the YBA CLI binary
+lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
+compileYbaCliBinary := {
+  cleanYbaCliBinary.value
+  var status = 0
+  var output = Seq.empty[String]
+  var fileList = Seq.empty[String]
+
+  ybLog("Generating YBA CLI go binary.")
+  val processLogger = ProcessLogger(
+    line => output :+= line,
+    line => println(s"Error: $line")
+  )
+
+  val process = Process("make package", new File(baseDirectory.value + "/yba-cli/"))
+  status = process.!(processLogger)
+  if (status == 0) {
+    val fileListIndex = output.indexWhere(_.startsWith("List of files in"))
+    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
+  } else {
+    fileList = Seq.empty[String]
+  }
+  (status, fileList)
+}
+
+compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
+
+// Clean the YBA CLI binary
+lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
+cleanYbaCliBinary := {
+   ybLog("Cleaning YBA CLI go binary.")
+  val status = Process("make clean", new File(baseDirectory.value + "/yba-cli/")).!
+  status
+}
+
 // Require sbt to first generate clients and install in local mvn repo
 // so that unit tests libraryDependencies can depend on them
 update := update.dependsOn(openApiProcessClients).value
@@ -736,6 +773,22 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+Universal / mappings ++= {
+  val (status, cliFiles) = compileYbaCliBinary.value
+  if (status == 0) {
+    val targetFolderOpt: Option[String] = Some("bin")
+    val filesWithRelativePaths: Seq[(File, String)] = cliFiles.map { filePath =>
+      val targetPath = "bin/" + Paths.get(filePath).getFileName.toString
+      (file(filePath), targetPath)
+    }
+
+    ybLog("Added YBA CLI files to package.")
+    filesWithRelativePaths
+  } else {
+    ybLog("Error generating YBA CLI binary.")
+    Seq.empty
+  }
+}
 
 
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
