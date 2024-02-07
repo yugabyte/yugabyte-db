@@ -76,7 +76,8 @@ class CatalogManagerIf {
 
   virtual void NotifyTabletDeleteFinished(
       const TabletServerId& tserver_uuid, const TabletId& tablet_id,
-      const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
+      const TableInfoPtr& table, const LeaderEpoch& epoch,
+      server::MonitoredTaskState task_state) = 0;
 
   virtual std::string GenerateId() = 0;
 

@@ -793,7 +793,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // trigger trying to transition the table from DELETING to DELETED state.
   void NotifyTabletDeleteFinished(
       const TabletServerId& tserver_uuid, const TabletId& tablet_id,
-      const TableInfoPtr& table, const LeaderEpoch& epoch) override;
+      const TableInfoPtr& table, const LeaderEpoch& epoch,
+      server::MonitoredTaskState task_state) override;
 
   // For a DeleteTable, we first mark tables as DELETING then move them to DELETED once all
   // outstanding tasks are complete and the TS side tablets are deleted.

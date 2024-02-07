@@ -134,6 +134,9 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 class RunnableMonitoredTask : public MonitoredTask {
  public:
   virtual Status Run() = 0;
+
+  virtual Status BeforeSubmitToTaskPool();
+  virtual Status OnSubmitFailure();
 };
 
 } // namespace server
