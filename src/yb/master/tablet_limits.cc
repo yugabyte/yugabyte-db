@@ -20,7 +20,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
 
-DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 0,
+DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 1024/0.7,
     "The maximum number of tablets per GiB of RAM reserved by TServers for tablet overheads the "
     "cluster can support. A non-positive number means no limit.");
 TAG_FLAG(tablet_replicas_per_gib_limit, experimental);
