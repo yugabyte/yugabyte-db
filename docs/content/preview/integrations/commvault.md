@@ -18,4 +18,6 @@ Commvault is a data protection and data management platform that provides an age
 
 ## Connect
 
-To use Commvault with YugabyteDB, refer to Commvault's documentation on [Getting Started with YugabyteDB](https://documentation.commvault.com/2024/essential/getting_started_with_yugabytedb.html).
+To use Commvault with YugabyteDB, you need to configure YBA on Commvault's [Command center](https://www.commvault.com/platform/command-center).
+
+For more information, refer to Commvault's documentation on [Getting Started with YugabyteDB](https://documentation.commvault.com/2024/essential/getting_started_with_yugabytedb.html).
