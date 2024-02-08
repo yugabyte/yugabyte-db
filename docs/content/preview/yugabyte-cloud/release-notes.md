@@ -19,6 +19,12 @@ On this page:
 
 ## Change log
 
+### February 8, 2024
+
+**New Features**
+
+- Support for PingOne [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their PingOne identity.
+
 ### January 31, 2024
 
 **New Features**
