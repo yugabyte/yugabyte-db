@@ -279,7 +279,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   Result<size_t> GetFirstNonLeaderMasterIndex();
 
-  Result<size_t> GetTabletLeaderIndex(const yb::TableId& tablet_id);
+  Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const;
@@ -845,7 +845,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
 };
 
-// Utility class for waiting for logging events.
+// Utility class for waiting for logging events. There can only be one LogWaiter at a time.
 class LogWaiter : public ExternalDaemon::StringListener {
  public:
   LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);

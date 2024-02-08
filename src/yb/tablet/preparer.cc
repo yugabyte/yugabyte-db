@@ -283,6 +283,7 @@ bool ShouldApplySeparately(OperationType operation_type) {
     case OperationType::kEmpty: FALLTHROUGH_INTENDED;
     case OperationType::kHistoryCutoff: FALLTHROUGH_INTENDED;
     case OperationType::kChangeAutoFlagsConfig:
+    case OperationType::kClone:
       return true;
 
     case OperationType::kWrite: FALLTHROUGH_INTENDED;

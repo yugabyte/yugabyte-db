@@ -1867,13 +1867,16 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   return master(0);
 }
 
-Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const yb::TabletId& tablet_id) {
+Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
+    const yb::TabletId& tablet_id, bool require_lease) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
-        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+        if (tablet.tablet_id() == tablet_id &&
+            tablet.is_leader() &&
+            (!require_lease || tablet.has_leader_lease())) {
           return i;
         }
       }
