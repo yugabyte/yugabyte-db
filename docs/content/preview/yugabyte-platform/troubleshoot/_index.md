@@ -22,7 +22,7 @@ type: indexpage
   {{<index/item
     title="Install and upgrade issues"
     body="Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere."
-    href="install-upgrade-issues/vm/"
+    href="install-upgrade-issues/installer/"
     icon="/images/section_icons/quick_start/install.png">}}
 
   {{<index/item
