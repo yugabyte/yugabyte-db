@@ -38,7 +38,7 @@ Using federated authentication, you can use an enterprise IdP to manage access t
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently, YugabyteDB Managed supports the Microsoft Entra ID<!--, PingOne,--> and Okta enterprise IdPs, exclusively using the OIDC (OpenID Connect) protocol.
+Currently, YugabyteDB Managed supports the Microsoft Entra ID, PingOne, and Okta enterprise IdPs, exclusively using the OIDC (OpenID Connect) protocol.
 
 ### Prerequisites
 
