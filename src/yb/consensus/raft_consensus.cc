@@ -441,7 +441,8 @@ RaftConsensus::RaftConsensus(
       update_raft_config_dns_latency_(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)),
       split_parent_tablet_id_(
-          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : "") {
+          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : ""),
+      clone_source_info_(cmeta->clone_source_info()) {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
@@ -3214,6 +3215,10 @@ const TabletId& RaftConsensus::tablet_id() const {
 
 const TabletId& RaftConsensus::split_parent_tablet_id() const {
   return split_parent_tablet_id_;
+}
+
+const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
+  return clone_source_info_;
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {

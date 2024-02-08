@@ -202,6 +202,7 @@ message ListTabletsForTabletServerResponsePB {
     optional uint64 num_log_segments = 6;
     optional uint64 num_memtables_intents = 7;
     optional uint64 num_memtables_regular = 8;
+    optional bool has_leader_lease = 9;
   }
 
   repeated Entry entries = 1;

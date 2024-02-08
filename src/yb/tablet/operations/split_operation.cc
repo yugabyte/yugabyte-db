@@ -76,6 +76,8 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
       // We allow SNAPSHOT_OP, so old tablet can be restored.
     case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
+      // Allow CLONE_OP since we might need to clone the split parent tablet to restore.
+    case consensus::CLONE_OP: FALLTHROUGH_INTENDED;
       // Allow CHANGE_CONFIG_OP, so the old tablet replicas can be moved between tservers while we
       // keep the tablet available.
     case consensus::CHANGE_CONFIG_OP:

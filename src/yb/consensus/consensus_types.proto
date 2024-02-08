@@ -51,6 +51,7 @@ enum OperationType {
   HISTORY_CUTOFF_OP = 9;
   SPLIT_OP = 10;
   CHANGE_AUTO_FLAGS_CONFIG_OP = 11;
+  CLONE_OP = 12;
 }
 
 // Consensus-specific errors use this protobuf
