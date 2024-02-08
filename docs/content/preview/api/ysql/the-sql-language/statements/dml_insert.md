@@ -70,23 +70,28 @@ is a relation that must include at least one of the target table's unique keys.
 Some of the values of this unique key might be new, and others might already exist
 in the target table.
 
-- The basic aim of INSERT ON CONFLICT is simply to insert the rows with new values of
+- The basic aim of `INSERT ON CONFLICT` is simply to insert the rows with new values of
 the unique key and to update the rows with existing values of the unique key to
 set the values of the remaining specified columns to those in the VALUES relation.
 In this way, the net effect is either to insert or to update; and for this reason
 the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
-### *returning_clause*
+- Only `NOT DEFERRABLE` constraints and unique indexes are supported as arbiters.
+- `exclusion` constraints are not supported as arbiters with `ON CONFLICT DO UPDATE`. 
 
-The `RETURNING` clause causes the `INSERT` statement to compute and return value(s) based on each row actually inserted (or updated, if an `ON CONFLICT DO UPDATE` clause is used). 
+- The `ON CONFLICT DO UPDATE` clause is a _deterministic_ statement. 
+- The command is not allowed to update any existing row more than once, and doing so raises a `cardinality violation` error.
+- Rows to be inserted must not conflict with each other on the used constraint or arbiter index.
 
-This is useful for obtaining values that were supplied by defaults, such as a serial sequence number. Any expression using the table's columns is allowed. 
+- `ON CONFLICT DO UPDATE` does not support updating the partition key of a conflicting row in a partitioned table that results in the row moving to a new partition.
 
-`RETURNING` column list syntax is identical to that of the column list of `SELECT`. 
+{{< note title="Tip" >}}
 
-### *column_values*
+It is recommended to use a unique index for `ON CONFLICT` instead of a constraint, because you can replace the underlying unique index with another more or less equivalent index before dropping the index being replaced.
 
-### *conflict_target*
+{{< /note >}}
+
+#### *conflict_target*
 
 Specify which unique index to use to match rows for `ON CONFLICT` (referenced as arbiter index). 
 By default, all unique indexes that contain exactly the conflict_target-specified columns/expressions, without regard to order, are used as arbiter indexes.
@@ -94,7 +99,7 @@ By default, all unique indexes that contain exactly the conflict_target-specifie
 When using `ON CONFLICT DO UPDATE`, the `conflict_target` is required.
 When using `ON CONFLICT DO NOTHING`, the `conflict_target` is optional. If omitted, it will conflict using all usable constraints and unique indexes of the table.
 
-### *conflict_action*
+#### *conflict_action*
 
 `conflict_action` clause specifies an action that happens instead of a unique constraint violation if that is hit when you use `ON CONFLICT`. The action includes `DO NOTHING`, or `DO UPDATE`. `DO UPDATE` clause specifies the `UPDATE` action to be executed on conflicted rows.
 
@@ -117,20 +122,17 @@ All rows are locked when the `ON CONFLICT DO UPDATE` action is taken, but only r
 
 This condition is evaluated after a conflict has been identified as a candidate to update.
 
-Only `NOT DEFERRABLE` constraints and unique indexes are supported as arbiters.
-`exclusion` constraints are not supported as arbiters with `ON CONFLICT DO UPDATE`. 
+### *returning_clause*
 
-The `ON CONFLICT DO UPDATE` clause is a _deterministic_ statement. 
-The command is not allowed to update any existing row more than once, and doing so raises a `cardinality violation` error.
-Rows to be inserted must not conflict with each other on the used constraint or arbiter index.
+The `RETURNING` clause causes the `INSERT` statement to compute and return value(s) based on each row actually inserted (or updated, if an `ON CONFLICT DO UPDATE` clause is used). 
 
-`ON CONFLICT DO UPDATE` does not support updating the partition key of a conflicting row in a partitioned table that results in the row moving to a new partition.
+This is useful for obtaining values that were supplied by defaults, such as a serial sequence number. Any expression using the table's columns is allowed. 
 
-{{< note title="Tip" >}}
+`RETURNING` column list syntax is identical to that of the column list of `SELECT`. 
 
-It is recommended to use a unique index for `ON CONFLICT` instead of a constraint, because you can replace the underlying unique index with another more or less equivalent index before dropping the index being replaced.
+### *column_values*
 
-{{< /note >}}
+The columns to be updated when a conflict occurs.
 
 ### Compatibility
 
