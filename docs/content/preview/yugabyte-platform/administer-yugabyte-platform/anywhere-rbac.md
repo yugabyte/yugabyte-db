@@ -132,7 +132,7 @@ To create a user, do the following:
 
     ![Custom role](/images/yp/authorization-platform/add-user-custom.png)
 
-1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
+1. To customize access to universes, assign at least one custom role, then click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
 
     ![Select universes](/images/yp/authorization-platform/add-user-universe.png)
 
@@ -141,12 +141,15 @@ To create a user, do the following:
 To modify a user, do the following:
 
 1. Navigate to **Admin > Access Management > Users**, click **Actions** for the user to modify, and choose **Edit Assigned Roles**.
-1. To change the built-in role, under **Built-in Role**, change the role. Click **Assign New Built-in Role** to add a role.
-1. To change the custom role, under **Custom Role**, change the existing role. Click **Assign New Custom Role** to add a role.
+1. To change the built-in role, under **Built-in Role**, change the role.
 
-    By default, users have access to all universes.
+    To add a built-in role, click **Assign New Built-in Role**.
 
-1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
+1. To change the custom role, under **Custom Role**, change the existing role.
+
+    To add a custom role, click **Assign New Custom Role**.
+
+1. To customize access to universes, assign at least one custom role, then click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
 1. Click **Edit User**.
 
   </div>
