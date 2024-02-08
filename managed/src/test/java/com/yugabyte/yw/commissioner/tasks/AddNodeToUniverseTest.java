@@ -179,6 +179,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> ADD_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck, // only if it wasn't decommissioned.
           TaskType.SetNodeState, // to Adding
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
@@ -205,6 +206,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -229,6 +231,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> ADD_NODE_TASK_DECOMISSIONED_NODE_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -265,6 +268,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -277,6 +281,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.InstanceExistCheck,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
@@ -312,6 +317,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
@@ -400,7 +406,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
       // 7 version increments + 1 modify blacklist.
-      verify(mockClient, times(12)).changeMasterClusterConfig(any());
+      verify(mockClient, times(13)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }

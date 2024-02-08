@@ -67,6 +67,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 /** @deprecated Use separate tasks based on UpgradeTaskBase */
 @Deprecated
 @Slf4j
+// TODO This should be removed soon as the task type has no mapping.
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
   boolean loadbalancerOff = false;
@@ -310,7 +311,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       UserIntent primIntent = primaryCluster.userIntent;
 

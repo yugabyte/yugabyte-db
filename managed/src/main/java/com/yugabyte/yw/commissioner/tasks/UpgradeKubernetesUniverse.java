@@ -58,7 +58,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       kubernetesStatus.createYBUniverseEventStatus(
           universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
 

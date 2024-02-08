@@ -870,41 +870,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
-  /** Similar to {@link #lockUniverseForUpdate(UUID, int, Consumer)} without the callback. */
-  public Universe lockUniverseForUpdate(UUID universeUuid, int expectedUniverseVersion) {
-    return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, null);
-  }
-
-  /**
-   * Similar to {@link #lockUniverseForUpdate(UUID, int, Consumer)} with the universe UUID from this
-   * task and other parameters set to null.
-   */
-  public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    return lockUniverseForUpdate(taskParams().getUniverseUUID(), expectedUniverseVersion, null);
-  }
-
-  /**
-   * It locks the universe for updates by setting the 'updateInProgress' flag. If the universe is
-   * already being modified, then throws an exception.
-   *
-   * @param universeUuid The UUID of the universe to lock
-   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
-   *     version; -1 implies always lock the universe
-   * @param callback Callback is invoked for any pre-processing to be done on the Universe before it
-   *     is saved in transaction with 'updateInProgress' flag.
-   * @return
-   */
-  private Universe lockUniverseForUpdate(
-      UUID universeUuid, int expectedUniverseVersion, @Nullable Consumer<Universe> callback) {
-    UniverseUpdaterConfig updaterConfig =
-        UniverseUpdaterConfig.builder()
-            .callback(callback)
-            .checkSuccess(true)
-            .expectedUniverseVersion(expectedUniverseVersion)
-            .build();
-    return lockUniverseForUpdate(universeUuid, getLockingUniverseUpdater(updaterConfig));
-  }
-
   public Universe forceLockUniverseForUpdate(int expectedUniverseVersion) {
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
@@ -932,11 +897,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return lockUniverseForUpdate(taskParams().getUniverseUUID(), updater);
   }
 
+  /** See {@link #lockAndFreezeUniverseForUpdate(UUID, int, Consumer)} */
+  public Universe lockAndFreezeUniverseForUpdate(
+      int expectedUniverseVersion, @Nullable Consumer<Universe> firstRunTxnCallback) {
+    return lockAndFreezeUniverseForUpdate(
+        taskParams().getUniverseUUID(), expectedUniverseVersion, firstRunTxnCallback);
+  }
+
   /**
    * This method locks the universe, runs {@link #createPrecheckTasks(Universe)}, and freezes the
    * universe with the given txnCallback. By freezing, the association between the task and the
    * universe is set up such that the universe always has a reference to the task.
    *
+   * @param universeUuid the universe UUID.
    * @param expectedUniverseVersion Lock only if the current version of the universe is at this
    *     version. -1 implies always lock the universe.
    * @param firstRunTxnCallback the callback to be invoked in transaction when the universe is
@@ -944,27 +917,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the universe.
    */
   public Universe lockAndFreezeUniverseForUpdate(
-      int expectedUniverseVersion, @Nullable Consumer<Universe> firstRunTxnCallback) {
+      UUID universeUuid,
+      int expectedUniverseVersion,
+      @Nullable Consumer<Universe> firstRunTxnCallback) {
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
             .expectedUniverseVersion(expectedUniverseVersion)
             .freezeUniverse(false)
             .build();
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
-    Universe universe = lockUniverseForUpdate(taskParams().getUniverseUUID(), updater);
+    Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
       createPrecheckTasks(universe);
       if (isFirstTry()) {
-        createFreezeUniverseTask(firstRunTxnCallback)
+        createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
         // Run to apply the change first before adding the rest of the subtasks.
         getRunnableTask().runSubTasks();
       } else {
-        createFreezeUniverseTask().setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+        createFreezeUniverseTask(universeUuid)
+            .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       }
-      return getUniverse();
+      return Universe.getOrBadRequest(universeUuid);
     } catch (RuntimeException e) {
-      unlockUniverseForUpdate();
+      unlockUniverseForUpdate(universeUuid);
       throw e;
     }
   }
@@ -972,25 +948,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Similar to {@link #createFreezeUniverseTask(Consumer)} without the callback.
    *
+   * @param universeUuid the universe UUID.
    * @return
    */
-  private SubTaskGroup createFreezeUniverseTask() {
-    return createFreezeUniverseTask(null);
+  private SubTaskGroup createFreezeUniverseTask(UUID universeUuid) {
+    return createFreezeUniverseTask(universeUuid, null);
   }
 
   /**
    * Creates a subtask to freeze the universe {@link #freezeUniverse(Consumer)}.
    *
+   * @param universeUuid the universe UUID.
    * @param callback the callback to be executed in transaction when the universe is frozen.
    * @return the subtask group.
    */
-  private SubTaskGroup createFreezeUniverseTask(@Nullable Consumer<Universe> callback) {
+  private SubTaskGroup createFreezeUniverseTask(
+      UUID universeUuid, @Nullable Consumer<Universe> callback) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(
             FreezeUniverse.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
     FreezeUniverse task = createTask(FreezeUniverse.class);
     FreezeUniverse.Params params = new FreezeUniverse.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.setUniverseUUID(universeUuid);
     params.setCallback(callback);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -1009,23 +988,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUuid) {
-    return unlockUniverseForUpdate(universeUuid, null /* error */);
-  }
-
-  public Universe unlockUniverseForUpdate() {
-    return unlockUniverseForUpdate((String) null);
+    return unlockUniverseForUpdate(universeUuid, null, true);
   }
 
   public Universe unlockUniverseForUpdate(boolean updateTaskDetails) {
-    return unlockUniverseForUpdate(
-        taskParams().getUniverseUUID(), (String) null, updateTaskDetails);
+    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null, updateTaskDetails);
   }
 
   public Universe unlockUniverseForUpdate(String error) {
-    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), error);
+    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), error, true);
   }
 
-  public Universe unlockUniverseForUpdate(
+  public Universe unlockUniverseForUpdate() {
+    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null, true);
+  }
+
+  private Universe unlockUniverseForUpdate(
       UUID universeUUID, String error, boolean updateTaskDetails) {
     ExecutionContext executionContext = getOrCreateExecutionContext();
     if (!executionContext.isLocked(universeUUID)) {
@@ -1064,10 +1042,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     executionContext.unlockUniverse(universeUUID);
     log.info("Unlocked universe {} for updates.", universeUUID);
     return universe;
-  }
-
-  public Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
-    return unlockUniverseForUpdate(universeUUID, error, true);
   }
 
   public SubTaskGroup getAnsibleConfigureYbcServerTasks(

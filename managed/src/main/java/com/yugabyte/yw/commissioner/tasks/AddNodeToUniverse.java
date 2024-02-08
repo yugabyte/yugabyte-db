@@ -67,7 +67,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     try {
       checkUniverseVersion();
       // Update the DB to prevent other changes from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       final NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
