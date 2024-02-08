@@ -3696,6 +3696,41 @@ Status CatalogManager::CanAddPartitionsToTable(
   return Status::OK();
 }
 
+namespace {
+
+Status PrintTableInfoForYsqlMajorVersionUpgrade(const scoped_refptr<TableInfo>& table,
+                                                const SchemaPB& request_schema_pb) {
+  if (FLAGS_hide_pg_catalog_table_creation_logs) {
+    return Status::OK();
+  }
+  Schema request_schema;
+  RETURN_NOT_OK(SchemaFromPB(request_schema_pb, &request_schema));
+  Schema existing_schema;
+  RETURN_NOT_OK(table->GetSchema(&existing_schema));
+  if (!request_schema.Equals(existing_schema)) {
+    // During a ysql major version upgrade, with columns that have been dropped, the master's Schema
+    // object doesn't keep a record. However, PostgreSQL does. To restore ordering properly,
+    // pg_restore sends a dummy value for each dropped column in the CreateTable request (see
+    // comments about dropped columns in dumpTableSchema in pg_dump.c). We ignore the dummy value
+    // here, and later ignore the ALTER TABLE DROP COLUMN statement inside
+    // CatalogManager::AlterTable() as well. Note that the ordering will already be compatible
+    // because an equivalent set of drop column steps has already happened on the prior ysql major
+    // version.
+    //
+    // Here we log the existing and request schemas for debugging purposes.
+    SchemaPB existing_schema_pb;
+    SchemaToPB(existing_schema, &existing_schema_pb);
+    LOG(INFO) << "During ysql major version upgrade, CreateTable request schema: "
+              << request_schema_pb.DebugString()
+              << " does not equal existing schema: " << existing_schema_pb.DebugString();
+  }
+  LOG(INFO) << "Table already exists with id " << table->id()
+            << " during ysql major version upgrade, returning early from CreateTable";
+  return Status::OK();
+}
+
+}  // namespace
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -3732,7 +3767,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       RSTATUS_DCHECK(!is_pg_catalog_table, IllegalState,
                      "Detected a pre-existing catalog table in CreateTable during a ysql major "
                      "version upgrade.");
-      LOG(INFO) << "Table already exists with id " << table->id() << ": Returning";
+      RETURN_NOT_OK(PrintTableInfoForYsqlMajorVersionUpgrade(table, orig_req->schema()));
       resp->set_table_id(table->id());
       return Status::OK();
     }
@@ -6810,6 +6845,48 @@ Status ApplyAlterSteps(server::Clock* clock,
   return Status::OK();
 }
 
+// Verifies that the request steps are to drop columns, the columns are not present in the YB
+// master's schema, and the columns being dropped were dropped previously in PG11. The PG restore
+// process created the table with a dummy column in this column's place, but we returned early from
+// CreateTable, whose existing schema doesn't have the dropped column.
+// For use only during a ysql major version upgrade.
+Status VerifyDroppedColumnsForUpgrade(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<AlterTableRequestPB::Step>& steps) {
+  for (const auto& step : steps) {
+    const string& col_name = step.drop_column().name();
+    if (step.type() != AlterTableRequestPB::DROP_COLUMN) {
+      return STATUS_FORMAT(InvalidArgument,
+                           "Invalid alter table type $0 during ysql major version upgrade",
+                           AlterTableRequestPB::StepType_Name(step.type()));
+    }
+
+    if (schema.find_column(col_name) != Schema::kColumnNotFound) {
+      return STATUS(IllegalState, "Column unexpectedly found while doing drop column during ysql "
+                    "major version upgrade");
+    }
+    // Name specified by heap.c:RemoveAttributeById(), "........pg.dropped.#........"
+    const std::string kDroppedPrefix = "........pg.dropped.";
+    const std::string kDroppedSuffix = "........";
+    if (!(col_name.starts_with(kDroppedPrefix) && col_name.ends_with(kDroppedSuffix))) {
+      return STATUS_FORMAT(InvalidArgument, "Attempting to drop unexpected column '$0' during ysql "
+                           "major version upgrade", col_name);
+    }
+    size_t end_dots = col_name.find(kDroppedSuffix, kDroppedPrefix.length());
+    const std::string maybe_number = col_name.substr(kDroppedPrefix.length(),
+                                                    end_dots - kDroppedPrefix.length());
+    if (!std::all_of(maybe_number.begin(), maybe_number.end(),
+                     [](unsigned char c) { return std::isdigit(c); })) {
+      return STATUS_FORMAT(InvalidArgument, "Attempting to drop unexpected column '$0' during ysql "
+                           "major version upgrade", col_name);
+    }
+    LOG(INFO) << "Ignoring missing column '" << col_name
+              << "' during ALTER TABLE DROP COLUMN in a ysql major version upgrade";
+  }
+
+  return Status::OK();
+}
+
 } // namespace
 
 Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
@@ -6892,16 +6969,29 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   string previous_table_name = l->pb.name();
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties()) {
-    TRACE("Apply alter schema");
-    Status s = ApplyAlterSteps(
-        master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
-    if (!s.ok()) {
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      // In a ysql major version upgrade, to ensure the new version's PG catalog is semantically
+      // identical to the old version's catalog, pg_restore goes through the motions of creating a
+      // table with the dropped columns and then dropping them. However, the catalog manager
+      // maintains its own schema state that's invariant across ysql major versions, and from the
+      // original drop column request, it has already deleted dropped columns from its own
+      // representation of the schema. Since we don't need to make any further changes to the
+      // catalog manager's schema during the pg_restore process, in ysql major version upgrade mode,
+      // we simply verify the alter table command and catalog manager state are as expected, and
+      // return early.
+      return VerifyDroppedColumnsForUpgrade(previous_schema, req->alter_schema_steps());
+    } else {
+      TRACE("Apply alter schema");
+      Status s = ApplyAlterSteps(
+          master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
+      if (!s.ok()) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      }
+      DCHECK_NE(next_col_id, 0);
+      DCHECK_EQ(new_schema.find_column_by_id(next_col_id),
+                static_cast<int>(Schema::kColumnNotFound));
+      has_changes = true;
     }
-    DCHECK_NE(next_col_id, 0);
-    DCHECK_EQ(new_schema.find_column_by_id(next_col_id),
-              static_cast<int>(Schema::kColumnNotFound));
-    has_changes = true;
   }
 
   if (req->has_pgschema_name()) {

@@ -16171,15 +16171,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			(tbinfo->relkind == RELKIND_RELATION ||
 			 tbinfo->relkind == RELKIND_MATVIEW))
 		{
-#if YB_TODO
-			/*
-			 * Not relevant to Yugabyte binary upgrade. Note that though it's
-			 * unnecessary, it fails with error
-			 *   relation "public.t" does not exist
-			 * which has shown up in one other valid scenario beyond the basic
-			 * end-to-end upgrade flow. Consider adding this code back when that
-			 * error is fixed.
-			 */
 			appendPQExpBufferStr(q, "\n-- For binary upgrade, set heap's relfrozenxid and relminmxid\n");
 			appendPQExpBuffer(q, "UPDATE pg_catalog.pg_class\n"
 							  "SET relfrozenxid = '%u', relminmxid = '%u'\n"
@@ -16201,7 +16192,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  tbinfo->toast_frozenxid,
 								  tbinfo->toast_minmxid, tbinfo->toast_oid);
 			}
-#endif
 		}
 
 		/*
