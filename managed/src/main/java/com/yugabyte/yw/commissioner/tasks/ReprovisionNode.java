@@ -36,7 +36,9 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       checkUniverseVersion();
 
       // Update the DB to prevent other changes from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {

@@ -1152,6 +1152,11 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
+      if (subTaskGroup.getSubTaskCount() == 0) {
+        // Allowing to add this just messes up the positions.
+        log.info("Ignoring subtask SubTaskGroup {} as it is empty", subTaskGroup.name);
+        return;
+      }
       subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;

@@ -151,6 +151,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_ADD_POD_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
@@ -164,7 +165,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
@@ -180,6 +180,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_REMOVE_POD_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.KubernetesCommandExecutor,
@@ -195,10 +196,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
@@ -209,6 +209,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -229,6 +230,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
@@ -254,11 +256,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       List<JsonNode> resultList,
       String type) {
     int position = 0;
-    // Since we create two empty subGroupTasks for add (namespace create and apply secret)
-    // they need to skipped over.
-    if (type.equals("add")) {
-      position = 2;
-    }
     for (TaskType task : taskList) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       // In the case of adding and wait for server, we need to ensure that
@@ -275,11 +272,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
-
-      // Similar to add, we expect two empty subGroupTasks (namespace and volume delete).
-      if (position == 3 && type.equals("remove")) {
-        position += 2;
-      }
     }
   }
 
