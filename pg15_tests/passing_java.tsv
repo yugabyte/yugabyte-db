@@ -1,5 +1,6 @@
 org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 org.yb.pgsql.TestBatchCopyFrom#testNonTxnWriteSessionVariable
+org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 org.yb.pgsql.TestJWTAuth
 org.yb.pgsql.TestPg15Regress
 org.yb.pgsql.TestPgAlterTable#testAddColumnWithNotNullConstraint
@@ -20,10 +21,12 @@ org.yb.pgsql.TestPgPrefetchControl#testSimplePrefetch
 org.yb.pgsql.TestPgPrefetchControl#testSizeBasedFetch
 org.yb.pgsql.TestPgRegressBackfillIndex
 org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
+org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 org.yb.pgsql.TestPgRegressGin
 org.yb.pgsql.TestPgRegressHashInQueries
 org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 org.yb.pgsql.TestPgRegressNonTxnCopy
+org.yb.pgsql.TestPgRegressPlanner#testPgRegressDml
 org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 org.yb.pgsql.TestPgRegressReplicationSlot
 org.yb.pgsql.TestPgRegressSecondaryIndexScan
