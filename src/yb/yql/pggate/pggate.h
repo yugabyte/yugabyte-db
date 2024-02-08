@@ -166,6 +166,7 @@ class PgApiImpl {
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
+  Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
 

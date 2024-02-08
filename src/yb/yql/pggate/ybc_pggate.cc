@@ -1633,6 +1633,10 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
 
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }

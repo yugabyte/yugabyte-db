@@ -10355,7 +10355,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (use_cache) {
+  if (use_cache && catalog_version_table_in_perdb_mode_) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
     // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the
@@ -10380,6 +10380,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   if (fingerprint) {
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+  }
+  if (versions->size() > 1) {
+    catalog_version_table_in_perdb_mode_ = true;
   }
   return Status::OK();
 }

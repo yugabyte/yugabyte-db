@@ -1906,6 +1906,10 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   return info.num_entries();
 }
 
+Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
+  return tserver_shared_object_->catalog_version_table_in_perdb_mode();
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }

@@ -639,7 +639,7 @@ YBCanEnableDBCatalogVersionMode()
 	 * upgrade, the pg_yb_catalog_version is transactionally updated
 	 * to have one row per database.
 	 */
-	return (YbGetNumberOfDatabases() > 1);
+	return YbCatalogVersionTableInPerdbMode();
 }
 
 /*
@@ -4018,6 +4018,13 @@ uint32_t YbGetNumberOfDatabases()
 	 * databases back.
 	 */
 	return num_databases;
+}
+
+bool YbCatalogVersionTableInPerdbMode()
+{
+	bool perdb_mode = false;
+	HandleYBStatus(YBCCatalogVersionTableInPerdbMode(&perdb_mode));
+	return perdb_mode;
 }
 
 static bool yb_is_batched_execution = false;

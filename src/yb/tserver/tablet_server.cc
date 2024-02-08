@@ -912,6 +912,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
       std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1})));
+    if (ysql_db_catalog_version_map_.size() > 1) {
+      catalog_version_table_in_perdb_mode_ = true;
+      shared_object().SetCatalogVersionTableInPerdbMode();
+    }
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;

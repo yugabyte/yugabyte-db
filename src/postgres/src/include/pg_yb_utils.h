@@ -907,6 +907,7 @@ void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
+bool YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
