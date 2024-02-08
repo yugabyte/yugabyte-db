@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -200,6 +201,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected CertificateHelper certificateHelper;
   protected Commissioner commissioner;
   protected SettableRuntimeConfigFactory settableRuntimeConfigFactory;
+  protected RuntimeConfService runtimeConfService;
 
   @BeforeClass
   public static void setUpEnv() {
@@ -401,6 +403,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     certificateHelper = app.injector().instanceOf(CertificateHelper.class);
     commissioner = app.injector().instanceOf(Commissioner.class);
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
   }
 
   @Before
