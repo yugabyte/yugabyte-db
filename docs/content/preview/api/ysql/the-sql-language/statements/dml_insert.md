@@ -88,7 +88,8 @@ This is useful for obtaining values that were supplied by defaults, such as a se
 
 ### *conflict_target*
 
-Specify which arbiter index to use to match rows for `ON CONFLICT`.
+Specify which unique index to use to match rows for `ON CONFLICT` (referenced as arbiter index). 
+By default, all unique indexes that contain exactly the conflict_target-specified columns/expressions, without regard to order, are used as arbiter indexes.
 `ON CONFLICT` either checks a unique index, or specifies a constraint explicitly.
 When using `ON CONFLICT DO UPDATE`, the `conflict_target` is required.
 When using `ON CONFLICT DO NOTHING`, the `conflict_target` is optional. If omitted, it will conflict using all usable constraints and unique indexes of the table.
