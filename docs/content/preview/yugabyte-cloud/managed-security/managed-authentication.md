@@ -172,13 +172,13 @@ For more information, refer to [App integrations](https://help.okta.com/oie/en-u
 
 To configure federated authentication in YugabyteDB Managed, do the following:
 
-1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Navigate to **Security > Access Control > Authentication**, and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose Okta identity provider.
 1. Enter the client ID and secret of the Okta application you created.
 1. Enter the Okta domain for your application.
 1. Click **Enable**.
 
-You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
+You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
 
   {{% /tab %}}
 
