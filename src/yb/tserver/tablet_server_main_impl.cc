@@ -103,9 +103,6 @@ DEFINE_NON_RUNTIME_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
-DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
-            "Whether to run a PostgreSQL server as a child process of the tablet server");
-
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
@@ -131,6 +128,7 @@ DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(start_pgsql_proxy);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);

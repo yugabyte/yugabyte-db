@@ -232,6 +232,9 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
     "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
+DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
 namespace yb::tserver {
 
 namespace {
@@ -268,6 +271,15 @@ void PostgresAndYsqlConnMgrPortValidator() {
 REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
     &PostgresAndYsqlConnMgrPortValidator);
 
+void ValidateEnableYsqlConnMgr() {
+  if (FLAGS_enable_ysql_conn_mgr && !(FLAGS_start_pgsql_proxy || FLAGS_enable_ysql)) {
+    LOG(FATAL) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
+    return;
+  }
+  return;
+}
+
+REGISTER_CALLBACK(enable_ysql_conn_mgr, "ValidateEnableYsqlConnMgr", &ValidateEnableYsqlConnMgr);
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
