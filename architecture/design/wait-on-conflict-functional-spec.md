@@ -1,13 +1,13 @@
-## YSQL Pessimistic Locking
+## Wait-on-Conflict Concurrency Control in YSQL
 
 
 ## 1 Introduction
 
-To understand pessimistic locking behaviour in PostgreSQL, it is important to take note of some points about row-level locking and its interaction with DMLs.
+This document aims to define fail-on-conflict concurrency control behavior in YSQL, wait-on-conflict behavior in PostgreSQL, and outline the requirements for changing YSQL's default concurrency-control semantics.
+
+To understand wait-on-conflict concurrency control in PostgreSQL, it is important to take note of some points about row-level locking and its interaction with DMLs.
 
 ### PostgreSQL supports 4 types of row-level locks -
-
-
 
 1. Exclusive modes (i.e., only 1 transaction can hold such a lock at any time) -
     1. `FOR UPDATE` - takes exclusive lock on the whole row (blocks the shared locks as well)
@@ -24,7 +24,7 @@ To understand pessimistic locking behaviour in PostgreSQL, it is important to ta
     3. `FOR SHARE`: doesn’t allow any concurrent modification to the locked tuple.
     4. `FOR KEY SHARE`: allow only modification to non-primary key cols
 
-Lock-modification conflict only happens when the period from lock acquire to lock release intersects/ overlaps with the read to commit time of the transaction performing the modification.
+Lock-modification conflict only happens when the period from lock acquire to lock release intersects/overlaps with the read to commit time of the transaction performing the modification.
 
 Lock-modification conflicts result in serialization errors. Note that the lock might be issued before or after the modification (see example 2i and 2ii).
 
@@ -44,22 +44,20 @@ In other words, a DML operation consists of _locking_ and _modification_ of a tu
 
 Given that writing = locking + modification, the definition of lock-modification conflict is more generic to think of for serialization errors (the usual write-write “conflict” we talk about is just a special case of this. A write-write conflict = implicit lock - modification conflict).
 
-### Conflicts in YSQL -
+### Fail-on-Conflict in YSQL -
 
-YSQL does not differentiate between a lock-lock conflict and a lock-modification conflict. In either case, we will trigger conflict resolution. Conflict resolution in YSQL doesn’t lead to any blocking, but would surely abort either itself or all conflicting transactions based on priorities of the transactions (which are randomly chosen). This is _optimistic locking_.
+YSQL does not differentiate between a lock-lock conflict and a lock-modification conflict. In either case, such conflicts will be detected during conflict resolution. Conflict resolution in YSQL would not lead to any blocking, but would surely abort either itself or all conflicting transactions based on priorities of the transactions (which are randomly chosen). We call this behavior _fail-on-conflict concurrency control_.
 
-Moreover, unlike PostgreSQL’s Serializable isolation, in YSQL’s Serializable isolation, plain SELECTs without explicit lock also implicitly take _FOR SHARE_ lock. And this can result in a plain read DML to conflict with a write DML (which will result in triggering conflict resolution).
+### Wait-on-Conflict in PostgreSQL -
 
-### Pessimistic Locking in PostgreSQL -
+PostgreSQL uses **wait-on-conflict concurrency control**, where a transaction will **wait upon encountering a lock-lock conflict** in order to acquire the locks it needs and proceed.
 
-PostgreSQL uses **pessimistic locking**, where a transaction will **wait upon encountering a lock-lock conflict** in order to acquire the locks it needs and proceed.
-
-**Pessimistic locking (In PostgreSQL):** When a transaction T1 attempts to take a lock (either implicitly via a write or explicitly using `SELECT FOR`), it might be blocked by transactions that hold a conflicting lock (note again, either implicitly via a write or explicitly using `SELECT FOR`). The transaction will then wait for all lock-lock conflicting transactions to end before obtaining the lock. Once the other transactions end, either the lock will be taken or a **lock-modification** conflict will be detected and a serialization error will occur.
+**Wait-on-conflict (In PostgreSQL):** When a transaction T1 attempts to take a lock (either implicitly via a write or explicitly using `SELECT FOR`), it might be blocked by transactions that hold a conflicting lock (note again, either implicitly via a write or explicitly using `SELECT FOR`). The transaction will then wait for all lock-lock conflicting transactions to end before obtaining the lock. Once the other transactions end, either the lock will be taken or a **lock-modification** conflict will be detected and a serialization error will occur.
 
 Some points to note are -
 
-1. **Transaction might skip being added to the queue:** If a transaction is trying to acquire a lock that doesn’t conflict with actively held locks but does conflict with a transaction that is already waiting to acquire a conflicting lock, it proceeds to take the lock. In short, the transaction skips being added to the queue itself (see example 3). This could also lead to starvation.
-2. **Transaction already in queue might jump older transactions in the queue: **Multiple transactions might be blocked to lock (either implicitly via write or explicitly) the same tuple and this results in a queue. When an active transaction ends, transactions that entered the queue earlier are checked first for unblocking. Transactions that don’t conflict with the active transactions are unblocked to acquire locks and become active. Note that this implies that a transaction that conflicts with earlier transactions blocked in the queue might still be unblocked if it doesn’t conflict with active transactions (which could lead to starvation).
+1. **Transaction might skip being added to the queue:** If a transaction is trying to acquire a lock that doesn’t conflict with actively held locks but does conflict with a transaction that is already waiting to acquire a conflicting lock, it proceeds to take the lock. In short, the transaction skips being added to the queue itself (see example 3). This improves availability at the potential cost of starvation.
+2. **Transaction already in queue might jump older transactions in the queue:** Multiple transactions might be blocked to lock the same tuple and this results in a queue. When an active transaction ends, we check other transactions in the wait queue which the resolved transaction was blocking. Transactions which no longer conflict with other active transactions are unblocked to acquire locks and become active. Note that this implies that a transaction that conflicts with earlier transactions blocked in the queue might still be unblocked if it doesn’t conflict with active transactions. This again improves availability at the potential cost of starvation, and matches the behavior in PostgreSQL.
 3. In case <code>[statement_timeout or lock_timeout](https://www.postgresql.org/docs/13/runtime-config-client.html)</code> is non-zero, a blocked transaction will abort after the timeout. (example 4). A zero timeout would imply indefinite waiting.
 
 NOTE: Refer this [article](https://postgrespro.com/blog/pgsql/5968005) for a good overview of row-level locking.
@@ -68,23 +66,23 @@ NOTE: Refer this [article](https://postgrespro.com/blog/pgsql/5968005) for a goo
 ## 2 Requirements
 
 1. Firstly, support lock-lock type of conflict that only blocks, in YSQL. This is to split the current notion of conflict in YSQL into the two finer notions that Postgres supports.
-2. In case a transaction T1 tries to acquire a lock as part of a implicit/explicit lock acquisition that conflicts with existing locks held by active transactions -
-    1. It has to wait for all transactions that have conflicting locks to end (waiting behaviour)
-    2. Throw a serialization error only if a modification that conflicts with the lock has occurred.
-    3. Ability to timeout and remove self from queue
-3. A [distributed deadlock detection algorithm](https://docs.google.com/document/d/1E4LHGmVZuTlr36_uczPuE6aAjoLT4sfr1o0YCtzUUPc/edit#) to break cycles. The following properties are required -
+2. In case a transaction T1 issues an RPC which tries to acquire a lock as part of a DML that conflicts with existing locks held by active transactions, the RPC should:
+    1. wait for all transactions that have conflicting locks to end (waiting behaviour)
+    2. throw a serialization error only if a modification that conflicts with the lock has committed
+    3. respect client-specified timeouts and remove itself from the queue
+3. Implement a [distributed deadlock detection algorithm](https://docs.google.com/document/d/1E4LHGmVZuTlr36_uczPuE6aAjoLT4sfr1o0YCtzUUPc/edit#) to break cycles. The following properties are required -
     1. No false positives
     2. Bound on latency = O (cycle size)
 4. Add a metric to measure the “intensity” of starvation by measuring the number instances where a transaction jumps the wait queue ahead of other waiting transactions that it conflicts with just because it doesn’t conflict with active transactions.
 
-Once pessimistic locking is supported, YSQL will have the same behaviour as Postgres with regards to transaction waiting behaviour in case of writing/locking, with **two exceptions**:
+Once wait-on-conflict concurrency control is supported, YSQL will have the same behaviour as Postgres with regards to transaction waiting behaviour in case of writing/locking, with **two exceptions**:
 
 1. For Serializable isolation level, there will be an extra YSQL-only behaviour of waiting in case a read (or write) intent is to be written that conflicts with an already existing write (or read) intent from another transaction. In PostgreSQL’s Serializable isolation implementation (i.e., SSI), reads don’t take implicit locks and hence don’t “lock” conflict with other writes. And hence, a read doesn’t wait on another write (and vice versa) in PostgreSQL’s Serializable isolation.
 2. YSQL writes fine grained column level intents in case of modifications to specific columns only. This will allow us to be more fine grained so that modifications to different columns of a row need not result in waiting (possibly followed by a serialization error). This is one aspect in which YSQL would turn out to be **better than** PostgreSQL - and semantically different in a hopefully beneficial way.
 
 ## 3 Usage
 
-**yb_use_pessimistic_locking**: a cluster level gflag to turn on pessimistic locking. This will require a cluster restart. Note that all transactions in the cluster will either use pessimistic locking or optimistic locking.
+**enable_wait_queues**: a cluster-level gflag to turn on wait-on-conflict behavior. This will require a cluster restart. Note that all transactions in the cluster will either use wait-on-conflict OR fail-on-conflict behavior, and mixed behavior is tolerable during restart/migration but otherwise generally not supported.
 
 ### Expected Behavior
 
@@ -613,15 +611,13 @@ START TRANSACTION</code>
   </tr>
 </table>
 
-2. **READ COMMITTED isolation level** (exactly as in PostgreSQL) has a dependency on pessimistic locking. Note that in general pessimistic locking is orthogonal to isolation levels but READ COMMITTED specifically has a “dependency” on pessimistic locking. To be precise, on facing a conflict, a transaction has to wait for the conflicting transaction to rollback/commit. On commit, the transaction will fetch the latest version of the row and work on that.
+2. **READ COMMITTED isolation level** (exactly as in PostgreSQL) has a dependency on wait-on-conflict concurrency control. To be precise, on facing a conflict, a transaction has to wait for the conflicting transaction to rollback/commit before retrying the statement. Once unblocked, the read committed session will operate on the newly-committed data when retrying the conflicting statement. If READ COMMITTED is used without wait-on-conflict, we will use an internal retry mechanism which differs slightly from PostgreSQL.
 
 ### Versioning and upgrades
 
-This feature is upgrade and downgrade safe. When turning the gflag on/off, or during rolling restarts across versions with the flag “on” in the higher version, if some nodes have pessimistic locking on and some don’t, users will experience mixed (but still correct) behavior. A mix of both optimistic locking and pessimistic locking will result in the following additional YSQL specific semantics -
+This feature is upgrade and downgrade safe. When turning the gflag on/off, or during rolling restarts across versions with the flag “on” in the higher version, if some nodes have wait-on-conflict behavior enabled and some don’t, users will experience mixed (but still correct) behavior. A mix of both fail-on-conflict and wait-on-conflict traffic will result in the following additional YSQL specific semantics -
 
-1. Assume T1 follows optimistic locking and T2 follows pessimistic locking
-2. If a transaction T1 uses optimistic locking and sees transactions that have written conflicting intents -
-    1. if there is even 1 conflicting transaction that follows pessimistic locking, abort T1 
-    2. Else, behaviour is as today
-3. If a transaction T1 uses pessimistic locking and sees transactions that have written conflicting intents -
-    1. Wait for all conflicting transactions to end
+1. If a transaction using fail-on-conflict sees transactions that have written conflicting intents -
+    1. Behaviour is as today
+2. If a transaction uses wait-on-conflict and sees transactions that have written conflicting intents -
+    1. Wait for all conflicting transactions to end (including any using fail-on-conflict semantics)
