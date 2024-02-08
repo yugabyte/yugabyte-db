@@ -25,6 +25,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
@@ -50,7 +51,7 @@ namespace client {
 namespace {
 
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000);
-const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000);
+const auto kWaitLoadBalancerTimeout = MonoDelta::FromMilliseconds(30000) * kTimeMultiplier;
 
 }
 
