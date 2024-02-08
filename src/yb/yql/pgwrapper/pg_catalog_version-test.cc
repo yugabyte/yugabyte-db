@@ -831,15 +831,20 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   CHECK_EQ(versions.size(), 1);
   ASSERT_OK(CheckMatch(versions.begin()->second, kNewCatalogVersion));
 
-  // For a new connection, although --ysql_enable_db_catalog_version_mode is still
-  // true, the fact that the table pg_yb_catalog_version has only one row prevents
-  // a new connection to enter per-database catalog version mode. Verify that we
-  // can make a new connection to database "yugabyte".
-  ASSERT_RESULT(ConnectToDB("yugabyte"));
+  // Once a tserver enters per-database catalog version mode it remains so.
+  // It is an error to change pg_yb_catalog_version back to global catalog
+  // version mode when --ysql_enable_db_catalog_version_mode=true.
+  // Verify that we can not make a new connection to database "yugabyte"
+  // in this error state.
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
+  auto status = ResultToStatus(ConnectToDB("yugabyte"));
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", yugabyte_db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 
-  // We can also make a new connection to database "template1" but the fact that
-  // now it is the only database that has a row in pg_yb_catalog_version table is
-  // not relevant.
+  // We can only make a new connection to database "template1" because now it
+  // is the only database that has a row in pg_yb_catalog_version table.
   conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
 
   // Sync up pg_yb_catalog_version with pg_database.
@@ -1204,6 +1209,19 @@ ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, t
 TEST_F(PgCatalogVersionTest, RemoveRelCacheInitFiles) {
   RemoveRelCacheInitFilesHelper(true /* per_database_mode */);
   RemoveRelCacheInitFilesHelper(false /* per_database_mode */);
+}
+
+// This test that YSQL can execute DDL statements when the gflag
+// --ysql_enable_db_catalog_version_mode is on but the pg_yb_catalog_version
+// table isn't updated to have one row per database.
+TEST_F(PgCatalogVersionTest, SimulateTryoutPhaseInUpgrade) {
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE t(id INT)"));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE INDEX idx ON t(id)"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER"));
 }
 
 TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {

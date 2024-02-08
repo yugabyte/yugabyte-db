@@ -77,6 +77,10 @@ YBCStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
+// Return true if the pg_yb_catalog_version table has been updated to
+// have one row per database.
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
