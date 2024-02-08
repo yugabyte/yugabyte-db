@@ -1205,6 +1205,7 @@
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
+            https://tag.clearbitscripts.com
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1214,6 +1215,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
+            https://x.clearbitjs.com
         ;
 
         style-src 'self' 'unsafe-inline'
