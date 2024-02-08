@@ -829,6 +829,17 @@ public class CloudProviderHelper {
 
     CloudInfoInterface providerCloudInfo = CloudInfoInterface.get(provider);
     CloudInfoInterface editProviderCloudInfo = CloudInfoInterface.get(editProviderReq);
+    if (provider.getCloudCode() == CloudType.gcp) {
+      GCPCloudInfo editProviderReqCloudInfo = (GCPCloudInfo) editProviderCloudInfo;
+      GCPCloudInfo providerReqCloudInfo = (GCPCloudInfo) providerCloudInfo;
+      // For providers created prior to 2.16, `useHostVPC` is not set in case they are using
+      // EXISTING VPCs. Explicitly setting the same here.
+      if (providerReqCloudInfo.getVpcType() == CloudInfoInterface.VPCType.EXISTING
+          && editProviderReqCloudInfo.getUseHostVPC() != null
+          && editProviderReqCloudInfo.getUseHostVPC()) {
+        providerReqCloudInfo.setUseHostVPC(editProviderReqCloudInfo.getUseHostVPC());
+      }
+    }
     checkCloudInfoFieldsInUseProvider(providerCloudInfo, editProviderCloudInfo);
 
     // Collect existing and current regions into maps
