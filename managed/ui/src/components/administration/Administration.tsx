@@ -17,9 +17,9 @@ import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
 import { isCertCAEnabledInRuntimeConfig } from '../customCACerts';
-import { RBAC_RUNTIME_FLAG } from '../../redesign/features/rbac/common/RbacUtils';
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
+import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -88,16 +88,13 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
+
   const isCongifUIEnabled =
     globalRuntimeConfigs?.data?.configEntries?.find(
       (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all'
     )?.value === 'true' ||
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
-
-  const isRBACEnabled = globalRuntimeConfigs?.data?.configEntries?.find(
-    (c: any) => c.key === RBAC_RUNTIME_FLAG
-  )?.value === 'true';
 
   const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
     (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
@@ -134,7 +131,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
       <Tab eventKey="ha" title="High Availability" key="high-availability">
         <RbacValidator
-          accessRequiredOn={UserPermissionMap.SUPER_ADMIN}
+          accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}
         >
           <YBTabsPanel
             defaultTab={HighAvailabilityTabs.Replication}
@@ -227,10 +224,10 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
       >
         {getHighAvailabilityTab()}
         {getAlertTab()}
-        {!isRBACEnabled && getUserManagementTab()}
+        {!isRbacEnabled() && getUserManagementTab()}
         {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
-        {isRBACEnabled && getRbacTab()}
+        {isRbacEnabled() && getRbacTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

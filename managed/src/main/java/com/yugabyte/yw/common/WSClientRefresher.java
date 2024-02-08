@@ -79,6 +79,7 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     if (!ybaStoreConfig.isEmpty() && customCAStoreManager.isEnabled()) {
       // Add JRE default cert paths as well in this case.
       ybaStoreConfig.add(customCAStoreManager.getJavaDefaultConfig());
+      ybaStoreConfig.addAll(customCAStoreManager.getYBAJavaKeyStoreConfig());
 
       Config customWsConfig =
           ConfigFactory.empty()
@@ -89,7 +90,7 @@ public class WSClientRefresher implements CustomTrustStoreListener {
       ybWsOverrides = customWsConfig.getValue("play.ws");
     }
 
-    log.info(
+    log.debug(
         "Creating ws client with config override: {}",
         ybWsOverrides.render(ConfigRenderOptions.concise()));
 

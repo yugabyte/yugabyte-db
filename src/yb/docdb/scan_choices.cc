@@ -29,6 +29,9 @@
 #include "yb/util/status.h"
 
 namespace yb {
+
+int TEST_scan_trivial_expectation = -1;
+
 namespace docdb {
 
 using dockv::DocKey;
@@ -723,10 +726,10 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 }
 
 // Method called when the scan target is done being used
-Result<bool> HybridScanChoices::DoneWithCurrentTarget() {
+Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) {
   bool result = false;
   if (schema_num_keys_ == scan_options_.size() ||
-      prefix_length_ > 0) {
+      (prefix_length_ > 0 && !current_row_skipped)) {
 
     ssize_t incr_idx =
         (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
@@ -739,9 +742,9 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget() {
   // if this is a forward scan it doesn't matter what we do
   // if this is a backwards scan then don't clear current_scan_target and we
   // stay live
-  VLOG_WITH_FUNC(2) << "Current_scan_target_ is "
-                    << DocKey::DebugSliceToString(current_scan_target_);
-  VLOG_WITH_FUNC(2) << "Moving on to next target";
+  VLOG_WITH_FUNC(2)
+      << "Current_scan_target_ is " << DocKey::DebugSliceToString(current_scan_target_)
+      << ", result: " << result;
 
   DCHECK(!finished_);
 
@@ -829,8 +832,10 @@ Result<bool> HybridScanChoices::InterestedInRow(
 }
 
 Result<bool> HybridScanChoices::AdvanceToNextRow(
-    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) {
-  if (!VERIFY_RESULT(DoneWithCurrentTarget()) || CurrentTargetMatchesKey(row_key->AsSlice())) {
+    dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter, bool current_fetched_row_skipped) {
+
+  if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped)) ||
+      CurrentTargetMatchesKey(row_key->AsSlice())) {
     return false;
   }
   SeekToCurrentTarget(iter);
@@ -863,14 +868,15 @@ class EmptyScanChoices : public ScanChoices {
     return true;
   }
 
-  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override {
+  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                IntentAwareIteratorIf* iter,
+                                bool current_fetched_row_live) override {
     return false;
   }
 };
 
 ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-    const KeyBytes& upper_doc_key) {
+    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const qlexpr::ScanBounds& bounds) {
   auto prefixlen = doc_spec.prefix_length();
   auto num_hash_cols = schema.num_hash_key_columns();
   auto num_key_cols = schema.num_key_columns();
@@ -883,8 +889,17 @@ ScanChoicesPtr ScanChoices::Create(
     LOG(WARNING) << "Prefix length: " << prefixlen << " is invalid for schema: "
                   << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }
-  if (doc_spec.options() || doc_spec.range_bounds() || valid_prefixlen) {
-    return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
+
+  auto test_scan_trivial_expectation = ANNOTATE_UNPROTECTED_READ(TEST_scan_trivial_expectation);
+  if (test_scan_trivial_expectation >= 0 &&
+      schema.num_key_columns() == 3 && schema.num_columns() == 3) {
+    CHECK_EQ(bounds.trivial, test_scan_trivial_expectation != 0);
+  }
+
+  // bounds.trivial means that we just need lower and upper bounds for the scan.
+  // So could use empty scan choices in case of the trivial range scan.
+  if (doc_spec.options() || (doc_spec.range_bounds() && !bounds.trivial) || valid_prefixlen) {
+    return std::make_unique<HybridScanChoices>(schema, doc_spec, bounds.lower, bounds.upper);
   }
 
   return CreateEmpty();

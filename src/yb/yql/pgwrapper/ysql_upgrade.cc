@@ -46,7 +46,7 @@ Result<int64_t> SelectCountStar(PGConn* pgconn,
   auto query_str = Format("SELECT COUNT(*) FROM $0$1",
                           table_name,
                           where_clause == "" ? "" : Format(" WHERE $0", where_clause));
-  return VERIFY_RESULT(pgconn->FetchValue<PGUint64>(query_str));
+  return VERIFY_RESULT(pgconn->FetchRow<PGUint64>(query_str));
 }
 
 Result<bool> SystemTableExists(PGConn* pgconn, const std::string& table_name) {
@@ -141,15 +141,14 @@ Result<Version> DetermineAndSetVersion(PGConn* pgconn) {
 
   // If pg_yb_migration was present before and has values, that's our version.
   if (!table_created) {
-    const std::string query_str(
+    const auto query_str(
         "SELECT major, minor FROM pg_catalog.pg_yb_migration"
         "  ORDER BY major DESC, minor DESC"
         "  LIMIT 1");
-    pgwrapper::PGResultPtr res = VERIFY_RESULT(pgconn->Fetch(query_str));
-    if (PQntuples(res.get()) == 1) {
-      auto major_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 0));
-      auto minor_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 1));
-      Version ver(major_version, minor_version);
+    const auto rows = VERIFY_RESULT((pgconn->FetchRows<int32_t, int32_t>(query_str)));
+    if (!rows.empty()) {
+      const auto& [major, minor] = rows.front();
+      Version ver(major, minor);
       LOG(INFO) << "Version is " << ver;
       return ver;
     }

@@ -24,7 +24,6 @@ export interface XClusterTableDetails {
  */
 export interface XClusterConfig {
   createTime: string;
-  imported: boolean;
   modifyTime: string;
   name: string;
   paused: boolean;
@@ -46,5 +45,6 @@ export interface XClusterConfig {
   targetUniverseState?: TargetUniverseDrState;
   targetUniverseUUID?: string;
 
-  txnTableDetails?: XClusterTableDetails;
+  // `imported` is dropped from the model defined in XClusterConfig.java.
+  // This is intended for backend usage and API users shouldn't need to use this field.
 }

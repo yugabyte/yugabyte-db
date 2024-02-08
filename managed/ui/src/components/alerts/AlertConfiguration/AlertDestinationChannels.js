@@ -3,6 +3,7 @@ import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useDispatch } from 'react-redux';
 import {
+  GET_ALERT_CONFIGS,
   deleteAlertChannel,
   getAlertChannels,
   updateAlertChannel
@@ -19,8 +20,8 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { startCase, toLower } from 'lodash';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AlertDestinationChannels.scss';
 
 const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
@@ -158,9 +159,7 @@ export const AlertDestinationChannels = (props) => {
           pullRight
         >
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.editAlertsConfig
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_DESTINATION}
             isControl
           >
             <MenuItem
@@ -176,9 +175,7 @@ export const AlertDestinationChannels = (props) => {
 
           {!isReadOnly && (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.deleteAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_DESTINATION}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -211,9 +208,7 @@ export const AlertDestinationChannels = (props) => {
       {
         !showCustomTemplateEditor && (
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.readAlertsConfig
-            }}
+            accessRequiredOn={ApiPermissionMap.GET_ALERT_CONFIGURATIONS}
           >
             <>
               <div className="alert-destinations">
@@ -225,9 +220,7 @@ export const AlertDestinationChannels = (props) => {
                   <div>
                     {enableCustomEmailTemplates && (
                       <RbacValidator
-                        accessRequiredOn={{
-                          ...UserPermissionMap.readAlertsConfig
-                        }}
+                        accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CHANNEL_TEMPLATE}
                         isControl
                       >
                         <YBButton
@@ -242,9 +235,7 @@ export const AlertDestinationChannels = (props) => {
                       </RbacValidator>
                     )}
                     <RbacValidator
-                      accessRequiredOn={{
-                        ...UserPermissionMap.createAlertsConfig
-                      }}
+                      accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS}
                       isControl
                     >
                       <YBButton
@@ -261,7 +252,7 @@ export const AlertDestinationChannels = (props) => {
               </div>
               <Row>
                 <Col xs={12} lg={12} className="noLeftPadding">
-                  <b>{alertChannels.length} Notification Channels</b>
+                  <b>{alertChannels?.length} Notification Channels</b>
                 </Col>
               </Row>
               <Row>

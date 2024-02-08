@@ -621,6 +621,7 @@
       "tabPerformance": "Performance",
       "tabBackups": "Backups",
       "tabActivity": "Activity",
+      "tabConnections": "Connections",
       "tabMaintenance": "Maintenance",
       "tabSettings": "Settings",
       "primaryCluster": "Primary Cluster",
@@ -645,6 +646,7 @@
       "keyMetrics": "Key Metrics",
       "tabvCpu": "vCPU",
       "tabDisk": "Disk",
+      "last5minutes": "Last 5 Minutes",
       "lastHour": "Last Hour",
       "last6hours": "Last 6 Hours",
       "last12hours": "Last 12 Hours",
@@ -699,7 +701,10 @@
         "other": "Other",
         "ycqlRemoteOps": "YCQL Remote Operations",
         "totalLiveNodes": "Total Live Nodes",
-        "liveNodes": "Live Nodes"
+        "liveNodes": "Live Nodes",
+        "totalConnections": "Total Connections",
+        "logicalConnections": "Logical Connections",
+        "physicalConnections": "Physical Connections"
       },
       "contactSupportForFailedCluster": "Cluster operation failed due to unexpected error. <1>{{contactSupport}}</1>",
       "contactSupport": "Contact Support",
@@ -869,7 +874,8 @@
         "tabs": {
           "metrics": "Metrics",
           "live_queries": "Live Queries",
-          "slow_queries": "YSQL Slow Queries"
+          "slow_queries": "YSQL Slow Queries",
+          "connections": "Connections"
         },
         "actions": {
           "refresh": "Refresh",
@@ -1104,11 +1110,14 @@
         "readOpsPerSec": "Read Ops/sec",
         "writeOpsPerSec": "Write Ops/sec",
         "activeConnections": "Active Connections",
+        "activeLogicalConnections": "Active Logical Connections",
+        "activePhysicalConnections": "Active Physical Connections",
         "memory": "Memory",
         "diskStorage": "Disk Storage",
         "numberOfTablets": "Number of Tablets",
         "readReplica": "Read replica",
         "readReplicaEnabled": "Read Replica Enabled",
+        "connMgrEnabled": "Connection Manager Enabled",
         "peer": "Peer",
         "leader": "Leader",
         "total": "Total",

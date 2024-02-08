@@ -2,7 +2,7 @@
 title: Follower Reads for global applications
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Reducing Read Latency for global applications
+description: Reduce read latency using Follower reads
 headcontent: Reduce read latency for global applications
 menu:
   stable:

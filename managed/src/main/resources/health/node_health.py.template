@@ -165,6 +165,12 @@ YB_NODE_OOM_KILLS_10MIN = MetricDefinition(
 YB_NODE_POSTGRES_RSS = MetricDefinition(
     "yb_node_postgres_rss",
     "Total RSS of all processes of particular type")
+YB_NODE_YSQL_CGROUP_LIMIT = MetricDefinition(
+    "yb_node_ysql_cgroup_limit",
+    "Memory limit for ysql cgroup")
+YB_NODE_YSQL_CGROUP_USAGE = MetricDefinition(
+    "yb_node_ysql_cgroup_usage",
+    "Memory usage for ysql cgroup")
 YB_NODE_IS_MASTER_LEADER = MetricDefinition(
     "yb_node_is_master_leader",
     "Master leadership status")
@@ -995,6 +1001,54 @@ class NodeChecker():
             .add_value(rss, [Label("process", "workers")])
         return e.fill_and_return_entry([rss], has_error=False, metrics=[metric])
 
+    def check_ysql_cgroup_memory_limit(self):
+        logging.info("Checking cgroup memory limit on node {}".format(self.node))
+        e = self._new_metric_entry("Cgroup memory limit")
+        try:
+            # check if the cgroup exists by looking at /sys/fs/cgroup/memory/ysql
+            # if it exists, then we have cgroup v1.
+            # if it does not exist, then we look at /sys/fs/cgroup/user.slice/...
+            #   This folder is for cgroup v2.
+            # otherwise 0
+            cmd = 'uid=$(id -u); ' \
+                'if [ -d /sys/fs/cgroup/memory/ysql ]; ' \
+                'then cat /sys/fs/cgroup/memory/ysql/memory.limit_in_bytes; ' \
+                'elif [ -d /sys/fs/cgroup/user.slice/user-${uid}.slice/user\@${uid}.service/ysql ]; ' \
+                'then cat /sys/fs/cgroup/user.slice/user-${uid}.slice/user\@${uid}.service/ysql/memory.max; ' \
+                'else echo 0; fi'
+            limit = self._check_output(cmd).strip()
+
+            metric = Metric.from_definition(YB_NODE_YSQL_CGROUP_LIMIT)\
+                .add_value(limit)
+            return e.fill_and_return_entry([limit], has_error=False, metrics=[metric])
+        except Exception as ex:
+            message = str(ex)
+            return e.fill_and_return_entry([message], has_error=True)
+
+    def check_ysql_cgroup_memory_usage(self):
+        logging.info("Checking cgroup memory usage on node {}".format(self.node))
+        e = self._new_metric_entry("Cgroup memory usage")
+        try:
+            # check if the cgroup exists by looking at /sys/fs/cgroup/memory/ysql
+            # if it exists, then we have cgroup v1.
+            # if it does not exist, then we look at /sys/fs/cgroup/user.slice/...
+            #   This folder is for cgroup v2.
+            # otherwise 0
+            cmd = 'uid=$(id -u); ' \
+                'if [ -d /sys/fs/cgroup/memory/ysql ]; ' \
+                'then cat /sys/fs/cgroup/memory/ysql/memory.usage_in_bytes; ' \
+                'elif [ -d /sys/fs/cgroup/user.slice/user-${uid}.slice/user\@${uid}.service/ysql ]; ' \
+                'then cat /sys/fs/cgroup/user.slice/user-${uid}.slice/user\@${uid}.service/ysql/memory.current; ' \
+                'else echo 0; fi'
+            usage = self._check_output(cmd).strip()
+
+            metric = Metric.from_definition(YB_NODE_YSQL_CGROUP_USAGE)\
+                .add_value(usage)
+            return e.fill_and_return_entry([usage], has_error=False, metrics=[metric])
+        except Exception as ex:
+            message = str(ex)
+            return e.fill_and_return_entry([message], has_error=True)
+
     def check_ysql_connections_count(self):
         logging.info("Checking ysql connections count on node {}".format(self.node))
         e = self._new_metric_entry("YSQL connections")
@@ -1641,6 +1695,8 @@ def main():
             coordinator.add_check(checker, "check_postmaster_rss")
             coordinator.add_check(checker, "check_postgres_workers_rss")
             coordinator.add_check(checker, "check_ysql_connections_count")
+            coordinator.add_check(checker, "check_ysql_cgroup_memory_limit")
+            coordinator.add_check(checker, "check_ysql_cgroup_memory_usage")
         if n.is_ybc_enabled:
             coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
 

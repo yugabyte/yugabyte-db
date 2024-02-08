@@ -557,6 +557,9 @@ Colocation: true
 
 INSERT INTO tbl_no_pk (k, v) VALUES (1, 1), (2, 2), (3, 3);
 ALTER TABLE tbl_no_pk ADD PRIMARY KEY (k ASC);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d tbl_no_pk
              Table "public.tbl_no_pk"
  Column |  Type   | Collation | Nullable | Default
@@ -577,6 +580,9 @@ SELECT * FROM tbl_no_pk ORDER BY k;
 
 -- Alter colocated table "DROP PRIMARY KEY"
 ALTER TABLE tbl_no_pk DROP CONSTRAINT tbl_no_pk_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d tbl_no_pk
              Table "public.tbl_no_pk"
  Column |  Type   | Collation | Nullable | Default
@@ -694,7 +700,7 @@ WITH (colocation_id='123456');
 SELECT * FROM yb_table_properties('partitioned_table'::regclass::oid);
  num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
 -------------+----------------------+--------------+----------------+---------------
-           1 |                    0 | t            |          16399 |        123456
+           1 |                    0 | t            |          16391 |        123456
 (1 row)
 
 CREATE TABLE table_partition PARTITION OF partitioned_table
@@ -703,7 +709,7 @@ WITH (colocation_id='234567');
 SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
  num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
 -------------+----------------------+--------------+----------------+---------------
-           1 |                    0 | t            |          16399 |        234567
+           1 |                    0 | t            |          16391 |        234567
 (1 row)
 
 -- drop database
@@ -783,7 +789,7 @@ AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
 AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype | grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+-------+----------+------------+----------+-------------+---------+---------+----------+---------------+--------+------------
-    1259 | 16530 |        0 |       8036 |    16533 |           0 | n       | default |       10 |             0 |        |
+    1259 | 16384 |        0 |       8036 |    16387 |           0 | n       | default |       10 |             0 |        |
 (1 row)
 
 DROP TABLEGROUP "default";

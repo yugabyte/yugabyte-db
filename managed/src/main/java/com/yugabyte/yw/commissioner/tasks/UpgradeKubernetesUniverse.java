@@ -14,7 +14,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -34,13 +35,14 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected UpgradeKubernetesUniverse(
-      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   public static class Params extends KubernetesUpgradeParams {}
@@ -274,14 +276,24 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              replicaTservers,
+              true,
+              ybcSoftwareVersion,
+              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         } else {
           Set<NodeDetails> primaryTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
-          installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              primaryTservers,
+              false,
+              ybcSoftwareVersion,
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
           performYbcAction(primaryTservers, true, "stop");
           createWaitForYbcServerTask(primaryTservers);
         }

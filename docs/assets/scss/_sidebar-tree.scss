@@ -449,6 +449,10 @@
               justify-content: center;
               margin-right: 8px;
 
+              &.icon-download {
+                background: url(/icons/db.svg) center no-repeat;
+              }
+
               &.icon-join {
                 background: url(/icons/user.svg) center no-repeat;
               }

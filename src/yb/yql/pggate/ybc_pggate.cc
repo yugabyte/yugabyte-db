@@ -19,6 +19,7 @@
 #include <thread>
 #include <utility>
 
+#include "yb/client/session.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
@@ -63,16 +64,9 @@
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
-    "Timeout for YSQL's yb-client read/write "
-    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
-DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
-                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
-                 "production environment. In unit test we use this flag to force allocation of "
-                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -204,9 +198,11 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
 
 Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
                       int count,
-                      const PgCallbacks& pg_callbacks) {
-  return WithMaskedYsqlSignals([data_type_table, count, &pg_callbacks] {
-    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */);
+                      const PgCallbacks& pg_callbacks,
+                      uint64_t *session_id) {
+  auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
+  return WithMaskedYsqlSignals([data_type_table, count, &pg_callbacks, opt_session_id] {
+    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -308,7 +304,7 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
 //--------------------------------------------------------------------------------------------------
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                     PgApiContext* context) {
+                     PgApiContext* context, std::optional<uint64_t> session_id) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -326,9 +322,10 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 
   pgapi_shutdown_done.exchange(false);
   if (context) {
-    pgapi = new pggate::PgApiImpl(std::move(*context), data_type_table, count, pg_callbacks);
+    pgapi = new pggate::PgApiImpl(
+      std::move(*context), data_type_table, count, pg_callbacks, session_id);
   } else {
-    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks);
+    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id);
   }
 
   VLOG(1) << "PgGate open";
@@ -336,8 +333,9 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 
 extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks));
+void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
+                   uint64_t *session_id) {
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id));
 }
 
 void YBCDestroyPgGate() {
@@ -396,6 +394,14 @@ YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options) 
     return YBCStatusOK();
   }
   return ToYBCStatus(STATUS(InvalidArgument, "Identity match failed"));
+}
+
+bool YBCGetCurrentPgSessionId(uint64_t *session_id) {
+  if (pgapi) {
+    *session_id = pgapi->GetSessionId();
+    return true;
+  }
+  return false;
 }
 
 YBCStatus YBCPgInitSession(
@@ -552,10 +558,13 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid,
-                                        next_oid + static_cast<YBCPgOid>(
-                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid,
                                         count, begin_oid, end_oid));
+}
+
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid) {
+  DCHECK_NE(db_oid, kInvalidOid);
+  return ToYBCStatus(pgapi->GetNewObjectId(db_oid, new_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
@@ -1016,6 +1025,12 @@ YBCStatus YBCPgDmlBindHashCodes(
       handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
+                            const char *end_value, size_t end_value_len) {
+  return ToYBCStatus(pgapi->DmlBindRange(
+    handle, Slice(start_value, start_value_len), true, Slice(end_value, end_value_len), false));
+}
+
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
@@ -1186,6 +1201,10 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
 
 YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length) {
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
+}
+
+YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound) {
+  return ToYBCStatus(pgapi->SetHashBounds(handle, low_bound, high_bound));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
@@ -1451,6 +1470,10 @@ YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos) 
   return ToYBCStatus(pgapi->GetActiveTransactions(infos, num_infos));
 }
 
+bool YBCPgIsDdlMode() {
+  return pgapi->IsDdlMode();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
@@ -1561,7 +1584,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file
+      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
+      .ysql_enable_pg_per_database_oid_allocator =
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator
   };
   // clang-format on
   return &accessor;
@@ -1575,10 +1600,7 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   if (!pgapi) {
     return;
   }
-  const auto default_client_timeout_ms =
-      (FLAGS_ysql_client_read_write_timeout_ms < 0
-           ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
-           : FLAGS_ysql_client_read_write_timeout_ms);
+  const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
   // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
@@ -1722,6 +1744,12 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
+uint64_t YBCPgGetReadTimeSerialNo() { return pgapi->GetReadTimeSerialNo(); }
+
+void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+  pgapi->ForceReadTimeSerialNo(read_time_serial_no);
+}
+
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
                                  bool* is_object_part_of_xrepl) {
   auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_oid));
@@ -1740,6 +1768,7 @@ YBCStatus YBCGetTableKeyRanges(
     YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    uint64_t* current_tserver_ht,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param) {
   auto res = pgapi->GetTableKeyRanges(
       PgObjectId(database_oid, table_oid), Slice(lower_bound_key, lower_bound_key_size),
@@ -1749,10 +1778,14 @@ YBCStatus YBCGetTableKeyRanges(
     return ToYBCStatus(res.status());
   }
 
-  auto& encoded_table_range_slices = *res;
+  auto& encoded_table_range_slices = res->encoded_range_end_keys;
   if (!is_forward) {
     return ToYBCStatus(
         STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
+  }
+
+  if (current_tserver_ht) {
+    *current_tserver_ht = res->current_ht.ToUint64();
   }
 
   for (size_t i = 0; i < encoded_table_range_slices.size(); ++i) {
@@ -1773,6 +1806,70 @@ YBCStatus YBCGetTableKeyRanges(
   }
 
   return YBCStatusOK();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Replication Slots.
+
+YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        YBCPgOid database_oid,
+                                        YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
+                                                     database_oid,
+                                                     handle));
+}
+
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateReplicationSlot(handle));
+}
+
+YBCStatus YBCPgListReplicationSlots(
+    YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
+  const auto result = pgapi->ListReplicationSlots();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto &replication_slots_info = result.get().replication_slots();
+  *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
+  *DCHECK_NOTNULL(replication_slots) = NULL;
+  if (!replication_slots_info.empty()) {
+    *replication_slots = static_cast<YBCReplicationSlotDescriptor *>(
+        YBCPAlloc(sizeof(YBCReplicationSlotDescriptor) * replication_slots_info.size()));
+    YBCReplicationSlotDescriptor *dest = *replication_slots;
+    for (const auto &info : replication_slots_info) {
+      new (dest) YBCReplicationSlotDescriptor{
+          .slot_name = YBCPAllocStdString(info.slot_name()),
+          .stream_id = YBCPAllocStdString(info.stream_id()),
+          .database_oid = info.database_oid(),
+          .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active) {
+  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
+  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
+                                      YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropReplicationSlot(slot_name,
+                                                   handle));
+}
+
+YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
 }
 
 } // extern "C"

@@ -30,12 +30,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.directory.api.util.Strings;
 
 @Slf4j
-public class KubernetesOperatorStatusUpdater {
+public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
   private final String namespace;
   private final String yugawarePod;
@@ -43,7 +42,6 @@ public class KubernetesOperatorStatusUpdater {
 
   private final Config k8sClientConfig;
 
-  @Inject
   public KubernetesOperatorStatusUpdater(RuntimeConfGetter confGetter) {
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
@@ -59,7 +57,7 @@ public class KubernetesOperatorStatusUpdater {
     this.yugawareNamespace = getYugawareNamespace();
   }
 
-  public static String getYugawareNamespace() {
+  private static String getYugawareNamespace() {
     File file = new File("/var/run/secrets/kubernetes.io/serviceaccount/namespace");
     try {
       BufferedReader br = new BufferedReader(new FileReader(file));
@@ -75,6 +73,7 @@ public class KubernetesOperatorStatusUpdater {
   /*
    * Universe Status Updates
    */
+  @Override
   public void createYBUniverseEventStatus(
       Universe universe, KubernetesResourceDetails universeName, String taskName, UUID taskUUID) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
@@ -92,6 +91,7 @@ public class KubernetesOperatorStatusUpdater {
   /*
    * Update Restore Job Status
    */
+  @Override
   public void updateRestoreJobStatus(String message, UUID taskUUID) {
     try {
       log.info("Update Restore Job Status called for task {} ", taskUUID);
@@ -127,10 +127,19 @@ public class KubernetesOperatorStatusUpdater {
   /*
    * Update Backup Status
    */
+  @Override
   public void updateBackupStatus(
       com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
     try {
       if (backup != null) {
+        String universeName = backup.getUniverseName();
+        Universe universe = Universe.getUniverseByName(universeName);
+        if (universe == null
+            || universe.getUniverseDetails() == null
+            || !universe.getUniverseDetails().isKubernetesOperatorControlled) {
+          log.trace("universe is not operator owned, skipping status update");
+          return;
+        }
         log.info("Update Backup Status called for task {} ", taskUUID);
         try (final KubernetesClient kubernetesClient =
             new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
@@ -165,6 +174,7 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
+  @Override
   public void updateYBUniverseStatus(
       Universe universe,
       KubernetesResourceDetails universeName,
@@ -230,6 +240,7 @@ public class KubernetesOperatorStatusUpdater {
   /*
    * SupportBundle Status Updates
    */
+  @Override
   public void markSupportBundleFinished(
       com.yugabyte.yw.models.SupportBundle supportBundle,
       KubernetesResourceDetails bundleName,
@@ -268,6 +279,7 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
+  @Override
   public void markSupportBundleFailed(
       com.yugabyte.yw.models.SupportBundle supportBundle, KubernetesResourceDetails bundleName) {
     try (final KubernetesClient kubernetesClient =
@@ -298,7 +310,7 @@ public class KubernetesOperatorStatusUpdater {
     return bundleStatus;
   }
 
-  public void updateSwamperTargetConfigMap(String configMapName, String namespace, String fileName)
+  private void updateSwamperTargetConfigMap(String configMapName, String namespace, String fileName)
       throws IOException {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
@@ -322,6 +334,7 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
+  @Override
   public void doKubernetesEventUpdate(KubernetesResourceDetails universeName, String status) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {

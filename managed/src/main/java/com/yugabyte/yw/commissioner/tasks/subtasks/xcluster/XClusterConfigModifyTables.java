@@ -160,8 +160,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER
             // replication group, and once for merging the .ALTER replication group
-            getUniverse(true).incrementVersion();
-            getUniverse(true).incrementVersion();
+            getUniverse().incrementVersion();
+            getUniverse().incrementVersion();
           }
         } catch (Exception e) {
           xClusterConfig.updateStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Failed);
@@ -219,7 +219,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             }
 
             if (HighAvailabilityConfig.get().isPresent()) {
-              getUniverse(true).incrementVersion();
+              getUniverse().incrementVersion();
             }
             xClusterConfig
                 .getTablesById(tableIdsToRemoveWithReplication)
@@ -234,9 +234,10 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                   tableConfig -> {
                     tableConfig.setStatus(XClusterTableConfig.Status.Validated);
                     tableConfig.setReplicationSetupDone(false);
-                    tableConfig.setBackup(null);
-                    tableConfig.setRestore(null);
                     tableConfig.setRestoreTime(null);
+                    // We intentionally do not reset backup and restore objects in the xCluster
+                    // config because modify table parent task sets these attributes and
+                    // its subtasks use these attributes.
                   });
           xClusterConfig.update();
         } catch (Exception e) {

@@ -130,10 +130,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         if (metricSettings.isReturnAggregatedValue()) {
           try {
             MetricQueryContext aggregatedContext =
-                context.toBuilder()
-                    .removeGroupBy(context.getAdditionalGroupBy())
-                    .additionalGroupBy(Collections.emptySet())
-                    .build();
+                context.toBuilder().secondLevelAggregation(true).build();
             aggregatedQueries = configDefinition.getQueries(this.metricSettings, aggregatedContext);
           } catch (Exception e) {
             log.error("Error while generating aggregated queries for " + metricName, e);
@@ -211,7 +208,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     return configDefinition.getQueries(this.metricSettings, context);
   }
 
-  private Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
+  public static Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
     switch (metricSettings.getSplitType()) {
       case NODE:
         return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);

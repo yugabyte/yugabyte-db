@@ -13,15 +13,19 @@ Run all tests once like
     pg15_tests/run_shell_tests.sh fastdebug --clang16
     pg15_tests/run_passing_cxx_tests.sh fastdebug --clang16
     pg15_tests/run_passing_java_tests.sh fastdebug --clang16
+    pg15_tests/run_flaky_cxx_tests.sh fastdebug --clang16
+    pg15_tests/run_flaky_java_tests.sh fastdebug --clang16
 
-Add passing tests into passing_cxx.tsv or passing_java.tsv.
+Add passing tests into passing_cxx.tsv or passing_java.tsv.  Add <5% flaky
+tests into flaky_cxx.tsv or flaky_java.tsv.  >5% flaky and failing tests can be
+tracked in shell tests.
 
 Add shell tests by adding a new test_*.sh file following the existing
 conventions.
 
 Make sure new tests pass 10x in a row to avoid introducing flaky tests, and
 make sure all tests pass (at least once) to avoid regressions.  Note: it may be
-more convenient to use jenkins to cover passing tests:
+more convenient to use jenkins to cover passing and flaky tests:
 
     pg15_tests/run_shell_tests.sh fastdebug --clang16
     # ...and trigger jenkins

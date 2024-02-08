@@ -8,10 +8,10 @@ import { CustomerRuntimeConfig } from './CustomerRuntimeConfig';
 import { UniverseRuntimeConfig } from './UniverseRuntimeConfig';
 import { ProviderRuntimeConfig } from './ProviderRuntimeConfig';
 
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import '../AdvancedConfig.scss';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface RuntimeConfigProps {
   activeTab: string;
@@ -65,7 +65,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           unmountOnExit
         >
           <RbacValidator
-            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
             overrideStyle={{ marginTop: '50px' }}
           >
             <CustomerRuntimeConfig
@@ -84,7 +84,6 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           unmountOnExit
         >
           <RbacValidator
-            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
             customValidateFunction={(perms) => {
               const universeWithReadPerm = perms.filter((p) => {
                 return p.resourceType === Resource.UNIVERSE && p.actions.includes(Action.READ);
@@ -109,7 +108,7 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           unmountOnExit
         >
           <RbacValidator
-            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
+            accessRequiredOn={ApiPermissionMap.GET_RUNTIME_CONFIG_BY_SCOPE}
             overrideStyle={{ marginTop: '150px' }}
           >
             <ProviderRuntimeConfig

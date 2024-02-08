@@ -61,7 +61,7 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
 
     final MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.Builder builder =
       MasterReplicationOuterClass.SetupUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(replicationGroupName)
+        .setReplicationGroupId(replicationGroupName)
         .addAllProducerTableIds(sourceTableIds)
         .addAllProducerMasterAddresses(sourceMasterAddresses);
 

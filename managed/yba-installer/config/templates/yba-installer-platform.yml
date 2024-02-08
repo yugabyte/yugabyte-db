@@ -104,6 +104,14 @@ services:
         # Interval at which to send a status report email. Default: 12 hours.
         health.status_interval_ms = 43200000
         installation = "yba-installer"
+        security {
+          headers {
+            {{ if eq (yamlPath "platform.hsts_enabled") "true" }}
+              hsts_enabled = true
+            {{ end }}
+            custom_headers = {{ yamlPathSlice "platform.custom_headers" }}
+          }
+        }
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
         security.use_oauth = "{{ yamlPath "platform.useOauth" }}"
@@ -209,7 +217,7 @@ services:
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
-        -Dhttp.nonProxyHost={{ yamlPath "platform.proxy.java_non_proxy" }} \
+        -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \
         -Dhttp.proxyHost={{ yamlPath "platform.proxy.java_http_proxy_host" }} \
         -Dhttp.proxyPort={{ yamlPath "platform.proxy.java_http_proxy_port" }} \
         -Dhttps.proxyHost={{ yamlPath "platform.proxy.java_https_proxy_host" }} \

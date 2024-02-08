@@ -44,7 +44,7 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Release series 1.9.5.y
 
-### Tested versions
+### Prerequisites
 
 | Software | Versions |
 | :--- | :--- |

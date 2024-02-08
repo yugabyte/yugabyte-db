@@ -18,29 +18,18 @@ The same syntax rules govern a subquery, wherever you might use one—like, for 
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  select,
+  with_clause,
+  select_list,
+  trailing_select_clauses,
+  common_table_expression,
+  fn_over_window,
+  ordinary_aggregate_fn_invocation,
+  within_group_aggregate_fn_invocation,
+  grouping_element,
+  order_expr
+{{%/ebnf%}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for more information about the semantics of the `common_table_expression` grammar rule.
 
@@ -51,7 +40,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets).
 
-For details on `from_item` and `with_query` see [SELECT](https://www.postgresql.org/docs/10/static/sql-select.html) in the PostgreSQL documentation.
+For details on `from_item` see [SELECT](https://www.postgresql.org/docs/11/static/sql-select.html) in the PostgreSQL documentation.
 
 The `fn_over_window` rule denotes the special kind of `SELECT` list item that must be used to invoke a window function and that may be used to invoke an aggregate function. (Window functions are known as analytic functions in the terminology of some SQL database systems.) The dedicated diagram that follows the main diagram for the `select` rule shows the `FILTER` and the `OVER` keywords. You can see that you _cannot_ invoke a function in this way without specifying an `OVER` clause—and that the `OVER` clause requires the specification of the so-called [_window_](../../../exprs/window_functions/invocation-syntax-semantics/#the-window-definition-rule) that gives this invocation style its name. The `FILTER` clause is optional and may be used _only_ when you invoke an aggregate function in this way. All of this is explained in the [Window function invocation—SQL syntax and semantics](../../../exprs/window_functions/invocation-syntax-semantics/) section within the major section [Window functions](../../../exprs/window_functions/).
 

@@ -147,9 +147,15 @@ SELECT * FROM FKTABLE ORDER BY ftest1, ftest2, ftest3;
 
 -- Try altering the column type where foreign keys are involved
 ALTER TABLE PKTABLE ALTER COLUMN ptest1 TYPE bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  Altering type of foreign key is not supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 ALTER TABLE FKTABLE ALTER COLUMN ftest1 TYPE bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  Altering type of foreign key is not supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 SELECT * FROM PKTABLE ORDER BY ptest1, ptest2;
@@ -1583,6 +1589,9 @@ CREATE TABLE fk_partitioned_fk_1 PARTITION OF fk_partitioned_fk FOR VALUES FROM 
 INSERT INTO fk_notpartitioned_pk VALUES (1);
 INSERT INTO fk_partitioned_fk VALUES (1);
 ALTER TABLE fk_notpartitioned_pk ALTER COLUMN a TYPE bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  Altering type of foreign key is not supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/17037. React with thumbs up to raise its priority
 DELETE FROM fk_notpartitioned_pk WHERE a = 1;

@@ -15,7 +15,6 @@
 
 #include <memory>
 
-#include "yb/cdc/cdc_types.h"
 #include "yb/tserver/heartbeater.h"
 
 namespace yb {
@@ -36,9 +35,6 @@ class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvid
   // Stores the total read and writes ops for computing iops.
   uint64_t prev_reads_ = 0;
   uint64_t prev_writes_ = 0;
-
-  // Stores the previously reported replication errors.
-  cdc::TabletReplicationErrorMap prev_replication_error_map_;
 };
 
 } // namespace tserver

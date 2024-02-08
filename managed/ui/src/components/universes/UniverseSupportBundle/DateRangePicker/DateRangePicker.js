@@ -11,7 +11,7 @@ export const CustomDateRangePicker = ({ onRangeChange }) => {
 
   const handleStartDateTimeChange = (timestamp) => {
     setLocalStartDate(timestamp);
-    onRangeChange({ start: localEndDate, end: timestamp });
+    onRangeChange({ start: timestamp, end: localEndDate });
   };
 
   const handleEndDateTimeChange = (timestamp) => {

@@ -16,6 +16,7 @@ import org.yb.master.MasterBackupOuterClass.ListSnapshotRestorationsRequestPB;
 import org.yb.master.MasterBackupOuterClass.ListSnapshotRestorationsResponsePB;
 import org.yb.master.MasterBackupOuterClass.RestorationInfoPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
@@ -35,7 +36,7 @@ public class ListSnapshotRestorationsRequest extends YRpc<ListSnapshotRestoratio
         final ListSnapshotRestorationsRequestPB.Builder builder =
                 ListSnapshotRestorationsRequestPB.newBuilder();
         if (restorationUUID != null) {
-            builder.setRestorationId(SnapshotUtil.convertToByteString(restorationUUID));
+            builder.setRestorationId(CommonUtil.convertToByteString(restorationUUID));
         }
         return toChannelBuffer(header, builder.build());
     }

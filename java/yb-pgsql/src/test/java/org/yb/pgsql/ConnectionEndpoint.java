@@ -25,5 +25,8 @@ public enum ConnectionEndpoint {
   }
 
   public final boolean enabled;
-  public static ConnectionEndpoint DEFAULT = POSTGRES;
+  private static final String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+  public static ConnectionEndpoint DEFAULT =
+    (enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")
+    ? YSQL_CONN_MGR : POSTGRES;
 }

@@ -45,7 +45,7 @@ When deploying a universe, YBA uses the provider configuration settings to creat
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="create-admin-user/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
         <div class="title">Create admin user</div>
       </div>
       <div class="body">
@@ -57,7 +57,7 @@ When deploying a universe, YBA uses the provider configuration settings to creat
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="set-up-cloud-provider/aws/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
         <div class="title">Configure cloud providers</div>
       </div>
       <div class="body">

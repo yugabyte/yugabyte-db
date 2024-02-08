@@ -15,6 +15,8 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 import { toast } from 'react-toastify';
 import { timeFormatter } from '../../../utils/TableFormatters';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -58,7 +60,8 @@ class TaskDetail extends Component {
   render() {
     const {
       tasks: { failedTasks, taskProgressData },
-      params: { taskUUID }
+      params: { taskUUID },
+      universe: { universeUUID }
     } = this.props;
     const self = this;
     const currentTaskData = taskProgressData.data;
@@ -111,13 +114,22 @@ class TaskDetail extends Component {
           </div>
           {/* TODO use API response to check retryable. */}
           {isNonEmptyString(currentTaskData.title) && currentTaskData.retryable && (
-            <div
-              className="btn btn-orange text-center pull-right task-detail-button"
-              onClick={() => self.retryTaskClicked(taskUUID)}
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: currentTaskData?.targetUUID,
+                ...ApiPermissionMap.RETRY_TASKS
+              }}
+              isControl
+              overrideStyle={{ float: 'right' }}
             >
-              <i className="fa fa-refresh"></i>
-              Retry Task
-            </div>
+              <div
+                className="btn btn-orange text-center pull-right task-detail-button"
+                onClick={() => self.retryTaskClicked(taskUUID)}
+              >
+                <i className="fa fa-refresh"></i>
+                Retry Task
+              </div>
+            </RbacValidator>
           )}
         </div>
       );

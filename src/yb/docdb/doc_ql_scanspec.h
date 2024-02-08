@@ -55,9 +55,6 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
                 const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
                 const size_t prefix_length = 0);
 
-  // Create file filter based on range components.
-  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const override;
-
   const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
   }
@@ -73,8 +70,8 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
  private:
   static const dockv::DocKey& DefaultStartDocKey();
 
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  Result<dockv::KeyBytes> Bound(const bool lower_bound) const override;
+  // Complete initialising bounds used by this scan spec.
+  void CompleteBounds();
 
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
@@ -85,10 +82,9 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   dockv::KeyBytes bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
-  dockv::KeyEntryValues range_components(
-      const bool lower_bound,
-      std::vector<bool>* inclusivities = nullptr,
-      bool use_strictness = true) const override;
+  dockv::KeyEntryValues RangeComponents(
+      bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr) const override;
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t.
@@ -122,10 +118,6 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
 
   // Starting doc key when requested by the client.
   const dockv::KeyBytes start_doc_key_;
-
-  // Lower/upper doc keys basing on the range.
-  const dockv::KeyBytes lower_doc_key_;
-  const dockv::KeyBytes upper_doc_key_;
 
   DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };

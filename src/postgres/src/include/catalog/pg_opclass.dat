@@ -527,7 +527,7 @@
 { opcmethod => 'lsm', opcname => 'macaddr8_ops',
   opcfamily => 'lsm/macaddr8_ops', opcintype => 'macaddr8' },
 { opcmethod => 'lsm', opcname => 'name_ops',
-  opcfamily => 'lsm/name_ops', opcintype => 'name' },
+  opcfamily => 'lsm/text_ops', opcintype => 'name' },
 { oid => '9944', oid_symbol => 'NUMERIC_LSM_OPS_OID',
   opcmethod => 'lsm', opcname => 'numeric_ops',
   opcfamily => 'lsm/numeric_ops', opcintype => 'numeric' },

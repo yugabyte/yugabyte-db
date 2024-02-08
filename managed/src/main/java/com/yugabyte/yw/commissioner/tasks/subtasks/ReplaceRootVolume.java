@@ -14,8 +14,8 @@ import javax.inject.Inject;
 public class ReplaceRootVolume extends NodeTaskBase {
 
   @Inject
-  protected ReplaceRootVolume(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected ReplaceRootVolume(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

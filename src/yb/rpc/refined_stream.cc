@@ -162,18 +162,16 @@ Result<size_t> RefinedStream::ProcessReceived(ReadBufferFull read_buffer_full) {
   return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
 }
 
-void RefinedStream::Connected() {
+Status RefinedStream::Connected() {
   if (local_side_ != LocalSide::kClient) {
-    return;
+    return Status::OK();
   }
 
   auto status = StartHandshake();
   if (status.ok()) {
     status = refiner_->Handshake();
   }
-  if (!status.ok()) {
-    context_->Destroy(status);
-  }
+  return status;
 }
 
 Status TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
@@ -210,7 +208,7 @@ Status RefinedStream::Established(RefinedStreamState state) {
 
   VLOG_WITH_PREFIX(1) << __func__ << ": " << state;
 
-  context().Connected();
+  RETURN_NOT_OK(context().Connected());
   for (auto& data : pending_data_) {
     RETURN_NOT_OK(Send(std::move(data)));
   }

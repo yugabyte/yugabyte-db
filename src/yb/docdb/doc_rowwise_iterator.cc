@@ -187,9 +187,11 @@ inline void DocRowwiseIterator::PrevDocKey(Slice key) {
   }
 }
 
-Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) {
+Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished,
+                                                           bool current_fetched_row_skipped) {
   if (!IsFetchedRowStatic() &&
-      VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get()))) {
+      VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get(),
+                                                    current_fetched_row_skipped))) {
     return Status::OK();
   }
   if (!is_forward_scan_) {
@@ -229,7 +231,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
   if (prev_doc_found_ != DocReaderResult::kNotFound) {
     RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(
-        prev_doc_found_ == DocReaderResult::kFoundAndFinished));
+        prev_doc_found_ == DocReaderResult::kFoundAndFinished, false));
     prev_doc_found_ = DocReaderResult::kNotFound;
   }
 
@@ -328,7 +330,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       break;
     }
 
-    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(/* row_finished= */ false));
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow(/* row_finished= */ false,
+                                                  /* current_fetched_row_skipped */ true));
   }
   return true;
 }

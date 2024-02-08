@@ -251,6 +251,13 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : Template1DbOid,
 		is_breaking_change, is_global_ddl);
+
+	if (yb_test_fail_next_inc_catalog_version)
+	{
+		yb_test_fail_next_inc_catalog_version = false;
+		elog(ERROR, "Failed increment catalog version as requested");
+	}
+
 	return true;
 }
 

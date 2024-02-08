@@ -11,7 +11,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -28,18 +29,18 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected GFlagsKubernetesUpgrade(
       BaseTaskDependencies baseTaskDependencies,
       GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService,
-      KubernetesOperatorStatusUpdater kubernetesStatus) {
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies);
     this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   @Override
@@ -75,21 +76,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Verify the request params and fail if invalid only if its the first time we are
           // invoked.
           if (isFirstTry()) {
-            taskParams().verifyParams(universe);
+            taskParams().verifyParams(universe, isFirstTry());
           }
           if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
             // Verify auto flags compatibility.
             taskParams()
                 .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
           }
-          // TODO can we avoid this and save this on task params for now
-          // Update the list of parameter key/values in the universe with the new ones.
-          updateGFlagsPersistTasks(
-                  cluster,
-                  taskParams().masterGFlags,
-                  taskParams().tserverGFlags,
-                  getPrimaryClusterSpecificGFlags())
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           // Always update both master and tserver,
           // Helm update will finish without any restarts if there are no updates
@@ -121,6 +114,13 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             }
             installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+            // task to persist changed GFlags to universe in DB
+            updateGFlagsPersistTasks(
+                    cluster,
+                    taskParams().masterGFlags,
+                    taskParams().tserverGFlags,
+                    getPrimaryClusterSpecificGFlags())
+                .setSubTaskGroupType(getTaskSubGroupType());
           } catch (Throwable t) {
             th = t;
             throw t;

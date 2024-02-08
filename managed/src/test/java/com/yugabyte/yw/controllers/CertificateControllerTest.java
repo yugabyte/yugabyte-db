@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
@@ -36,6 +37,8 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.CertificateInfoExt;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -167,9 +170,13 @@ public class CertificateControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteCertificate() {
     UUID cert_uuid = test_certs_uuids.get(0);
+    CertificateInfo certificate = CertificateInfo.getOrBadRequest(cert_uuid);
     Result result = deleteCertificate(customer.getUuid(), cert_uuid);
-    JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
+    assertTrue(Files.notExists(Paths.get(certificate.getCertificate())));
+    result = assertPlatformException(() -> CertificateInfo.getOrBadRequest(cert_uuid));
+    assertBadRequest(result, "Invalid Cert ID: " + cert_uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test

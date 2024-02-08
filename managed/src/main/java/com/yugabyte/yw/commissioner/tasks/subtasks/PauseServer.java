@@ -21,8 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class PauseServer extends NodeTaskBase {
   @Inject
-  protected PauseServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected PauseServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

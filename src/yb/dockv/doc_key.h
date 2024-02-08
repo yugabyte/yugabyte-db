@@ -338,11 +338,15 @@ class DocKeyEncoderAfterTableIdStep {
   explicit DocKeyEncoderAfterTableIdStep(KeyBytes* out) : out_(out) {
   }
 
+  DocKeyEncoderAfterHashStep NoHash() {
+    return DocKeyEncoderAfterHashStep(out_);
+  }
+
   template <class Collection>
   DocKeyEncoderAfterHashStep Hash(
       bool hash_present, uint16_t hash, const Collection& hashed_group) {
     if (!hash_present) {
-      return DocKeyEncoderAfterHashStep(out_);
+      return NoHash();
     }
 
     return Hash(hash, hashed_group);

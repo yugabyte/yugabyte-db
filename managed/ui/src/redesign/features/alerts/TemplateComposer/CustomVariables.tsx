@@ -34,8 +34,8 @@ import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { CustomVariable } from './ICustomVariables';
 import { createErrorMessage } from '../../../../utils/ObjectUtils';
 import AssignCustomVariableValueModal from './AssignCustomVariableValueModal';
-import { RbacValidator } from '../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
+import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 
 type CustomVariablesEditorProps = {};
 
@@ -150,9 +150,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
 
   const createCustomVariablesButton = (
     <RbacValidator
-      accessRequiredOn={{
-        ...UserPermissionMap.createAlertsConfig
-      }}
+      accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_TEMPLATE_VARIABLE}
       isControl
     >
       <YBButton

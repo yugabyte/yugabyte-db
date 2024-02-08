@@ -14,6 +14,7 @@
 #include <chrono>
 #include <utility>
 #include <boost/assign.hpp>
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
@@ -100,7 +101,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> created_streams;
     // We will create some DB Streams to be listed out later.
     for (int i = 0; i < num_streams; i++) {
-      auto db_stream_id = VERIFY_RESULT(CreateDBStream());
+      auto db_stream_id = VERIFY_RESULT(CreateDBStreamWithReplicationSlot());
       SCHECK(db_stream_id, IllegalState, "The created db_stream_id is empty!");
       created_streams.push_back(db_stream_id);
     }
@@ -229,7 +230,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     // Sorting would make assertion easier later on.
     std::sort(created_table_ids_with_pk.begin(), created_table_ids_with_pk.end());
-    auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+    auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto get_resp = ASSERT_RESULT(GetDBStreamInfo(db_stream_id));
     ASSERT_FALSE(get_resp.has_error());
@@ -275,7 +276,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // The function CreateDBStream() creates a stream with EXPLICIT checkpointing by default.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -295,7 +296,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
   // Now we just need to ensure that everything is working fine.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -303,7 +304,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestOnSingleRF)) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -312,7 +313,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // Create a DB Stream ID to be deleted later on.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 
   // Deleting the created DB Stream ID.
@@ -504,6 +505,39 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
         }
       }
     }
+}
+
+TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
+
+  auto stream_id =
+      ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE t1"));
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok() && resp->has_error()) {
+            return true;
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  // We should be able to create the replication slot again with the same name.
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
 }
 
 }  // namespace cdc

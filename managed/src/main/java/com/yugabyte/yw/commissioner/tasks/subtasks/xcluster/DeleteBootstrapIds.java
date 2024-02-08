@@ -126,7 +126,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

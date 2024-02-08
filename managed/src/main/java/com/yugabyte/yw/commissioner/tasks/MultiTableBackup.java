@@ -278,7 +278,7 @@ public class MultiTableBackup extends UniverseTaskBase {
           tableBackupParams.disableParallelism = params().disableParallelism;
 
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
-          backup.setTaskUUID(userTaskUUID);
+          backup.setTaskUUID(getUserTaskUUID());
           backup.save();
           tableBackupParams.backupUuid = backup.getBackupUUID();
           log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
@@ -294,7 +294,7 @@ public class MultiTableBackup extends UniverseTaskBase {
                 || (params().backupType == TableType.YQL_TABLE_TYPE
                     && params().transactionalBackup))) {
           Backup backup = Backup.create(params().customerUUID, tableBackupParams);
-          backup.setTaskUUID(userTaskUUID);
+          backup.setTaskUUID(getUserTaskUUID());
           backup.save();
           tableBackupParams.backupUuid = backup.getBackupUUID();
           log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
@@ -306,7 +306,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         } else {
           for (BackupTableParams tableParams : backupParamsList) {
             Backup backup = Backup.create(params().customerUUID, tableParams);
-            backup.setTaskUUID(userTaskUUID);
+            backup.setTaskUUID(getUserTaskUUID());
             backup.save();
             tableParams.backupUuid = backup.getBackupUUID();
             tableParams.customerUuid = backup.getCustomerUUID();

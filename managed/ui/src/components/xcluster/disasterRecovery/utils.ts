@@ -2,9 +2,11 @@ import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
 import { DrConfigActions } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
+import { XClusterConfigType } from '../constants';
 
 import { DrConfig, DrConfigSafetimeResponse, DrConfigState } from './dtos';
 import { Universe } from '../../../redesign/helpers/dtos';
+import { XClusterConfig } from '../dtos';
 
 /**
  * Return a list of all enabled actions on a DR config.
@@ -50,3 +52,28 @@ export const getNamespaceIdSafetimeEpochUsMap = (
     namespaceIdSafetimeEpochUsMap[namespace.namespaceId] = namespace.safetimeEpochUs;
     return namespaceIdSafetimeEpochUsMap;
   }, {});
+
+/**
+ * Extract an XClusterConfig object from the fields of the provided DrConfig object.
+ */
+export const getXClusterConfig = (drConfig: DrConfig): XClusterConfig => ({
+  createTime: drConfig.createTime,
+  modifyTime: drConfig.modifyTime,
+  name: drConfig.name,
+  paused: drConfig.paused,
+  pitrConfigs: drConfig.pitrConfigs,
+  replicationGroupName: drConfig.replicationGroupName,
+  sourceActive: drConfig.primaryUniverseActive,
+  status: drConfig.status,
+  tableDetails: drConfig.tableDetails,
+  tableType: 'YSQL',
+  tables: drConfig.tables,
+  targetActive: drConfig.drReplicaUniverseActive,
+  type: XClusterConfigType.TXN,
+  usedForDr: true,
+  uuid: drConfig.xclusterConfigUuid,
+  sourceUniverseState: drConfig.primaryUniverseState,
+  sourceUniverseUUID: drConfig.primaryUniverseUuid,
+  targetUniverseState: drConfig.drReplicaUniverseState,
+  targetUniverseUUID: drConfig.drReplicaUniverseUuid
+});

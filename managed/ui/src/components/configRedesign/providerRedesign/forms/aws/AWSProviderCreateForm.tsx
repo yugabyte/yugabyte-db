@@ -67,6 +67,8 @@ import { getInvalidFields, useValidationStyles } from './utils';
 
 import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -405,15 +407,20 @@ export const AWSProviderCreateForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <YBButton
-                    btnIcon="fa fa-plus"
-                    btnText="Add Region"
-                    btnClass="btn btn-default"
-                    btnType="button"
-                    onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
-                    data-testid={`${FORM_NAME}-AddRegionButton`}
-                  />
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
+                    isControl
+                  >
+                    <YBButton
+                      btnIcon="fa fa-plus"
+                      btnText="Add Region"
+                      btnClass="btn btn-default"
+                      btnType="button"
+                      onClick={showAddRegionFormModal}
+                      disabled={isFormDisabled}
+                      data-testid={`${FORM_NAME}-AddRegionButton`}
+                    />
+                  </RbacValidator>
                 ) : null
               }
             >
@@ -444,7 +451,6 @@ export const AWSProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
-                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -629,7 +635,7 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-      formValues.sshPrivateKeyContent
+        formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -668,8 +674,8 @@ const constructProviderPayload = async (
           [ProviderCode.AWS]: {
             ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
               ? {
-                  ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
-                }
+                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+              }
               : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
             ...(regionFormValues.securityGroupId && {
               securityGroupId: regionFormValues.securityGroupId

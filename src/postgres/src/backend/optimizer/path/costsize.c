@@ -6511,6 +6511,23 @@ yb_get_lsm_seek_cost(double num_tuples, int num_key_value_pairs_per_tuple,
 	return seek_cost;
 }
 
+static void
+yb_parallel_cost(Path *path)
+{
+	if (path->parallel_aware)
+	{
+		/* bg workers + main backend */
+		double parallel_divisor = get_parallel_divisor(path);
+		/*
+		 * parallelization doesn't help with startup cost, but the rest
+		 * can be equally divided among the workers.
+		 */
+		path->total_cost = path->startup_cost +
+			(path->total_cost - path->startup_cost) / parallel_divisor;
+		path->rows = clamp_row_est(path->rows / parallel_divisor);
+	}
+}
+
 /*
  * yb_cost_seqscan
  *	  Determines and returns the cost of scanning a relation sequentially.
@@ -6611,6 +6628,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
+	path->yb_estimated_num_nexts = num_nexts;
+	path->yb_estimated_num_seeks = num_seeks;
+
 	total_cost += (num_seeks * per_seek_cost) +
 				  (num_nexts * per_next_cost);
 
@@ -6630,6 +6650,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->startup_cost = startup_cost;
 	path->total_cost = total_cost;
+	yb_parallel_cost(path);
 }
 
 /*
@@ -6772,6 +6793,22 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
+
+	if (partial_path)
+	{
+		path->path.parallel_workers = compute_parallel_worker(
+			baserel, -1, -1, max_parallel_workers_per_gather);
+
+		/*
+		 * Fall out if workers can't be assigned for parallel scan, because in
+		 * such a case this path will be rejected.  So there is no benefit in
+		 * doing extra computation.
+		 */
+		if (path->path.parallel_workers <= 0)
+			return;
+
+		path->path.parallel_aware = true;
+	}
 
 	/*
 	 * Mark the path with the correct row estimate, and identify which quals
@@ -7066,8 +7103,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	num_seeks += num_result_pages;
 	num_nexts += num_result_pages - 1;
 
-	path->estimated_num_nexts = num_nexts;
-	path->estimated_num_seeks = num_seeks;
+	path->yb_estimated_num_nexts = num_nexts;
+	path->yb_estimated_num_seeks = num_seeks;
 
 	/**
 	 * LSM index seek and next costs
@@ -7186,13 +7223,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * be optimized in the future.
 		 */
 		int			num_baserel_seeks = num_index_tuples;
-		int			num_baserel_nexts = 0;
-		path->estimated_num_seeks += num_baserel_seeks;
-		path->estimated_num_nexts += num_baserel_nexts;
+
+		path->yb_estimated_num_seeks += num_baserel_seeks;
 
 		startup_cost += baserel_per_seek_cost;
-		run_cost += (baserel_per_seek_cost * num_baserel_seeks) +
-		            (per_next_cost * num_baserel_nexts);
+		run_cost += (baserel_per_seek_cost * num_baserel_seeks);
 
 		baserel_tuple_width = yb_get_relation_data_width(baserel, basereloid);
 
@@ -7221,5 +7256,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
+	yb_parallel_cost((Path *) path);
 #endif
 }

@@ -16,17 +16,27 @@
 #include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/util/logging.h"
 
 namespace yb::qlexpr {
 
 using std::vector;
+
+std::string QLScanRange::QLBound::ToString() const {
+  return YB_CLASS_TO_STRING(value, is_inclusive, is_lower_bound);
+}
+
+std::string QLScanRange::QLRange::ToString() const {
+  return YB_STRUCT_TO_STRING(min_bound, max_bound, is_not_null);
+}
 
 //-------------------------------------- QL scan range --------------------------------------
 QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition) {
@@ -60,7 +70,7 @@ struct ColumnValue {
 
 template <class Col>
 auto GetColumnValue(const Col& col) {
-  CHECK_EQ(col.size(), 2) << yb::ToString(col);
+  CHECK_EQ(col.size(), 2) << AsString(col);
   auto it = col.begin();
   using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
   if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
@@ -543,10 +553,9 @@ QLScanRange& QLScanRange::operator=(QLScanRange&& other) {
   return *this;
 }
 
-//-------------------------------------- YQL scan spec ---------------------------------------
-Result<dockv::KeyBytes> YQLScanSpec::LowerBound() const { return Bound(/* lower_bound = */ true); }
-
-Result<dockv::KeyBytes> YQLScanSpec::UpperBound() const { return Bound(/* lower_bound = */ false); }
+std::string QLScanRange::ToString() const {
+  return YB_CLASS_TO_STRING(ranges, has_in_range_options, has_in_hash_options);
+}
 
 //-------------------------------------- QL scan spec ---------------------------------------
 

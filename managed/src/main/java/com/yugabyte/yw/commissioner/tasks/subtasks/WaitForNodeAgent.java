@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -13,7 +12,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import javax.inject.Inject;
 
-public class WaitForNodeAgent extends AbstractTaskBase {
+public class WaitForNodeAgent extends NodeTaskBase {
   private final NodeAgentClient nodeAgentClient;
 
   @Inject

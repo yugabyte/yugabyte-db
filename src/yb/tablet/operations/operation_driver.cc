@@ -192,7 +192,7 @@ void OperationDriver::ExecuteAsync() {
   auto s = preparer_->Submit(this);
 
   if (operation_) {
-    operation_->SubmittedToPreparer();
+    operation_->ResetPreparingToken();
   }
 
   if (!s.ok()) {

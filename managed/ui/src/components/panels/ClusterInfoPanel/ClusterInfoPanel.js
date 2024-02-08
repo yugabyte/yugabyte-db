@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { Component } from 'react';
+import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import pluralize from 'pluralize';
@@ -10,7 +11,8 @@ import {
   getPrimaryCluster,
   isKubernetesUniverse,
   getUniverseNodeCount,
-  getUniverseDedicatedNodeCount
+  getUniverseDedicatedNodeCount,
+  getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import '../UniverseDisplayPanel/UniverseDisplayPanel.scss';
@@ -28,9 +30,11 @@ export default class ClusterInfoPanel extends Component {
       universeInfo: {
         universeDetails,
         universeDetails: { clusters }
-      }
+      },
+      type
     } = this.props;
-    const cluster = getPrimaryCluster(clusters);
+    const isPrimary = type === 'primary';
+    const cluster = isPrimary ? getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
 
     const useK8CustomResourcesObject = runtimeConfigs?.data?.configEntries?.find(
@@ -52,7 +56,14 @@ export default class ClusterInfoPanel extends Component {
     return (
       <YBWidget
         className={'overview-widget-cluster-primary'}
-        headerLeft={'Primary Cluster'}
+        headerLeft={isPrimary ? 'Primary Cluster' : 'Read Replica'}
+        headerRight={
+          <Link
+            to={`/universes/${universeInfo.universeUUID}/view/${isPrimary ? 'primary' : 'async'}`}
+          >
+            Details
+          </Link>
+        }
         body={
           <FlexContainer className={'cluster-metadata-container'} direction={'row'}>
             <FlexGrow className={'cluster-metadata-tserver'}>
@@ -102,7 +113,9 @@ export default class ClusterInfoPanel extends Component {
               )}
               <Row className={'cluster-metadata'}>
                 <Col lg={8} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__label'}>{'Replication Factor:'}</span>
+                  <span className={'cluster-metadata__label'}>
+                    {isPrimary ? 'Replication Factor:' : 'Read Replicas:'}
+                  </span>
                 </Col>
                 <Col lg={4} md={6} sm={6} xs={6}>
                   <span className={'cluster-metadata__align'}>

@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.NFSUtil;
@@ -25,6 +28,8 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
@@ -35,6 +40,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Files;
@@ -78,6 +84,9 @@ import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
 import org.yb.ybc.BackupServiceTaskThrottleParametersGetResponse;
 import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
 import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
+import org.yb.ybc.BackupServiceValidateCloudConfigRequest;
+import org.yb.ybc.BackupServiceValidateCloudConfigResponse;
+import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.ControllerObjectTaskThrottleParameters;
 import org.yb.ybc.ControllerStatus;
 import org.yb.ybc.PingRequest;
@@ -360,18 +369,7 @@ public class YbcManager {
       UUID universeUUID, Map<String, Integer> currentValues) {
     Universe u = Universe.getOrBadRequest(universeUUID);
     NodeDetails n = u.getTServersInPrimaryCluster().get(0);
-    String instanceType = n.cloudInfo.instance_type;
-    int numCores =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(
-                        UUID.fromString(
-                            u.getUniverseDetails()
-                                .getClusterByUuid(n.placementUuid)
-                                .userIntent
-                                .provider),
-                        instanceType)
-                    .getNumCores());
+    int numCores = getCoreCountForTserver(u, n);
     Map<String, YbcThrottleParametersResponse.ThrottleParamValue> throttleParams = new HashMap<>();
     throttleParams.put(
         GFlagsUtil.YBC_MAX_CONCURRENT_DOWNLOADS,
@@ -480,17 +478,15 @@ public class YbcManager {
       } else {
         LOG.info(
             "Backup {} task is successfully aborted on Yb-controller.", backup.getBackupUUID());
-        deleteYbcBackupTask(backup.getUniverseUUID(), taskID, ybcClient);
+        deleteYbcBackupTask(taskID, ybcClient);
       }
     } catch (Exception e) {
       LOG.error(
           "Backup {} task abort failed with error: {}.", backup.getBackupUUID(), e.getMessage());
-    } finally {
-      ybcClientService.closeClient(ybcClient);
     }
   }
 
-  public void deleteYbcBackupTask(UUID universeUUID, String taskID, YbcClient ybcClient) {
+  public void deleteYbcBackupTask(String taskID, YbcClient ybcClient) {
     try {
       BackupServiceTaskResultRequest taskResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
@@ -521,20 +517,31 @@ public class YbcManager {
       LOG.info("Task {} is successfully deleted on Yb-controller.", taskID);
     } catch (Exception e) {
       LOG.error("Task {} deletion failed with error: {}", taskID, e.getMessage());
+    }
+  }
+
+  public String downloadSuccessMarker(
+      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
+      UUID universeUUID,
+      String taskID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(universeUUID);
+      return downloadSuccessMarker(downloadSuccessMarkerRequest, taskID, ybcClient);
     } finally {
-      ybcClientService.closeClient(ybcClient);
+      if (ybcClient != null) {
+        ybcClientService.closeClient(ybcClient);
+      }
     }
   }
 
   /** Returns the success marker for a particular backup, returns null if not found. */
   public String downloadSuccessMarker(
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
-      UUID universeUUID,
-      String taskID) {
-    YbcClient ybcClient = null;
+      String taskID,
+      YbcClient ybcClient) {
     String successMarker = null;
     try {
-      ybcClient = getYbcClient(universeUUID);
       BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
           ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
       if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -569,7 +576,7 @@ public class YbcManager {
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
       successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
-      deleteYbcBackupTask(universeUUID, taskID, ybcClient);
+      deleteYbcBackupTask(taskID, ybcClient);
       return successMarker;
     } catch (Exception e) {
       LOG.error(
@@ -577,8 +584,6 @@ public class YbcManager {
           taskID,
           e.getMessage());
       return successMarker;
-    } finally {
-      ybcClientService.closeClient(ybcClient);
     }
   }
 
@@ -594,6 +599,65 @@ public class YbcManager {
               "Unable to fetch enabled backup features for Universe %s", universeUUID.toString()));
     } finally {
       ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  /**
+   * Validate Cloud config on YBC server. If YBC server is unavailable, it logs a warning message.
+   *
+   * @param nodeIP Use this node ip to create YBC client
+   * @param universe The universe
+   * @param csConfig The cloud store config to validate
+   */
+  public void validateCloudConfigIgnoreIfYbcUnavailable(
+      String nodeIP, Universe universe, CloudStoreConfig csConfig) {
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String certFile = universe.getCertificateNodetoNode();
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(nodeIP, ybcPort, certFile);
+    } catch (Exception e) {
+      LOG.warn("Cannot check cloud config on node {} as YBC server is not available.", nodeIP);
+      return;
+    }
+    try {
+      validateCloudConfigWithClient(nodeIP, ybcClient, csConfig);
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  /**
+   * Validate Cloud store config credentials on YBC server. Throws exception on failure.
+   *
+   * @param nodeIP The node ip on which YBC client is created
+   * @param universe The universe
+   * @param csConfig The cloud store config to validate
+   */
+  public void validateCloudConfigWithClient(
+      String nodeIP, YbcClient ybcClient, CloudStoreConfig csConfig) {
+    try {
+      BackupServiceValidateCloudConfigRequest validationRequest =
+          BackupServiceValidateCloudConfigRequest.newBuilder().setCsConfig(csConfig).build();
+      BackupServiceValidateCloudConfigResponse validationResponse =
+          ybcClient.backupServiceValidateCloudConfig(validationRequest);
+      if (validationResponse != null) {
+        if (validationResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+          LOG.debug("Cloud config validation successful on node {}", nodeIP);
+        } else {
+          throw new RuntimeException(
+              String.format(
+                  "Validating cloud config  on node %s failed with status code: %s error: %s",
+                  nodeIP,
+                  validationResponse.getStatus().getCode(),
+                  validationResponse.getStatus().getErrorMessage()));
+        }
+      } else {
+        throw new RuntimeException(
+            String.format("Cloud config validation on node %s returned null response.", nodeIP));
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
@@ -710,14 +774,14 @@ public class YbcManager {
    */
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       UUID universeUUID, boolean enablePreference) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     if (enablePreference) {
-      Universe universe = Universe.getOrBadRequest(universeUUID);
       List<String> nodeIPsWithPreference = getPreferenceBasedYBCNodeIPsList(universe);
       String certFile = universe.getCertificateNodetoNode();
       int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
       return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, certFile);
     } else {
-      return getAvailableYbcClientIpPair(universeUUID, null);
+      return getAvailableYbcClientIpPair(universe, null);
     }
   }
 
@@ -732,6 +796,11 @@ public class YbcManager {
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       UUID universeUUID, @Nullable List<String> nodeIPListOverride) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getAvailableYbcClientIpPair(universe, nodeIPListOverride);
+  }
+
+  public Pair<YbcClient, String> getAvailableYbcClientIpPair(
+      Universe universe, @Nullable List<String> nodeIPListOverride) {
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     List<String> nodeIPs = new ArrayList<>();
@@ -760,7 +829,7 @@ public class YbcManager {
             .filter(Objects::nonNull)
             .findFirst();
     if (!clientIpPair.isPresent()) {
-      throw new RuntimeException("YB-Controller server unavailable");
+      throw new RuntimeException("YB-Controller servers unavailable");
     }
     return clientIpPair.get();
   }
@@ -809,6 +878,11 @@ public class YbcManager {
     return nodesToCheckInPreference;
   }
 
+  public YbcClient getYbcClient(String nodeIp, int ybcPort, String certFile) {
+    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, certFile)
+        .getFirst();
+  }
+
   public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, String certFile) {
     return getAvailableYbcClientIpPair(nodeIps, ybcPort, certFile).getFirst();
   }
@@ -823,6 +897,12 @@ public class YbcManager {
         .getFirst();
   }
 
+  public YbcClient getYbcClient(Universe universe, String nodeIp) {
+    return getAvailableYbcClientIpPair(
+            universe, StringUtils.isBlank(nodeIp) ? null : Collections.singletonList(nodeIp))
+        .getFirst();
+  }
+
   private Region getFirstRegion(Universe universe, Cluster cluster) {
     Customer customer = Customer.get(universe.getCustomerId());
     UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
@@ -830,11 +910,35 @@ public class YbcManager {
     return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
   }
 
+  @VisibleForTesting
+  protected int getCoreCountForTserver(Universe u, NodeDetails n) {
+    int hardwareConcurrency = 2;
+    UserIntent userIntent = u.getUniverseDetails().getClusterByUuid(n.placementUuid).userIntent;
+    if (!(Util.isKubernetesBasedUniverse(u)
+        && confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources))) {
+      hardwareConcurrency =
+          (int)
+              Math.ceil(
+                  InstanceType.getOrBadRequest(
+                          UUID.fromString(userIntent.provider), n.cloudInfo.instance_type)
+                      .getNumCores());
+    } else {
+      if (userIntent.tserverK8SNodeResourceSpec != null) {
+        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        LOG.warn(
+            "Could not determine hardware concurrency based on resource spec, assuming default");
+      }
+    }
+    return hardwareConcurrency;
+  }
+
   public void copyYbcPackagesOnK8s(
       Map<String, String> config,
       Universe universe,
       NodeDetails nodeDetails,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      Map<String, String> ybcGflagsMap) {
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getYbcReleaseByVersion(
             ybcSoftwareVersion,
@@ -847,31 +951,14 @@ public class YbcManager {
         Provider.get(Customer.get(universe.getCustomerId()).getUuid(), providerUUID);
     boolean listenOnAllInterfaces =
         confGetter.getConfForScope(provider, ProviderConfKeys.ybcListenOnAllInterfacesK8s);
-    int hardwareConcurrency;
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-      hardwareConcurrency =
-          (int)
-              Math.ceil(
-                  InstanceType.getOrBadRequest(
-                          provider.getUuid(), nodeDetails.cloudInfo.instance_type)
-                      .getNumCores());
-    } else {
-      if (userIntent.tserverK8SNodeResourceSpec != null) {
-        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
-      } else {
-        hardwareConcurrency = 2;
-        LOG.warn(
-            "Could not determine hardware concurrency based on resource spec, assuming default");
-      }
-    }
+    int hardwareConcurrency = getCoreCountForTserver(universe, nodeDetails);
     Map<String, String> ybcGflags =
         GFlagsUtil.getYbcFlagsForK8s(
             universe.getUniverseUUID(),
             nodeDetails.nodeName,
             listenOnAllInterfaces,
-            hardwareConcurrency);
+            hardwareConcurrency,
+            ybcGflagsMap);
     try {
       Path confFilePath =
           fileHelperService.createTempFile(
@@ -984,5 +1071,64 @@ public class YbcManager {
         }
       }
     }
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureYbcServerTaskParams(
+      Universe universe,
+      NodeDetails node,
+      Map<String, String> gflags,
+      UpgradeTaskType type,
+      UpgradeTaskSubType subType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    // Add the universe uuid.
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.allowInsecure = universe.getUniverseDetails().allowInsecure;
+    params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
+
+    UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
+    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+    params.rootCA = universe.getUniverseDetails().rootCA;
+    params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
+    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+
+    // Add testing flag.
+    params.itestS3PackagePath = universe.getUniverseDetails().itestS3PackagePath;
+    params.gflags = gflags;
+
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    params.setEnableYbc(universe.getUniverseDetails().isEnableYbc());
+    params.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+    params.installYbc = universe.getUniverseDetails().installYbc;
+    params.setYbcInstalled(universe.getUniverseDetails().isYbcInstalled());
+    params.ybcGflags = gflags;
+    params.type = type;
+    params.setProperty("processType", ServerType.CONTROLLER.toString());
+    params.setProperty("taskSubType", subType.toString());
+    return params;
   }
 }

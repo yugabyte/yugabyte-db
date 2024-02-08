@@ -39,7 +39,7 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
 
     final MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.Builder builder =
         MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.newBuilder()
-            .setProducerId(replicationGroupName)
+            .setReplicationGroupId(replicationGroupName)
             .setIgnoreErrors(ignoreErrors);
 
     return toChannelBuffer(header, builder.build());

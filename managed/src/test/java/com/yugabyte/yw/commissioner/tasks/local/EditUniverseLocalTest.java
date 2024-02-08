@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -27,6 +28,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
           .put("load_balancer_max_concurrent_adds", "15")
           .put("load_balancer_max_concurrent_removals", "15")
           .put("transaction_table_num_tablets", "3")
+          .put(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS, "120")
           .build();
 
   @Test

@@ -51,10 +51,10 @@ public abstract class AbstractTaskBase implements ITask {
   protected ITaskParams taskParams;
 
   // The UUID of this task.
-  protected UUID taskUUID;
+  private UUID taskUUID;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
-  protected UUID userTaskUUID;
+  private UUID userTaskUUID;
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
@@ -162,11 +162,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public boolean isFirstTry() {
-    return taskParams().getPreviousTaskUUID() == null;
+    return taskParams() == null || taskParams().getPreviousTaskUUID() == null;
   }
 
   @Override
-  public void validateParams() {}
+  public void validateParams(boolean isFirstTry) {}
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode

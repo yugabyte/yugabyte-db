@@ -5,7 +5,7 @@ import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
 import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { getInterval, RelativeInterval, roundDecimal } from '@app/helpers';
+import { getInterval, RelativeInterval } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
@@ -48,21 +48,46 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   const { t } = useTranslation();
   const { data: nodesResponse, isFetching } = useGetClusterNodesQuery();
 
-  const [{ nodeName, clusterType }] = useQueryParams({
+  const [{ nodeName, clusterType, region: regionParam }] = useQueryParams({
     nodeName: withDefault(StringParam, 'all'),
+    region: withDefault(StringParam, ''),
     clusterType: StringParam,
   });
 
-  const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName; 
+  const [region, zone] = regionParam ? regionParam.split('#') : ['', ''];
+
+  const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName;
   const isReadReplica = clusterType === 'READ_REPLICA';
 
-  const nodeList = React.useMemo(() => 
-    clusterType ?
-      nodesResponse?.data.filter(node => (isReadReplica && node.is_read_replica) || (!isReadReplica && !node.is_read_replica))
-      :
-      nodesResponse?.data,
-  [nodesResponse, clusterType]);
-  const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
+  const nodeList = React.useMemo(
+    () =>
+      (clusterType
+        ? nodesResponse?.data.filter(
+            (node) =>
+              (isReadReplica && node.is_read_replica) || (!isReadReplica && !node.is_read_replica)
+          )
+        : nodesResponse?.data
+      ),
+    [nodesResponse, clusterType, isReadReplica]
+  );
+
+  const highlightNodes = React.useMemo(() => {
+    if (!nodeList) {
+      return [];
+    }
+
+    if (filteredNode) {
+      return [filteredNode];
+    }
+
+    if (region && zone) {
+      return nodeList.filter((node) => node.cloud_info.region === region && node.cloud_info.zone === zone).map(node => node.name);
+    }
+
+    return [];
+  }, [nodeList, filteredNode, region, zone])
+
+  const totalCores = Math.round((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
   const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>();
   React.useEffect(() => {
@@ -75,7 +100,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         try {
           const interval = getInterval(RelativeInterval.LastHour);
           // Get the system and user cpu usage of the node from the metrics endpoint
-          const cpu = await AXIOS_INSTANCE.get(`/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=${nodeName}` + 
+          const cpu = await AXIOS_INSTANCE.get(`/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=${nodeName}` +
             `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(interval.end)}`)
             // Add the system and user cpu usage to get the total cpu usage
             .then(({ data }) => {
@@ -123,9 +148,9 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         // Nodes
         ...(nodeList?.map(({ name, cloud_info: { zone }, is_read_replica: isReadReplica }) => ({ name, zone, isReadReplica })) ?? []),
         // Dummy node for available cores
-        { "name": "" }, 
+        { "name": "" },
       ],
-      links: [ ...(nodeList?.map((_, index) => ({ 
+      links: [ ...(nodeList?.map((_, index) => ({
         // Start all links from the usage node
         "source": 0,
         // Target the corresponding node
@@ -139,15 +164,15 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     }
 
     // Calculate cpu usage and available cpu values
-    const cpuAcc = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
-    const cpuUsage = Math.ceil(Math.min(cpuAcc, 100) * totalCores / 100);
+    const totalCpuUsage = data["links"].slice(0, -1).reduce((acc, curr) => acc + curr.value, 0);
+    const cpuUsage = Math.ceil((Math.min(totalCpuUsage, 100) / (nodeList?.length ?? 1)) * totalCores / 100);
     const cpuAvailable = totalCores - cpuUsage;
 
     // Update data values as per the calculation performed
-    data["links"][data["links"].length - 1].value = Math.round(cpuAcc / cpuUsage * cpuAvailable);
+    data["links"][data["links"].length - 1].value = Math.round(totalCpuUsage / cpuUsage * cpuAvailable);
     data["nodes"][0].name = t('clusterDetail.overview.usedCores', { usage: cpuUsage });
     data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
-  
+
     return data;
   }, [nodeCpuUsage, nodeList])
 
@@ -171,10 +196,10 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         right: 225,
         bottom: 5,
       }}
-      node={<CpuSankeyNode filteredNode={filteredNode} />}
+      node={<CpuSankeyNode highlightNodes={highlightNodes} totalCores={totalCores} />}
       nodeWidth={4}
       nodePadding={10}
-      link={<CpuSankeyLink nodeWidth={4} filteredNode={filteredNode} />}
+      link={<CpuSankeyLink nodeWidth={4} highlightNodes={highlightNodes} />}
       {...sankeyProps}
     >
       {showTooltip && <Tooltip />}
@@ -186,8 +211,11 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 function CpuSankeyNode(props: any) {
   const classes = useStyles();
 
-  const { x, y, width, height, index, payload, filteredNode } = props;
+  const { x, y, width, height, index, payload, highlightNodes, totalCores } = props;
   const isLeftNode = index <= 1;
+
+  const hasHighlight = !!highlightNodes?.length;
+  const highlightNode = highlightNodes?.includes(payload.name);
 
   const { isReadReplica } = payload;
   const splitPayload = payload.name.split(' ') as string[];
@@ -200,17 +228,17 @@ function CpuSankeyNode(props: any) {
   }
 
   return (
-    <Layer key={`CustomNode${index}`} opacity={!filteredNode ? 1 : 
-      (((isLeftNode && index === 0) || (!isLeftNode && payload.name === filteredNode)) ? 1 : 0.4 )}>
-      <Rectangle 
-        x={x} y={y} opacity={isLeftNode ? (!filteredNode ? 1 : 0.4) : undefined}
-        width={width} height={height} 
-        fill={isLeftNode ? "#2B59C3" : "#8047F5"} 
+    <Layer key={`CustomNode${index}`} opacity={!hasHighlight ? 1 :
+      (((isLeftNode && index === 0) || (!isLeftNode && highlightNode)) ? 1 : 0.4 )}>
+      <Rectangle
+        x={x} y={y} opacity={isLeftNode ? (!hasHighlight ? 1 : 0.4) : undefined}
+        width={width} height={height}
+        fill={isLeftNode ? "#2B59C3" : "#8047F5"}
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
-      {!isLeftNode ? 
+      {!isLeftNode ?
         // Right node
-        <Link className={classes.link} component={RouterLink} 
-          to={`/performance/metrics?nodeName=${payload.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
+        <Link className={classes.link} component={RouterLink}
+          to={`/performance/metrics?nodeName=${payload.name}&region=&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <text
             textAnchor={'start'}
             x={x + width + 15}
@@ -228,14 +256,16 @@ function CpuSankeyNode(props: any) {
         <text
           textAnchor='end'
           x={x - 10}
-          y={y + height / 2 + width / 2 + 3}
+          y={y + height / 2 + width / 2 - 5}
           fontSize="13"
           fontWeight={500}
         >
-          <tspan fill="#97A5B0">{cpuTextPrefix}</tspan>
-          <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)} 
-            fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
-          <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
+          <tspan fill="#97A5B0">{cpuTextPrefix}</tspan> {/* USED or AVAILABLE depending on index = 0 or 1 */}
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 102 : 92) : (cpuValue < 10 ? 68 : 60)}
+            fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan> {/* number */}
+          <tspan dy={15} dx={totalCores < 10 ? -52 : -56} fill="#333" fontSize={10} fillOpacity={0.6}>
+            of {totalCores} {cpuTextSuffix} {/* of number cores */}
+          </tspan>
         </text>
       }
     </Layer>
@@ -246,30 +276,32 @@ class CpuSankeyLink extends Component<any, any> {
   static displayName = 'CpuSankeyLink';
 
   render() {
-    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, 
-      filteredNode, index, nodeWidth, payload } = this.props;
+    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth,
+      highlightNodes, index, nodeWidth, payload } = this.props;
+
+    const hasHighlight = !!highlightNodes?.length;
+    const highlightNode = highlightNodes?.includes(payload.target.name);
 
     if (!payload.target.name) {
       return null;
     }
-      
+
     const { isReadReplica } = payload.target;
 
     const gradientID = `linkGradient${index}`;
     const fill = this.state?.fill ?? `url(#${gradientID})`;
 
     return (
-      <Layer key={`CustomLink${index}`} opacity={!filteredNode ? 1 : 
-        (payload.target.name === filteredNode ? 1 : 0.4 )}>
+      <Layer key={`CustomLink${index}`} opacity={!hasHighlight ? 1 : (highlightNode ? 1 : 0.4)}>
         <defs>
           <linearGradient id={gradientID}>
             <stop offset="20%" stopColor={"#2B59C3"} stopOpacity={"0.18"} />
             <stop offset="80%" stopColor={"#8047F5"} stopOpacity={"0.18"} />
           </linearGradient>
         </defs>
-        
+
         <Link component={RouterLink}
-          to={`/performance/metrics?nodeName=${payload.target.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
+          to={`/performance/metrics?nodeName=${payload.target.name}&region=&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <path
             d={`
               M${sourceX},${sourceY + linkWidth / 2}
@@ -292,11 +324,11 @@ class CpuSankeyLink extends Component<any, any> {
           />
         </Link>
 
-        {filteredNode && payload.target.name === filteredNode &&
-          <Rectangle 
-            x={sourceX - nodeWidth} y={sourceY - linkWidth / 2} 
-            width={nodeWidth} height={linkWidth} 
-            fill={"#2B59C3"} 
+        {hasHighlight && highlightNode &&
+          <Rectangle
+            x={sourceX - nodeWidth} y={sourceY - linkWidth / 2}
+            width={nodeWidth} height={linkWidth}
+            fill={"#2B59C3"}
             fillOpacity={0.6} />
         }
       </Layer>

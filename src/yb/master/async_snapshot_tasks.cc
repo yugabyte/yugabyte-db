@@ -62,8 +62,9 @@ AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(
     const string& snapshot_id,
     tserver::TabletSnapshotOpRequestPB::Operation op,
     LeaderEpoch epoch)
-    : RetryingTSRpcTask(
-          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
+    : RetryingTSRpcTaskWithTable(
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet),
+          tablet->table(),
           std::move(epoch),
           /* async_task_throttler */ nullptr),
       tablet_(tablet),

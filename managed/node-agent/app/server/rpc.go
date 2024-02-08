@@ -419,6 +419,7 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 			return status.Error(codes.Internal, err.Error())
 		}
 	}
+	// Flushes 4K bytes by default.
 	writer := bufio.NewWriter(file)
 	defer writer.Flush()
 	for {
@@ -472,8 +473,10 @@ func (server *RPCServer) DownloadFile(
 		return status.Error(codes.Internal, err.Error())
 	}
 	defer file.Close()
+	// Reads 4K bytes by default.
+	reader := bufio.NewReader(file)
 	for {
-		n, err := file.Read(res.ChunkData)
+		n, err := reader.Read(res.ChunkData)
 		if err == io.EOF {
 			break
 		}

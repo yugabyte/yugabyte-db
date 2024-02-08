@@ -19,9 +19,9 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :----------------------- | :--------------------|
-| YugabyteDB node-postgres Smart Driver| [Documentation](yugabyte-node-driver/) <br /> | [8.7.3-yb-1](https://www.npmjs.com/package/pg) | 2.8 and above |
-| PostgreSQL node-postgres Driver| [Documentation](postgres-node-driver/) <br /> | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
-| YugabyteDB Node.js Driver for YCQL | [Documentation](ycql/) | | |
+| YugabyteDB node-postgres Smart Driver| [Documentation](yugabyte-node-driver/) <br />[Reference](../../reference/drivers/nodejs/yugabyte-pg-reference/) | [8.7.3-yb-1](https://www.npmjs.com/package/pg) | 2.8 and above |
+| PostgreSQL node-postgres Driver| [Documentation](postgres-node-driver/) <br />[Reference](../../reference/drivers/nodejs/postgres-pg-reference/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| YugabyteDB Node.js Driver for YCQL | [Documentation](ycql/) | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | |
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |

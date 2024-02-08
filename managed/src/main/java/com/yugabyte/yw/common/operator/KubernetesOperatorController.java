@@ -85,7 +85,7 @@ public class KubernetesOperatorController {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
 
-  KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  OperatorStatusUpdater kubernetesStatusUpdater;
 
   public enum OperatorAction {
     CREATED,
@@ -102,7 +102,7 @@ public class KubernetesOperatorController {
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
       CloudProviderHandler cloudProviderHandler,
-      KubernetesOperatorStatusUpdater kubernetesStatusUpdater) {
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
@@ -112,7 +112,7 @@ public class KubernetesOperatorController {
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
-    this.kubernetesStatusUpdater = kubernetesStatusUpdater;
+    this.kubernetesStatusUpdater = statusUpdaterFactory.create();
     addEventHandlersToSharedIndexInformers();
   }
 

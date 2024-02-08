@@ -58,7 +58,7 @@ Status SnapshotTransferManager::TransferSnapshot(
 
 
       // For each consumer tablet, we need to find its TabletInfo. The contents of the object
-      // will help us construct a RetrySpecificTSRpcTask later on so that we can dispatch
+      // will help us construct a RetrySpecificTSRpcTaskWithTable later on so that we can dispatch
       // requests to specific TServers for each tablet.
       const auto& consumer_tablet_id = tablet_id_pair.new_id();
       auto consumer_tablet = VERIFY_RESULT(catalog_manager_->GetTabletInfo(consumer_tablet_id));

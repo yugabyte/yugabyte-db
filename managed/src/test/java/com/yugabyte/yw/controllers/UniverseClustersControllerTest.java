@@ -127,7 +127,13 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
   public void updatePrimaryNotConsistentFailTest() {
     Universe universe =
         ModelFactory.createFromConfig(ModelFactory.awsProvider(customer), "ahaha", "r1-az1-1-1");
-
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
+                  ApiUtils.getDummyDeviceInfo(1, 1);
+            });
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),

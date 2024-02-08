@@ -44,7 +44,6 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/atomic.h"
@@ -62,13 +61,86 @@ using namespace std::literals;
 DECLARE_bool(enable_ysql);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 
 using OK = Status::OK;
 using client::YBTableName;
 
-void XClusterYcqlTestBase::SetUp() { XClusterTestBase::SetUp(); }
+Status XClusterYcqlTestBase::SetUpWithParams(
+    const std::vector<uint32_t>& num_consumer_tablets,
+    const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+    uint32_t num_masters, uint32_t num_tservers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
+  XClusterTestBase::SetUp();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+  num_tservers = std::max(num_tservers, replication_factor);
+
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = num_tservers;
+  opts.num_masters = num_masters;
+  opts.transaction_table_num_tablets = FLAGS_transaction_table_num_tablets;
+  RETURN_NOT_OK(InitClusters(opts));
+
+  RETURN_NOT_OK(clock_->Init());
+  producer_cluster_.txn_mgr_.emplace(producer_client(), clock_, client::LocalTabletFilter());
+  consumer_cluster_.txn_mgr_.emplace(consumer_client(), clock_, client::LocalTabletFilter());
+
+  RETURN_NOT_OK(BuildSchemaAndCreateTables(num_consumer_tablets, num_producer_tablets));
+
+  return PostSetUp();
+}
+
+Status XClusterYcqlTestBase::BuildSchemaAndCreateTables(
+    const std::vector<uint32_t>& num_consumer_tablets,
+    const std::vector<uint32_t>& num_producer_tablets) {
+  client::YBSchemaBuilder b;
+  b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+
+  TableProperties table_properties;
+  table_properties.SetTransactional(UseTransactionalTables());
+  b.SetTableProperties(table_properties);
+  RETURN_NOT_OK(b.Build(&schema_));
+
+  client::YBSchema consumer_schema;
+  table_properties.SetDefaultTimeToLive(0);
+  b.SetTableProperties(table_properties);
+  RETURN_NOT_OK(b.Build(&consumer_schema));
+
+  if (num_consumer_tablets.size() != num_producer_tablets.size()) {
+    return STATUS(
+        IllegalState, Format(
+                          "Num consumer tables: $0 num producer tables: $1 must be equal.",
+                          num_consumer_tablets.size(), num_producer_tablets.size()));
+  }
+
+  RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    const auto* num_tablets = &num_producer_tablets;
+    const auto* schema = &schema_;
+    if (cluster == &consumer_cluster_) {
+      num_tablets = &num_consumer_tablets;
+      schema = &consumer_schema;
+    }
+    for (uint32_t i = 0; i < num_tablets->size(); i++) {
+      auto table_name =
+          VERIFY_RESULT(CreateTable(i, num_tablets->at(i), cluster->client_.get(), *schema));
+
+      std::shared_ptr<client::YBTable> table;
+      RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+      cluster->tables_.emplace_back(std::move(table));
+    }
+    return Status::OK();
+  }));
+
+  return Status::OK();
+}
+
+Status XClusterYcqlTestBase::SetUpWithParams() {
+  // Start with 1 master, 1 tserver, 1 table and 1 tablet.
+  return SetUpWithParams({1}, {1}, 1);
+}
 
 Result<YBTableName> XClusterYcqlTestBase::CreateTable(
     YBClient* client, const std::string& namespace_name, const std::string& table_name,
@@ -76,38 +148,84 @@ Result<YBTableName> XClusterYcqlTestBase::CreateTable(
   return XClusterTestBase::CreateTable(client, namespace_name, table_name, num_tablets, &schema_);
 }
 
-Status XClusterYcqlTestBase::CreateTable(
-    uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
-  auto table =
-      VERIFY_RESULT(CreateTable(client, namespace_name, Format("test_table_$0", idx), num_tablets));
-  tables->push_back(table);
-  return Status::OK();
+Result<YBTableName> XClusterYcqlTestBase::CreateTable(
+    uint32_t idx, uint32_t num_tablets, YBClient* client) {
+  return CreateTable(idx, num_tablets, client, schema_);
 }
 
-Status XClusterYcqlTestBase::CreateTable(
-    uint32_t idx, uint32_t num_tablets, YBClient* client, client::YBSchema schema,
-    std::vector<YBTableName>* tables) {
-  auto table = VERIFY_RESULT(XClusterTestBase::CreateTable(
-      client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema));
-  tables->push_back(table);
-  return Status::OK();
+Result<YBTableName> XClusterYcqlTestBase::CreateTable(
+    uint32_t idx, uint32_t num_tablets, YBClient* client, const client::YBSchema& schema) {
+  return XClusterTestBase::CreateTable(
+      client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema);
 }
 
-void XClusterYcqlTestBase::WriteWorkload(
-    uint32_t start, uint32_t end, YBClient* client, const YBTableName& table, bool delete_op) {
+Status XClusterYcqlTestBase::WriteWorkload(
+    uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
+    bool delete_op) {
   auto session = client->NewSession(kRpcTimeout * 1s);
   client::TableHandle table_handle;
-  ASSERT_OK(table_handle.Open(table, client));
-  std::vector<std::shared_ptr<client::YBqlOp>> ops;
+  RETURN_NOT_OK(table_handle.Open(table->name(), client));
+  std::vector<client::YBOperationPtr> ops;
 
-  LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts");
+  LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " rows of key range [" << start << ", "
+            << end << ") into" << table->name().ToString();
   for (uint32_t i = start; i < end; i++) {
     auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
     int32_t key = i;
-    auto req = op->mutable_request();
-    QLAddInt32HashValue(req, key);
-    ASSERT_OK(session->TEST_ApplyAndFlush(op));
+    QLAddInt32HashValue(op->mutable_request(), key);
+    ops.push_back(std::move(op));
   }
+
+  return session->TEST_ApplyAndFlush(ops);
+}
+
+Status XClusterYcqlTestBase::InsertRowsInProducer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return WriteWorkload(start, end, producer_client(), producer_table);
+}
+
+Status XClusterYcqlTestBase::InsertRowsInConsumer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> consumer_table) {
+  if (!consumer_table) {
+    consumer_table = consumer_table_;
+  }
+  return WriteWorkload(start, end, consumer_client(), consumer_table);
+}
+
+Status XClusterYcqlTestBase::DeleteRows(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return XClusterYcqlTestBase::WriteWorkload(
+      start, end, producer_client(), producer_table, true /* delete_op */);
+}
+
+Status XClusterYcqlTestBase::VerifyNumRecords(
+    const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size) {
+  size_t found_size = 0;
+  Status s = LoggedWaitFor(
+      [table, client, expected_size, &found_size]() -> Result<bool> {
+        auto results = ScanTableToStrings(table->name(), client);
+        found_size = results.size();
+        return found_size == expected_size;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
+  if (!s.ok()) {
+    LOG(WARNING) << "Only found " << found_size << " records, expected " << expected_size;
+  }
+  return s;
+}
+
+Status XClusterYcqlTestBase::VerifyNumRecordsOnProducer(size_t expected_size, size_t table_idx) {
+  return VerifyNumRecords(producer_tables_[table_idx], producer_client(), expected_size);
+}
+
+Status XClusterYcqlTestBase::VerifyNumRecordsOnConsumer(size_t expected_size, size_t table_idx) {
+  return VerifyNumRecords(consumer_tables_[table_idx], consumer_client(), expected_size);
 }
 
 Status XClusterYcqlTestBase::DoVerifyWrittenRecords(
@@ -143,14 +261,22 @@ Status XClusterYcqlTestBase::DoVerifyWrittenRecords(
   return s;
 }
 
-Status XClusterYcqlTestBase::DoVerifyNumRecords(
-    const YBTableName& table, YBClient* client, size_t expected_size) {
-  return LoggedWaitFor(
-      [table, client, expected_size]() -> Result<bool> {
-        auto results = ScanTableToStrings(table, client);
-        return results.size() == expected_size;
-      },
-      MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
+// Make sure the rows on the consumer match the rows on the producer.
+Status XClusterYcqlTestBase::VerifyRowsMatch(
+    std::shared_ptr<client::YBTable> producer_table, int timeout_secs) {
+  size_t table_idx = 0;
+  if (producer_table) {
+    for (size_t i = 0; i < producer_tables_.size(); i++) {
+      if (producer_tables_[i] == producer_table) {
+        table_idx = i;
+        break;
+      }
+    }
+  }
+
+  return DoVerifyWrittenRecords(
+      producer_tables_[table_idx]->name(), consumer_tables_[table_idx]->name(), producer_client(),
+      consumer_client(), timeout_secs);
 }
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterYcqlTestBase::AddCluster(

@@ -79,19 +79,22 @@ public class PersistResizeNode extends UniverseTaskBase {
 
               UserIntent userIntent = cluster.userIntent;
               UserIntent newUserIntent = taskParams().newUserIntent;
+              Date now = new Date();
+              for (NodeDetails nodeDetails : nodesInCluster) {
+                DeviceInfo oldDeviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
+                DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(nodeDetails);
+                if (!Objects.equals(newDeviceInfo, oldDeviceInfo)) {
+                  nodeDetails.lastVolumeUpdateTime = now;
+                }
+              }
               userIntent.instanceType = newUserIntent.instanceType;
               userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
+              userIntent.setCgroupSize(newUserIntent.getCgroupSize());
               userIntent.masterInstanceType = newUserIntent.masterInstanceType;
-              Date now = new Date();
               DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();
               userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
               userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;
               userIntent.deviceInfo.throughput = newUserIntent.deviceInfo.throughput;
-              if (!Objects.equals(userIntent.deviceInfo, oldDeviceInfo)) {
-                nodesInCluster.stream()
-                    .filter(n -> n.isTserver)
-                    .forEach(node -> node.lastVolumeUpdateTime = now);
-              }
               DeviceInfo oldMasterDeviceInfo = null;
               if (userIntent.masterDeviceInfo != null) {
                 oldMasterDeviceInfo = userIntent.masterDeviceInfo.clone();

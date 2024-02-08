@@ -19,8 +19,8 @@ public class RestartTaskParams extends UpgradeTaskParams {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     // Only a "Rolling Upgrade" type of restart is allowed on a K8S universe
     CloudType currCloudType =

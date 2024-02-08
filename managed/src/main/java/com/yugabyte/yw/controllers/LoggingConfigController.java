@@ -74,9 +74,11 @@ public class LoggingConfigController extends AuthenticatedController {
       }
     }
     Integer newMaxHistory = data.getMaxHistory();
-    LogUtil.updateApplicationLoggingContext(newLevel, newRolloverPattern, newMaxHistory);
+    String applicationLogFileNamePrefix = data.getFileNamePrefix();
+    LogUtil.updateApplicationLoggingContext(
+        newLevel, newRolloverPattern, newMaxHistory, applicationLogFileNamePrefix);
     LogUtil.updateApplicationLoggingConfig(
-        sConfigFactory, newLevel, newRolloverPattern, newMaxHistory);
+        sConfigFactory, newLevel, newRolloverPattern, newMaxHistory, applicationLogFileNamePrefix);
     return PlatformResults.withData(data);
   }
 

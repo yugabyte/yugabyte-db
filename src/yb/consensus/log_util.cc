@@ -54,8 +54,8 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -65,6 +65,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/to_stream.h"
 
 DEFINE_UNKNOWN_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
@@ -630,10 +631,13 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
 
   const auto read_up_to = ReadEntriesUpTo();
   VLOG(1) << "Reading segment entries from " << path_
-          << ": first_entry_offset=" << first_entry_offset() << " file_size=" << file_size()
-          << " readable_to_offset=" << readable_to_offset()
-          << " read_up_to=" << read_up_to
-          << " footer: " << footer_.ShortDebugString();
+          << ": "
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              first_entry_offset(),
+              file_size(),
+              readable_to_offset(),
+              read_up_to,
+              footer_.ShortDebugString());
 
   while (offset < read_up_to) {
     const int64_t this_batch_offset = offset;

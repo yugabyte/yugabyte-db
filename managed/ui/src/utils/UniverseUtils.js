@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 import _ from 'lodash';
-
 import {
   isNonEmptyArray,
   isNonEmptyObject,
@@ -432,7 +431,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
   if (isKeywordExist) {
     const keywordIndex = GFlagInput.indexOf(searchTerm);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
-    const attributes = keywordConf?.split(CONST_VALUES.SPACE_SEPARATOR);
+    const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"|""]*"|")+/g);
 
     for (let index = 0; index < attributes?.length; index++) {
       const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);

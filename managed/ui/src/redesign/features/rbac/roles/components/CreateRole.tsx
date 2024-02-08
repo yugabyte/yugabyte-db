@@ -37,6 +37,8 @@ import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectU
 import { ArrowDropDown, Create } from '@material-ui/icons';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { getRoleValidationSchema } from '../RoleValidationSchema';
+import { hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
 const PERMISSION_MODAL_TRANSLATION_PREFIX = 'rbac.permissions.selectPermissionModal';
 
@@ -171,7 +173,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   const permissionListVal = watch('permissionDetails.permissionList');
 
   const isSystemRole = currentRole?.roleType === RoleType.SYSTEM;
-
+  
   return (
     <Box className={classes.root}>
       <div className={classes.title}>{t(currentRole?.roleUUID ? 'edit' : 'title')}</div>
@@ -189,7 +191,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           control={control}
           label={t('form.description')}
           placeholder={t('form.descriptionPlaceholder')}
-          disabled={isSystemRole}
+          disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
           fullWidth
         />
         {permissionListVal.length === 0 && (
@@ -202,7 +204,13 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           setSelectedPermissions={(perm: Permission[]) => {
             setValue('permissionDetails.permissionList', perm);
           }}
-          disabled={isSystemRole}
+          disabled={isNonEmptyString(currentRole?.roleUUID) && isSystemRole || (
+            isNonEmptyString(currentRole?.roleUUID) &&
+            !hasNecessaryPerm({
+              ...ApiPermissionMap.MODIFY_RBAC_ROLE,
+              onResource: { ROLE: currentRole?.roleUUID }
+            })
+          )}
         />
         {errors.permissionDetails?.message && (
           <FormHelperText required error>

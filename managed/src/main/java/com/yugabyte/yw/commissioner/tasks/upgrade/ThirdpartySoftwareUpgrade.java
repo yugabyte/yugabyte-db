@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -15,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @EqualsAndHashCode(callSuper = false)
+@Retryable
+@Abortable
 public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
 
   @Inject
@@ -38,8 +42,9 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   @Override

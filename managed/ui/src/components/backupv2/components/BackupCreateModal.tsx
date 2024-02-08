@@ -242,6 +242,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       if (useTablespacesByDefault?.value === 'true') {
         values['useTablespaces'] = true;
       }
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL || !isYbcEnabledinCurrentUniverse) {
+        values['useTablespaces'] = false;
+      }
       return createBackup(values, isIncrementalBackup);
     },
     {
@@ -294,6 +297,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       }
       if (useTablespacesByDefault?.value === 'true') {
         values['useTablespaces'] = true;
+      }
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL || !isYbcEnabledinCurrentUniverse) {
+        values['useTablespaces'] = false;
       }
       return createBackupSchedule(values);
     },
@@ -801,14 +807,14 @@ function BackupConfigurationForm({
       )}
 
       {
-        useTablespacesByDefault?.value === 'false' && (
+        values['api_type'].value === BACKUP_API_TYPES.YSQL && useTablespacesByDefault?.value === 'false' && isYbcEnabledinCurrentUniverse &&(
           <Row>
             <Col lg={8} className='no-padding tablespaces'>
               <div>
                 <Field
                   name="useTablespaces"
                   component={YBCheckBox}
-                  disabled={isEditMode && !isEditBackupMode}
+                  disabled={isEditMode || isEditBackupMode}
                   checkState={values['useTablespaces']}
                 />
                 Backup tablespaces information

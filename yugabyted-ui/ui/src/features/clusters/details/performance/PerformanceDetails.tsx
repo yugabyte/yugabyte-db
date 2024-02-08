@@ -1,4 +1,4 @@
-import React, { FC, ComponentType } from 'react';
+import React, { FC, ComponentType, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { generatePath, Link, Route, Switch, useRouteMatch } from 'react-router-dom';
 import {
@@ -11,8 +11,13 @@ import {
 import { QueryParamProvider } from 'use-query-params';
 import { LiveQueries } from './LiveQueries';
 import { SlowQueries } from './SlowQueries';
+import { ConnectionsTab } from './ConnectionsTab';
 import { Metrics } from '@app/features/clusters/details/performance/metrics';
-
+import {
+    useGetClusterNodesQuery,
+    useGetGflagsQuery,
+    GflagsInfo,
+} from "@app/api/src";
 interface ContextInput {
   state: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,29 +98,42 @@ export interface ITabListItem {
   testId: string;
 }
 
-const tabList: ITabListItem[] = [
-  {
-    name: 'metrics',
-    component: Metrics,
-    testId: 'ClusterTabList-Performance'
-  },
-  {
-    name: 'live_queries',
-    component: LiveQueries,
-    testId: 'ClusterTabList-Performance'
-  },
-  {
-    name: 'slow_queries',
-    component: SlowQueries,
-    testId: 'ClusterTabList-Performance'
-  },
-];
-
 export const PerformanceDetails: FC = () => {
   const { path, params } = useRouteMatch<App.RouteParams>();
   const classes = useStyles();
   const { t } = useTranslation();
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
+  const { data: gflagsResponse } = useGetGflagsQuery<GflagsInfo>(
+    { node_address: tserverAddress },
+  );
+  const isConnMgrEnabled = useMemo(() => {
+    return gflagsResponse?.tserver_flags?.some(flag =>
+        flag.name === "enable_ysql_conn_mgr" && flag.value === "true")
+  }, [gflagsResponse]);
 
+  const tabList: ITabListItem[] = [
+    {
+      name: 'metrics',
+      component: Metrics,
+      testId: 'ClusterTabList-Performance'
+    },
+    {
+      name: 'live_queries',
+      component: LiveQueries,
+      testId: 'ClusterTabList-Performance'
+    },
+    {
+      name: 'slow_queries',
+      component: SlowQueries,
+      testId: 'ClusterTabList-Performance'
+    },
+    ...(isConnMgrEnabled ? [{
+        name: "connections",
+        component: ConnectionsTab,
+        testId: "ClusterTabList-Connections",
+    }] : [])
+  ];
   return (
     <Box>
       <div className={classes.tabSectionContainer}>

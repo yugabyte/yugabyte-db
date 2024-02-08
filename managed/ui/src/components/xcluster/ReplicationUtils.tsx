@@ -349,10 +349,18 @@ export const getEnabledConfigActions = (
 /**
  * Returns the UUIDs for all xCluster configs associated with the provided universe.
  */
-export const getAllXClusterConfigs = (universe: Universe) => [
-  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
-  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
-];
+export const getXClusterConfigUuids = (universe: Universe | undefined) => ({
+  sourceXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [],
+  targetXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? []
+});
+
+export const hasLinkedXClusterConfig = (universes: Universe[]) =>
+  universes.some((universe) => {
+    const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
+      universe
+    );
+    return sourceXClusterConfigUuids.length > 0 || targetXClusterConfigUuids.length > 0;
+  });
 
 /**
  * Returns the UUIDs for all xCluster configs with the provided source and target universe.
@@ -420,7 +428,7 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
 /**
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
-export const isTableSelectable = (
+export const isTableToggleable = (
   table: XClusterTableCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
@@ -433,8 +441,7 @@ export const isTableSelectable = (
  */
 export const augmentTablesWithXClusterDetails = (
   ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[],
-  txnTableDetails: XClusterTableDetails | undefined
+  xClusterConfigTables: XClusterTableDetails[]
 ): XClusterTable[] => {
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
@@ -454,20 +461,6 @@ export const augmentTablesWithXClusterDetails = (
     }
     return tables;
   }, []);
-  if (txnTableDetails) {
-    const { tableId: txnTableId, ...txnTable } = txnTableDetails;
-    tables.push({
-      isIndexTable: false,
-      keySpace: 'system',
-      pgSchemaName: '',
-      relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
-      sizeBytes: -1,
-      tableName: 'transactions',
-      tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
-      tableUUID: txnTableId,
-      ...txnTable
-    });
-  }
   return tables;
 };
 

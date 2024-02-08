@@ -14,8 +14,8 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../actions/universe';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 class UniverseAction extends Component {
   constructor(props) {
@@ -118,7 +118,10 @@ class UniverseAction extends Component {
       <div>
         {!universePaused && (
           <RbacValidator
-            accessRequiredOn={{...UserPermissionMap.editUniverse, onResource: universe.universeUUID}}
+            accessRequiredOn={{
+              onResource: universe.universeUUID,
+              ...ApiPermissionMap.MODIFY_UNIVERSE
+            }}
             isControl
           >
             <YBButton

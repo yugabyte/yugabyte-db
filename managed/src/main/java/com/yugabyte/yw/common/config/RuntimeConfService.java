@@ -263,11 +263,16 @@ public class RuntimeConfService extends AuthenticatedController {
     preChangeNotifier.notifyListeners(scopeUUID, path, newValue);
   }
 
+  private void preConfigDeleteValidate(UUID scopeUUID, String path) {
+    preChangeNotifier.notifyListenersDeleteConfig(scopeUUID, path);
+  }
+
   public void deleteKey(UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     if (!mutableKeys.contains(path)) {
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
     }
 
+    preConfigDeleteValidate(scopeUUID, path);
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID, isSuperAdmin).deleteEntry(path);
     postConfigChange(scopeUUID, path);
   }

@@ -2,7 +2,7 @@
   {
     "resourceType": "ROLE",
     "action": "CREATE",
-    "name": "Create Custom Role",
+    "name": "Create Role",
     "description": "Allows user to create a custom role.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": [

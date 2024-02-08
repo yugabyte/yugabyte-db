@@ -24,6 +24,7 @@ import {
 import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
@@ -114,7 +115,7 @@ class KeyManagementConfiguration extends Component {
 
   componentDidMount() {
     this.props.fetchKMSConfigList().then((response) => {
-      if (response.payload?.data?.length) {
+      if (isRbacEnabled() || response.payload?.data?.length) {
         this.setState({ listView: true });
       }
     });

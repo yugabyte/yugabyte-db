@@ -1247,7 +1247,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnaps
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp = ASSERT_RESULT(
       SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
@@ -1741,15 +1741,15 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 199, &change_resp_1.cdc_sdk_checkpoint()));
+  auto cp = &change_resp_1.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 199, cp));
 
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
   LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
 
   // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
   // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, cp));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
   auto get_tablets_resp =
@@ -1778,6 +1778,103 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
   }
 
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
+}
+
+TEST_F(CDCSDKTabletSplitTest, TestCleanUpCDCStreamsMetadataDuringTabletSplit) {
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"Test::AfterTableDrop", "CleanUpCDCStreamMetadata::StartStep1"},
+      {"CleanUpCDCStreamMetadata::CompletedStep1", "Test::InitiateTabletSplit"},
+      {"Test::AfterTabletSplit", "CleanUpCDCStreamMetadata::StartStep2"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(/* replication_factor */ 1, /* num_master */ 1, /* colocated */ false));
+  const vector<string> table_list_suffix = {"_1", "_2"};
+  const int kNumTables = 2;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  for (auto table_suffix : table_list_suffix) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_suffix));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
+    idx += 1;
+  }
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  // Consume changes for table 1 whose tablet will be split later. It ensures that the parent tablet
+  // remains in the cdc_state table after the split is complete.
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets[0]));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_OK(test_client()->FlushTables(
+      table, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  // Drop table2 from the namespace.
+  DropTable(&test_cluster_, "test_table_2");
+  LOG(INFO) << "Dropped test_table_2 from namespace";
+  TEST_SYNC_POINT("Test::AfterTableDrop");
+
+  // Wait for cleanup bg thread to complete step-1.
+  TEST_SYNC_POINT("Test::InitiateTabletSplit");
+  // Split tablet of table 1.
+  WaitUntilSplitIsSuccesful(tablets[0].Get(0).tablet_id(), table[0]);
+  LOG(INFO) << "Tablet split succeded";
+  TEST_SYNC_POINT("Test::AfterTabletSplit");
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          // Wait until the background thread cleanup up the drop table metadata.
+          if (get_resp.ok() && !get_resp->has_error() && get_resp->table_info_size() == 1) {
+            return true;
+          }
+          SleepFor(MonoDelta::FromSeconds(2));
+        }
+      },
+      MonoDelta::FromSeconds(30), "Waiting for stream metadata cleanup."));
+
+  // Verify that cdc_state table contains 3 entries i.e. parent tablet + 2 children tablets
+  // of table1.
+  std::unordered_set<TabletId> expected_tablet_ids;
+  expected_tablet_ids.insert(tablets[0].Get(0).tablet_id()); // parent tablet of table1
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table[0], 0, &table1_tablets_after_split, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : table1_tablets_after_split) {
+    expected_tablet_ids.insert(tablet.tablet_id()); // Children tablets of table1
+  }
+
+  // Incase there is some lag in completing the execution of delete operation on cdc_state table
+  // triggered by the CleanUpCDCStreamMetadata thread.
+  SleepFor(MonoDelta::FromSeconds(2));
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  std::unordered_set<TabletId> tablets_found;
+  for (auto row_result : ASSERT_RESULT(cdc_state_table.GetTableRange(
+            CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    LOG(INFO) << "Read cdc_state table row with tablet_id: " << row.key.tablet_id << " stream_id: "
+              << row.key.stream_id << " checkpoint: " << row.checkpoint->ToString();
+    if (row.key.stream_id == stream_id) {
+      tablets_found.insert(row.key.tablet_id);
+    }
+  }
+  ASSERT_OK(s);
+  LOG(INFO) << "tablets found: " << AsString(tablets_found)
+            << ", expected tablets: " << AsString(expected_tablet_ids);
+  ASSERT_EQ(expected_tablet_ids, tablets_found);
+
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
 }
 
 }  // namespace cdc

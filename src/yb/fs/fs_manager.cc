@@ -745,6 +745,7 @@ Result<std::string> FsManager::GetRaftGroupMetadataPath(const string& tablet_id)
 
 void FsManager::SetTabletPathByDataPath(const string& tablet_id, const string& path) {
   string tablet_path = path.empty() ? GetDefaultRootDir() : DirName(path);
+  LOG_WITH_FUNC(INFO) << "Tablet " << tablet_id << " metadata path being set to " << tablet_path;
   std::lock_guard lock(data_mutex_);
   InsertOrUpdate(&tablet_id_to_path_, tablet_id, tablet_path);
 }
@@ -799,7 +800,9 @@ Result<std::vector<std::string>> FsManager::ListTabletIds() {
       if (!IsValidTabletId(child)) {
         continue;
       }
-      tablet_id_to_path_.emplace(child, DirName(dir));
+      auto tablet_dirname = DirName(dir);
+      LOG(INFO) << "Found tablet " << child << " metadata at " << tablet_dirname;
+      tablet_id_to_path_.emplace(child, tablet_dirname);
       tablet_ids.push_back(child);
     }
   }

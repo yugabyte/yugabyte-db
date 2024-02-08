@@ -57,7 +57,7 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "and report it.");
 
 DECLARE_bool(TEST_index_read_multiple_partitions);
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -86,7 +86,6 @@ struct PerformData {
                      responses.size(), operations.size()));
     uint32_t i = 0;
     for (auto& op_response : responses) {
-      // TODO(LW_PERFORM)
       auto& arena = operations[i]->arena();
       if (&arena != &operations.front()->arena()) {
         operations[i]->set_response(arena.NewObject<LWPgsqlResponsePB>(&arena, op_response));
@@ -145,7 +144,8 @@ class PgClient::Impl {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object) {
+               const tserver::TServerSharedObject& tserver_shared_object,
+               std::optional<uint64_t> session_id) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -159,9 +159,13 @@ class PgClient::Impl {
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
 
-    auto future = create_session_promise_.get_future();
-    Heartbeat(true);
-    session_id_ = VERIFY_RESULT(future.get());
+    if (!session_id) {
+      auto future = create_session_promise_.get_future();
+      Heartbeat(true);
+      session_id_ = VERIFY_RESULT(future.get());
+    } else {
+      session_id_ = *session_id;
+    }
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
@@ -194,8 +198,8 @@ class PgClient::Impl {
         if (!status.ok()) {
           create_session_promise_.set_value(status);
         } else {
-          auto instance_id = Uuid::TryFullyDecode(heartbeat_resp_.instance_id());
-          if (!instance_id.IsNil()) {
+          auto instance_id = heartbeat_resp_.instance_id();
+          if (!instance_id.empty()) {
             exchange_.emplace(instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
           }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
@@ -242,12 +246,13 @@ class PgClient::Impl {
     return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type) {
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
-    req.set_ddl_mode(ddl_type != DdlType::NonDdl);
-    req.set_has_docdb_schema_changes(ddl_type == DdlType::DdlWithDocdbSchemaChanges);
+    if (ddl_mode) {
+      ddl_mode->ToPB(req.mutable_ddl_mode());
+    }
 
     tserver::PgFinishTransactionResponsePB resp;
 
@@ -306,7 +311,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -333,7 +338,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -367,7 +372,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -394,7 +399,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -441,29 +446,48 @@ class PgClient::Impl {
     PrepareOperations(&req, operations);
 
     if (exchange_ && exchange_->ReadyToSend()) {
-      PerformData data(&arena, std::move(*operations), callback);
-      ProcessPerformResponse(&data, ExecutePerform(&data, req));
-    } else {
-      auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
-      data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
-
-      proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-        ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
-      });
+      auto out = exchange_->Obtain(req.SerializedSize());
+      if (out) {
+        PerformData data(&arena, std::move(*operations), callback);
+        ProcessPerformResponse(&data, ExecutePerform(&data, req, out));
+        return;
+      }
     }
+    auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
+    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+
+    proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
+      ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
+    });
   }
 
   Result<rpc::CallResponsePtr> ExecutePerform(
-      PerformData* data, const tserver::LWPgPerformRequestPB& req) {
+      PerformData* data, const tserver::LWPgPerformRequestPB& req, std::byte* out) {
     auto size = req.SerializedSize();
-    auto* out = exchange_->Obtain(size);
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
-    CHECK_EQ(end - out, size);
+    SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
 
     auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
 
-    rpc::CallData call_data(res.size());
-    res.CopyTo(call_data.data());
+    rpc::CallData call_data;
+    if (res.data()) {
+      call_data = rpc::CallData(res.size());
+      res.CopyTo(call_data.data());
+    } else {
+      // If data is NULL we should fetch it using RPC. Because it was too big for shared memory.
+      ThreadSafeArena arena;
+      tserver::LWPgFetchDataRequestPB fetch_req(&arena);
+      fetch_req.set_session_id(session_id_);
+      DCHECK(res.size() & tserver::kTooBigResponseMask);
+      fetch_req.set_data_id(res.size() ^ tserver::kTooBigResponseMask);
+      tserver::LWPgFetchDataResponsePB fetch_resp(&arena);
+      rpc::RpcController controller;
+      RETURN_NOT_OK(proxy_->FetchData(fetch_req, &fetch_resp, SetupController(&controller)));
+      RETURN_NOT_OK(ResponseStatus(fetch_resp));
+      auto sidecar = VERIFY_RESULT(controller.ExtractSidecar(fetch_resp.sidecar()));
+      call_data = rpc::CallData(std::move(sidecar));
+    }
+
     auto response = std::make_shared<rpc::CallResponse>();
     RETURN_NOT_OK(response->ParseFrom(&call_data));
     RETURN_NOT_OK(data->resp.ParseFromSlice(response->serialized_response()));
@@ -520,6 +544,17 @@ class PgClient::Impl {
     RETURN_NOT_OK(proxy_->ReserveOids(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
+  }
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid) {
+    tserver::PgGetNewObjectIdRequestPB req;
+    req.set_db_oid(db_oid);
+
+    tserver::PgGetNewObjectIdResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetNewObjectId(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.new_oid();
   }
 
   Result<bool> IsInitDbDone() {
@@ -723,10 +758,10 @@ class PgClient::Impl {
     return Status::OK();
   }
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
-      uint32_t max_key_length) {
+      uint32_t max_key_length, uint64_t read_time_serial_no) {
     tserver::PgGetTableKeyRangesRequestPB req;
     tserver::PgGetTableKeyRangesResponsePB resp;
     req.set_session_id(session_id_);
@@ -741,6 +776,7 @@ class PgClient::Impl {
     req.set_range_size_bytes(range_size_bytes);
     req.set_is_forward(is_forward);
     req.set_max_key_length(max_key_length);
+    req.set_read_time_serial_no(read_time_serial_no);
 
     auto* controller = PrepareController();
 
@@ -749,9 +785,11 @@ class PgClient::Impl {
       return StatusFromPB(resp.status());
     }
 
-    boost::container::small_vector<RefCntSlice, 2> result;
+    TableKeyRangesWithHt result;
+    result.current_ht = HybridTime(resp.current_ht());
+
     for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
-      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+      result.encoded_range_end_keys.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
     }
     return result;
   }
@@ -795,6 +833,27 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
+    tserver::PgListReplicationSlotsRequestPB req;
+    tserver::PgListReplicationSlotsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ListReplicationSlots(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name) {
+    tserver::PgGetReplicationSlotStatusRequestPB req;
+    req.set_replication_slot_name(slot_name.ToString());
+
+    tserver::PgGetReplicationSlotStatusResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetReplicationSlotStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -835,6 +894,14 @@ class PgClient::Impl {
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 };
 
+std::string DdlMode::ToString() const {
+  return YB_STRUCT_TO_STRING(has_docdb_schema_changes);
+}
+
+void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const {
+  dest->set_has_docdb_schema_changes(has_docdb_schema_changes);
+}
+
 PgClient::PgClient() : impl_(new Impl) {
 }
 
@@ -843,8 +910,9 @@ PgClient::~PgClient() {
 
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
-    const tserver::TServerSharedObject& tserver_shared_object) {
-  return impl_->Start(proxy_cache, scheduler, tserver_shared_object);
+    const tserver::TServerSharedObject& tserver_shared_object,
+    std::optional<uint64_t> session_id) {
+  return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
 }
 
 void PgClient::Shutdown() {
@@ -867,8 +935,8 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
   return impl_->GetTablePartitionList(table_id);
 }
 
-Status PgClient::FinishTransaction(Commit commit, DdlType ddl_type) {
-  return impl_->FinishTransaction(commit, ddl_type);
+Status PgClient::FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
+  return impl_->FinishTransaction(commit, ddl_mode);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -878,6 +946,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
+}
+
+Result<PgOid> PgClient::GetNewObjectId(PgOid db_oid) {
+  return impl_->GetNewObjectId(db_oid);
 }
 
 Result<bool> PgClient::IsInitDbDone() {
@@ -1014,12 +1086,13 @@ Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<boost::container::small_vector<RefCntSlice, 2>> PgClient::GetTableKeyRanges(
+Result<TableKeyRangesWithHt> PgClient::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    uint64_t read_time_serial_no) {
   return impl_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length);
+      max_key_length, read_time_serial_no);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
@@ -1043,6 +1116,15 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_
 
 Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
+  return impl_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return impl_->GetReplicationSlotStatus(slot_name);
 }
 
 }  // namespace pggate

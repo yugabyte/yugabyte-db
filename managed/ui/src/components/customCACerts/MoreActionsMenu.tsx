@@ -74,10 +74,10 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
           horizontal: 'right'
         }}
       >
-        {menuOptions.map((m) => {
+        {menuOptions.map((m,i) => {
           const menuItem = (
             <MenuItem
-              key={m.text}
+              key={i}
               data-testid={m['data-testid'] ?? `ca-cert-${m.text}`}
               className={m.className}
               onClick={() => {
@@ -90,7 +90,7 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
               {m.text}
             </MenuItem>
           );
-          return m.isDivider ? (<Divider key={m.text} />) : m.menuItemWrapper ? m.menuItemWrapper(menuItem) : menuItem;
+          return m.isDivider ? (<Divider key={i} />) : m.menuItemWrapper ? m.menuItemWrapper(menuItem) : menuItem;
         }
         )}
       </Menu>

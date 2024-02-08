@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 
@@ -116,6 +118,7 @@ extern bool yb_enable_replication_commands;
  */
 extern int yb_xcluster_consistency_level;
 
+extern uint64_t yb_read_time;
 /*
  * Allows for customizing the number of rows to be prefetched.
  */

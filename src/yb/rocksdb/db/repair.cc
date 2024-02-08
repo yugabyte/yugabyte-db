@@ -310,7 +310,7 @@ class Repairer {
       Arena arena;
       ScopedArenaIterator iter(mem->NewIterator(ro, &arena));
       status = BuildTable(dbname_,
-                          env_,
+                          options_,
                           ioptions_,
                           env_options_,
                           table_cache_,
@@ -323,9 +323,8 @@ class Repairer {
                           kMaxSequenceNumber,
                           kNoCompression,
                           CompressionOptions(),
-                          /* paranoid_file_checks */ false,
-                          /* internal_stats */ nullptr,
-                          options_.boundary_extractor.get());
+                          /* paranoid_file_checks = */ false,
+                          /* internal_stats = */ nullptr);
     }
     delete mem->Unref();
     delete cf_mems_default;

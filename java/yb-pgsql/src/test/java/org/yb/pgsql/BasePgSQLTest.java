@@ -285,6 +285,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
+    String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    if ((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")){
+      builder.enableYsqlConnMgr(true);
+    }
   }
 
   @Before

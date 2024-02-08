@@ -19,6 +19,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -51,7 +52,6 @@ import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -214,6 +214,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
     Universe universe = Mockito.mock(Universe.class);
+    when(universe.getNodes()).thenReturn(nodes);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.Cluster cluster =
@@ -502,12 +503,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
     public TestUniverseTaskBase() {
       super(baseTaskDependencies);
-      // Create a real task with fake parameters to make validations succeed.
-      runnableTask =
-          baseTaskDependencies
-              .getTaskExecutor()
-              .createRunnableTask(TaskType.CreateUniverse, new UniverseDefinitionTaskParams());
-      taskParams = new UniverseTaskParams();
+      runnableTask = mock(RunnableTask.class);
+      taskParams = mock(UniverseTaskParams.class);
     }
 
     @Override

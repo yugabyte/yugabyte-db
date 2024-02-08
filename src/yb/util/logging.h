@@ -386,6 +386,6 @@ class LogFatalHandlerSink : public google::LogSink {
             size_t message_len) override;
 };
 
-#define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (yb::ToString(expr))
+#define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (::yb::ToString(expr))
 
 } // namespace yb

@@ -1,4 +1,6 @@
-import { XClusterConfig } from '../dtos';
+import { PitrConfig } from '../../../redesign/helpers/dtos';
+import { XClusterConfigStatus } from '../constants';
+import { XClusterConfig, XClusterTableDetails } from '../dtos';
 
 /**
  * Models the data object provided from YBA API.
@@ -11,7 +13,24 @@ export interface DrConfig {
   createTime: string;
   modifyTime: string;
   state: DrConfigState;
-  xClusterConfig: XClusterConfig;
+
+  // Replication Participants
+  drReplicaUniverseActive: boolean;
+  drReplicaUniverseState?: TargetUniverseDrState;
+  drReplicaUniverseUuid?: string;
+  primaryUniverseActive: boolean;
+  primaryUniverseState?: SourceUniverseDrState;
+  primaryUniverseUuid?: string;
+
+  // Replication Fields
+  paused: boolean;
+  pitrConfigs: PitrConfig[];
+  replicationGroupName: string;
+  status: XClusterConfigStatus;
+  tableDetails: XClusterTableDetails[];
+  tables: string[];
+  xclusterConfigUuid: string;
+  xclusterConfigsUuid: string[]; // Internal API field for now.
 }
 
 // ---------------------------------------------------------------------------
@@ -86,5 +105,6 @@ export interface DrConfigSafetimeResponse {
     safetimeEpochUs: number;
     safetimeLagUs: number;
     safetimeSkewUs: number;
+    estimatedDataLossMs: number;
   }[];
 }

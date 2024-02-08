@@ -1,5 +1,11 @@
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.FULL_BACKUP_PREFIX;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.TS_FMT_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.UNIV_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.UUID_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.UUID_WITHOUT_HYPHENS_LENGTH;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Singleton;
@@ -38,10 +44,6 @@ import play.libs.Json;
 @Slf4j
 public class RestoreManagerYb extends DevopsBase {
 
-  private static final int BACKUP_PREFIX_LENGTH = 8;
-  private static final int TS_FMT_LENGTH = 19;
-  private static final int UNIV_PREFIX_LENGTH = 6;
-  private static final int UUID_LENGTH = 36;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
@@ -211,14 +213,33 @@ public class RestoreManagerYb extends DevopsBase {
       // /table-keyspace.table_name.table_uuid
       // After receiving the storageLocation in above format we will be extracting the tsformat
       // timestamp of length 19 by removing "/univ-", "<univ-UUID>", "/backup-".
-      String backupCreationTime =
-          storageLocation
-              .replaceFirst(storageLocationPrefix, "")
-              .substring(
-                  UNIV_PREFIX_LENGTH + UUID_LENGTH + BACKUP_PREFIX_LENGTH,
-                  UNIV_PREFIX_LENGTH + UUID_LENGTH + BACKUP_PREFIX_LENGTH + TS_FMT_LENGTH);
-      long backupCreationTimeMicroUnix =
-          Util.microUnixTimeFromDateString(backupCreationTime, "yyyy-MM-dd'T'HH:mm:ss");
+      String backupCreationTime = null;
+      long backupCreationTimeMicroUnix;
+      int patternCharCount = 0;
+      try {
+        patternCharCount = UNIV_PREFIX_LENGTH + UUID_LENGTH + BACKUP_PREFIX_LENGTH;
+        backupCreationTime =
+            storageLocation
+                .replaceFirst(storageLocationPrefix, "")
+                .substring(patternCharCount, patternCharCount + TS_FMT_LENGTH);
+        backupCreationTimeMicroUnix =
+            Util.microUnixTimeFromDateString(backupCreationTime, "yyyy-MM-dd'T'HH:mm:ss");
+      } catch (ParseException e) {
+        // Try with pattern of backup location
+        // "/univ-", "<univ-UUID>", "/backup-", "<backup-UUID-No-Hyphens>", "/full/"
+        patternCharCount =
+            UNIV_PREFIX_LENGTH
+                + UUID_LENGTH
+                + BACKUP_PREFIX_LENGTH
+                + UUID_WITHOUT_HYPHENS_LENGTH
+                + FULL_BACKUP_PREFIX;
+        backupCreationTime =
+            storageLocation
+                .replaceFirst(storageLocationPrefix, "")
+                .substring(patternCharCount, patternCharCount + TS_FMT_LENGTH);
+        backupCreationTimeMicroUnix =
+            Util.microUnixTimeFromDateString(backupCreationTime, "yyyy-MM-dd'T'HH:mm:ss");
+      }
 
       // Currently, we cannot validate input restoreTimeStamp with the desired backup's restore time
       // lower_bound limit.

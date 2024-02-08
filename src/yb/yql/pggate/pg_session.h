@@ -349,14 +349,23 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<bool> CheckIfPitrActive();
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   PgDocMetrics& metrics() { return metrics_; }
 
+  uint64_t GetReadTimeSerialNo();
+
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
+
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
 
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);

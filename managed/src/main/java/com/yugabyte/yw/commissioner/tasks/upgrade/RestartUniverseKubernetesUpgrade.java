@@ -30,12 +30,16 @@ public class RestartUniverseKubernetesUpgrade extends KubernetesUpgradeTaskBase 
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+    log.info("Verified all params and good to restart all pods now...");
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-          log.info("Verified all params and good to restart all pods now...");
           // Restart Universe tasks
           UserIntent userIntent = getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
           createUpgradeTask(

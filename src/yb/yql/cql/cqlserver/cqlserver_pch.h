@@ -77,6 +77,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/atomic.hpp>
 #include <boost/bind.hpp>
+#include <boost/circular_buffer.hpp>
 #include <boost/compute/detail/lru_cache.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/container_hash/hash.hpp>
@@ -92,6 +93,7 @@
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
+#include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -112,7 +114,9 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -163,6 +167,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
@@ -186,6 +191,7 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/blocking_queue.h"
@@ -194,6 +200,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"
+#include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"
@@ -214,6 +221,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -239,8 +249,10 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
@@ -266,6 +278,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
@@ -273,6 +286,7 @@
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"

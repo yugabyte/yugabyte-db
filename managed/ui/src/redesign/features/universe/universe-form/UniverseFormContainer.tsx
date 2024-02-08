@@ -20,6 +20,8 @@ import {
 } from './utils/dto';
 import { useFormMainStyles } from './universeMainStyle';
 
+const VIEW = 'VIEW';
+
 export interface UniverseFormContextState {
   clusterType: ClusterType;
   universeConfigureTemplate: UniverseConfigure | null;
@@ -30,6 +32,7 @@ export interface UniverseFormContextState {
   newUniverse: boolean; // Fresh Universe ( set to true only in Primary + RR flow )
   universeResourceTemplate: UniverseResource | null;
   universeConfigureError: string | null;
+  isViewMode?: boolean;
 }
 
 const initialState: UniverseFormContextState = {
@@ -41,7 +44,8 @@ const initialState: UniverseFormContextState = {
   isLoading: true,
   newUniverse: false,
   universeResourceTemplate: null,
-  universeConfigureError: null
+  universeConfigureError: null,
+  isViewMode: false
 };
 
 //Avoiding using global state since we are using react-query
@@ -126,17 +130,18 @@ export const UniverseFormContainer: FC<RouteComponentProps<{}, UniverseFormConta
   );
 
   const switchInternalRoutes = () => {
+    const isViewMode = mode === VIEW;
     //Create Primary + RR
     if (location.pathname === '/universes/create') return <CreateUniverse />;
     //NEW ASYNC
     else if (mode === ClusterModes.CREATE && clusterType === ClusterType.ASYNC)
       return <CreateReadReplica uuid={uuid} />;
     //EDIT PRIMARY
-    else if (mode === ClusterModes.EDIT && clusterType === ClusterType.PRIMARY)
-      return <EditUniverse uuid={uuid} />;
+    else if ((mode === ClusterModes.EDIT || isViewMode) && clusterType === ClusterType.PRIMARY)
+      return <EditUniverse uuid={uuid} isViewMode={isViewMode} />;
     //EDIT ASYNC
-    else if (mode === ClusterModes.EDIT && clusterType === ClusterType.ASYNC)
-      return <EditReadReplica uuid={uuid} />;
+    else if ((mode === ClusterModes.EDIT || isViewMode) && clusterType === ClusterType.ASYNC)
+      return <EditReadReplica uuid={uuid} isViewMode={isViewMode} />;
     //Page not found
     else
       return (

@@ -32,9 +32,8 @@ import play.libs.Json;
 public class AnsibleUpdateNodeInfo extends NodeTaskBase {
 
   @Inject
-  protected AnsibleUpdateNodeInfo(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleUpdateNodeInfo(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override

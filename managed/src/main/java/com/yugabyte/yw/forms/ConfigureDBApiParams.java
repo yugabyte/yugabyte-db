@@ -41,7 +41,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
   public ServerType configureServer;
 
   @Override
-  public void verifyParams(Universe universe) {
+  public void verifyParams(Universe universe, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
     boolean changeInYsql =
@@ -182,7 +182,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             universe.getUniverseUUID(),
             false /*includeParentTableInfo */,
             false /* excludeColocatedTables */,
-            false /* includeColocatedParentTables */);
+            false /* includeColocatedParentTables */,
+            false /* xClusterSupportedOnly */);
     if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.PGSQL_TABLE_TYPE))) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YSQL if any tables exists");
     }
@@ -200,7 +201,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             universe.getUniverseUUID(),
             false /*includeParentTableInfo */,
             false /* excludeColocatedTables */,
-            false /* includeColocatedParentTables */);
+            false /* includeColocatedParentTables */,
+            false /* xClusterSupportedOnly */);
     if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.YQL_TABLE_TYPE))) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YCQL if any tables exists");
     }

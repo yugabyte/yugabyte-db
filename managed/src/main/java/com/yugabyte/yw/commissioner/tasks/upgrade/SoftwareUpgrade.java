@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,6 +18,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -38,8 +40,9 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse(), isFirstTry());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   protected SoftwareUpgradeParams taskParams() {
@@ -59,6 +62,10 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
           String newVersion = taskParams().ybSoftwareVersion;
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading);
+
           if (!universe
               .getUniverseDetails()
               .xClusterInfo
@@ -72,13 +79,28 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
                   && !isUniverseOnPremManualProvisioned
                   && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-          // Download software to all nodes.
-          createDownloadTasks(allNodes, newVersion);
+          Pair<List<NodeDetails>, List<NodeDetails>> nodesToSkipAction =
+              filterNodesWithSameDBVersionAndLiveState(universe, nodes, newVersion);
+          Set<NodeDetails> nodesToSkipMasterActions =
+              nodesToSkipAction.getLeft().stream().collect(Collectors.toSet());
+          Set<NodeDetails> nodesToSkipTServerActions =
+              nodesToSkipAction.getRight().stream().collect(Collectors.toSet());
+
+          // Download software to nodes which does not have either master or tserver with new
+          // version.
+          createDownloadTasks(
+              getNodesWhichRequiresSoftwareDownload(
+                  allNodes, nodesToSkipMasterActions, nodesToSkipTServerActions),
+              newVersion);
+
           // Install software on nodes.
           createUpgradeTaskFlowTasks(
               nodes,
               newVersion,
-              getUpgradeContext(taskParams().ybSoftwareVersion),
+              getUpgradeContext(
+                  taskParams().ybSoftwareVersion,
+                  nodesToSkipMasterActions,
+                  nodesToSkipTServerActions),
               reProvisionRequired);
 
           if (taskParams().installYbc) {
@@ -109,6 +131,9 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           // Update software version in the universe metadata.
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
         });
   }
 }

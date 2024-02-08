@@ -239,7 +239,8 @@ class PrecastRequestSender {
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables) {
+                            const std::unordered_set<PgOid>& region_local_tables,
+                            const bool keep_order) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -277,7 +278,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     // Populate doc_op with ybctids which belong to current table.
     RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)}));
+    }), static_cast<size_t>(end - it), keep_order}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -488,7 +489,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
-    YBCPgCallbacks callbacks)
+    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -509,7 +510,8 @@ PgApiImpl::PgApiImpl(
   }
 
   CHECK_OK(pg_client_.Start(
-      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(), tserver_shared_object_));
+      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
+      tserver_shared_object_, session_id));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -533,6 +535,10 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 }
 
 //--------------------------------------------------------------------------------------------------
+
+uint64_t PgApiImpl::GetSessionId() {
+  return pg_client_.SessionID();
+}
 
 Status PgApiImpl::InitSession(
     const string& database_name, YBCPgExecStatsState* session_stats, bool is_binary_upgrade) {
@@ -799,6 +805,12 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
   auto p = VERIFY_RESULT(pg_client_.ReserveOids(database_oid, next_oid, count));
   *begin_oid = p.first;
   *end_oid = p.second;
+  return Status::OK();
+}
+
+Status PgApiImpl::GetNewObjectId(PgOid db_oid, PgOid* new_oid) {
+  auto result = VERIFY_RESULT(pg_client_.GetNewObjectId(db_oid));
+  *new_oid = result;
   return Status::OK();
 }
 
@@ -1345,6 +1357,15 @@ Status PgApiImpl::DmlBindHashCode(
   return down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
 }
 
+Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
+                               Slice start_value,
+                               bool start_inclusive,
+                               Slice end_value,
+                               bool end_inclusive) {
+  return down_cast<PgDmlRead*>(handle)->BindRange(
+      start_value, start_inclusive, end_value, end_inclusive);
+}
+
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
   return down_cast<PgDml*>(handle)->BindTable();
 }
@@ -1623,6 +1644,15 @@ Status PgApiImpl::SetDistinctPrefixLength(PgStatement *handle, int distinct_pref
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   down_cast<PgDmlRead*>(handle)->SetDistinctPrefixLength(distinct_prefix_length);
+  return Status::OK();
+}
+
+Status PgApiImpl::SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDmlRead*>(handle)->SetHashBounds(low_bound, high_bound);
   return Status::OK();
 }
 
@@ -2027,6 +2057,10 @@ Status PgApiImpl::GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_i
       }));
 }
 
+bool PgApiImpl::IsDdlMode() const {
+  return pg_txn_manager_->IsDdlMode();
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
@@ -2037,7 +2071,8 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       LightweightTableYbctid(table_id, ybctid), make_lw_function(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
-            return FetchExistingYbctids(pg_session_, database_id, ybctids, region_local_tables);
+            return FetchExistingYbctids(
+                pg_session_, database_id, ybctids, region_local_tables, false);
           }));
 }
 
@@ -2120,12 +2155,64 @@ Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRanges(
+Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   return pg_session_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
       max_key_length);
+}
+
+uint64_t PgApiImpl::GetReadTimeSerialNo() {
+  return pg_txn_manager_->GetReadTimeSerialNo();
+}
+
+void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+  pg_txn_manager_->ForceReadTimeSerialNo(read_time_serial_no);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
+                                           const PgOid database_oid,
+                                           PgStatement **handle) {
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgCreateReplicationSlot *pg_stmt = down_cast<PgCreateReplicationSlot*>(handle);
+  return pg_stmt->Exec();
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
+  return pg_session_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlotStatus(slot_name);
+}
+
+Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
+                                         PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
+  return pg_stmt->Exec();
 }
 
 } // namespace pggate

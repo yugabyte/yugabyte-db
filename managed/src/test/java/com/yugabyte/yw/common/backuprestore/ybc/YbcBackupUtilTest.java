@@ -58,7 +58,6 @@ import junitparams.Parameters;
 import org.apache.commons.collections.CollectionUtils;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.Test.None;
 import org.junit.runner.RunWith;
 import org.yb.CommonTypes.TableType;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
@@ -96,7 +95,6 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             universeInfoHandler,
             configService,
             encryptionAtRestManager,
-            mockBackupHelper,
             mockStorageUtilFactory);
 
     initResponseObjects();
@@ -257,82 +255,6 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     assertEquals(
         "errorJson: {\"responseCloudStoreSpec.defaultLocation\":\"must not be null\"}",
         e.getMessage());
-  }
-
-  @Test(expected = None.class)
-  @Parameters(method = "getBackupSuccessFileYbc")
-  public void testValidateSuccessFileWithCloudStoreConfigValid(String dataFile, boolean regions) {
-    String success = TestUtils.readResource(dataFile);
-    YbcBackupResponse ybcBackupResponse = YbcBackupUtil.parseYbcBackupResponse(success);
-    CustomerConfig storageConfig = null;
-    if (regions) {
-      storageConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_regions);
-    } else {
-      storageConfig =
-          CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
-    }
-    String commonDir = "foo/keyspace-bar";
-    when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
-        .thenCallRealMethod();
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
-        .thenReturn("s3.us-east-1.amazonaws.com");
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("reg1_bucket"), eq("ap-south-1")))
-        .thenReturn("s3.ap-south-1.amazonaws.com");
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("reg2_bucket"), eq("eu-south-1")))
-        .thenReturn("s3.eu-south-1.amazonaws.com");
-    when(mockAWSUtil.getBucketRegion(eq("def_bucket"), any())).thenReturn("us-east-1");
-    when(mockAWSUtil.getBucketRegion(eq("reg1_bucket"), any())).thenReturn("ap-south-1");
-    when(mockAWSUtil.getBucketRegion(eq("reg2_bucket"), any())).thenReturn("eu-south-1");
-    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
-    YbcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
-  }
-
-  @Test
-  @Parameters(value = {"backup/ybc_success_file_with_regions.json"})
-  public void testValidateSuccessFileWithCloudStoreConfig_Invalid_NoRegion(String dataFile) {
-    String success = TestUtils.readResource(dataFile);
-    YbcBackupResponse ybcBackupResponse = YbcBackupUtil.parseYbcBackupResponse(success);
-    CustomerConfig storageConfig =
-        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
-    String commonDir = "foo/keyspace-bar";
-    when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
-        .thenCallRealMethod();
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
-        .thenReturn("s3.us-east-1.amazonaws.com");
-    when(mockAWSUtil.getBucketRegion(eq("def_bucket"), any())).thenReturn("us-east-1");
-    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
-    assertThrows(
-        PlatformServiceException.class,
-        () -> {
-          YbcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
-        });
-  }
-
-  @Test
-  @Parameters(value = {"backup/ybc_success_file_without_regions.json"})
-  public void testValidateSuccessFileWithCloudStoreConfig_Invalid_DefaultDir(String dataFile) {
-    String success = TestUtils.readResource(dataFile);
-    YbcBackupResponse ybcBackupResponse = YbcBackupUtil.parseYbcBackupResponse(success);
-    CustomerConfig storageConfig =
-        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormData_noRegions);
-    String commonDir = "wrong-foo/keyspace-bar";
-    when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
-        .thenCallRealMethod();
-    when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
-        .thenReturn("s3.us-east-1.amazonaws.com");
-    when(mockAWSUtil.getBucketRegion(eq("def_bucket"), any())).thenReturn("us-east-1");
-    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
-    assertThrows(
-        PlatformServiceException.class,
-        () -> {
-          YbcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
-        });
   }
 
   @SuppressWarnings("unused")

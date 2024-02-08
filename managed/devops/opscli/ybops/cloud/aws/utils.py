@@ -1182,9 +1182,11 @@ def update_disk(args, instance_id):
             device_name = attachment['Device'].replace('/dev/', '')
             # Format of device name is /dev/xvd{} or /dev/nvme{}n1
             if device_name in device_names:
-                modify_size = args.force or bool(args.volume_size)
-                modify_iops = args.force or bool(args.disk_iops)
-                modify_throughput = args.force or bool(args.disk_throughput)
+                modify_size = (args.force or
+                               bool(args.volume_size and volume.size != args.volume_size))
+                modify_iops = args.force or bool(args.disk_iops and volume.iops != args.disk_iops)
+                modify_throughput = args.force or bool(args.disk_throughput and
+                                                       volume.throughput != args.disk_throughput)
                 if modify_size or modify_iops or modify_throughput:
                     logging.info(
                         "Existing instance %s's volume %s: size=%s, iops=%s, throughput=%s",

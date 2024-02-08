@@ -372,12 +372,8 @@ Result<int> XClusterYsqlTestBase::GetRowCount(
   auto conn = VERIFY_RESULT(
       cluster->ConnectToDB(table_name.namespace_name(), true /*simple_query_protocol*/));
   if (read_latest) {
-    auto setting_res = VERIFY_RESULT(
-        conn.FetchRowAsString("UPDATE pg_settings SET setting = 'tablet' WHERE name = "
-                              "'yb_xcluster_consistency_level'"));
-    SCHECK_EQ(
-        setting_res, "tablet", IllegalState,
-        "Failed to set yb_xcluster_consistency_level to tablet.");
+    RETURN_NOT_OK(conn.FetchRow<std::string>(
+        "UPDATE pg_settings SET setting = 'tablet' WHERE name = 'yb_xcluster_consistency_level'"));
   }
   std::string table_name_str = GetCompleteTableName(table_name);
   auto results = VERIFY_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name_str));
@@ -635,7 +631,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(
       VerifyUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, &resp));
-  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_id);
   ASSERT_OK(VerifyWrittenRecords());

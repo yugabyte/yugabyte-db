@@ -572,7 +572,7 @@ EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE '
                                    QUERY PLAN
 --------------------------------------------------------------------------------
  Index Scan using pg_class_relname_nsp_index on pg_class
-   Index Cond: ((relname >= 'pushdown'::name) AND (relname < 'pushdowo'::name))
+   Index Cond: ((relname >= 'pushdown'::text) AND (relname < 'pushdowo'::text))
    Filter: (relname ~~ 'pushdown_c%'::text)
 (3 rows)
 

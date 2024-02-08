@@ -522,7 +522,6 @@ DoesOidExistInRelation(Oid oid,
  * of transient conflicts for as long as our own MVCC snapshots think a
  * recently-deleted row is live.  The risk is far higher when selecting TOAST
  * OIDs, because SnapshotToast considers dead rows as active indefinitely.)
-
  *
  * Note that we are effectively assuming that the table has a relatively small
  * number of entries (much less than 2^32) and there aren't very long runs of
@@ -552,6 +551,14 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 * ensure that a type OID is determined by commands in the dump script.
 	 */
 	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
+
+	if (IsYugaByteEnabled())
+	{
+		if (relation->rd_rel->relisshared)
+			YbDatabaseIdForNewObjectId = Template1DbOid;
+		else
+			YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
 
 	/* Generate new OIDs until we find one not in the table */
 	do
@@ -633,6 +640,17 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * are properly detected.
 	 */
 	rnode.backend = GetBackendOidFromRelPersistence(relpersistence);;
+
+	/*
+	 * All the shared relations have relfilenode value as 0, which suggests
+	 * that relfilenode is only used for non-shared relations. That's why
+	 * MyDatabaseId should be used for new relfilenode OID allocation.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		Assert(!pg_class || !pg_class->rd_rel->relisshared);
+		YbDatabaseIdForNewObjectId = MyDatabaseId;
+	}
 
 	do
 	{

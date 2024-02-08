@@ -21,9 +21,9 @@
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
@@ -40,10 +40,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
     const DocKey& doc_key,
-    const boost::optional<int32_t>
-        hash_code,
-    const boost::optional<int32_t>
-        max_hash_code,
+    const std::optional<int32_t> hash_code,
+    const std::optional<int32_t> max_hash_code,
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const size_t prefix_length)
@@ -54,12 +52,12 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
-      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(doc_key.Encode()) {
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()) {
+  bounds_.lower = doc_key.Encode();
   // Compute lower and upper doc_key.
   // We add +inf as an extra component to make sure this is greater than all keys in range.
   // For lower bound, this is true already, because dockey + suffix is > dockey
-  upper_doc_key_ = lower_doc_key_;
+  bounds_.upper = bounds_.lower;
 
   if (hash_code && !doc_key.has_hash()) {
     DocKey lower_doc_key = DocKey(doc_key);
@@ -67,7 +65,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     if (lower_doc_key.hashed_group().empty()) {
       lower_doc_key.hashed_group().emplace_back(KeyEntryType::kLowest);
     }
-    lower_doc_key_ = lower_doc_key.Encode();
+    bounds_.lower = lower_doc_key.Encode();
   }
 
   if (max_hash_code) {
@@ -76,24 +74,22 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     if (upper_doc_key.hashed_group().empty()) {
       upper_doc_key.hashed_group().emplace_back(KeyEntryType::kHighest);
     }
-    upper_doc_key_ = upper_doc_key.Encode();
+    bounds_.upper = upper_doc_key.Encode();
   }
 
-  upper_doc_key_.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+
+  CompleteBounds();
 }
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
-    std::reference_wrapper<const dockv::KeyEntryValues>
-        hashed_components,
-    std::reference_wrapper<const dockv::KeyEntryValues>
-        range_components,
+    std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+    std::reference_wrapper<const dockv::KeyEntryValues> range_components,
     const PgsqlConditionPB* condition,
-    const boost::optional<int32_t>
-        hash_code,
-    const boost::optional<int32_t>
-        max_hash_code,
+    const std::optional<int32_t> hash_code,
+    const std::optional<int32_t> max_hash_code,
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const DocKey& lower_doc_key,
@@ -109,11 +105,11 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
-      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(lower_doc_key.Encode()),
-      upper_doc_key_(upper_doc_key.Encode()) {
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()) {
+  bounds_.lower = lower_doc_key.Encode();
+  bounds_.upper = upper_doc_key.Encode();
   if (add_highest_to_upper_doc_key) {
-    upper_doc_key_.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+    bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
   }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
@@ -152,15 +148,17 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     InitOptions(*condition);
   }
 
-  auto lower_bound_key = bound_key(schema, true);
-  lower_doc_key_ = lower_bound_key > lower_doc_key_
-                    || lower_doc_key.empty()
-                    ? lower_bound_key : lower_doc_key_;
+  auto calculated_bounds = CalculateBounds(schema);
+  if (lower_doc_key.empty() || calculated_bounds.lower > bounds_.lower) {
+    bounds_.lower = std::move(calculated_bounds.lower);
+  }
 
-  auto upper_bound_key = bound_key(schema, false);
-  upper_doc_key_ = upper_bound_key < upper_doc_key_
-                    || upper_doc_key.empty()
-                    ? upper_bound_key : upper_doc_key_;
+  if (upper_doc_key.empty() || calculated_bounds.upper < bounds_.upper) {
+    bounds_.upper = std::move(calculated_bounds.upper);
+  }
+  bounds_.trivial = calculated_bounds.trivial;
+
+  CompleteBounds();
 }
 
 void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
@@ -353,10 +351,7 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
   }
 }
 
-KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
-  KeyBytes result;
-  auto encoder = dockv::DocKeyEncoder(&result).Schema(schema);
-
+qlexpr::ScanBounds DocPgsqlScanSpec::CalculateBounds(const Schema& schema) const {
   bool has_hash_columns = schema.num_hash_key_columns() > 0;
 
   // The first column in a hash partitioned table is the hash code column.
@@ -367,113 +362,120 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 
   int32_t hash_code;
   int32_t max_hash_code;
+  auto append_hashed_component = false;
   if (hashed_components_->empty() && has_in_hash_options) {
-    for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
-      DCHECK_GE(options_->size(),
-                schema.num_hash_key_columns() + schema.has_yb_hash_code());
-      const auto& current_options = (*options_)[schema.get_dockey_component_idx(i)];
-      KeyEntryValue keyval = lower_bound ? current_options.front() : current_options.back();
-      hashed_components.push_back(keyval);
-    }
+    DCHECK_GE(options_->size(),
+              schema.num_hash_key_columns() + schema.has_yb_hash_code());
+    append_hashed_component = true;
     hash_code = static_cast<int32_t>((*options_)[0].front().GetUInt16Hash());
     max_hash_code = static_cast<int32_t>((*options_)[0].back().GetUInt16Hash());
   } else {
-    hash_code = hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min());
-    max_hash_code = max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
+    hash_code = hash_code_.value_or(std::numeric_limits<DocKeyHash>::min());
+    max_hash_code = max_hash_code_.value_or(std::numeric_limits<DocKeyHash>::max());
     hashed_components = *hashed_components_;
   }
 
-  bool hash_components_unset = has_hash_columns &&
-                               (hashed_components.empty() && hashed_components_->empty());
+  qlexpr::ScanBounds bounds;
+  auto lower_bound_encoder = dockv::DocKeyEncoder(&bounds.lower).Schema(schema);
+  auto upper_bound_encoder = dockv::DocKeyEncoder(&bounds.upper).Schema(schema);
+
+  bool hash_components_unset =
+      has_hash_columns &&
+      (hashed_components.empty() && hashed_components_->empty() && !append_hashed_component);
   if (hash_components_unset) {
     // use lower bound hash code if set in request (for scans using token)
-    if (lower_bound && hash_code) {
-      encoder.HashAndRange(hash_code,
-                           {KeyEntryValue(KeyEntryType::kLowest)},
-                           {KeyEntryValue(KeyEntryType::kLowest)});
+    if (hash_code) {
+      lower_bound_encoder.HashAndRange(hash_code,
+                                       {KeyEntryValue(KeyEntryType::kLowest)},
+                                       {KeyEntryValue(KeyEntryType::kLowest)});
     }
     // use upper bound hash code if set in request (for scans using token)
-    if (!lower_bound) {
-      if (max_hash_code_) {
-        encoder.HashAndRange(max_hash_code,
-                             {KeyEntryValue(KeyEntryType::kHighest)},
-                             {KeyEntryValue(KeyEntryType::kHighest)});
-      } else {
-        result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+    if (max_hash_code_) {
+      upper_bound_encoder.HashAndRange(max_hash_code,
+                                       {KeyEntryValue(KeyEntryType::kHighest)},
+                                       {KeyEntryValue(KeyEntryType::kHighest)});
+    } else {
+      bounds.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+    }
+    return bounds;
+  }
+
+  bool single_hash = false;
+  bool lower_trivial = false;
+  bool upper_trivial = false;
+  if (has_hash_columns) {
+    single_hash = hash_code == max_hash_code;
+    if (append_hashed_component) {
+      for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
+        const auto& option = (*options_)[schema.get_dockey_component_idx(i)];
+        hashed_components.push_back(option.front());
+        single_hash = single_hash && (option.front() == option.back());
       }
     }
-    return result;
-  }
+    lower_bound_encoder.
+        Hash(hash_code, hashed_components).
+        Range(DoRangeComponents(true, nullptr, &lower_trivial));
 
-  if (has_hash_columns) {
-    uint16_t hash = lower_bound ? hash_code : max_hash_code;
-    encoder.HashAndRange(hash, hashed_components, range_components(lower_bound));
+    if (append_hashed_component) {
+      hashed_components.clear();
+      for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
+        hashed_components.push_back((*options_)[schema.get_dockey_component_idx(i)].back());
+      }
+    }
+    upper_bound_encoder.
+        Hash(max_hash_code, hashed_components).
+        Range(DoRangeComponents(false, nullptr, &upper_trivial));
   } else {
-    // If no hash columns use default hash code (0).
-    encoder.Hash(false, 0, hashed_components).Range(range_components(lower_bound));
+    single_hash = true;
+    lower_bound_encoder.NoHash().Range(DoRangeComponents(true, nullptr, &lower_trivial));
+    upper_bound_encoder.NoHash().Range(DoRangeComponents(false, nullptr, &upper_trivial));
   }
-  return result;
+  bounds.trivial = single_hash && lower_trivial && upper_trivial;
+
+  return bounds;
 }
 
-dockv::KeyEntryValues DocPgsqlScanSpec::range_components(const bool lower_bound,
-                                                         std::vector<bool> *inclusivities,
-                                                         bool use_strictness) const {
+dockv::KeyEntryValues DocPgsqlScanSpec::RangeComponents(const bool lower_bound,
+                                                        std::vector<bool>* inclusivities) const {
+  return DoRangeComponents(lower_bound, inclusivities);
+}
+
+dockv::KeyEntryValues DocPgsqlScanSpec::DoRangeComponents(
+    const bool lower_bound, std::vector<bool>* inclusivities, bool* trivial) const {
   return GetRangeKeyScanSpec(schema(),
                              range_components_,
                              range_bounds(),
                              inclusivities,
                              lower_bound,
                              false,
-                             use_strictness);
+                             trivial);
 }
 
-// Return inclusive lower/upper range doc key considering the start_doc_key.
-Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
+void DocPgsqlScanSpec::CompleteBounds() {
   if (start_doc_key_.empty()) {
-    return lower_bound ? lower_doc_key_ : upper_doc_key_;
+    return;
   }
 
   // When paging state is present, start_doc_key_ should have been provided, and the scan starting
   // point should be start_doc_key_ instead of the initial bounds.
-  if (start_doc_key_ < lower_doc_key_ || start_doc_key_ > upper_doc_key_) {
-    return STATUS_FORMAT(Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
-                         start_doc_key_, lower_doc_key_, upper_doc_key_);
+  if (start_doc_key_ < bounds_.lower || start_doc_key_ > bounds_.upper) {
+    LOG(DFATAL) << STATUS_FORMAT(Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
+                                 start_doc_key_, bounds_.lower, bounds_.upper);
+    return;
   }
 
   // Paging state + forward scan.
   if (is_forward_scan()) {
-    return lower_bound ? start_doc_key_ : upper_doc_key_;
+    bounds_.lower = start_doc_key_;
+    return;
   }
 
   // Paging state + reverse scan.
-  if (lower_bound) {
-    return lower_doc_key_;
-  }
-
   // If using start_doc_key_ as upper bound append +inf as extra component to ensure it includes
   // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
   // For lower bound, this is true already, because dockey + suffix is > dockey.
-  KeyBytes result = start_doc_key_;
-  result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
-  return result;
-}
-
-std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {
-  std::vector<bool> lower_bound_incl;
-  auto lower_bound = range_components(true, &lower_bound_incl, false);
-  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
-
-  std::vector<bool> upper_bound_incl;
-  auto upper_bound = range_components(false, &upper_bound_incl, false);
-  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
-  if (lower_bound.empty() && upper_bound.empty()) {
-    return std::shared_ptr<rocksdb::ReadFileFilter>();
-  } else {
-    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
-                                                    std::move(lower_bound_incl),
-                                                    std::move(upper_bound),
-                                                    std::move(upper_bound_incl));
-  }
+  bounds_.upper = start_doc_key_;
+  bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
 }
 
 const DocKey& DocPgsqlScanSpec::DefaultStartDocKey() {

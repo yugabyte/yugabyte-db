@@ -14,8 +14,8 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleResponsePB;
 import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleRequestPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
-import org.yb.util.SnapshotUtil;
 
 @InterfaceAudience.Public
 public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotScheduleResponse> {
@@ -37,7 +37,7 @@ public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotSchedule
         final RestoreSnapshotScheduleRequestPB.Builder builder =
                 RestoreSnapshotScheduleRequestPB.newBuilder();
         if (snapshotScheduleUUID != null) {
-            builder.setSnapshotScheduleId(SnapshotUtil.convertToByteString(snapshotScheduleUUID));
+            builder.setSnapshotScheduleId(CommonUtil.convertToByteString(snapshotScheduleUUID));
         }
         builder.setRestoreHt(
             clockTimestampToHTTimestamp(restoreTimeInMillis, TimeUnit.MILLISECONDS));
@@ -66,8 +66,8 @@ public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotSchedule
         UUID snapshotUUID = null;
         UUID restorationUUID = null;
         if (!hasErr) {
-            restorationUUID = SnapshotUtil.convertToUUID(respBuilder.getRestorationId());
-            snapshotUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotId());
+            restorationUUID = CommonUtil.convertToUUID(respBuilder.getRestorationId());
+            snapshotUUID = CommonUtil.convertToUUID(respBuilder.getSnapshotId());
         }
         RestoreSnapshotScheduleResponse response =
                 new RestoreSnapshotScheduleResponse(deadlineTracker.getElapsedMillis(),

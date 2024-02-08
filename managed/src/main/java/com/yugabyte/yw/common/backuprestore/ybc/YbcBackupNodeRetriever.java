@@ -25,12 +25,12 @@ public class YbcBackupNodeRetriever {
   // After completing task, ips returned to pool, so that next subtask blocked on it can pick it up.
 
   private final LinkedBlockingQueue<String> universeTserverIPs;
-  private final UUID universeUUID;
+  private final Universe universe;
   private final YbcManager ybcManager;
 
-  public YbcBackupNodeRetriever(UUID universeUUID, int parallelism) {
+  public YbcBackupNodeRetriever(Universe universe, int parallelism) {
     this.universeTserverIPs = new LinkedBlockingQueue<>(parallelism);
-    this.universeUUID = universeUUID;
+    this.universe = universe;
     this.ybcManager = StaticInjectorHolder.injector().instanceOf(YbcManager.class);
   }
 
@@ -79,7 +79,6 @@ public class YbcBackupNodeRetriever {
   }
 
   private void addUniverseTserverIPs(Set<String> nodeIPsAlreadyAssigned, int nodeIPsToAdd) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
     List<String> nodeIPs =

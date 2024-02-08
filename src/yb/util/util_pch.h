@@ -11,6 +11,7 @@
 #include <float.h>
 #include <ifaddrs.h>
 #include <inttypes.h>
+#include <jwt-cpp/jwt.h>
 #include <math.h>
 #include <netinet/in.h>
 #include <openssl/bn.h>
@@ -71,7 +72,6 @@
 #include <new>
 #include <numeric>
 #include <optional>
-#include <ostream>
 #include <queue>
 #include <random>
 #include <regex>
@@ -108,6 +108,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/container/stable_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/date_time/c_local_time_adjustor.hpp>
 #include <boost/date_time/local_time/local_time.hpp>
 #include <boost/function.hpp>
@@ -140,6 +141,7 @@
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/range/adaptor/indirected.hpp>
+#include <boost/range/algorithm_ext/erase.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
@@ -147,6 +149,7 @@
 #include <boost/static_assert.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>

@@ -1,7 +1,7 @@
 ---
 title: ybm CLI
 headerTitle: YugabyteDB Managed CLI
-linkTitle: CLI
+linkTitle: ybm CLI
 description: Use YugabyteDB Managed CLI to create and manage YugabyteDB clusters.
 headcontent: Manage cluster and account resources from the command line
 menu:

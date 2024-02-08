@@ -143,6 +143,25 @@ public class MetricConfigDefinition {
                   + " for top/bottom K query");
       }
     }
+    if (context.isSecondLevelAggregation()) {
+      String queryStr =
+          settings.getAggregatedValueFunction().getAggregationFunction() + "(" + query + ")";
+      if (groupBy != null) {
+        Set<String> groupBySet = new HashSet<>();
+        Set<String> additionalGroupBySet = MetricQueryExecutor.getAdditionalGroupBy(settings);
+        groupBySet.addAll(
+            Arrays.stream(groupBy.split(","))
+                // Drop labels used in the current metric split as want to aggregate across these.
+                .filter(
+                    (label) ->
+                        StringUtils.isNotBlank(label) && !additionalGroupBySet.contains(label))
+                .collect(Collectors.toSet()));
+        if (!groupBySet.isEmpty()) {
+          queryStr = String.format("%s by (%s)", queryStr, String.join(", ", groupBySet));
+        }
+      }
+      return queryStr;
+    }
     return query;
   }
 
@@ -174,7 +193,10 @@ public class MetricConfigDefinition {
       String sumQuery = getQuery(MetricSettings.defaultSettings(metricPrefix + "_sum"), context);
       String countQuery =
           getQuery(MetricSettings.defaultSettings(metricPrefix + "_count"), context);
-      return "(" + sumQuery + ") / (" + countQuery + ")";
+      return context.isSecondLevelAggregation()
+          // Filter out the `NaN` values from divide by 0 when performing second level aggregation.
+          ? String.format("(%s) / (%s != 0)", sumQuery, countQuery, countQuery)
+          : String.format("(%s) / (%s)", sumQuery, countQuery);
     } else if (metric.contains("/")) {
       String[] metricNames = metric.split("/");
       MetricConfigDefinition numerator = MetricConfig.get(metricNames[0]).getConfig();
@@ -183,7 +205,10 @@ public class MetricConfigDefinition {
           numerator.getQuery(MetricSettings.defaultSettings(numerator.metric), context);
       String denomQuery =
           denominator.getQuery(MetricSettings.defaultSettings(denominator.metric), context);
-      return String.format("((%s)/(%s))*100", numQuery, denomQuery);
+      return context.isSecondLevelAggregation()
+          // Filter out the `NaN` values from divide by 0 when performing second level aggregation.
+          ? String.format("((%s) / (%s != 0)) * 100", numQuery, denomQuery, denomQuery)
+          : String.format("((%s) / (%s)) * 100", numQuery, denomQuery);
     }
 
     String queryStr;

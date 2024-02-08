@@ -111,7 +111,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
-    ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
     ASSERT_EQ(resp.entry().tables_size(), 1);
 
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));

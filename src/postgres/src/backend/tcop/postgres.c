@@ -96,6 +96,9 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "replication/walsender_private.h"
+
 /* ----------------
  *		global variables
  * ----------------
@@ -4374,6 +4377,19 @@ static bool yb_is_dml_command(const char *query_string)
 	if (!query_string)
 		return false;
 
+	/*
+	 * Detect and return false for replication commands since they are never a
+	 * DML. This is needed to avoid calling yb_parse_command_tag for replication
+	 * commands which have a different grammar (repl_gram.y) and will always
+	 * lead to a syntax error.
+	 */
+	replication_scanner_init(query_string);
+	if (replication_scanner_is_replication_command())
+	{
+		replication_scanner_finish();
+		return false;
+	}
+
 	CommandTag command_tag = yb_parse_command_tag(query_string);
 	return (command_tag == CMDTAG_DELETE ||
 	        command_tag == CMDTAG_INSERT ||
@@ -5341,7 +5357,8 @@ PostgresMain(const char *dbname, const char *username)
 				 username, InvalidOid,	/* role to connect as */
 				 !am_walsender, /* honor session_preload_libraries? */
 				 false,			/* don't ignore datallowconn */
-				 NULL);			/* no out_dbname */
+				 NULL,			/* no out_dbname */
+				 NULL);			/* session id */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't

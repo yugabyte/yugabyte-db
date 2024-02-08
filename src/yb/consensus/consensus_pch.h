@@ -75,6 +75,7 @@
 #include <boost/circular_buffer.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/functional/hash/hash.hpp>
@@ -98,15 +99,19 @@
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/pop_front.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>
@@ -180,6 +185,7 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
@@ -216,6 +222,8 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
@@ -229,6 +237,7 @@
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -257,12 +266,14 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/source_location.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -278,6 +289,7 @@
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/taskstream.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -286,6 +298,7 @@
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"

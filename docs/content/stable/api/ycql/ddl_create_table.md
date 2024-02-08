@@ -128,7 +128,7 @@ ycqlsh:example> CREATE TABLE devices(supplier_id INT,
 
 ### Use column constraint to define a static column
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE items(supplier_id INT,
@@ -197,7 +197,7 @@ ycqlsh:example> SELECT * FROM user_actions;
 
 ### Use table property to define the default expiration time for rows
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> CREATE TABLE sensor_data(sensor_id INT,

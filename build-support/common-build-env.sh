@@ -141,7 +141,7 @@ initialize_yugabyte_bash_common() {
       exit 1
     fi
   fi
-  popd >/dev/null
+  popd +0 >/dev/null
 }
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
@@ -313,7 +313,7 @@ readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
   dependency:go-offline
   dependency:resolve
   dependency:resolve-plugins
-  -DoutputFile=/dev/null
+  "-DoutputFile=/dev/null"
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -360,6 +360,15 @@ is_apple_silicon=""  # Will be set to true or false when necessary.
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
+
+# Usage: expect_no_args "$#"
+# Alternative to expect_num_args 0 "$@", because it will trigger
+# https://www.shellcheck.net/wiki/SC2119 when passing no arguments.
+expect_no_args() {
+  if (( $1 != 0 )); then
+    fatal "${FUNCNAME[1]} expects at least zero arguments. Got: $1"
+  fi
+}
 
 yb_activate_debug_mode() {
   PS4='[${BASH_SOURCE[0]}:${LINENO} ${FUNCNAME[0]:-}] '
@@ -408,7 +417,7 @@ set_build_root() {
     local -r make_build_root_readonly=true
   fi
 
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   normalize_build_type
   readonly build_type
 
@@ -929,7 +938,7 @@ build_yb_java_code_in_all_dirs() {
       return 1
     fi
     # shellcheck disable=SC2119
-    popd
+    popd +0
   done
 }
 
@@ -997,7 +1006,7 @@ log_diagnostics_about_local_thirdparty() {
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
 # used in compiler-wrapper.sh.
 find_compiler_by_type() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   expect_vars_to_be_set YB_COMPILER_TYPE
   if [[ -n ${YB_RESOLVED_C_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
     cc_executable=$YB_RESOLVED_C_COMPILER
@@ -1134,7 +1143,7 @@ find_compiler_by_type() {
               "(possibly applying 'which' expansion): $compiler_path" \
               "(trying to use compiler type '$YB_COMPILER_TYPE')."
       fi
-      eval $compiler_var_name=\"$compiler_path\"
+      eval $compiler_var_name=\""$compiler_path"\"
     fi
   done
 
@@ -1620,7 +1629,7 @@ detect_num_cpus() {
 # Gets a random build worker host name. Output variable: build_workers (array).
 # shellcheck disable=SC2120
 get_build_worker_list() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   if [[ -z ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
     fatal "YB_BUILD_WORKERS_LIST_URL not set"
   fi
@@ -2027,7 +2036,7 @@ handle_predefined_build_root_quietly=false
 
 # shellcheck disable=SC2120
 handle_predefined_build_root() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   if [[ -z ${predefined_build_root:-} ]]; then
     return
   fi
@@ -2186,7 +2195,7 @@ set_test_invocation_id() {
 # Kills any processes that have YB_TEST_INVOCATION_ID in their command line. Sets
 # killed_stuck_processes=true in case that happens.
 kill_stuck_processes() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   killed_stuck_processes=false
   if [[ -z ${YB_TEST_INVOCATION_ID:-} ]]; then
     return
@@ -2258,40 +2267,38 @@ check_python_script_syntax() {
     | grep -v '^S' \
     | sed 's/^[[:alpha:]] //' \
     | xargs -P 8 -n 1 "$YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX"
-  popd
+  popd +0
 }
 
 run_shellcheck() {
+  pushd "$YB_SRC_ROOT"
   local scripts_to_check=(
-    bin/release_package_docker_test.sh
-    bin/run_tests_on_spark_tool.sh
-    build-support/common-build-env.sh
-    build-support/common-cli-env.sh
-    build-support/common-test-env.sh
-    build-support/compiler-wrappers/compiler-wrapper.sh
-    build-support/find_linuxbrew.sh
-    build-support/jenkins/build.sh
-    build-support/jenkins/common-lto.sh
-    build-support/jenkins/test.sh
-    build-support/jenkins/yb-jenkins-build.sh
-    build-support/jenkins/yb-jenkins-test.sh
-    build-support/run-test.sh
+    bin/*.sh
+    build-support/*.sh
+    build-support/jenkins/*.sh
     yb_build.sh
     yugabyted-ui/build.sh
   )
-  pushd "$YB_SRC_ROOT"
   local script_path
   local shellcheck_had_errors=false
+  if shellcheck --version | grep -q '^version: 0.3'; then
+    # Centos7 distro has old version of shellcheck that does not support --external-sources.
+    log "Warning: Skipping shellcheck. Requires at least version 0.4.0."
+    popd +0
+    return 0
+  fi
+  # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
+  # the modification is local to the subshell. Seeing a lot of false positivies for these with
+  # the version 0.7.2 of Shellcheck.
+  # SC2230 (avoid 'which" command) is supposed to be optional check, but enabled in some distros.
+  local excodes="2030,2031,2230"
   for script_path in "${scripts_to_check[@]}"; do
-    # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
-    # the modification is local to the subshell. Seeing a lot of false positivies for these with
-    # the version 0.7.2 of Shellcheck.
-    if ! ( set -x; shellcheck --external-sources --exclude=2030,2031 --shell=bash "$script_path" )
+    if ! ( set -x; shellcheck --external-sources --exclude="$excodes" --shell=bash "$script_path" )
     then
       shellcheck_had_errors=true
     fi
   done
-  popd
+  popd +0
   if [[ $shellcheck_had_errors == "true" ]]; then
     exit 1
   fi

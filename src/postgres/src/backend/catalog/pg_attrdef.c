@@ -126,12 +126,7 @@ StoreAttrDefault(Relation rel, AttrNumber attnum,
 		valuesAtt[Anum_pg_attribute_atthasdef - 1] = true;
 		replacesAtt[Anum_pg_attribute_atthasdef - 1] = true;
 
-		/*
-		 * YB note: attmissingval is unused in YB relations - the missing value
-		 * is stored in the DocDB schema instead.
-		 */
 		if (rel->rd_rel->relkind == RELKIND_RELATION && add_column_mode &&
-			!IsYBRelation(rel) &&
 			!attgenerated)
 		{
 			expr2 = expression_planner(expr2);

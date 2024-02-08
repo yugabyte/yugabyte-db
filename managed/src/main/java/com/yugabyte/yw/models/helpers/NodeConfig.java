@@ -72,7 +72,7 @@ public class NodeConfig {
 
     PAM_LIMITS_WRITABLE("PAM limits writable"),
 
-    PYTHON_VERSION("Min python version"),
+    PYTHON_VERSION("Supported python version"),
 
     MOUNT_POINTS_VOLUME("Disk space in MB for mount points"),
 

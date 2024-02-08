@@ -73,7 +73,20 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
-
+      if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
+        Universe universe = getUniverse();
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          log.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+          log.debug(
+              "Updated universe {} software upgrade state to  {}.",
+              taskParams().getUniverseUUID(),
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+        }
+      }
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       setTaskQueueAndRun(
@@ -205,7 +218,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
-        installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+        installYbcOnThePods(
+            universe.getName(),
+            primaryTservers,
+            false,
+            ybcSoftwareVersion,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
         performYbcAction(primaryTservers, false, "stop");
         createWaitForYbcServerTask(primaryTservers);
       }
@@ -246,7 +264,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              replicaTservers,
+              true,
+              ybcSoftwareVersion,
+              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }
@@ -314,7 +337,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       if (enableYbc) {
         Set<NodeDetails> primaryTservers =
             new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
-        installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+        installYbcOnThePods(
+            universe.getName(),
+            primaryTservers,
+            false,
+            ybcSoftwareVersion,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
         performYbcAction(primaryTservers, false, "stop");
         createWaitForYbcServerTask(primaryTservers);
       }
@@ -350,7 +378,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(
                       universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          installYbcOnThePods(
+              universe.getName(),
+              replicaTservers,
+              true,
+              ybcSoftwareVersion,
+              universeDetails.getReadOnlyClusters().get(0).userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }

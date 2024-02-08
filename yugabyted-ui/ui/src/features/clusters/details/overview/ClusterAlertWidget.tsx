@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { Link as RouterLink } from "react-router-dom";
 import { useAlerts } from "../alerts/alerts";
+import { useGetNodeAddressQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -65,7 +66,8 @@ export const ClusterAlertWidget: FC<ClusterAlertWidgetProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: alertNotifications } = useAlerts(true);
+  const { data: alertNotifications } = useAlerts("");
+  const { data: nodeAddress } = useGetNodeAddressQuery();
 
   const alert = useMemo<(typeof alertNotifications)[number] | undefined>(() => {
     if (alertNotifications.length === 0) {
@@ -86,7 +88,7 @@ export const ClusterAlertWidget: FC<ClusterAlertWidgetProps> = () => {
         <Box display="flex" alignItems="center">
           <Box display="flex" alignItems="center" flex={1} gridGap={8}>
             <Typography variant="body2" className={classes.title}>
-              {t("clusterDetail.overview.alerts")}
+              {t("clusterDetail.overview.alerts")}{` (${nodeAddress})`}
             </Typography>
             {alertNotifications.length > 0 && (
               <YBBadge variant={alert?.status} text={alertNotifications.length} icon={false} />

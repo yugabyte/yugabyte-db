@@ -65,8 +65,7 @@ public class XClusterTableConfig extends Model {
   private boolean replicationSetupDone;
 
   @ApiModelProperty(
-      value =
-          "YbaApi Internal. Whether this table needs bootstrap process " + "for replication setup")
+      value = "YbaApi Internal. Whether this table needs bootstrap process for replication setup")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   private boolean needBootstrap;
 
@@ -172,9 +171,9 @@ public class XClusterTableConfig extends Model {
     this.setReplicationSetupDone(false);
     this.setStreamId(null);
     this.setBootstrapCreateTime(null);
-    this.setBackup(null);
-    this.setRestore(null);
     this.setRestoreTime(null);
+    // We intentionally do not reset backup and restore objects in the xCluster config because
+    // restart parent task sets these attributes and its subtasks use this method.
   }
 
   /** This class is the primary key for XClusterTableConfig. */

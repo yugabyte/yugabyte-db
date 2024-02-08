@@ -482,7 +482,7 @@ paths:
       parameters:
         - name: node_address
           in: query
-          description: Specify the node ip-address from where gflags are retrieved
+          description: Specify the node ip-address from where alerts are retrieved
           required: true
           style: form
           explode: false
@@ -502,9 +502,46 @@ paths:
       operationId: getClusterAlerts
       tags:
         - cluster-info
+      parameters:
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where gflags are retrieved
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
       responses:
         '200':
           $ref: '#/components/responses/AlertsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /connections:
+    get:
+      summary: Get YSQL connection manager stats for every node of the cluster
+      description: Get YSQL connection manager stats for every node of the cluster
+      operationId: getClusterConnections
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/ConnectionsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /node_address:
+    get:
+      summary: Get the node address for the current node
+      description: Get the node address for the current node
+      operationId: getNodeAddress
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/NodeAddressResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -1066,6 +1103,8 @@ components:
           type: boolean
         is_read_replica:
           type: boolean
+        preference_order:
+          type: integer
         is_master_up:
           type: boolean
         is_bootstrapping:
@@ -1514,6 +1553,59 @@ components:
       required:
         - name
         - info
+    ConnectionStatsItem:
+      type: object
+      properties:
+        pool:
+          type: string
+        active_logical_connections:
+          type: integer
+          format: int64
+        queued_logical_connections:
+          type: integer
+          format: int64
+        idle_or_pending_logical_connections:
+          type: integer
+          format: int64
+        active_physical_connections:
+          type: integer
+          format: int64
+        idle_physical_connections:
+          type: integer
+          format: int64
+        avg_wait_time_ns:
+          type: integer
+          format: int64
+        qps:
+          type: integer
+          format: int64
+        tps:
+          type: integer
+          format: int64
+      required:
+        - active_logical_connections
+        - queued_logical_connections
+        - idle_or_pending_logical_connections
+        - active_physical_connections
+        - idle_physical_connections
+        - avg_wait_time_ns
+        - qps
+        - tps
+    ConnectionStats:
+      type: array
+      items:
+        $ref: '#/components/schemas/ConnectionStatsItem'
+    ConnectionsStatsData:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/ConnectionStats'
+    ConnectionsStats:
+      title: YSQL connection manager stats
+      description: YSQL connection manager stats
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ConnectionsStatsData'
   requestBodies:
     ClusterSpec:
       description: DB Cluster to be updated
@@ -1704,6 +1796,18 @@ components:
                   $ref: '#/components/schemas/AlertsInfo'
             required:
               - data
+    ConnectionsResponse:
+      description: YSQL connection manager stats
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConnectionsStats'
+    NodeAddressResponse:
+      description: Node address
+      content:
+        text/plain:
+          schema:
+            type: string
   securitySchemes:
     BearerAuthToken:
       type: http

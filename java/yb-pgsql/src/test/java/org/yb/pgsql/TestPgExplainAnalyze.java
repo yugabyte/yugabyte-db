@@ -23,6 +23,8 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.OPERATION_INSERT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.RELATIONSHIP_INNER_TABLE;
 import static org.yb.pgsql.ExplainAnalyzeUtils.RELATIONSHIP_OUTER_TABLE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.setHideNonDeterministicFields;
+import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainWithOptions;
 
 import java.sql.Statement;
 
@@ -33,6 +35,8 @@ import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
+import org.yb.util.json.ValueChecker;
+import org.yb.pgsql.ExplainAnalyzeUtils.ExplainAnalyzeOptionsBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 
@@ -73,6 +77,10 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
   private static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  private static ExplainAnalyzeOptionsBuilder makeOptionsBuilder() {
+    return new ExplainAnalyzeOptionsBuilder();
   }
 
   public void testExplain(String query, Checker checker) throws Exception {
@@ -652,5 +660,134 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .build())
                 .build())
             .build());
+  }
+
+  @Test
+  public void testExplainAnalyzeOptions() throws Exception {
+    String query = String.format("SELECT * FROM %s", TABLE_NAME);
+    try (Statement stmt = connection.createStatement()) {
+        setHideNonDeterministicFields(stmt, true);
+
+        // Vanilla EXPLAIN (ANALYZE, DIST) with non-deterministic fields hidden
+        testExplainWithOptions(
+            stmt,
+            makeOptionsBuilder()
+                .analyze(true)
+                .dist(true),
+            query,
+            makeTopLevelBuilder()
+                .storageReadRequests(Checkers.equal(5))
+                .storageWriteRequests(Checkers.equal(0))
+                .storageFlushRequests(Checkers.equal(0))
+                .plan(makePlanBuilder()
+                    .nodeType(NODE_SEQ_SCAN)
+                    .relationName(TABLE_NAME)
+                    .alias(TABLE_NAME)
+                    .planRows(Checkers.greater(0))
+                    .actualRows(Checkers.equal(5000))
+                    .storageTableReadRequests(Checkers.equal(5))
+                    .build())
+                .build());
+
+        // EXPLAIN (ANALYZE, DIST, SUMMARY OFF) with non-deterministic fields hidden
+        testExplainWithOptions(
+            stmt,
+            makeOptionsBuilder()
+                .analyze(true)
+                .dist(true)
+                .summary(false),
+            query,
+            makeTopLevelBuilder()
+                .plan(makePlanBuilder()
+                    .nodeType(NODE_SEQ_SCAN)
+                    .relationName(TABLE_NAME)
+                    .alias(TABLE_NAME)
+                    .planRows(Checkers.greater(0))
+                    .actualRows(Checkers.equal(5000))
+                    .storageTableReadRequests(Checkers.equal(5))
+                    .build())
+                .build());
+
+        setHideNonDeterministicFields(stmt, false);
+
+        // Vanilla EXPLAIN (ANALYZE, DIST) with non-deterministic fields visible
+        testExplainWithOptions(
+            stmt,
+            makeOptionsBuilder()
+                .analyze(true)
+                .dist(true)
+                .timing(true),
+            query,
+            makeTopLevelBuilder()
+                .storageReadRequests(Checkers.equal(5))
+                .storageReadExecutionTime(Checkers.greater(0.0))
+                .storageWriteRequests(Checkers.equal(0))
+                .storageFlushRequests(Checkers.equal(0))
+                .catalogReadRequests(Checkers.equal(0))
+                .catalogWriteRequests(Checkers.equal(0))
+                .storageExecutionTime(Checkers.greater(0.0))
+                .plan(makePlanBuilder()
+                    .nodeType(NODE_SEQ_SCAN)
+                    .relationName(TABLE_NAME)
+                    .alias(TABLE_NAME)
+                    .planRows(Checkers.greater(0))
+                    .actualRows(Checkers.equal(5000))
+                    .storageTableReadRequests(Checkers.equal(5))
+                    .storageTableReadExecutionTime(Checkers.greater(0.0))
+                    .build())
+                .build());
+
+        // EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, SUMMARY OFF) with non-deterministic
+        // fields visible
+        testExplainWithOptions(
+            stmt,
+            makeOptionsBuilder()
+                .analyze(true)
+                .dist(true)
+                .summary(false)
+                .timing(true)
+                .costs(false),
+            query,
+            makeTopLevelBuilder()
+                .plan(makePlanBuilder()
+                    .nodeType(NODE_SEQ_SCAN)
+                    .relationName(TABLE_NAME)
+                    .alias(TABLE_NAME)
+                    .storageTableReadRequests(Checkers.equal(5))
+                    .storageTableReadExecutionTime(Checkers.greater(0.0))
+                    .actualRows(Checkers.equal(5000))
+                    .build())
+                .build());
+
+        // EXPLAIN (ANALYZE ON, DIST ON, VERBOSE ON) with non-deterministic fields visible
+        stmt.execute("SET yb_enable_base_scans_cost_model = TRUE");
+        testExplainWithOptions(
+            stmt,
+            makeOptionsBuilder()
+                .analyze(true)
+                .dist(true)
+                .timing(true)
+                .verbose(true),
+            String.format("SELECT * FROM %s WHERE c1 = 1", TABLE_NAME),
+            makeTopLevelBuilder()
+                .storageReadRequests(Checkers.equal(1))
+                .storageReadExecutionTime(Checkers.greater(0.0))
+                .storageWriteRequests(Checkers.equal(0))
+                .storageFlushRequests(Checkers.equal(0))
+                .catalogReadRequests(Checkers.greaterOrEqual(0))
+                .catalogReadExecutionTime(Checkers.greater(0.0))
+                .catalogWriteRequests(Checkers.equal(0))
+                .storageExecutionTime(Checkers.greater(0.0))
+                .plan(makePlanBuilder()
+                    .nodeType(NODE_INDEX_SCAN)
+                    .relationName(TABLE_NAME)
+                    .alias(TABLE_NAME)
+                    .planRows(Checkers.greater(0))
+                    .actualRows(Checkers.equal(5))
+                    .storageTableReadRequests(Checkers.equal(1))
+                    .storageTableReadExecutionTime(Checkers.greater(0.0))
+                    .build())
+                .build());
+    }
   }
 }

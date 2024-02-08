@@ -125,6 +125,7 @@ void TestCQLService::TearDown() {
   WARN_NOT_OK(mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Stop(),
               "Failed to stop heartbeater");
   server_->Shutdown();
+  server_.reset();
   YBTableTestBase::TearDown();
 }
 

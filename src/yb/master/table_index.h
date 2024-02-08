@@ -32,7 +32,7 @@ class TableIndex {
   // the catalog manager has a pattern of looping through:
   //     * transaction tables (done through an additional set functioning as an index)
   //     * non system tables
-  class PrimaryTableTag;
+  class ColocatedUserTableTag;
   // Use a boost::multi_index_container to speed up common operations on tables by adding additional
   // indices. Indices:
   //     Primary index on TableId for point lookups.
@@ -44,7 +44,7 @@ class TableIndex {
       boost::multi_index::hashed_unique<
         boost::multi_index::const_mem_fun<TableInfo, const TableId&, &TableInfo::id>>,
       boost::multi_index::hashed_non_unique<
-        boost::multi_index::tag<PrimaryTableTag>,
+        boost::multi_index::tag<ColocatedUserTableTag>,
         boost::multi_index::const_mem_fun<TableInfo, bool, &TableInfo::IsColocatedUserTable>>>>;
 
   using TablesRange = boost::iterator_range<Tables::nth_index<1>::type::iterator>;

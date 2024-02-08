@@ -238,6 +238,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(no_update_index_list);
 	COPY_SCALAR_FIELD(no_row_trigger);
 	COPY_SCALAR_FIELD(ybUseScanTupleInUpdate);
+	COPY_SCALAR_FIELD(ybHasWholeRowAttribute);
 
 	return newnode;
 }

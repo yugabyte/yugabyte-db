@@ -313,6 +313,10 @@ class SysCatalogTable {
     pitr_count_.fetch_add(1);
   }
 
+  tablet::TabletPeerPtr TEST_GetTabletPeer() {
+    return tablet_peer_;
+  }
+
  private:
   friend class CatalogManager;
   friend class ScopedLeaderSharedLock;

@@ -11,9 +11,10 @@ import { RunTimeConfigData } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './AdvancedConfig.scss';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
 const ConfigScopePriority = {
@@ -151,7 +152,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         pullRight
       >
         <RbacValidator
-          accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+          accessRequiredOn={ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY}
           isControl
         >
           <MenuItem
@@ -164,7 +165,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         </RbacValidator>
         {!row.isConfigInherited && (
           <RbacValidator
-            accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+            accessRequiredOn={ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -254,16 +255,14 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         >
           Config Value
         </TableHeaderColumn>
-        {isScopeMutable && (
-          <TableHeaderColumn
-            dataField={'actions'}
-            columnClassName={'yb-actions-cell'}
-            width="10%"
-            dataFormat={formatActionButtons}
-          >
-            Actions
-          </TableHeaderColumn>
-        )}
+        <TableHeaderColumn
+          dataField={'actions'}
+          columnClassName={'yb-actions-cell'}
+          width="10%"
+          dataFormat={formatActionButtons}
+        >
+          Actions
+        </TableHeaderColumn>
       </BootstrapTable>
       {editConfig && (
         <EditConfig

@@ -98,7 +98,7 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings with a cluster-admin role in each namespace where you intend to create and deploy the universe. For more information, see [RBAC resources](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml).
+The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings in each namespace where you intend to create and deploy the universe. Alternatively, you can create ClusterRoles and ClusterRoleBindings which will allow you to create universes in all the namespaces. For more information, see [Platform Global](https://github.com/yugabyte/charts/tree/master/rbac#a-platform-globalyaml) and [Platform Namespaced](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml) sections from the RBAC resources documentation.
 
 To create the required RBAC objects, execute the following command:
 
@@ -223,7 +223,7 @@ yb-tserver-2  2/2   Running  0     5m58s
 
 If any of the pods are in pending state, perform the following:
 
-- Login with an admin account and navigate to **Compute > Machine Sets**.
+- Log in with an admin account and navigate to **Compute > Machine Sets**.
 - Open the Machine Set corresponding to your zone label (us-east4-a).
 - Click **Desired Count** and increase the count by 1 or 2, as shown in the following illustration.
 - Click **Save**.

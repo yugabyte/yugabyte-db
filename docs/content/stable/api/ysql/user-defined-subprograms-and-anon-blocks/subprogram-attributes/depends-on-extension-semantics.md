@@ -1,7 +1,8 @@
 ---
 title: Semantics of "depends on extension" [YSQL]
 headerTitle: The semantics of the "depends on extension" subprogram attribute
-linkTitle: «Depends on extension» semantics
+linkTitle: >
+  "Depends on extension" semantics
 description: Describes the semantics of the depends on extension subprogram attribute [YSQL].
 menu:
   stable:

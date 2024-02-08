@@ -19,7 +19,7 @@ type: docs
   </li>
 </ul>
 
-In addition to database access permissions available through ROLE and GRANT privilege system, YugabyteDB provides a more granular level security where tables can have **row security policies** that restrict rows users can access.
+In addition to database access permissions available through the ROLE and GRANT privilege system, YugabyteDB provides a more granular level of security where tables can have **row security policies** that restrict rows users can access.
 
 Row-level security (RLS) restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. RLS policies can be created specific to a DML command or with ALL commands. They can also be used to create policies on a particular role or multiple roles.
 
@@ -125,7 +125,7 @@ select * from employees;
 (3 rows)
 ```
 
-## Step 3. Setup RLS for a user
+## Step 3. Set up RLS for a user
 
 Now create a row-level security policy for user `joe`
 

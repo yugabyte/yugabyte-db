@@ -86,6 +86,9 @@ public class Universe extends Model {
   public static final String IS_MULTIREGION = "isMultiRegion";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Whether all the Kubernetes resources are labeled with universe
+  // name, zone name, etc.
+  public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -506,6 +509,14 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodes() {
     return getUniverseDetails().nodeDetailsSet;
+  }
+
+  /** Returns the list of nodes based on the placement/cluster uuid for this universe. */
+  @JsonIgnore
+  public List<NodeDetails> getNodesByCluster(UUID placementUuid) {
+    return getNodes().stream()
+        .filter(n -> n.placementUuid.equals(placementUuid))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -1027,6 +1038,17 @@ public class Universe extends Model {
     final HostAndPort masterLeader = getMasterLeader();
     if (masterLeader == null) return "";
     return masterLeader.getHost();
+  }
+
+  public void updateUniverseSoftwareUpgradeState(
+      UniverseDefinitionTaskParams.SoftwareUpgradeState state) {
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.softwareUpgradeState = state;
+          universe.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universeUUID, updater, false);
   }
 
   public boolean universeIsLocked() {

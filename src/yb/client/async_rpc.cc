@@ -459,7 +459,7 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
     TRACE_TO(
-        trace_, "Received from server: \n BEGIN AsyncRpc\n$0 END AsyncRpc", resp_.trace_buffer());
+        trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {

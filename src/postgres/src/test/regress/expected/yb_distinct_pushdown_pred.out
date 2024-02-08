@@ -874,3 +874,22 @@ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1 AND t2.r2 = 1 
 (1 row)
 
 DROP TABLE t;
+CREATE TABLE sample(a int, b int, primary key(a asc, b asc));
+INSERT INTO sample VALUES (1,1), (1,2);
+DELETE FROM sample where b = 1;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE a > 0;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Distinct Index Scan using sample_pkey on sample (actual rows=1 loops=1)
+         Index Cond: (a > 0)
+         Distinct Prefix: 1
+(4 rows)
+
+SELECT DISTINCT a FROM sample WHERE a > 0;
+ a
+---
+ 1
+(1 row)
+
+DROP TABLE sample;

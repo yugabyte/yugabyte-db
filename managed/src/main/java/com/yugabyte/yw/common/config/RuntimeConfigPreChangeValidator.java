@@ -36,6 +36,10 @@ public interface RuntimeConfigPreChangeValidator {
     validateAny(path, newValue);
   }
 
+  default void validateDeleteConfig(UUID scopeUUID, String path) {
+    // Override in each validator listener if required.
+  }
+
   default void validateAny(String path, String newValue) {
     // Do nothing
   }

@@ -333,8 +333,7 @@
   opfmethod => 'lsm', opfname => 'macaddr_ops' },
 { oid => '9915',
   opfmethod => 'lsm', opfname => 'macaddr8_ops' },
-{ oid => '9916', oid_symbol => 'NAME_LSM_FAM_OID',
-  opfmethod => 'lsm', opfname => 'name_ops' },
+# YB_TODO: OID 9916 is unused
 { oid => '9917',
   opfmethod => 'lsm', opfname => 'numeric_ops' },
 { oid => '9918', oid_symbol => 'OID_LSM_FAM_OID',

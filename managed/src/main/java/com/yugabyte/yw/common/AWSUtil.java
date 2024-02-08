@@ -50,6 +50,8 @@ import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -112,6 +114,23 @@ public class AWSUtil implements CloudUtil {
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
+  private void tryListObjects(AmazonS3 s3Client, String bucketName, String prefix)
+      throws SdkClientException {
+    Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
+    if (!doesBucketExist) {
+      throw new RuntimeException(String.format("No S3 bucket found with name %s", bucketName));
+    }
+    ListObjectsV2Result result;
+    if (StringUtils.isBlank(prefix)) {
+      result = s3Client.listObjectsV2(bucketName);
+    } else {
+      result = s3Client.listObjectsV2(bucketName, prefix);
+    }
+    if (result.getKeyCount() == 0) {
+      log.debug("No objects exists within bucket {}", bucketName);
+    }
+  }
+
   // This method is a way to check if given S3 config can extract objects.
   @Override
   public boolean canCredentialListObjects(
@@ -119,35 +138,68 @@ public class AWSUtil implements CloudUtil {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
-    for (String location : locations) {
-      try {
-        maybeDisableCertVerification();
-        AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
-        ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
-        String bucketName = configLocationInfo.bucket;
-        String prefix = configLocationInfo.cloudPath;
-        if (StringUtils.isEmpty(prefix)) {
-          Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
-          if (!doesBucketExist) {
-            throw new RuntimeException(
-                String.format("No S3 bucket found with name %s", bucketName));
-          }
-        } else {
-          ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
-          if (result.getKeyCount() == 0) {
-            log.error("No objects exists within bucket {}", bucketName);
+    try {
+      maybeDisableCertVerification();
+      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+      for (String location : locations) {
+        try {
+          ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+          String bucketName = configLocationInfo.bucket;
+          String prefix = configLocationInfo.cloudPath;
+          tryListObjects(s3Client, bucketName, prefix);
+        } catch (SdkClientException e) {
+          String msg = String.format("Cannot list objects in backup location %s", location);
+          log.error(msg, e);
+          return false;
+        }
+      }
+      return true;
+    } catch (SdkClientException e) {
+      log.error("Failed to create S3 client", e.getMessage());
+      return false;
+    } finally {
+      maybeEnableCertVerification();
+    }
+  }
+
+  @Override
+  public void checkListObjectsWithYbcSuccessMarkerCloudStore(
+      CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
+        csSpec.getBucketLocationsMap();
+    Map<String, String> configRegions = getRegionLocationsMap(configData);
+    try {
+      maybeDisableCertVerification();
+      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+      for (Map.Entry<String, ResponseCloudStoreSpec.BucketLocation> regionPrefix :
+          regionPrefixesMap.entrySet()) {
+        if (configRegions.containsKey(regionPrefix.getKey())) {
+          // Use "cloudDir" of success marker as object prefix
+          String prefix = regionPrefix.getValue().cloudDir;
+          // Use config's bucket for bucket name
+          ConfigLocationInfo configLocationInfo =
+              getConfigLocationInfo(configRegions.get(regionPrefix.getKey()));
+          String bucketName = configLocationInfo.bucket;
+          log.debug("Trying object listing with S3 bucket {} and prefix {}", bucketName, prefix);
+          try {
+            tryListObjects(s3Client, bucketName, prefix);
+          } catch (SdkClientException e) {
+            String msg =
+                String.format(
+                    "Cannot list objects in cloud location with bucket %s and cloud directory %s",
+                    bucketName, prefix);
+            log.error(msg, e);
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
           }
         }
-      } catch (SdkClientException e) {
-        String msg = String.format("Cannot list objects in backup location %s", location);
-        log.error(msg, e);
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
-      } finally {
-        maybeEnableCertVerification();
       }
+    } catch (SdkClientException e) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Failed to create S3 client: " + e.getLocalizedMessage());
+    } finally {
+      maybeEnableCertVerification();
     }
-    return true;
   }
 
   @Override
@@ -165,8 +217,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String bucketName = splitLocation[0];
     String objectPrefix = splitLocation[1];
@@ -178,17 +229,17 @@ public class AWSUtil implements CloudUtil {
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
         retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
       }
-    } catch (AmazonS3Exception e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     } finally {
       maybeEnableCertVerification();
     }
+    return true;
   }
 
   // For S3 location: s3://bucket/suffix
@@ -368,8 +419,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations) {
     for (String backupLocation : backupLocations) {
       try {
         maybeDisableCertVerification();
@@ -398,13 +448,14 @@ public class AWSUtil implements CloudUtil {
               "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
           retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
         } while (nextContinuationToken != null);
-      } catch (AmazonS3Exception e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
-        throw e;
+      } catch (Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e);
+        return false;
       } finally {
         maybeEnableCertVerification();
       }
     }
+    return true;
   }
 
   @Override
@@ -492,7 +543,7 @@ public class AWSUtil implements CloudUtil {
         splitValues.length > 1
             ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = BackupUtil.appendSlash(cloudDir);
+    cloudDir = StringUtils.isNotBlank(cloudDir) ? BackupUtil.appendSlash(cloudDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       splitValues = getSplitLocationValue(previousBackupLocation);
@@ -511,6 +562,8 @@ public class AWSUtil implements CloudUtil {
     return cloudStoreSpecBuilder.build();
   }
 
+  // In case of Restore - cloudDir is picked from success marker
+  // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
@@ -519,6 +572,7 @@ public class AWSUtil implements CloudUtil {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String storageLocation = getRegionLocationsMap(configData).get(region);
     String[] splitValues = getSplitLocationValue(storageLocation);
+    // Bucket used is the one provided in config
     String bucket = splitValues[0];
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
     cloudStoreSpecBuilder.setBucket(bucket).setPrevCloudDir("").putAllCreds(s3CredsMap);

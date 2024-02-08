@@ -47,6 +47,7 @@
 
 set -euo pipefail
 
+# shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}"/../common-test-env.sh
 
 show_stats() {
@@ -67,7 +68,8 @@ show_num_xml_files() {
 
 ensure_build_root_exists
 
-readonly BUILD_ROOT=$( cd "$BUILD_ROOT" && pwd )
+BUILD_ROOT=$( cd "$BUILD_ROOT" && pwd )
+readonly BUILD_ROOT
 
 set_common_test_paths
 set_real_build_root_path

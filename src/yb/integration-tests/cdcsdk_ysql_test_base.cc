@@ -913,7 +913,9 @@ namespace cdc {
 
           if (set_checkpoint_resp.has_error() &&
               set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
-              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
+              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY &&
+              set_checkpoint_resp.error().status().message().find("TRY_AGAIN_CODE") ==
+                  std::string::npos) {
             return STATUS_FORMAT(
                 InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
           }
@@ -1142,7 +1144,7 @@ namespace cdc {
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
       const bool& validate_old_tuple,
       CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records,
-      const bool& validate_third_column) {
+      const bool& validate_third_column, const bool is_nothing_record) {
     // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
@@ -1183,18 +1185,21 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
-          expected_before_image_records.key);
-        if (validate_old_tuple) {
-          if (validate_third_column) {
-            ASSERT_EQ(record.row_message().old_tuple_size(), 3);
-            ASSERT_EQ(record.row_message().new_tuple_size(), 3);
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value,
-                true, expected_before_image_records.value2);
-          } else {
-            AssertBeforeImageKeyValue(
-                record, expected_before_image_records.key, expected_before_image_records.value);
+        if (is_nothing_record) {
+          ASSERT_EQ(record.row_message().old_tuple_size(), 0);
+          ASSERT_EQ(record.row_message().new_tuple_size(), 0);
+        } else {
+          if (validate_old_tuple) {
+            if (validate_third_column) {
+              ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+              ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value,
+                  true, expected_before_image_records.value2);
+            } else {
+              AssertBeforeImageKeyValue(
+                  record, expected_before_image_records.key, expected_before_image_records.value);
+            }
           }
         }
         ASSERT_EQ(record.row_message().table(), kTableName);
@@ -1559,7 +1564,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), 1);
 
     std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -1816,6 +1821,22 @@ namespace cdc {
         test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
     RETURN_NOT_OK(Subprocess::Call(argv));
 
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
+    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+    if (!status.ok()) {
+      return status;
+    }
+
+    status = yb_admin_client_->LeaderStepDownWithNewLeader(
+        tablet_id,
+        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+    if (!status.ok()) {
+      return status;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(500));
     return Status::OK();
   }
 
@@ -2679,14 +2700,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
-    SleepFor(MonoDelta::FromSeconds(10));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
     // Call GetChanges with new LEADER.
     change_resp =
@@ -2717,9 +2738,9 @@ namespace cdc {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     // Validate the columns and insert counts.
@@ -2844,13 +2865,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     ValidateColumnCounts(change_resp, 2);
@@ -3102,7 +3124,8 @@ namespace cdc {
   Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const int& expected_count, const CDCSDKCheckpointPB* cp, const int& tablet_idx,
+      const int& expected_count, bool is_explicit_checkpoint,
+      const CDCSDKCheckpointPB* cp, const int& tablet_idx,
       const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
     int actual_count = 0;
     return WaitFor(
@@ -3119,7 +3142,57 @@ namespace cdc {
               }
             }
           }
-          return actual_count == expected_count;
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecordsAcrossTablets(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, bool is_explicit_checkpoint, const CDCSDKCheckpointPB* cp,
+      const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
+    int actual_count = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          // Call GetChanges for each tablet.
+          for (int tablet_idx = 0; tablet_idx < tablets.size(); tablet_idx++) {
+            auto get_changes_resp_result = GetChangesFromCDC(
+              stream_id, tablets, cp, tablet_idx, safe_hybrid_time, wal_segment_index);
+            if (get_changes_resp_result.ok()) {
+              for (const auto& record : get_changes_resp_result->cdc_sdk_proto_records()) {
+                if (record.row_message().op() == RowMessage::INSERT ||
+                    record.row_message().op() == RowMessage::UPDATE ||
+                    record.row_message().op() == RowMessage::DELETE) {
+                  actual_count += 1;
+                }
+              }
+            }
+          }
+
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");

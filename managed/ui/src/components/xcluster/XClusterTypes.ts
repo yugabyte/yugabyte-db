@@ -5,16 +5,17 @@ import {
   DROPDOWN_DIVIDER,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  XClusterTableEligibility
+  XClusterTableEligibility,
+  XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
-import { TableType, YBTable } from '../../redesign/helpers/dtos';
+import { YBTable } from '../../redesign/helpers/dtos';
 import { XClusterTableDetails } from './dtos';
 
 /**
  * XCluster supported table type.
  */
-export type XClusterTableType = typeof TableType.PGSQL_TABLE_TYPE | typeof TableType.YQL_TABLE_TYPE;
+export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
 
@@ -45,7 +46,8 @@ export interface XClusterTableCandidate extends YBTable {
 /**
  * Holds list of tables for a keyspace and provides extra metadata.
  */
-export interface KeyspaceItem {
+export interface NamespaceItem {
+  uuid: string;
   name: string;
   tableEligibilityCount: {
     ineligible: number;
@@ -55,16 +57,12 @@ export interface KeyspaceItem {
   tables: XClusterTableCandidate[];
 }
 
-export interface KeyspaceRow extends KeyspaceItem {
-  keyspace: string;
-}
-
 /**
  * Structure for organizing tables by table type first and keyspace/database name second.
  */
 export type ReplicationItems = Record<
   XClusterTableType,
-  { keyspaces: Record<string, KeyspaceItem>; tableCount: number }
+  { namespaces: Record<string, NamespaceItem>; tableCount: number }
 >;
 //------------------------------------------------------------------------------------
 

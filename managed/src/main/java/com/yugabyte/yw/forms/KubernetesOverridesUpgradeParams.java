@@ -27,8 +27,8 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Check if universe type is kubernetes.

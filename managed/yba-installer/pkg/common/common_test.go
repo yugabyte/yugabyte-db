@@ -3,6 +3,7 @@ package common
 import (
 	"os"
 	"testing"
+	"reflect"
 
 	"github.com/spf13/viper"
 )
@@ -14,10 +15,9 @@ func TestSetYaml(t *testing.T) {
 	yamlStr := `
 # test comment
 foo: # more test
-   bar:
-      abc: ""
-      def: etc
-
+    bar:
+       abc: ""
+       def: etc
 level1: etc
 `
 	_ = os.Remove(filePath)
@@ -31,6 +31,8 @@ level1: etc
 	SetYamlValue(filePath, "foo.bar.ghi", "new3")
 	SetYamlValue(filePath, "biz.baz.booz", "new4")
 	SetYamlValue(filePath, "level2", "new5")
+	SetYamlValue(filePath, "foo.bar.list", []string{"abcd", "efgh"})
+	SetYamlValue(filePath, "foo.bar.list2", []string{})
 
 	v := viper.New()
 	v.SetConfigFile(filePath)
@@ -68,4 +70,22 @@ level1: etc
 	if real != expected {
 		t.Fatalf("yaml entry doesn't match expected '%s' '%s'", real, expected)
 	}
+
+	list := v.GetStringSlice("foo.bar.list")
+    expectedList := []string{"abcd", "efgh"}
+
+    if !reflect.DeepEqual(list, expectedList) {
+        t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
+    }
+
+	list = v.GetStringSlice("foo.bar.list2")
+	if list == nil {
+		list = []string{}
+	}
+    expectedList = []string{}
+
+    if !reflect.DeepEqual(list, expectedList) {
+        t.Fatalf("yaml entry doesn't match expected %#v %#v", list, expectedList)
+    }
+
 }

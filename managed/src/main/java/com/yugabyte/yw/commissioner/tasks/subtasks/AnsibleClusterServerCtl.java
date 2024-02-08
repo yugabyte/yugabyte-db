@@ -26,9 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleClusterServerCtl extends NodeTaskBase {
 
   @Inject
-  protected AnsibleClusterServerCtl(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleClusterServerCtl(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

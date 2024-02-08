@@ -1039,20 +1039,25 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
       inc(10);
       return Status::OK();
     }
+    const std::string& filename() const override {
+      inc(11);
+      static std::string kFilename = "Base";
+      return kFilename;
+    }
 
    protected:
     Status Allocate(uint64_t offset, uint64_t len) override {
-      inc(11);
+      inc(12);
       return Status::OK();
     }
     Status RangeSync(uint64_t offset, uint64_t nbytes) override {
-      inc(12);
+      inc(13);
       return Status::OK();
     }
 
    public:
     ~Base() {
-      inc(13);
+      inc(14);
     }
   };
 
@@ -1082,10 +1087,11 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     w.GetPreallocationStatus(nullptr, nullptr);
     w.GetUniqueId(nullptr);
     ASSERT_OK(w.InvalidateCache(0, 0));
+    w.filename();
     w.CallProtectedMethods();
   }
 
-  EXPECT_EQ(14, step);
+  EXPECT_EQ(15, step);
 }
 
 }  // namespace rocksdb

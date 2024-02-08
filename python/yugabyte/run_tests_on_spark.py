@@ -1071,13 +1071,13 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
     # jenkins DSL "test regex", and that will be combined with the expected-pass tests.
     src_root = yb_dist_tests.get_global_conf().yb_src_root
     pg15_test_descriptors = subprocess.run(['awk', '{print$NF}',
+                                            f'{src_root}/pg15_tests/flaky_cxx.tsv',
+                                            f'{src_root}/pg15_tests/flaky_java.tsv',
                                             f'{src_root}/pg15_tests/passing_cxx.tsv',
                                             f'{src_root}/pg15_tests/passing_java.tsv'],
                                            stdout=subprocess.PIPE,
                                            text=True,
                                            check=True).stdout.rstrip().split('\n')
-    # TODO(jason): remove this workaround after next merge with master.
-    pg15_test_descriptors = [f".*{descriptor}" for descriptor in pg15_test_descriptors]
     if args.test_filter_re:
         args.test_filter_re += '|' + '|'.join(pg15_test_descriptors)
     else:

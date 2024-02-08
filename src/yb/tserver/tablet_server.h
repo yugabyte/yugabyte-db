@@ -31,12 +31,16 @@
 //
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
-#include <atomic>
 
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
@@ -54,6 +58,7 @@
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -77,8 +82,8 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-class XClusterConsumer;
 class PgClientServiceImpl;
+class XClusterConsumerIf;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -114,7 +119,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
-  Status SetAutoFlagConfig(const AutoFlagsConfigPB new_config);
+  void HandleMasterHeartbeatResponse(
+      HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
+
+  Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
@@ -277,12 +285,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   encryption::UniverseKeyManager* GetUniverseKeyManager();
 
-  Status SetConfigVersionAndConsumerRegistry(
-      int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+  Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
-  XClusterConsumer* GetXClusterConsumer() const;
+  XClusterConsumerIf* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
   Status SetCDCServiceEnabled();
@@ -294,6 +301,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return pg_client_service_.lock().get();
   }
 
+  RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
+    if (auto service_ptr = remote_bootstrap_service_.lock()) {
+      return service_ptr.get();
+    }
+    return nullptr;
+  }
+
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
@@ -301,6 +315,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
+  key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
+  void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
 
  protected:
   virtual Status RegisterServices();
@@ -312,7 +329,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status ValidateMasterAddressResolution() const;
 
   MonoDelta default_client_timeout() override;
-  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+  void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) override;
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
@@ -387,9 +404,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // is shut down.
   std::weak_ptr<TabletServiceImpl> tablet_server_service_;
 
+  // An instance to remote bootstrap service. This pointer is no longer valid after
+  // RpcAndWebServerBase is shut down.
+  std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
+
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
   std::weak_ptr<PgClientServiceImpl> pg_client_service_;
+
+  // Key to shared memory for ysql connection manager stats
+  key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
@@ -410,14 +434,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgConfigReloader pg_config_reloader_;
 
-  Status CreateXClusterConsumer() REQUIRES(xcluster_consumer_mutex_);
+  Status CreateXClusterConsumer() EXCLUDES(xcluster_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;
-  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
+  std::unique_ptr<XClusterConsumerIf> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;

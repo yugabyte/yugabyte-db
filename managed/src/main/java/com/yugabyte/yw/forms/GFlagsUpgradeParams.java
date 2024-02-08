@@ -10,8 +10,11 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,28 +33,43 @@ import org.apache.commons.collections.CollectionUtils;
 @Slf4j
 public class GFlagsUpgradeParams extends UpgradeWithGFlags {
 
+  protected RuntimeConfGetter runtimeConfGetter;
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
+
+    runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+
+    if (universe
+            .getUniverseDetails()
+            .softwareUpgradeState
+            .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)
+        && !runtimeConfGetter.getConfForScope(
+            universe, UniverseConfKeys.allowGFlagsOverrideDuringPreFinalize)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
+    }
+
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }
     if (tserverGFlags == null) {
       tserverGFlags = new HashMap<>();
     }
-    verifyGFlags(universe);
+    verifyGFlags(universe, isFirstTry);
   }
 
   public void checkXClusterAutoFlags(
       Universe universe,
       GFlagsValidation gFlagsValidation,
       XClusterUniverseService xClusterUniverseService) {
-    super.verifyParams(universe);
+    super.verifyParams(universe, true);
     if (isUsingSpecificGFlags(universe)) {
       checkXClusterSpecificAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
     } else {

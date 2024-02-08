@@ -34,7 +34,7 @@ public interface ITask extends Runnable {
    * This is invoked after the task params are initialized for validations before the actual task is
    * created.
    */
-  void validateParams();
+  void validateParams(boolean isFirstTry);
 
   /** Returns the retry limit on failure. */
   default int getRetryLimit() {

@@ -310,5 +310,42 @@ class PgDropDBSequences : public PgDdl {
   PgOid database_oid_;
 };
 
+// CREATE REPLICATION SLOT
+//--------------------------------------------------------------------------------------------------
+
+class PgCreateReplicationSlot : public PgDdl {
+ public:
+  PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                          const char *slot_name,
+                          PgOid database_oid);
+
+  Status Exec();
+
+  virtual ~PgCreateReplicationSlot();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_REPLICATION_SLOT; }
+
+ private:
+  tserver::PgCreateReplicationSlotRequestPB req_;
+};
+
+// DROP REPLICATION SLOT
+//--------------------------------------------------------------------------------------------------
+
+class PgDropReplicationSlot : public PgDdl {
+ public:
+  PgDropReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                        const char *slot_name);
+
+  Status Exec();
+
+  virtual ~PgDropReplicationSlot();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_REPLICATION_SLOT; }
+
+ private:
+  tserver::PgDropReplicationSlotRequestPB req_;
+};
+
 }  // namespace pggate
 }  // namespace yb

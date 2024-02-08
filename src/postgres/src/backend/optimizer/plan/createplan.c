@@ -207,7 +207,9 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid);
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 								   TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -217,16 +219,16 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *indexqual, List *indexqualorig,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
-								 ScanDirection indexscandir, double estimated_num_nexts,
-								 double estimated_num_seeks, YbIndexPathInfo yb_path_info);
+								 ScanDirection indexscandir, double yb_estimated_num_nexts,
+								 double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 										 List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 										 Index scanrelid, Oid indexid,
 										 List *indexqual, List *recheckqual,
 										 List *indexorderby,
 										 List *indextlist,
-										 ScanDirection indexscandir, double estimated_num_nexts,
-										 double estimated_num_seeks);
+										 ScanDirection indexscandir, double yb_estimated_num_nexts,
+										 double yb_estimated_num_seeks);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 											  List *indexqual,
 											  List *indexqualorig);
@@ -3138,6 +3140,51 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 }
 
 /*
+ * yb_fetch_subpaths
+ *
+ * Helper function for yb_single_row_update_or_delete_path to fetch the
+ * - projection and index subpaths of an UPDATE path
+ * - index subpath of a DELETE path
+ *
+ */
+static void
+yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
+				  ProjectionPath **projection_path)
+{
+	Path *subpath = path->subpath;
+	*index_path = NULL;
+	*projection_path = NULL;
+
+	/*
+	 * This function only supports UPDATE/DELETE.
+	 */
+	Assert(path->operation == CMD_UPDATE || path->operation == CMD_DELETE);
+
+	/*
+	 * If subpath is an AppendPath with a single child, get that child path.
+	 */
+	subpath = get_singleton_append_subpath(subpath);
+
+	/*
+	 * The index path is the subpath of the projection for UPDATE, whereas
+	 * for DELETE that's not the case.
+	 */
+	if (path->operation == CMD_UPDATE)
+	{
+		/*
+		 * UPDATE contains projection for SET values on top of index scan.
+		 */
+		if (!IsA(subpath, ProjectionPath))
+			return;
+		*projection_path = (ProjectionPath *) subpath;
+		*index_path = (IndexPath *) (*projection_path)->subpath;
+	}
+	else
+		*index_path = (IndexPath *) subpath;
+	return;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3193,8 +3240,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	Oid relid;
 	Relation relation;
 	TupleDesc tupDesc;
-	Path *subpath = path->subpath;
 	IndexPath *index_path;
+	ProjectionPath *projection_path;
 	Bitmapset *primary_key_attrs = NULL;
 	ListCell *values;
 	ListCell *subpath_tlist_values;
@@ -3232,7 +3279,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
 	{
 		RelOptInfo *rel = root->simple_rel_array[rti];
-		if (rel != NULL)
+		/* Ignore NULL or non-leaf partitioned rels. */
+		if (rel != NULL && !IS_PARTITIONED_REL(rel))
 		{
 			if (relInfo == NULL)
 			{
@@ -3280,28 +3328,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	tupDesc = RelationGetDescr(relation);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
-	index_path = (IndexPath *) subpath;
+	yb_fetch_subpaths(path, &index_path, &projection_path);
+	if (!index_path)
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	if (path->operation == CMD_UPDATE)
 	{
-		ProjectionPath *projection_path;
-
-		/*
-		 * UPDATE contains projection for SET values on top of index scan.
-		 */
-		if (!IsA(subpath, ProjectionPath))
-		{
-			RelationClose(relation);
-			return false;
-		}
-		projection_path = (ProjectionPath *) subpath;
-
-		/*
-		 * The index path is the subpath of the projection for UPDATE, whereas for DELETE
-		 * the index path is the direct subpath of the ModifyTablePath.
-		 */
-		index_path = (IndexPath *) projection_path->subpath;
-
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
 
 		/*
@@ -3310,61 +3345,51 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 * then return false.
 		 */
 		int update_col_index = 0;
-		foreach(values, build_path_tlist(root, subpath))
+		foreach (values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
 
-			/* Ignore unspecified columns. */
+			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
 			{
 				Var *var = castNode(Var, tle->expr);
-				/*
-				 * Column set to itself (unset) or ybctid pseudo-column
-				 * (added for YB scan in rewrite handler).
-				 */
 				if (var->varattno == InvalidAttrNumber ||
-					var->varattno == tle->resno ||
+					var->varattno == TableOidAttributeNumber ||
 					(var->varattno == YBTupleIdAttributeNumber &&
-						var->varcollid == InvalidOid))
+					 var->varcollid == InvalidOid))
 				{
 					continue;
 				}
 			}
-			/* The semantic of target list in the UPDATE path has changed in
-			 * PG15. It no longer contains all the attributes in the relation,
-			 * instead just contains the attributes being updated and the junk
-			 * columns. The semantics of resno has changed as well. Previously,
-			 * it used to represent the attribute number, now it is just a
-			 * consecutive number. Now, root->update_colnos represents the
-			 * att_nums of attributes being updated. See preprocess_targetlist
-			 * and extract_update_targetlist_colnos for more details.  */
-			Assert(root->update_colnos->length > update_col_index);
-
-			/* Setting tle resno to attribute number. */
-			int resno = tle->resno =
-				root->update_colnos->elements[update_col_index].int_value;
-			update_col_index++;
 
 			/*
-			 * Verify if the path target matches a table column.
+			 * Verify if the path target matches a table column being modified.
 			 *
-			 * While resno is always expected to be greater than zero, it is
-			 * possible that planner adds extra expressions. In particular,
-			 * we've seen a RowExpr when a view was updated.
+			 * It is possible that planner adds extra expressions. In
+			 * particular, we've seen a RowExpr when a view was updated.
 			 *
 			 * We are not sure how to handle those, so we fallback to regular
 			 * update.
 			 *
-			 * Note, this check happens after the unspecified/pseudo-column
-			 * check, it is expected that pseudo-columns go after regular
-			 * tables columns listed in the tuple descriptor.
 			 */
-			if (resno <= 0 || resno > tupDesc->natts)
+			if (update_col_index == list_length(root->update_colnos))
 			{
-				elog(DEBUG1, "Target expression out of range: %d", resno);
+				elog(DEBUG1, "Target expression out of range: %d", update_col_index);
 				RelationClose(relation);
 				return false;
 			}
+
+			/*
+			 * It is expected that root->update_colnos and
+			 * projection_path->pathtarget contain the updated columns in the
+			 * same order.
+			 *
+			 * Store attribute number in tle->resno, overriding the sequential
+			 * number, as the attribute number is required in YBCExecuteUpdate
+			 * for ybPushdownTlist.
+			 */
+			int resno = tle->resno =
+				list_nth_int(root->update_colnos, update_col_index++);
 
 			/* Updates involving primary key columns are not single-row. */
 			if (bms_is_member(resno - attr_offset, primary_key_attrs))
@@ -3911,7 +3936,9 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	if (best_path->parent->is_yb_relation)
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
-												scan_relid);
+												scan_relid,
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -4279,8 +4306,8 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexorderbys,
 												indexinfo->indextlist,
 												best_path->indexscandir,
-												best_path->estimated_num_nexts,
-												best_path->estimated_num_seeks);
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -4306,8 +4333,8 @@ create_indexscan_plan(PlannerInfo *root,
 										 indexorderbyops,
 										 best_path->indexinfo->indextlist,
 										 best_path->indexscandir,
-										 best_path->estimated_num_nexts,
-										 best_path->estimated_num_seeks,
+										 best_path->yb_estimated_num_nexts,
+										 best_path->yb_estimated_num_seeks,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -5507,6 +5534,11 @@ create_nestloop_plan(PlannerInfo *root,
 
 	if (yb_is_batched)
 	{
+		/* No rels supplied to inner from outer should be unbatched. */
+		Relids inner_unbatched =
+			YB_PATH_REQ_OUTER_UNBATCHED(best_path->jpath.innerjoinpath);
+		Assert(!bms_overlap(inner_unbatched, outerrelids));
+		(void)inner_unbatched;
 		/* Add the available batched outer rels. */
 		root->yb_availBatchedRelids =
 			lcons(outerrelids, root->yb_availBatchedRelids);
@@ -5542,14 +5574,14 @@ create_nestloop_plan(PlannerInfo *root,
 			}
 
 			if (rinfo->can_join &&
-				 OidIsValid(rinfo->hashjoinoperator) &&
-				 yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+				OidIsValid(rinfo->hashjoinoperator) &&
+				yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
 			{
 				/* if nlhash can process this */
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
-					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
-											 			 inner_relids);
+					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
+											 	inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
@@ -6221,19 +6253,21 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Oid scalar_type = InvalidOid;
 			Oid collid = InvalidOid;
 
-			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			Expr *inner_expr = (Expr *) linitial(opexpr->args);
 			saop->args = lappend(saop->args, inner_expr);
 
-			if(IsA(inner_expr, RowExpr))
+			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
+			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
+
+			if(IsA(outer_expr, RowExpr))
 			{
-				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				RowExpr *rowexpr = (RowExpr *) outer_expr;
 				scalar_type = rowexpr->row_typeid;
 			}
 			else
 			{
-				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
-				scalar_type = exprType((Node*) inner_expr);
-				collid = exprCollation((Node*)inner_expr);
+				scalar_type = exprType((Node*) outer_expr);
+				collid = exprCollation((Node*) outer_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6960,7 +6994,9 @@ make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid)
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6970,6 +7006,8 @@ make_yb_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -7011,8 +7049,8 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   double estimated_num_nexts,
-			   double estimated_num_seeks,
+			   double yb_estimated_num_nexts,
+			   double yb_estimated_num_seeks,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -7031,8 +7069,8 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -7054,8 +7092,8 @@ make_indexonlyscan(List *qptlist,
 				   List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir,
-				   double estimated_num_nexts,
-				   double estimated_num_seeks)
+				   double yb_estimated_num_nexts,
+				   double yb_estimated_num_seeks)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7073,8 +7111,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 
 	return node;
 }
@@ -8714,6 +8752,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	Relation relation = RelationIdGetRelation(rte->relid);
 	node->ybUseScanTupleInUpdate =
 		YbUseScanTupleInUpdate(relation, rte->updatedCols);
+	node->ybHasWholeRowAttribute =
+		YbUseWholeRowJunkAttribute(relation, rte->updatedCols, operation);
 	RelationClose(relation);
 	return node;
 }

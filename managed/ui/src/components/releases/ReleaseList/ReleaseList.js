@@ -11,9 +11,9 @@ import { YBLoadingCircleIcon } from '../../../components/common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
@@ -150,13 +150,9 @@ export default class ReleaseList extends Component {
         return;
       }
 
-      const canToggleStatus = hasNecessaryPerm({
-        ...UserPermissionMap.disableRelease
-      });
+      const canToggleStatus = hasNecessaryPerm(ApiPermissionMap.MODIFY_RELEASE);
 
-      const canDeleteRelease = hasNecessaryPerm({
-        ...UserPermissionMap.deleteRelease
-      });
+      const canDeleteRelease = hasNecessaryPerm(ApiPermissionMap.DELETE_RELEASE_BY_NAME);
 
       const getDisabledStatus = (action) => {
         if (!isRbacEnabled) {
@@ -210,7 +206,7 @@ export default class ReleaseList extends Component {
                   disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
                 />
                 <RbacValidator
-                  accessRequiredOn={UserPermissionMap.importRelease}
+                  accessRequiredOn={ApiPermissionMap.CREATE_RELEASE}
                   isControl
                   overrideStyle={{
                     float: 'right',
@@ -222,7 +218,7 @@ export default class ReleaseList extends Component {
                     actionType="import-release"
                     isMenuItem={false}
                     onSubmit={self.onModalSubmit}
-                    disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
+                    disabled={!isAvailable(currentCustomer.data.features, 'universes.actions') || !hasNecessaryPerm(ApiPermissionMap.CREATE_RELEASE)}
                   />
                 </RbacValidator>
               </div>

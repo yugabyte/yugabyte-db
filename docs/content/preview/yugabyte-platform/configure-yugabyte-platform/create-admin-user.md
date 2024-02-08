@@ -39,4 +39,3 @@ You are now redirected to the login page located at `http://<yugabydbanywhere-ho
 ## Change your account information
 
 Once logged in, you may change the information related to your account, including the user name and password, by clicking the **User** icon at the top right, and then selecting **User Profile**.
-

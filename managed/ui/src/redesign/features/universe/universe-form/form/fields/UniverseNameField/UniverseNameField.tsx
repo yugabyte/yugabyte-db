@@ -47,7 +47,7 @@ export const UniverseNameField = ({ disabled }: UniverseNameFieldProps): ReactEl
         : true;
     } catch (error) {
       // skip exceptions happened due to canceling previous request
-      return !api.isRequestCancelError(error) ? true : (t('common.genericFailure') as string);
+      return api.isRequestCancelError(error) ? true : (t('common.genericFailure') as string);
     }
   };
 

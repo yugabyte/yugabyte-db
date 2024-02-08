@@ -36,7 +36,7 @@ class ScanChoices {
   ScanChoices(const ScanChoices&) = delete;
   void operator=(const ScanChoices&) = delete;
 
-    virtual ~ScanChoices() = default;
+  virtual ~ScanChoices() = default;
 
   // Returns false if there are still target keys we need to scan, and true if we are done.
   virtual bool Finished() const = 0;
@@ -44,11 +44,13 @@ class ScanChoices {
   // Check whether scan choices is interested in specified row.
   // Seek on specified iterator to the next row of interest.
   virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
-  virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
+  virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                        IntentAwareIteratorIf* iter,
+                                        bool current_fetched_row_skipped) = 0;
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
-      const dockv::KeyBytes& lower_doc_key, const dockv::KeyBytes& upper_doc_key);
+      const qlexpr::ScanBounds& bounds);
 
   static ScanChoicesPtr CreateEmpty();
 };
@@ -236,14 +238,16 @@ class HybridScanChoices : public ScanChoices {
   }
 
   Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
-  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
+  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
+                                IntentAwareIteratorIf* iter,
+                                bool current_fetched_row_skipped) override;
 
  private:
   friend class ScanChoicesTest;
 
   // Sets current_scan_target_ to the first tuple in the filter space that is >= new_target.
   Result<bool> SkipTargetsUpTo(Slice new_target);
-  Result<bool> DoneWithCurrentTarget();
+  Result<bool> DoneWithCurrentTarget(bool current_row_skipped = false);
   void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter);
 
   bool CurrentTargetMatchesKey(Slice curr);

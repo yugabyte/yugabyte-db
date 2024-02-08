@@ -25,8 +25,8 @@ import { YBLoading } from '../../../../common/indicators';
 import { StorageConfigDeleteModal } from '../../StorageConfigDeleteModal';
 import { IStorageProviders } from '../IStorageConfigs';
 import { deleteCustomerConfig } from './StorageConfigApi';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface StorageConfigurationListProps {
   type: IStorageProviders;
@@ -85,10 +85,7 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
           pullRight
         >
           <RbacValidator
-            accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.editStorageConfiguration
-            }}
+            accessRequiredOn={ApiPermissionMap.EDIT_CUSTOMER_CONFIG}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -110,10 +107,7 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
             Show associated backups
           </MenuItem>
           <RbacValidator
-            accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.deleteStorageConfiguration
-            }}
+            accessRequiredOn={ApiPermissionMap.DELETE_CUSTOMER_CONFIG}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -155,20 +149,14 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
 
   return (
     <RbacValidator
-      accessRequiredOn={{
-        onResource: "CUSTOMER_ID",
-        ...UserPermissionMap.listStorageConfiguration
-      }}
+      accessRequiredOn={ApiPermissionMap.GET_CUSTOMER_CONFIGS}
     >
       <>
         <h2 className="table-container-title pull-left">Backup List</h2>
         <FlexContainer className="pull-right" direction={'row'}>
           <FlexShrink className="" power={1}>
             <RbacValidator
-              accessRequiredOn={{
-                onResource: "CUSTOMER_ID",
-                ...UserPermissionMap.createStorageConfiguration
-              }}
+              accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG}
               isControl
             >
               <Button bsClass="btn btn-orange btn-config" onClick={() => showStorageConfigCreation()}>

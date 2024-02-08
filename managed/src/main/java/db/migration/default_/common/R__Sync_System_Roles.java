@@ -136,13 +136,17 @@ public class R__Sync_System_Roles extends BaseJavaMigration {
     Map<String, String> predefinedSystemRolesMap = new HashMap<>();
 
     String connectOnlyPermissions =
-        "{\"permissionList\":[" + "{\"resourceType\":\"USER\",\"action\":\"READ\"}" + "]}";
+        "{\"permissionList\":["
+            + "{\"resourceType\":\"USER\",\"action\":\"READ\"},"
+            + "{\"resourceType\":\"USER\",\"action\":\"UPDATE_PROFILE\"}"
+            + "]}";
     predefinedSystemRolesMap.put(
         "ConnectOnly", StringUtils.deleteWhitespace(connectOnlyPermissions));
 
     String readOnlyPermissions =
         "{\"permissionList\":["
             + "{\"resourceType\":\"USER\",\"action\":\"READ\"},"
+            + "{\"resourceType\":\"USER\",\"action\":\"UPDATE_PROFILE\"},"
             + "{\"resourceType\":\"ROLE\",\"action\":\"READ\"},"
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"READ\"},"
             + "{\"resourceType\":\"OTHER\",\"action\":\"READ\"}"
@@ -152,6 +156,7 @@ public class R__Sync_System_Roles extends BaseJavaMigration {
     String backupAdminPermissions =
         "{\"permissionList\":["
             + "{\"resourceType\":\"USER\",\"action\":\"READ\"},"
+            + "{\"resourceType\":\"USER\",\"action\":\"UPDATE_PROFILE\"},"
             + "{\"resourceType\":\"ROLE\",\"action\":\"READ\"},"
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"READ\"},"
             + "{\"resourceType\":\"UNIVERSE\",\"action\":\"BACKUP_RESTORE\"},"

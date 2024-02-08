@@ -37,6 +37,14 @@ public class TestPgRegressIndex extends BasePgSQLTest {
     return flagMap;
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // TODO (#19975): Enable read committed isolation
+    flagMap.put("yb_enable_read_committed_isolation", "false");
+    return flagMap;
+  }
+
   @Test
   public void testPgRegressIndex() throws Exception {
     runPgRegressTest("yb_index_serial_schedule");

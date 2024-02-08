@@ -58,8 +58,9 @@ public class CustomerLicenseManager {
 
   public void delete(UUID customerUUID, UUID licenseUUID) {
     CustomerLicense license = CustomerLicense.getOrBadRequest(customerUUID, licenseUUID);
-    FileData.deleteFiles(license.getLicense(), true);
-    if (license.delete()) {
+    if (license.delete()
+        && new File(license.getLicense()).delete()
+        && FileData.deleteFileFromDB(license.getLicense())) {
       log.info("Successfully deleted the license: " + licenseUUID);
     }
   }

@@ -48,7 +48,18 @@ You can perform migration by taking your applications offline to perform the mig
         <div class="title">Live migration with fall-forward</div>
       </div>
       <div class="body">
-        Add a fall-forward database for your live migration.
+       Fall forward to a source-replica database for your live migration.
+      </div>
+    </a>
+  </div>
+    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="live-fall-back/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Live migration with fall-back</div>
+      </div>
+      <div class="body">
+        Fall back to the source database for your live migration.
       </div>
     </a>
   </div>

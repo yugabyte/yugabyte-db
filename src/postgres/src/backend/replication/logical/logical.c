@@ -43,6 +43,9 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 /* data for errcontext callback */
 typedef struct LogicalErrorCallbackState
 {
@@ -109,10 +112,14 @@ CheckLogicalDecodingRequirements(void)
 	 * needs the same check.
 	 */
 
-	if (wal_level < WAL_LEVEL_LOGICAL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("logical decoding requires wal_level >= logical")));
+	/* wal_level is not applicable to YSQL. */
+	if (!IsYugaByteEnabled())
+	{
+		if (wal_level < WAL_LEVEL_LOGICAL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("logical decoding requires wal_level >= logical")));
+	}
 
 	if (MyDatabaseId == InvalidOid)
 		ereport(ERROR,

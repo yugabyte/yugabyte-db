@@ -21,7 +21,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -51,13 +52,14 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
     public String ysqlPassword;
   }
 
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected CreateKubernetesUniverse(
-      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   @Override
@@ -209,20 +211,25 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
-            universe.getName(), tserversAdded, false, taskParams().getYbcSoftwareVersion());
+            universe.getName(),
+            tserversAdded,
+            false,
+            taskParams().getYbcSoftwareVersion(),
+            taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
               universe.getName(),
               readOnlyTserversAdded,
               true,
-              taskParams().getYbcSoftwareVersion());
+              taskParams().getYbcSoftwareVersion(),
+              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         }
         createWaitForYbcServerTask(allTserversAdded);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createConfigureUniverseTasks(primaryCluster);
+      createConfigureUniverseTasks(primaryCluster, null);
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {

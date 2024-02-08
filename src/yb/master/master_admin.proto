@@ -57,17 +57,17 @@ message IsFlushTablesDoneResponsePB {
   optional bool success = 3;
 }
 
-message FlushSysCatalogRequestPB{
+message FlushSysCatalogRequestPB {
 }
 
-message FlushSysCatalogResponsePB{
+message FlushSysCatalogResponsePB {
   optional MasterErrorPB error = 1;
 }
 
 message CompactSysCatalogRequestPB {
 }
 
-message CompactSysCatalogResponsePB{
+message CompactSysCatalogResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -209,6 +209,20 @@ message WaitForYsqlBackendsCatalogVersionResponsePB {
   optional int32 num_lagging_backends = 2 [default = -1];
 }
 
+message AreNodesSafeToTakeDownRequestPB {
+  // UUIDs of the tservers being taken down.
+  repeated bytes tserver_uuids = 1;
+
+  // UUIDs of the masters being taken down.
+  repeated bytes master_uuids = 2;
+
+  optional int64 follower_lag_bound_ms = 3;
+}
+
+message AreNodesSafeToTakeDownResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -234,6 +248,9 @@ service MasterAdmin {
       returns (DisableTabletSplittingResponsePB);
   rpc IsTabletSplittingComplete(IsTabletSplittingCompleteRequestPB)
       returns (IsTabletSplittingCompleteResponsePB);
+
+  rpc AreNodesSafeToTakeDown(AreNodesSafeToTakeDownRequestPB)
+      returns (AreNodesSafeToTakeDownResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 

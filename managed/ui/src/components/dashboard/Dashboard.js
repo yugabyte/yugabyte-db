@@ -3,6 +3,7 @@
 import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
+import { find } from 'lodash';
 import {
   UniverseRegionLocationPanelContainer,
   HighlightedStatsPanelContainer,
@@ -10,6 +11,9 @@ import {
 } from '../panels';
 import './stylesheets/Dashboard.scss';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
+import { customPermValidateFunction } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { getWrappedChildren } from '../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { Action, Resource } from '../../redesign/features/rbac';
 
 export default class Dashboard extends Component {
   componentDidMount() {
@@ -21,6 +25,15 @@ export default class Dashboard extends Component {
       customer: { currentCustomer }
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.dashboard');
+
+    if (!customPermValidateFunction((userPermissions) => {
+
+      return (
+        find(userPermissions, { resourceType: Resource.UNIVERSE, actions: [Action.READ] }) !== undefined
+      );
+    })) {
+      return getWrappedChildren({});
+    }
 
     return (
       <div id="page-wrapper">

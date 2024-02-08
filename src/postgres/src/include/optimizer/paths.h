@@ -271,4 +271,6 @@ extern int yb_calculate_distinct_prefixlen(PlannerInfo *root,
 extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
 extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 
+extern Path *get_singleton_append_subpath(Path *path);
+
 #endif							/* PATHS_H */

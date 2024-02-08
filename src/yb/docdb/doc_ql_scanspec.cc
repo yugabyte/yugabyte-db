@@ -19,9 +19,9 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -62,7 +62,9 @@ DocQLScanSpec::DocQLScanSpec(
       hashed_components_(nullptr),
       options_groups_(0),
       include_static_columns_(false),
-      doc_key_(doc_key.Encode()) {}
+      doc_key_(doc_key.Encode()) {
+  CompleteBounds();
+}
 
 DocQLScanSpec::DocQLScanSpec(
     const Schema& schema,
@@ -89,9 +91,9 @@ DocQLScanSpec::DocQLScanSpec(
       hashed_components_(&hashed_components.get()),
       options_groups_(schema.num_dockey_components()),
       include_static_columns_(include_static_columns),
-      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(bound_key(true)),
-      upper_doc_key_(bound_key(false)) {
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()) {
+  bounds_.lower = bound_key(true);
+  bounds_.upper = bound_key(false);
   if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     // should come here if we are not batching hash keys as a part of IN condition
@@ -121,6 +123,8 @@ DocQLScanSpec::DocQLScanSpec(
     }
     InitOptions(*condition);
   }
+
+  CompleteBounds();
 }
 
 void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
@@ -292,21 +296,19 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   DCHECK(max_hash_code_);
   DCHECK_EQ(*hash_code_, *max_hash_code_);
   auto hash_code = static_cast<DocKeyHash>(*hash_code_);
-  encoder.HashAndRange(hash_code, *hashed_components_, range_components(lower_bound));
+  encoder.HashAndRange(hash_code, *hashed_components_, RangeComponents(lower_bound));
   return result;
 }
 
-dockv::KeyEntryValues DocQLScanSpec::range_components(const bool lower_bound,
-                                                      std::vector<bool> *inclusivities,
-                                                      bool use_strictness) const {
+dockv::KeyEntryValues DocQLScanSpec::RangeComponents(bool lower_bound,
+                                                     std::vector<bool>* inclusivities) const {
   return GetRangeKeyScanSpec(
       schema(),
       nullptr /* prefixed_range_components */,
       range_bounds(),
       inclusivities,
       lower_bound,
-      include_static_columns_,
-      use_strictness);
+      include_static_columns_);
 }
 namespace {
 
@@ -328,85 +330,50 @@ bool KeyWithinRange(const KeyBytes& key, const KeyBytes& lower_key, const KeyByt
 
 } // namespace
 
-Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
+void DocQLScanSpec::CompleteBounds() {
   // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
   if (!doc_key_.empty()) {
-    if (lower_bound) {
-      return doc_key_;
-    }
-    KeyBytes result = doc_key_;
+    bounds_.lower = doc_key_;
+    bounds_.upper = doc_key_;
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
-    return std::move(result);
+    bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
+    return;
   }
 
   // Otherwise, if we do not have a paging state (start_doc_key) just use the lower/upper bounds.
   if (start_doc_key_.empty()) {
-    if (lower_bound) {
+    // For lower-bound key, if static columns should be included in the scan, the lower-bound key
+    // should be the hash key with no range components in order to include the static columns.
+    if (include_static_columns_) {
       // For lower-bound key, if static columns should be included in the scan, the lower-bound key
       // should be the hash key with no range components in order to include the static columns.
-      if (!include_static_columns_) {
-        return lower_doc_key_;
-      }
-
-      KeyBytes result = lower_doc_key_;
-
-      // For lower-bound key, if static columns should be included in the scan, the lower-bound key
-      // should be the hash key with no range components in order to include the static columns.
-      RETURN_NOT_OK(ClearRangeComponents(&result, dockv::AllowSpecial::kTrue));
-
-      return result;
-    } else {
-      return upper_doc_key_;
+      CHECK_OK(ClearRangeComponents(&bounds_.lower, dockv::AllowSpecial::kTrue));
     }
+
+    return;
   }
 
   // If we have a start_doc_key, we need to use it as a starting point (lower bound for forward
   // scan, upper bound for reverse scan).
-  RSTATUS_DCHECK(
-      range_bounds() == nullptr || KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_),
-      Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
-      start_doc_key_.AsSlice().ToDebugHexString(), lower_doc_key_.AsSlice().ToDebugHexString(),
-      upper_doc_key_.AsSlice().ToDebugHexString());
+  DCHECK(range_bounds() == nullptr || KeyWithinRange(start_doc_key_, bounds_.lower, bounds_.upper));
 
   // Paging state + forward scan.
   if (is_forward_scan()) {
-    return lower_bound ? start_doc_key_ : upper_doc_key_;
+    bounds_.lower = start_doc_key_;
+    return;
   }
 
   // Paging state + reverse scan.
   // For reverse scans static columns should be read by a separate iterator.
   DCHECK(!include_static_columns_);
-  if (lower_bound) {
-    return lower_doc_key_;
-  }
 
   // If using start_doc_key_ as upper bound append +inf as extra component to ensure it includes
   // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
   // For lower bound, this is true already, because dockey + suffix is > dockey.
-  KeyBytes result = start_doc_key_;
-  result.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
-  return result;
-}
-
-std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const {
-  std::vector<bool> lower_bound_incl;
-  auto lower_bound = range_components(true, &lower_bound_incl, false);
-  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
-
-  std::vector<bool> upper_bound_incl;
-  auto upper_bound = range_components(false, &upper_bound_incl, false);
-  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
-  if (lower_bound.empty() && upper_bound.empty()) {
-    return std::shared_ptr<rocksdb::ReadFileFilter>();
-  } else {
-    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
-                                                    std::move(lower_bound_incl),
-                                                    std::move(upper_bound),
-                                                    std::move(upper_bound_incl));
-  }
+  bounds_.upper = start_doc_key_;
+  bounds_.upper.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
 }
 
 const dockv::DocKey& DocQLScanSpec::DefaultStartDocKey() {

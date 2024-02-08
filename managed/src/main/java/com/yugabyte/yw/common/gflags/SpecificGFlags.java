@@ -29,6 +29,11 @@ public class SpecificGFlags {
   @EqualsAndHashCode
   public static class PerProcessFlags {
     public Map<UniverseTaskBase.ServerType, Map<String, String>> value = new HashMap<>();
+
+    @Override
+    public String toString() {
+      return value.toString();
+    }
   }
 
   @ApiModelProperty private boolean inheritFromPrimary;

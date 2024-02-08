@@ -70,15 +70,19 @@ As a part of the Raft replication, each tablet peer first elects a tablet leader
 
 ![Tablet leader placement](/images/architecture/replication/optimal-tablet-leader-placement.png)
 
+{{<note>}}
+Tablet leaders are balanced across **zones** and the **nodes** within a zone.
+{{</note>}}
+
 ### Tolerating a zone outage
 
-As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results in one-third of the tablets (which have their tablet leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. The following illustration shows the tablet peers in the zone that failed:
-
-![Tablet peers in a failed zone](/images/architecture/replication/tablet-leaders-vs-followers-zone-outage.png)
-
-For the affected one-third, YugabyteDB automatically performs a failover to instances in the other two zones. Once again, the tablets being failed over are distributed across the two remaining zones evenly, as per the following diagram:
+As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results in one-third of the tablets (which have their tablet leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. For the affected one-third, YugabyteDB automatically performs a failover to instances in the other two zones. Once again, the tablets being failed over are distributed across the two remaining zones evenly, as per the following diagram:
 
 ![Automatic failover](/images/architecture/replication/automatic-failover-zone-outage.png)
+
+{{<note>}}
+Failure of **followers** has no impact on reads and writes. Only the tablet **leaders** serve reads and writes.
+{{</note>}}
 
 ### RPO and RTO on zone outage
 

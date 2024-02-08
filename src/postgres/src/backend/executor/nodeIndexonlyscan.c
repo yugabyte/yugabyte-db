@@ -51,6 +51,7 @@
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup,
 							TupleDesc itupdesc);
+static void yb_init_indexonly_scandesc(IndexOnlyScanState *node);
 
 
 /* ----------------------------------------------------------------
@@ -82,6 +83,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
+	/* "Don't care about order" direction. */
+	if (IsYugaByteEnabled() &&
+		ScanDirectionIsNoMovement(((IndexOnlyScan *) node->ss.ps.plan)->indexorderdir))
+	{
+		direction = NoMovementScanDirection;
+	}
 	scandesc = node->ioss_ScanDesc;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
@@ -103,8 +110,6 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 
-		IndexOnlyScan *plan = castNode(IndexOnlyScan, node->ss.ps.plan);
-
 		/*
 		 * We reach here if the index only scan is not parallel, or if we're
 		 * serially executing an index only scan that was planned to be
@@ -122,15 +127,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
 		node->ioss_VMBuffer = InvalidBuffer;
-
-		if (IsYugaByteEnabled())
-		{
-			scandesc->yb_scan_plan = (Scan *) plan;
-			scandesc->yb_rel_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
-			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
-		}
+		yb_init_indexonly_scandesc(node);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -430,16 +427,7 @@ ExecReScanIndexOnlyScan(IndexOnlyScanState *node)
 	/* reset index scan */
 	if (node->ioss_ScanDesc)
 	{
-		if (IsYugaByteEnabled())
-		{
-			IndexScanDesc scandesc = node->ioss_ScanDesc;
-			IndexOnlyScan *plan = (IndexOnlyScan *) scandesc->yb_scan_plan;
-			EState *estate = node->ss.ps.state;
-			scandesc->yb_rel_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
-		}
-
+		yb_init_indexonly_scandesc(node);
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
@@ -750,6 +738,28 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	return indexstate;
 }
 
+/*
+ * yb_init_indexonly_scandesc
+ *
+ *		Initialize Yugabyte specific fields of the IndexScanDesc.
+ */
+static void
+yb_init_indexonly_scandesc(IndexOnlyScanState *node)
+{
+	if (IsYugaByteEnabled())
+	{
+		IndexScanDesc scandesc = node->ioss_ScanDesc;
+		EState *estate = node->ss.ps.state;
+		IndexOnlyScan *plan = (IndexOnlyScan *) node->ss.ps.plan;
+		scandesc->yb_exec_params = &estate->yb_exec_params;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
+		scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
+		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+	}
+}
+
 /* ----------------------------------------------------------------
  *		Parallel Index-only Scan Support
  * ----------------------------------------------------------------
@@ -801,6 +811,7 @@ ExecIndexOnlyScanInitializeDSM(IndexOnlyScanState *node,
 								 piscan);
 	node->ioss_ScanDesc->xs_want_itup = true;
 	node->ioss_VMBuffer = InvalidBuffer;
+	yb_init_indexonly_scandesc(node);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
@@ -845,6 +856,7 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 								 node->ioss_NumOrderByKeys,
 								 piscan);
 	node->ioss_ScanDesc->xs_want_itup = true;
+	yb_init_indexonly_scandesc(node);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass

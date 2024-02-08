@@ -473,6 +473,11 @@ GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
                                 const MonoDelta& timeout,
                                 const RequireTabletsRunning require_tablets_running);
 
+Status WaitForReplicasRunningOnAllTsAccordingToMaster(
+    ExternalMiniCluster* cluster,
+    const client::YBTableName& table_name,
+    const MonoDelta& timeout);
+
 // Get the list of tablet locations for the specified tablet from the Master.
 Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const TabletId& tablet_id,

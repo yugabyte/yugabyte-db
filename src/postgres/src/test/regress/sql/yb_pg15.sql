@@ -368,6 +368,74 @@ UPDATE t3 SET ADD = 2;
 SELECT * from t3;
 DROP TABLE t3;
 
+-- YB_TODO: BEGIN: remove this after tracking yb_pg_triggers
+-- UPDATE view with INSTEAD OF UPDATE trigger
+CREATE OR REPLACE FUNCTION view_trigger() RETURNS trigger
+LANGUAGE plpgsql AS $$
+declare
+    argstr text := '';
+begin
+    for i in 0 .. TG_nargs - 1 loop
+        if i > 0 then
+            argstr := argstr || ', ';
+        end if;
+        argstr := argstr || TG_argv[i];
+    end loop;
+
+    raise notice '% % % % (%)', TG_RELNAME, TG_WHEN, TG_OP, TG_LEVEL, argstr;
+
+    if TG_LEVEL = 'ROW' then
+        if TG_OP = 'INSERT' then
+            raise NOTICE 'NEW: %', NEW;
+            INSERT INTO main_table VALUES (NEW.a, NEW.b);
+            RETURN NEW;
+        end if;
+
+        if TG_OP = 'UPDATE' then
+            raise NOTICE 'OLD: %, NEW: %', OLD, NEW;
+            UPDATE main_table SET a = NEW.a, b = NEW.b WHERE a = OLD.a AND b = OLD.b;
+            if NOT FOUND then RETURN NULL; end if;
+            RETURN NEW;
+        end if;
+
+        if TG_OP = 'DELETE' then
+            raise NOTICE 'OLD: %', OLD;
+            DELETE FROM main_table WHERE a = OLD.a AND b = OLD.b;
+            if NOT FOUND then RETURN NULL; end if;
+            RETURN OLD;
+        end if;
+    end if;
+
+    RETURN NULL;
+end;
+$$;
+
+CREATE TABLE main_table (a int, b int);
+CREATE VIEW main_view AS SELECT a, b FROM main_table;
+CREATE TRIGGER instead_of_update_trig INSTEAD OF UPDATE ON main_view
+FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd');
+INSERT INTO main_view VALUES (20, 30);
+INSERT INTO main_view VALUES (21, 31);
+UPDATE main_view SET b = 31 WHERE a = 20;
+SELECT * FROM main_view WHERE a = 20;
+DROP TABLE main_table CASCADE;
+-- YB_TODO: END: remove this after tracking yb_pg_triggers
+
+-- Test whether single row optimization is invoked when
+-- only one partition is being updated.
+CREATE TABLE list_parted (a int, b int, c int, primary key(a,b)) PARTITION BY list (a);
+CREATE TABLE sub_parted PARTITION OF list_parted for VALUES in (1) PARTITION BY list (b);
+CREATE TABLE sub_part1 PARTITION OF sub_parted for VALUES in (1);
+INSERT INTO list_parted VALUES (1, 1, 1);
+EXPLAIN (COSTS OFF) UPDATE list_parted SET c = 2 WHERE a = 1 and b = 1;
+UPDATE list_parted SET c = 2 WHERE a = 1 and b = 1;
+SELECT * FROM list_parted;
+
+EXPLAIN (COSTS OFF) DELETE FROM list_parted WHERE a = 1 and b = 1;
+DELETE FROM list_parted WHERE a = 1 and b = 1;
+SELECT * FROM list_parted;
+
+DROP TABLE list_parted;
 -- Cross partition UPDATE with nested loop join (multiple matches)
 CREATE TABLE list_parted (a int, b int) PARTITION BY list (a);
 CREATE TABLE sub_part1 PARTITION OF list_parted for VALUES in (1);
@@ -388,3 +456,55 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM main_table;
 SELECT * FROM main_table FOR KEY SHARE;
 COMMIT;
+
+-- YB_TODO: begin: remove this after tracking yb_pg_partition_prune
+-- Test partition pruning
+create table rlp (a int, b varchar) partition by range (a);
+create table rlp_default partition of rlp default partition by list (a);
+create table rlp_default_default partition of rlp_default default;
+create table rlp_default_10 partition of rlp_default for values in (10);
+create table rlp_default_30 partition of rlp_default for values in (30);
+create table rlp_default_null partition of rlp_default for values in (null);
+create table rlp1 partition of rlp for values from (minvalue) to (1);
+create table rlp2 partition of rlp for values from (1) to (10);
+
+create table rlp3 (b varchar, a int) partition by list (b varchar_ops);
+create table rlp3_default partition of rlp3 default;
+create table rlp3abcd partition of rlp3 for values in ('ab', 'cd');
+create table rlp3efgh partition of rlp3 for values in ('ef', 'gh');
+create table rlp3nullxy partition of rlp3 for values in (null, 'xy');
+alter table rlp attach partition rlp3 for values from (15) to (20);
+
+create table rlp4 partition of rlp for values from (20) to (30) partition by range (a);
+create table rlp4_default partition of rlp4 default;
+create table rlp4_1 partition of rlp4 for values from (20) to (25);
+create table rlp4_2 partition of rlp4 for values from (25) to (29);
+
+create table rlp5 partition of rlp for values from (31) to (maxvalue) partition by range (a);
+create table rlp5_default partition of rlp5 default;
+create table rlp5_1 partition of rlp5 for values from (31) to (40);
+
+explain (costs off) select * from rlp where a = 1 or b = 'ab';
+-- YB_TODO: end
+
+-- YB_TODO: Remove after tracking yb_create_index
+CREATE TABLE test_include (c1 int, c2 int, c3 int);
+INSERT INTO test_include VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+UPDATE test_include SET c2 = 22 WHERE c1 = 2;
+SELECT * FROM test_include WHERE c1 = 2;
+DROP TABLE test_include;
+-- YB_TODO: end
+
+-- YB_TODO: Remove after tracking yb_pg_triggers
+CREATE TABLE min_updates_test (
+   f1  text,
+   f2 int,
+   f3 int);
+INSERT INTO min_updates_test VALUES ('a',1,2),('b','2',null);
+CREATE TRIGGER z_min_update
+BEFORE UPDATE ON min_updates_test
+FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
+UPDATE min_updates_test SET f1 = f1;
+SELECT * FROM min_updates_test ORDER BY f1;
+-- YB_TODO: end

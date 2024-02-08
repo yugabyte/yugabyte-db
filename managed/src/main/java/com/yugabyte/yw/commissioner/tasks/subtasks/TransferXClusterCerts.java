@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -37,10 +36,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   @Inject
   protected TransferXClusterCerts(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeUniverseManager nodeUniverseManager) {
-    super(baseTaskDependencies, nodeManager);
+      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+    super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
   }
 

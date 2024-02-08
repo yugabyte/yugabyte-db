@@ -61,7 +61,7 @@ completion_file="$distribution_dir/.${script_name}.completed"
 
 supported_extensions="postgis"
 declare -A libfiles
-libfiles["postgis"]="$(ls $lib_pg_dir/*postgis*.so 2>/dev/null || exit 0)"
+libfiles["postgis"]="$(ls "$lib_pg_dir"/*postgis*.so 2>/dev/null || exit 0)"
 
 if [[ "${1:-}" == "-e" ]]; then
   ext_mode="true"
@@ -106,16 +106,19 @@ if [[ $install_mode == "true" ]]; then
   # If you are looking at the actual post_install.sh script in an installed distribution of
   # YugabyteDB, you won't see the ${...} macro variables because they have been replaced with their
   # actual values.
+  # shellcheck disable=SC2154
   for f in ${main_elf_names_to_patch}; do
     patch_binary "$f"
   done
 
   cd "$bin_dir/../postgres/bin"
+  # shellcheck disable=SC2154
   for f in ${postgres_executable_names_to_patch}; do
     patch_binary "$f"
   done
 
   cd "$bin_dir/../postgres/lib"
+  # shellcheck disable=SC2154
   for f in ${postgres_lib_rel_paths_to_patch}; do
     patch_library "$f"
   done
@@ -131,15 +134,16 @@ if [[ $ext_mode == "true" ]]; then
     else
       echo "Installing $extension extension."
       for lib in ${libfiles[$extension]}; do
-        "$patchelf_path" --set-rpath "$rpath" $lib
+        "$patchelf_path" --set-rpath "$rpath" "$lib"
       done
+      # shellcheck disable=SC2086,SC2162
       ldd ${libfiles[$extension]} 2>/dev/null | awk '/=>/ {print $1,$3}' | while read file loc; do
         [[ "${loc:-}" =~ ^/ ]] || continue
-        yb_loc="$(ls $linuxbrew_dir/lib/$file $lib_dir/yb/$file $lib_tp_dir/$file \
+        yb_loc="$(ls "$linuxbrew_dir/lib/$file" "$lib_dir/yb/$file" "$lib_tp_dir/$file" \
                   2>/dev/null || exit 0)"
         if [[ -z "$yb_loc" ]]; then
           echo "Installing dependency: $file"
-          cp -f $loc $lib_tp_dir/
+          cp -f "$loc" "$lib_tp_dir/"
         fi
       done
     fi
@@ -149,13 +153,16 @@ fi
 # We are filtering out warning from stderr which are produced by this bug:
 # https://github.com/NixOS/patchelf/commit/c4deb5e9e1ce9c98a48e0d5bb37d87739b8cfee4
 # This bug is harmless, it only could unnecessarily increase file size when patching.
+# shellcheck disable=SC2086,SC2227
 find "$lib_dir" "$linuxbrew_dir" -name "*.so*" ! -name "ld.so*" -exec "$patchelf_path" \
   --set-rpath "$rpath" {} 2> \
   >(grep -v 'warning: working around a Linux kernel bug by creating a hole' >&2) \;
 
 
 if [[ $install_mode == "true" ]]; then
+  # shellcheck disable=SC2154
   ORIG_BREW_HOME=${original_linuxbrew_path_to_patch}
+  # shellcheck disable=SC2154
   ORIG_LEN=${original_linuxbrew_path_length}
 
   # Take $ORIG_LEN number of '\0' from /dev/zero, replace '\0' with 'x', then prepend to

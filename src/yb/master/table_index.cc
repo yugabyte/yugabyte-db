@@ -28,13 +28,11 @@ scoped_refptr<TableInfo> TableIndex::FindTableOrNull(const TableId& id) const {
 }
 
 TableIndex::TablesRange TableIndex::GetAllTables() const {
-  return boost::make_iterator_range(
-      tables_.get<PrimaryTableTag>().begin(), tables_.get<PrimaryTableTag>().end());
+  return tables_.get<ColocatedUserTableTag>();
 }
 
 TableIndex::TablesRange TableIndex::GetPrimaryTables() const {
-  auto range = tables_.get<PrimaryTableTag>().equal_range(false);
-  return boost::make_iterator_range(range.first, range.second);
+  return tables_.get<ColocatedUserTableTag>().equal_range(false);
 }
 
 void TableIndex::Clear() {

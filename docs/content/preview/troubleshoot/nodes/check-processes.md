@@ -28,9 +28,9 @@ $ ps aux | grep yb-master
 
 If the servers are not running, you can start them by using the following:
 
-- `yugabyted` when using a local cluster.
+- [yugabyted](../../../reference/configuration/yugabyted/).
 
-- `bin/yb-tserver` and `bin/yb-master` servers when using a multi-node cluster.
+- [yb-tserver](../../../reference/configuration/yb-tserver/) and [yb-master](../../../reference/configuration/yb-master/) when using a [manual deployment](../../../deploy/manual-deployment/).
 
 If the servers are running, yet they are not accessible from your client machine, it may indicate a network issue.
 

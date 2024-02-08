@@ -4111,6 +4111,7 @@ static TupleTableSlot *
 ExecModifyTable(PlanState *pstate)
 {
 	ModifyTableState *node = castNode(ModifyTableState, pstate);
+	ModifyTable *plan = (ModifyTable *) node->ps.plan;
 	ModifyTableContext context;
 	EState	   *estate = node->ps.state;
 	CmdType		operation = node->operation;
@@ -4280,10 +4281,7 @@ ExecModifyTable(PlanState *pstate)
 			 * For YugaByte relations extract the old row from the wholerow junk
 			 * attribute if needed.
 			 */
-			if (IsYBRelation(relation) &&
-				YbUseWholeRowJunkAttribute(
-					relation, ExecGetUpdatedCols(resultRelInfo, estate),
-					operation))
+			if (plan->ybHasWholeRowAttribute)
 			{
 				AttrNumber  resno;
 				Plan	   *subplan = outerPlan(node->ps.plan);

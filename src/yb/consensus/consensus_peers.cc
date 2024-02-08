@@ -506,8 +506,9 @@ void Peer::ProcessResponse(TracePtr trace) {
   controller_.Reset();
 
   if (update_response_->has_trace_buffer()) {
-    TRACE("Received response from $0:\n BEGIN UpdateConsensus\n$1 END UpdateConsensus",
-            peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
+    TRACE(
+        "Received response from $0:\nBEGIN UpdateConsensus\n$1END UpdateConsensus",
+        peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
   }
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();

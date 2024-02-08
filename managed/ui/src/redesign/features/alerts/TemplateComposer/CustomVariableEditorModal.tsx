@@ -182,7 +182,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
 
   // if no default value is selected, make the first option as default
   useEffect(() => {
-    if (!open || formValues.possibleValues.length == 0) return;
+    if (!open || formValues.possibleValues.length === 0) return;
     const isDefaultAvailable = formValues.possibleValues.some((v) => v.isDefault);
     if (!isDefaultAvailable) {
       setValue('possibleValues', [

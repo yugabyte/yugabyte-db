@@ -19,6 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -30,6 +31,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.operator.NoOpOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -61,6 +64,7 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.UpgradeYsqlResponse;
 import org.yb.client.YBClient;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -81,6 +85,16 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+  }
+
+  protected OperatorStatusUpdaterFactory mockStatusUpdaterFactory =
+      mock(OperatorStatusUpdaterFactory.class);
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    when(mockStatusUpdaterFactory.create()).thenReturn(mock(NoOpOperatorStatusUpdater.class));
+    return super.configureApplication(builder)
+        .overrides(bind(OperatorStatusUpdaterFactory.class).toInstance(mockStatusUpdaterFactory));
   }
 
   private void setupUniverse(

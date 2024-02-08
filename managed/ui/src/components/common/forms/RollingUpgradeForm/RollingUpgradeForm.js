@@ -28,7 +28,10 @@ import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
-import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
+import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
+
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './RollingUpgradeForm.scss';
 
@@ -412,10 +415,9 @@ export default class RollingUpgradeForm extends Component {
             value: 'Non-Restart',
             label:
               'Apply all changes which do not require a restart immediately;' +
-              `${
-                isNotRuntime
-                  ? 'apply remaining changes the next time the database is restarted'
-                  : ''
+              `${isNotRuntime
+                ? 'apply remaining changes the next time the database is restarted'
+                : ''
               }`
           }
         ];
@@ -495,8 +497,8 @@ export default class RollingUpgradeForm extends Component {
             />
           );
         }
-        const universeHasXClusterConfig =
-          getAllXClusterConfigs(universe.currentUniverse.data).length > 0;
+        const universeHasXClusterConfig = hasLinkedXClusterConfig([universe.currentUniverse.data]);
+        
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
@@ -510,7 +512,7 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+                universe.currentUniverse?.data?.universeDetails?.rootCA ? (
                 <YBCheckBox
                   label="Confirm TLS Changes"
                   input={{
@@ -526,6 +528,7 @@ export default class RollingUpgradeForm extends Component {
               !this.state.formConfirmed ||
               formValues.tlsCertificate === universe.currentUniverse?.data?.universeDetails?.rootCA
             }
+            disableSubmit={!hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_UNIVERSE_TLS, onResource: universe.currentUniverse?.data?.universeUUID })}
           >
             {universeHasXClusterConfig && isKubernetesUniverse(universe.currentUniverse.data) && (
               <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>

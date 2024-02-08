@@ -119,6 +119,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Return ID of session created.
   const std::string& session_id() const { return session_id_; }
 
+  std::string LogPrefix() const {
+    return Format("$0: ", session_id());
+  }
+
   Status GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info);
 
   Status ValidateDataId(const DataIdPB& data_id);
@@ -221,6 +225,14 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   Result<OpId> CreateSnapshot(int retry);
 
+  // When a follower peer is serving as the rbs source, try registering a log anchor
+  // at remote_log_anchor_index_ on the leader peer.
+  Status RegisterRemoteLogAnchorUnlocked() REQUIRES(mutex_);
+  // When a follower peer is serving as the rbs source, try updating the log anchor
+  // to remote_log_anchor_index_ on the leader peer.
+  Status UpdateRemoteLogAnchorUnlocked() REQUIRES(mutex_);
+  Status UnregisterRemotelogAnchor();
+
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;
   const std::string requestor_uuid_;
@@ -242,6 +254,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   log::LogAnchor log_anchor_;
   int64_t log_anchor_index_ GUARDED_BY(mutex_) = 0;
+  // When a follower peer is serving as the rbs source, the field stores the index at which the
+  // leader peer needs to anchor its log at.
+  int64_t remote_log_anchor_index_ GUARDED_BY(mutex_) = 0;
 
   // We need to know whether this ended succesfully before changing the peer's member type from
   // PRE_VOTER to VOTER.

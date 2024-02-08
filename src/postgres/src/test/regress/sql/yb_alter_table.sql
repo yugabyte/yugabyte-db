@@ -114,7 +114,7 @@ SELECT * FROM foo WHERE b is null;
 -- Test expression pushdown on column with default value.
 EXPLAIN SELECT * FROM foo WHERE d = '01-01-2023';
 SELECT * FROM foo WHERE b = 6 ORDER BY a;
--- Verify that we do not set pg_attribute.atthasmissing and
+-- Verify that we set pg_attribute.atthasmissing and
 -- pg_attribute.attmissingval.
 SELECT atthasmissing, attmissingval FROM pg_attribute
     WHERE attrelid='foo'::regclass;
@@ -153,3 +153,6 @@ $$;
 ALTER TABLE foo_part ADD COLUMN b TEXT default functionfoopart();
 INSERT INTO foo_part VALUES (1, null), (6, null);
 SELECT * FROM foo_part ORDER BY a, b;
+-- Verify that ADD COLUMN ... DEFAULT NOT NULL fails when the default value is
+-- null.
+ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;

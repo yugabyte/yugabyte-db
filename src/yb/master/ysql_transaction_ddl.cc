@@ -171,7 +171,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(
   const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
       read_data.schema(), rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-      &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+      &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
   // Grab a RequestScope to prevent intent clean up, before we Init the iterator.
   *request_scope = VERIFY_RESULT(VERIFY_RESULT(sys_catalog_->Tablet())->CreateRequestScope());
   RETURN_NOT_OK(iter->Init(spec));

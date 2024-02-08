@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-concurrency-control
     parent: architecture-acid-transactions
-    weight: 1153
+    weight: 30
 type: docs
 ---
 
@@ -23,6 +23,7 @@ This is the default concurrency control strategy and is applicable for `Repeatab
 It is not applicable for [Read Committed](../read-committed/) isolation.
 
 In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
+
 If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read, write, or lock a row in a mode conflicting with other concurrent transactions:
 
 - **Wound:** If T1 has a higher priority than all the other conflicting transactions, T1 will abort them and make progress.
@@ -57,6 +58,7 @@ insert into test values (1, 1);
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+
 <br>
 
    </td>
@@ -67,6 +69,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+
 <br>
 
    </td>
@@ -81,6 +84,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -93,6 +97,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -110,6 +115,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -122,6 +128,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -192,6 +199,7 @@ commit;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+
 <br>
 
    </td>
@@ -202,6 +210,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+
 <br>
 
    </td>
@@ -216,6 +225,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -228,6 +238,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -236,6 +247,7 @@ select * from test where k=1 for update;
  1 | 1
 (1 row)
 ```
+
    </td>
   </tr>
   <tr>
@@ -244,6 +256,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -256,6 +269,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -305,7 +319,7 @@ This mode of concurrency control is applicable only for YSQL and provides the sa
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
 
-1. Make progress if the conflicting transactions didn’t commit any permanent modifications that conflict with T1.
+1. Make progress if the conflicting transactions didn't commit any permanent modifications that conflict with T1.
 2. Abort otherwise.
 
 `Wait-on-Conflict` behavior can be enabled by setting the YB-TServer flag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the flag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
@@ -331,13 +345,13 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 The following examples describe different use cases detailing the Wait-on-Conflict behavior.
 
 1. Note that the examples require you to set the YB-TServer flag `enable_wait_queues=true`.
-1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is only done to easily illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
+1. Also, set the YB-TServer flag `ysql_max_write_restart_attempts=0` to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production.
 
 A restart is necessary for these flags to take effect.
 
 Start by setting up the table you'll use in all of the examples in this section.
 
-```output
+```sql
 create table test (k int primary key, v int);
 insert into test values (1, 1);
 insert into test values (2, 2);
@@ -363,6 +377,7 @@ insert into test values (2, 2);
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -377,6 +392,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -387,6 +403,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -408,11 +425,13 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
 (waits)
 ```
+
    </td>
   </tr>
   <tr>
@@ -473,6 +492,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -487,6 +507,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -497,6 +518,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -537,6 +559,7 @@ commit;
 ```sql
 rollback;
 ```
+
    </td>
    <td>
    </td>
@@ -586,6 +609,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -600,6 +624,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -627,6 +652,7 @@ UPDATE 1
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -647,6 +673,7 @@ rollback;
 ```sql
 commit;
 ```
+
    </td>
    <td>
    </td>
@@ -703,6 +730,7 @@ rollback;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -717,6 +745,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -763,6 +792,7 @@ rollback;
 ```sql
 commit;
 ```
+
    </td>
    <td>
    </td>
@@ -792,6 +822,7 @@ kConflict
 ```sql
 rollback;
 ```
+
    </td>
   </tr>
 </tbody>
@@ -799,7 +830,7 @@ rollback;
 
 #### Wait queue jumping is allowed
 
-A transaction can jump the queue even if it does conflict with waiting transactions but doesn’t conflict with any active transactions.
+A transaction can jump the queue even if it does conflict with waiting transactions but doesn't conflict with any active transactions.
 
 <table class="no-alter-colors">
 <thead>
@@ -819,6 +850,7 @@ A transaction can jump the queue even if it does conflict with waiting transacti
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -827,6 +859,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -835,6 +868,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -845,6 +879,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -868,6 +903,7 @@ select * from test where k=1 for share;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -888,6 +924,7 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -960,7 +997,7 @@ commit;
 
 #### Rollback of sub-transaction with conflicting write
 
-Suppose a transaction T1 is blocked on some operation of another transaction T2. If that blocking operation was part of a subtransaction which is later rolled back, then T1 may proceed:
+Suppose a transaction T1 is blocked on some operation of another transaction T2. If that blocking operation was part of a sub-transaction which is later rolled back, then T1 may proceed:
 
 <table class="no-alter-colors">
 <thead>
@@ -980,6 +1017,7 @@ Suppose a transaction T1 is blocked on some operation of another transaction T2.
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -994,6 +1032,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1012,6 +1051,7 @@ update test set v=1 where k=1;
 ```output
 UPDATE 1
 ```
+
    </td>
    <td>
    </td>
@@ -1075,7 +1115,7 @@ commit;
 
 In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer flag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless it is absolutely certain that the application or workload behavior makes deadlocks impossible. A rolling restart is required for the change to take effect.
 
-Add `enable_deadlock_detection=true` to the list of YB-TServer flags and restart the cluster.
+Add `enable_deadlock_detection=true` to the list of TServer flags and restart the cluster.
 
 <table class="no-alter-colors">
 <thead>
@@ -1095,6 +1135,7 @@ Add `enable_deadlock_detection=true` to the list of YB-TServer flags and restart
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1109,6 +1150,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1194,15 +1236,15 @@ All metrics are per tablet.
 
 #### Histograms
 
-1. **wait_queue_pending_time_waiting (ms):** the amount of time a still-waiting transaction has been in the wait queue
-2. **wait_queue_finished_waiting_latency (ms):** the amount of time an unblocked transaction spent in the wait queue
-3. **wait_queue_blockers_per_waiter:** the number of blockers a waiter is stuck on in the wait queue
+1. `wait_queue_pending_time_waiting` (ms): the amount of time a still-waiting transaction has been in the wait queue
+2. `wait_queue_finished_waiting_latency` (ms): the amount of time an unblocked transaction spent in the wait queue
+3. `wait_queue_blockers_per_waiter`: the number of blockers a waiter is stuck on in the wait queue
 
 #### Counters
 
-1. **wait_queue_waiters_per_blocker:** the number of waiters stuck on a particular blocker in the wait queue
-2. **wait_queue_num_waiters:** the number of waiters stuck on a blocker in the wait queue
-3. **wait_queue_num_blockers:** the number of unique blockers tracked in a wait queue
+1. `wait_queue_waiters_per_blocker`: the number of waiters stuck on a particular blocker in the wait queue
+2. `wait_queue_num_waiters`: the number of waiters stuck on a blocker in the wait queue
+3. `wait_queue_num_blockers`: the number of unique blockers tracked in a wait queue
 
 ### Limitations
 

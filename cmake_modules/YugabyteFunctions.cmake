@@ -1014,7 +1014,7 @@ macro(yb_setup_odyssey)
   endif()
   if(IS_GCC)
     list(APPEND OD_EXTRA_COMPILER_FLAGS -Wno-pedantic)
-    if("${COMPILER_VERSION}" MATCHES "^12[.].*$")
+    if("${COMPILER_VERSION}" MATCHES "^1[2-9][.].*$")
       # To work around:
       # https://gist.github.com/mbautin/c4d4193ff1c2c310ff6ed4d8a01bd385
       list(APPEND OD_EXTRA_COMPILER_FLAGS -Wno-address)

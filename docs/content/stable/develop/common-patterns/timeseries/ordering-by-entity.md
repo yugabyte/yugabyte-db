@@ -2,7 +2,7 @@
 title: Order by entity
 headerTitle: Order by entity
 linkTitle: Order by entity
-description: Distribute your time-ordered data and retrieve fast
+description: Keep entity data together using Entity-wise or Bucket-based ordering
 headcontent: Keep entity data together in a time series data model
 menu:
   stable:

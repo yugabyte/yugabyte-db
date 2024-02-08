@@ -5,11 +5,11 @@ import { Box, Typography } from '@material-ui/core';
 import { YBCheckbox, YBInputField, YBLabel, YBModal } from '../../../../components';
 import { api } from '../utils/api';
 import { transitToUniverse } from '../utils/helpers';
-import { UniverseConfigure, ClusterType } from '../utils/dto';
-import { UPDATE_ACTIONS } from '../EditUniverse';
+import { UniverseConfigure, ClusterType, UpdateActions } from '../utils/dto';
 
 interface RNModalProps {
   open: boolean;
+  isPrimary: boolean;
   universeData: UniverseConfigure;
   onClose: () => void;
 }
@@ -22,7 +22,7 @@ const defaultValues: ResizeFormValues = {
   timeDelay: 180
 };
 
-export const ResizeNodeModal: FC<RNModalProps> = ({ open, universeData, onClose }) => {
+export const ResizeNodeModal: FC<RNModalProps> = ({ open, isPrimary, universeData, onClose }) => {
   const [isResizeConfirmed, setResizeConfirm] = useState(false);
   const { t } = useTranslation();
   const { control, handleSubmit } = useForm<ResizeFormValues>({
@@ -40,19 +40,19 @@ export const ResizeNodeModal: FC<RNModalProps> = ({ open, universeData, onClose 
   };
 
   const handleFormSubmit = handleSubmit((formValues) => {
-    const primaryCluster = universeData?.clusters?.find(
-      (c) => c.clusterType === ClusterType.PRIMARY
+    const cluster = universeData?.clusters?.find(
+      (c) => c.clusterType === (isPrimary ? ClusterType.PRIMARY : ClusterType.ASYNC)
     );
-    if (primaryCluster && universeData) {
+    if (cluster && universeData) {
       let payload = {
-        clusters: [primaryCluster],
+        clusters: [cluster],
         nodePrefix: universeData?.nodePrefix,
         sleepAfterMasterRestartMillis: formValues.timeDelay * 1000,
         sleepAfterTServerRestartMillis: formValues.timeDelay * 1000,
         taskType: 'Resize_Node',
         universeUUID: universeData?.universeUUID,
         upgradeOption: 'Rolling',
-        ybSoftwareVersion: primaryCluster?.userIntent.ybSoftwareVersion
+        ybSoftwareVersion: cluster?.userIntent.ybSoftwareVersion
       };
       universeData?.universeUUID && submitResizeForm(payload, universeData.universeUUID);
     }
@@ -93,7 +93,7 @@ export const ResizeNodeModal: FC<RNModalProps> = ({ open, universeData, onClose 
       cancelTestId="close-resize-node"
     >
       <Box display="flex" width="100%" data-testid="resize-node-modal">
-        {universeData?.updateOptions?.includes(UPDATE_ACTIONS.SMART_RESIZE_NON_RESTART) ? (
+        {universeData?.updateOptions?.includes(UpdateActions.SMART_RESIZE_NON_RESTART) ? (
           <Typography variant="body2">
             {t('universeForm.resizeNodeModal.modalDescription')}
           </Typography>

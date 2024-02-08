@@ -21,9 +21,9 @@ import {
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './UniverseDisplayPanel.scss';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 class CTAButton extends Component {
   render() {
@@ -82,13 +82,6 @@ class UniverseDisplayItem extends Component {
 
     return (
       <Col sm={4} md={3} lg={2}>
-        <RbacValidator
-          accessRequiredOn={{
-            onResource: universe.universeUUID,
-            ...UserPermissionMap.readUniverse
-          }}
-          minimal
-        >
           <Link to={'/universes/' + universe.universeUUID}>
             <div className="universe-display-item-container">
               <div className="status-icon">
@@ -123,7 +116,6 @@ class UniverseDisplayItem extends Component {
               </div>
             </div>
           </Link>
-        </RbacValidator>
       </Col>
     );
   }
@@ -174,16 +166,17 @@ export default class UniverseDisplayPanel extends Component {
               {isNotHidden(currentCustomer.data.features, 'universe.create') && (
                 <RbacValidator
                   accessRequiredOn={{
-                    onResource: undefined,
-                    ...UserPermissionMap.createUniverse
+                    ...ApiPermissionMap.CREATE_UNIVERSE
                   }}
-                  isControl>
+                  isControl
+                >
                   <Link to="/universes/create">
                     <YBButton
                       btnClass="universe-button btn btn-lg btn-orange"
                       disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                       btnText="Create Universe"
                       btnIcon="fa fa-plus"
+                      data-testid="Dashboard-CreateUniverse"
                     />
                   </Link>
                 </RbacValidator>

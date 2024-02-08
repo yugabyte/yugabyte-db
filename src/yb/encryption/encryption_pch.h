@@ -11,18 +11,21 @@
 #include <openssl/ossl_typ.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
 
 #include <algorithm>
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <cmath>
 #include <compare>
 #include <condition_variable>
 #include <cstdarg>
@@ -33,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <shared_mutex>
@@ -109,6 +113,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
@@ -119,6 +124,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -126,12 +132,15 @@
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/slice.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/status_format.h"
@@ -139,6 +148,7 @@
 #include "yb/util/std_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"

@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
-    weight: 1151
+    weight: 10
 type: docs
 ---
 
@@ -47,8 +47,7 @@ The timestamp used for MVCC comes from the [hybrid time](http://users.ece.utexas
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep increasing, even if there are leader changes. This is because the new leader always has all committed entries from previous leaders, and it makes sure to update its hybrid clock with the timestamp of the last committed entry before appending new entries. This property simplifies the logic of selecting a safe hybrid time to select for single-tablet read requests.
 
-* A request trying to read data from a tablet at a particular hybrid time needs to ensure that no
-  changes happen in the tablet with timestamp values lower than the read timestamp, which could lead to an inconsistent result set. The need to read from a tablet at a particular timestamp arises during transactional reads across multiple tablets. This condition becomes easier to satisfy due to the fact that the read timestamp is chosen as the current hybrid time on the YB-TServer processing the read request, so hybrid time on the leader of the tablet being read from immediately becomes updated to a value that is at least as high as the read timestamp. Then the read request only has to wait for any relevant entries in the Raft queue with timestamp values lower than the read timestamp to be replicated and applied to RocksDB, and it can proceed with processing the read request after that.
+* A request trying to read data from a tablet at a particular hybrid time needs to ensure that no changes happen in the tablet with timestamp values lower than the read timestamp, which could lead to an inconsistent result set. The need to read from a tablet at a particular timestamp arises during transactional reads across multiple tablets. This condition becomes easier to satisfy due to the fact that the read timestamp is chosen as the current hybrid time on the YB-TServer processing the read request, so hybrid time on the leader of the tablet being read from immediately becomes updated to a value that is at least as high as the read timestamp. Then the read request only has to wait for any relevant entries in the Raft queue with timestamp values lower than the read timestamp to be replicated and applied to RocksDB, and it can proceed with processing the read request after that.
 
 ### Supported isolation levels
 

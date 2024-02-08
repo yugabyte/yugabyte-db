@@ -24,10 +24,11 @@ import { YBTable } from '../../common/YBTable';
 import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
-import './PointInTimeRecoveryList.scss';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+
+import './PointInTimeRecoveryList.scss';
 
 const DEFAULT_SORT_COLUMN = 'dbName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
@@ -72,7 +73,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         <RbacValidator
           accessRequiredOn={{
             onResource: universeUUID,
-            ...UserPermissionMap.restoreBackup
+            ...ApiPermissionMap.RESTORE_PITR_SNAPSHOT
           }}
           isControl
           overrideStyle={{
@@ -93,7 +94,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         <RbacValidator
           accessRequiredOn={{
             onResource: universeUUID,
-            ...UserPermissionMap.editBackup
+            ...ApiPermissionMap.DELETE_PITR_CONFIG
           }}
           overrideStyle={{
             display: 'unset'
@@ -132,13 +133,11 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
   );
 
   return (
-    <RbacValidator accessRequiredOn={{
-      ...UserPermissionMap.listBackup
-    }}
+    <RbacValidator accessRequiredOn={{ ...ApiPermissionMap.GET_PITR_CONFIG, onResource: universeUUID }}
     >
       <Row className="point-in-time-recovery">
         {configs.length === 0 && (
-          <PointInTimeRecoveryEmpty onActionButtonClick={() => setShowEnableModal(true)} disabled={!hasNecessaryPerm({ onResource: universeUUID, ...UserPermissionMap.createBackup })} />
+          <PointInTimeRecoveryEmpty onActionButtonClick={() => setShowEnableModal(true)} disabled={!hasNecessaryPerm({ onResource: universeUUID, ...ApiPermissionMap.CREATE_PITR_CONFIG })} />
         )}
         {configs.length > 0 && (
           <>
@@ -151,7 +150,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
               />
               <RbacValidator accessRequiredOn={{
                 onResource: universeUUID,
-                ...UserPermissionMap.createBackup
+                ...ApiPermissionMap.CREATE_PITR_CONFIG
               }}
                 isControl
               >

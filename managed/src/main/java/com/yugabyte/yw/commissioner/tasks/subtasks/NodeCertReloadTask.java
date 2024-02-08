@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
@@ -23,8 +22,8 @@ public class NodeCertReloadTask extends NodeTaskBase {
   protected YBClientService clientService;
 
   @Inject
-  protected NodeCertReloadTask(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected NodeCertReloadTask(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
     this.clientService = this.ybService;
   }
 

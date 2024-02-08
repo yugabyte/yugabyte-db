@@ -257,6 +257,7 @@ typedef struct ModifyTable
 	bool		no_row_trigger; /* planner has checked no triggers apply */
 	List	   *no_update_index_list; /* OIDs of indexes to be aren't updated */
 	bool 		ybUseScanTupleInUpdate; /* use old scan tuple in UPDATE to construct the new tuple */
+	bool		ybHasWholeRowAttribute; /* whether subplan tlist contains wholerow junk attribute */
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */
@@ -388,6 +389,8 @@ typedef struct YbSeqScan
 {
 	Scan		scan;
 	PushdownExprs yb_pushdown;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 } YbSeqScan;
 
 /* ----------------
@@ -451,8 +454,8 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	PushdownExprs yb_idx_pushdown;
 	PushdownExprs yb_rel_pushdown;
-	double		estimated_num_nexts;
-	double		estimated_num_seeks;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
@@ -504,8 +507,8 @@ typedef struct IndexOnlyScan
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
-	double		estimated_num_nexts;
-	double		estimated_num_seeks;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 

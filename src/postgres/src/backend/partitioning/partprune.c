@@ -3675,18 +3675,9 @@ perform_pruning_combine_step(PartitionPruneContext *context,
 	if (cstep->source_stepids == NIL)
 	{
 		PartitionBoundInfo boundinfo = context->boundinfo;
-		int			rangemax;
-
-		/*
-		 * Add all valid offsets into the boundinfo->indexes array.  For range
-		 * partitioning, boundinfo->indexes contains (boundinfo->ndatums + 1)
-		 * valid entries; otherwise there are boundinfo->ndatums.
-		 */
-		rangemax = context->strategy == PARTITION_STRATEGY_RANGE ?
-			boundinfo->nindexes : boundinfo->nindexes - 1;
 
 		result->bound_offsets =
-			bms_add_range(result->bound_offsets, 0, rangemax);
+			bms_add_range(NULL, 0, boundinfo->nindexes - 1);
 		result->scan_default = partition_bound_has_default(boundinfo);
 		result->scan_null = partition_bound_accepts_nulls(boundinfo);
 		return result;

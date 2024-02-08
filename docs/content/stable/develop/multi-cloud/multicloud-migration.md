@@ -55,7 +55,7 @@ When finished, note down the universe-uuids of the `source` and `target` univers
 
 ### Bootstrap the new universe
 
-Now that the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
+After the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
 
 {{<tip title="More Details">}}
 For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe).
@@ -92,7 +92,7 @@ A simple way to set up replication is as follows:
 
 ![Multi-cloud Replication](/images/develop/multicloud/multicloud-migration-replication.png)
 
-Any data changes to the AWS universe are automatically applied to the GCP universe. _NOTE_: For this example, DDL changes have to be applied manually.
+Any data changes to the AWS universe are automatically applied to the GCP universe. _Note_: For this example, DDL changes have to be applied manually.
 
 ### Switch over to the new universe
 

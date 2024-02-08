@@ -178,9 +178,19 @@ If you are using a smart driver, you can connect to any region and the load bala
 
 YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
-Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+### Deploying applications
 
-For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+
+Applications that use smart drivers from outside the peered network fall back to the upstream driver behavior automatically. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing, and will fall back to the upstream behavior.
+
+For applications that access the cluster from outside the peered network or using private endpoints via a private link, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing.
 
 ### SSL/TLS verify-full support
 

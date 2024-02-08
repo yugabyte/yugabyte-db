@@ -63,7 +63,8 @@ public class TestCheckpoint extends CDCBaseClass {
   public void testCheckpointing() {
     try {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
-      testSubscriber.createStream("proto", "EXPLICIT"); // setting a stream with PROTO format
+      testSubscriber.createStream(
+          "proto", "EXPLICIT", "CHANGE"); // setting a stream with PROTO format
 
       // Dummy insert statement.
       int rowsAffected = statement.executeUpdate("insert into test values (1, 2, 3);");
@@ -97,7 +98,8 @@ public class TestCheckpoint extends CDCBaseClass {
   public void testSettingNegativeIndexAsCheckpoint() {
     try {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
-      testSubscriber.createStream("proto", "EXPLICIT"); // setting a stream with PROTO format
+      testSubscriber.createStream(
+          "proto", "EXPLICIT", "CHANGE"); // setting a stream with PROTO format
 
       // Dummy insert statement.
       int rowsAffected = statement.executeUpdate("insert into test values (1, 2, 3);");
@@ -139,7 +141,7 @@ public class TestCheckpoint extends CDCBaseClass {
     try {
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
       // Setting the checkpoint type as IMPLICIT.
-      testSubscriber.createStream("proto", "IMPLICIT");
+      testSubscriber.createStream("proto", "IMPLICIT", "CHANGE");
 
       // Dummy insert.
       int rowsAffected = statement.executeUpdate("insert into test values (1, 2, 3);");

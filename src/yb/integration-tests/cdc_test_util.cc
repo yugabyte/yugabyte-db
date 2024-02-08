@@ -23,7 +23,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -106,7 +106,7 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     size_t new_size = 0;
     auto* tserver = mini_tserver->server();
-    tserver::XClusterConsumer* xcluster_consumer;
+    tserver::XClusterConsumerIf* xcluster_consumer;
     if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer()) &&
         mini_tserver->is_started()) {
       auto tablets_running = xcluster_consumer->TEST_producer_tablets_running();

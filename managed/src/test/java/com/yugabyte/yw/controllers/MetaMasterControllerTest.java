@@ -12,9 +12,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
@@ -33,6 +36,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -40,18 +44,31 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.client.ListMastersResponse;
+import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
 
 public class MetaMasterControllerTest extends FakeDBApplication {
 
+  private YBClient mockClient;
   Customer defaultCustomer;
   Users defaultUser;
 
   @Before
   public void setUp() {
-    defaultCustomer = ModelFactory.testCustomer();
-    defaultUser = ModelFactory.testUser(defaultCustomer);
+    try {
+      defaultCustomer = ModelFactory.testCustomer();
+      defaultUser = ModelFactory.testUser(defaultCustomer);
+      mockClient = mock(YBClient.class);
+      when(mockService.getClient(any())).thenReturn(mockClient);
+      when(mockService.getClient(any(), any())).thenReturn(mockClient);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+    } catch (Exception e) {
+      fail();
+    }
   }
 
   // TODO: move this to ModelFactory!
@@ -171,7 +188,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(expectedHostString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(expectedHostString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -196,7 +217,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(expectedHostString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(expectedHostString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -222,7 +247,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(completeString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(completeString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -247,7 +276,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(expectedHostString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(expectedHostString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -272,7 +305,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(expectedHostString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(expectedHostString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -297,7 +334,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
                           + universe.getUniverseUUID()
                           + key));
           JsonNode json = Json.parse(contentAsString(r));
-          assertEquals(expectedHostString, json.asText());
+          if (key == "/masters/info") {
+            assertEquals("", json.asText());
+          } else {
+            assertEquals(expectedHostString, json.asText());
+          }
         });
     assertAuditEntry(0, defaultCustomer.getUuid());
   }

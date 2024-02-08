@@ -55,6 +55,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/to_stream.h"
 
 using namespace std::chrono_literals;
 
@@ -407,8 +408,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
     std::this_thread::sleep_for(i == 2 ? 100ms : 2ms);
   }
 
-  LOG(INFO) << EXPR_VALUE_FOR_LOG(mock_proxy->update_count());
-  LOG(INFO) << EXPR_VALUE_FOR_LOG(initial_update_count);
+  LOG(INFO) << YB_EXPR_TO_STREAM(mock_proxy->update_count());
+  LOG(INFO) << YB_EXPR_TO_STREAM(initial_update_count);
   // Check that we didn't attempt to send one UpdateConsensus call per
   // Write. 100 writes might have taken a second or two, though, so it's
   // OK to have called UpdateConsensus() a few times due to regularly

@@ -136,12 +136,13 @@ void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
 }
 
 bool AddBothOldAndNewValues(const CDCRecordType& record_type) {
-  return record_type == CDCRecordType::ALL ||
-         record_type == CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES;
+  return record_type == CDCRecordType::ALL || record_type == CDCRecordType::PG_FULL ||
+         record_type == CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES ||
+         record_type == CDCRecordType::PG_CHANGE_OLD_NEW;
 }
 
 bool IsOldRowNeededOnDelete(const CDCRecordType& record_type) {
-  return record_type == CDCRecordType::ALL ||
+  return record_type == CDCRecordType::ALL || record_type == CDCRecordType::PG_FULL ||
          record_type == CDCRecordType::FULL_ROW_NEW_IMAGE;
 }
 
@@ -169,6 +170,16 @@ Status AddColumnToMap(
       cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
     }
   } else {
+    if (ql_value.has_varint_value()) {
+      PrimitiveValue v = PrimitiveValue::FromQLValuePB(ql_value);
+      ql_value.set_varint_value(v.ToString());
+    }
+
+    if (ql_value.has_decimal_value()) {
+      PrimitiveValue v = PrimitiveValue::FromQLValuePB(ql_value);
+      ql_value.set_decimal_value(v.ToString());
+    }
+
     cdc_datum_message->mutable_cql_value()->CopyFrom(ql_value);
     col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
   }
@@ -310,8 +321,8 @@ Status PopulateBeforeImageForDeleteOp(
         RETURN_NOT_OK(row.GetValue(schema.column_id(index), &ql_value));
         if (!ql_value.IsNull()) {
           RETURN_NOT_OK(AddColumnToMap(
-              tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map, composite_atts_map,
-              row_message->add_old_tuple(), &ql_value.value()));
+              tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
+              composite_atts_map, row_message->add_old_tuple(), &ql_value.value()));
         }
       }
     }
@@ -337,7 +348,8 @@ Status PopulateBeforeImageForUpdateOp(
       RETURN_NOT_OK(row.GetValue(schema.column_id(index), &ql_value));
       bool shouldAddColumn = ContainsKey(modified_columns, columns[index].name());
       switch (record_type) {
-        case CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: {
+        case CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: FALLTHROUGH_INTENDED;
+        case CDCRecordType::PG_CHANGE_OLD_NEW: {
           if (!ql_value.IsNull() && shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
                 tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
@@ -348,21 +360,38 @@ Status PopulateBeforeImageForUpdateOp(
         case CDCRecordType::FULL_ROW_NEW_IMAGE: {
           if (!ql_value.IsNull() && !shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
-                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
                 composite_atts_map, row_message->add_new_tuple(), &ql_value.value()));
           }
           break;
         }
-        case CDCRecordType::ALL: {
+        case CDCRecordType::ALL: FALLTHROUGH_INTENDED;
+        case CDCRecordType::PG_FULL: {
           if (!ql_value.IsNull()) {
             RETURN_NOT_OK(AddColumnToMap(
-                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
                 composite_atts_map, row_message->add_old_tuple(), &ql_value.value()));
             if (!shouldAddColumn) {
               auto new_tuple_pb = row_message->mutable_new_tuple()->Add();
               new_tuple_pb->CopyFrom(row_message->old_tuple(static_cast<int>(found_columns)));
             }
             found_columns++;
+          }
+          break;
+        }
+        case CDCRecordType::PG_DEFAULT: {
+          if (!ql_value.IsNull() && !shouldAddColumn) {
+            RETURN_NOT_OK(AddColumnToMap(
+                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                composite_atts_map, row_message->add_new_tuple(), &ql_value.value()));
+          }
+          break;
+        }
+        case CDCRecordType::PG_NOTHING: {
+          if (!ql_value.IsNull() && !shouldAddColumn) {
+            RETURN_NOT_OK(AddColumnToMap(
+                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                composite_atts_map, row_message->add_new_tuple(), &ql_value.value()));
           }
           break;
         }
@@ -1189,14 +1218,21 @@ Status PopulateCDCSDKWriteRecord(
               metadata, &modified_columns, true));
         }
       } else {
-        if (row_message->op() != RowMessage_Op_UPDATE) {
+        if (row_message->op() != RowMessage_Op_UPDATE &&
+            row_message->op() != RowMessage_Op_DELETE) {
           RETURN_NOT_OK(AddPrimaryKey(
               tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
               metadata, &modified_columns, true));
-        } else {
+        } else if (metadata.GetRecordType() != cdc::CDCRecordType::PG_NOTHING) {
           RETURN_NOT_OK(AddPrimaryKey(
             tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
             metadata, &modified_columns, true));
+        } else {
+          if (row_message->op() != RowMessage_Op_DELETE) {
+            RETURN_NOT_OK(AddPrimaryKey(
+            tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message,
+            metadata, &modified_columns, true));
+          }
         }
       }
       // Process intent records.

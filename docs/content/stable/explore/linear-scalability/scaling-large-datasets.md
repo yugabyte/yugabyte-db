@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-With ever-growing data workloads such as time series metrics and IoT sensor events, databases need to handle large data (larger than 10 TB). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost-efficiency standpoint. But spinning up new data nodes to get more storage-per-node leads to significant wastage of expensive compute resources.
+With ever-growing data workloads, such as time series metrics and IoT sensor events, databases need to handle large data (larger than 10 TB). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost-efficiency standpoint. But spinning up new data nodes to get more storage-per-node leads to significant wastage of expensive compute resources.
 
-YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](../../../architecture/docdb/). Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in Yugabytedb when compared to the eventually consistent Cassandra-compatible databases.
+YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](../../../architecture/docdb/). Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in YugabyteDB when compared to the eventually-consistent Cassandra-compatible databases.
 
 The following scenario shows how YugabyteDB handles a total of 18 TB on just four general-purpose machines.
 
@@ -40,7 +40,7 @@ The data was loaded at a steady rate over about 6 days using the [Cassandra Key 
 
 ![Data load](https://www.yugabyte.com/wp-content/uploads/2018/08/Picture1-1.png)
 
-The following figure shows the YB-Master Admin UI, with the tablet servers, number of tablets on each, number of tablet leaders, and size of the on-disk SSTable files (4.5 TB)
+The following figure shows the YB-Master Admin UI, with the tablet servers, number of tablets on each, number of tablet leaders, and size of the on-disk SSTable files (4.5 TB).
 
 ![SST Size](https://www.yugabyte.com/wp-content/uploads/2018/08/Picture2-1.png)
 
@@ -59,7 +59,7 @@ On a read-heavy workload with 32 readers and 2 writers, YugabyteDB serviced 19K 
 
 Note that this is a random-read workload, with only 30GB of RAM for 4.5TB of data per node. So every read will be forced to go to disk, and this workload is bottlenecked by the IO the EBS volume can support.
 
-As expected CPU was not the bottleneck in this workload, and CPU utilization was under 7%.
+As expected, CPU was not the bottleneck in this workload, and CPU use was under 7%.
 
 ## Write-heavy workload
 
@@ -74,21 +74,21 @@ On a write-heavy workload with 2 readers and 64 writers, YugabyteDB serviced 25K
 
 For a write-heavy workload, there is more variability because of the use of general-purpose SSD (gp2) EBS volumes. This variability arises from the need to perform periodic compactions. Note that for time series data such as IoT or KairosDB-like workloads, YugabyteDB doesn't need to perform aggressive compactions, and the results will be even better. But this particular experiment is running an arbitrary KV workload, and as expected puts a higher demand on the system.
 
-Instead of using 1x6000GB EBS volume per node, using 2x3000GB EBS volumes might have been a better choice to get more throughput. When the disk R + W throughput reaches its max (around 150MB/sec) during compactions, the latencies also go up a bit.
+Instead of using 1x6000GB EBS volume per node, using 2x3000GB EBS volumes might be a better choice to get more throughput. When the disk R + W throughput reaches its maximum (around 150MB/sec) during compactions, the latencies also go up a bit.
 
 To allow sufficient room for foreground operations on a low-end gp2 SSD volume-based setup, we reduced the default quota settings for compaction/flush rate from 100MB/sec to 30MB/sec.
 
-On i3* instance types with directly attached nvme SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
+On i3* instance types with directly attached NVMe SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
 
-## Customer usecases
+## Customer use cases
 
 ### 20TB
 
-In a customer installation, Yugabyte DB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and Yugabyte DB was able to handle sustained `450K ops/sec` with CPU utilization at `~40%` maximum.
+In a customer installation, Yugabyte DB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and Yugabyte DB was able to handle sustained `450K ops/sec` with CPU use at `~40%` maximum.
 
 ### 80TB
 
-One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an avarage latency of `1.7s`. Their setup is:
+One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an average latency of `1.7s`. Their setup is:
 
 |                          |             |
 | -----------------------: | :---------- |

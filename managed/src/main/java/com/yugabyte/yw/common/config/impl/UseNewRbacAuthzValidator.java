@@ -38,4 +38,9 @@ public class UseNewRbacAuthzValidator implements RuntimeConfigPreChangeValidator
           BAD_REQUEST, "yb.rbac.use_new_authz cannot be reinitialised.");
     }
   }
+
+  @Override
+  public void validateDeleteConfig(UUID scopeUUID, String path) {
+    throw new PlatformServiceException(BAD_REQUEST, "Cannot delete 'yb.rbac.use_new_authz'.");
+  }
 }

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { components } from 'react-select';
 import { groupBy } from 'lodash';
 
-import { YBFormSelect, YBNumericInput } from '../../../common/forms/fields';
+import { YBFormSelect } from '../../../common/forms/fields';
 import {
   Badge_Types as BackupConfigBadgeType,
   StatusBadge as BackupStatusBadge
@@ -25,7 +25,7 @@ export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) 
       (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
     )
   );
-  const { values, errors, setFieldValue } = formik.current;
+  const { values, setFieldValue } = formik.current;
 
   if (storageConfigs.length === 1 && values.storageConfig === undefined) {
     const { configUUID, configName, name, data } = storageConfigs[0];
@@ -88,17 +88,6 @@ export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) 
             }
           }}
         />
-        <Field
-          name="parallelThreads"
-          component={YBNumericInput}
-          input={{
-            onChange: (val: number) => setFieldValue('parallelThreads', val),
-            value: values.parallelThreads
-          }}
-          minVal={1}
-          label="Parallel threads (Optional)"
-        />
-        {errors.parallelThreads && <span className="standard-error">{errors.parallelThreads}</span>}
       </div>
       <div className={styles.note}>
         <p>

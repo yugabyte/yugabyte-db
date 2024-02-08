@@ -51,7 +51,7 @@
 DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
-DEFINE_UNKNOWN_int32(max_tables_metrics_breakdowns, INT32_MAX,
+DEPRECATE_FLAG(int32, max_tables_metrics_breakdowns, "08_2023"
              "The maxmimum number of tables to retrieve metrics for");
 
 // Process/server-wide metrics should go into the 'server' entity.
@@ -196,7 +196,6 @@ bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> ent
 }
 
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
-                                   const MetricEntityOptions& entity_options,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
   {
@@ -210,8 +209,8 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteAsJson(writer, entity_options, opts),
-                Substitute("Failed to write entity $0 as JSON", e.second->id()));
+    WARN_NOT_OK(e.second->WriteAsJson(writer, opts),
+        Substitute("Failed to write entity $0 as JSON", e.second->id()));
   }
   writer->EndArray();
 
@@ -226,7 +225,6 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                          const MetricEntityOptions& entity_options,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
@@ -239,11 +237,11 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, entity_options, opts),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
-  RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
-                entity_options.priority_regex));
+
+  RETURN_NOT_OK(writer->FlushAggregatedValues());
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling
@@ -400,8 +398,10 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
 }
 
 Status StringGauge::WriteForPrometheus(
-    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-    const MetricPrometheusOptions& opts) const {
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attr,
+    const MetricPrometheusOptions& opts,
+    const AggregationLevels aggregation_levels) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
@@ -457,14 +457,17 @@ Status Counter::WriteAsJson(JsonWriter* writer,
 }
 
 Status Counter::WriteForPrometheus(
-    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-    const MetricPrometheusOptions& opts) const {
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attr,
+    const MetricPrometheusOptions& opts,
+    const AggregationLevels aggregation_levels) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                   prototype()->aggregation_function(),
+                                  aggregation_levels,
                                   MetricType::PrometheusType(prototype_->type()),
                                   prototype_->description());
 }
@@ -501,14 +504,17 @@ Status MillisLag::WriteAsJson(JsonWriter* writer, const MetricJsonOptions& opts)
 }
 
 Status MillisLag::WriteForPrometheus(
-    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-    const MetricPrometheusOptions& opts) const {
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attr,
+    const MetricPrometheusOptions& opts,
+    const AggregationLevels aggregation_levels) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
                                   prototype()->aggregation_function(),
+                                  aggregation_levels,
                                   MetricType::PrometheusType(prototype_->type()),
                                   prototype_->description());
 }
@@ -598,8 +604,10 @@ Status BaseStats<Stats>::WriteAsJson(
 
 template<typename Stats>
 Status BaseStats<Stats>::WriteForPrometheus(
-    PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
-    const MetricPrometheusOptions& opts) const {
+    PrometheusWriter* writer,
+    const MetricEntity::AttributeMap& attr,
+    const MetricPrometheusOptions& opts,
+    const AggregationLevels aggregation_levels) const {
   if (prototype_->level() < opts.level) {
     return Status::OK();
   }
@@ -613,14 +621,16 @@ Status BaseStats<Stats>::WriteForPrometheus(
   // histogram doesn't really get exported as histograms.
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_sum", TotalSum(),
-        prototype()->aggregation_function(), counter_type, description));
+        prototype()->aggregation_function(), aggregation_levels,
+        counter_type, description));
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_count", TotalCount(),
-        prototype()->aggregation_function(), counter_type, description));
+        prototype()->aggregation_function(), aggregation_levels,
+        counter_type, description));
 
   if (FLAGS_expose_metric_histogram_percentiles) {
     RETURN_NOT_OK(static_cast<const Stats*>(this)->WritePercentilesForPrometheus(
-            writer, std::move(copy_of_attr)));
+            writer, std::move(copy_of_attr), aggregation_levels));
   }
 
   // HdrHistogram reports percentiles based on all the data points from the
@@ -688,7 +698,9 @@ uint64_t Histogram::CountInBucketForValueForTests(uint64_t value) const {
 }
 
 Status Histogram::WritePercentilesForPrometheus(
-    PrometheusWriter* writer, MetricEntity::AttributeMap attr) const {
+    PrometheusWriter* writer,
+    MetricEntity::AttributeMap attr,
+    const AggregationLevels aggregation_levels) const {
   std::string hist_name = prototype_->name();
   const char* description = prototype_->description();
   const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
@@ -696,34 +708,34 @@ Status Histogram::WritePercentilesForPrometheus(
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(50),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "p95";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(95),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "p99";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(99),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
 
   attr["quantile"] = "mean";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MeanValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "max";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MaxValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
 
   attr["quantile"] = "min";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MinValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description));
+                                         aggregation_levels, gauge_type, description));
   return Status::OK();
 }
 
@@ -767,7 +779,9 @@ EventStats::EventStats(std::unique_ptr<EventStatsPrototype> proto)
 }
 
 Status EventStats::WritePercentilesForPrometheus(
-    PrometheusWriter* writer, MetricEntity::AttributeMap attr) const {
+    PrometheusWriter* writer,
+    MetricEntity::AttributeMap attr,
+    const AggregationLevels aggregation_levels) const {
   return Status::OK();
 }
 

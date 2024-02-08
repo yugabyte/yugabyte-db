@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.utils;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.File;
@@ -101,6 +102,10 @@ public class FileUtils {
   }
 
   public static void writeJsonFile(String filePath, ArrayNode json) {
+    writeFile(filePath, Json.prettyPrint(json));
+  }
+
+  public static void writeJsonFile(String filePath, JsonNode json) {
     writeFile(filePath, Json.prettyPrint(json));
   }
 

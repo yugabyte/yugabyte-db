@@ -221,12 +221,12 @@ SELECT * FROM foo WHERE b = 6 ORDER BY a;
  8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
 (6 rows)
 
--- Verify that we do not set pg_attribute.atthasmissing and
+-- Verify that we set pg_attribute.atthasmissing and
 -- pg_attribute.attmissingval.
 SELECT atthasmissing, attmissingval FROM pg_attribute
     WHERE attrelid='foo'::regclass;
- atthasmissing | attmissingval 
----------------+---------------
+ atthasmissing |        attmissingval 
+---------------+------------------------------
  f             | 
  f             | 
  f             | 
@@ -234,10 +234,10 @@ SELECT atthasmissing, attmissingval FROM pg_attribute
  f             | 
  f             | 
  f             | 
- f             | 
- f             | 
- f             | 
- f             | 
+ t             | {6}
+ t             | {"(127.0.0.1,010)"}
+ t             | {"Sun Jan 01 00:00:00 2023"}
+ t             | {hi}
 (11 rows)
 
 -- Verify that ALTER TABLE ... SET DEFAULT doesn't change missing values.
@@ -309,6 +309,9 @@ SELECT * FROM dummy;
 
 -- Verify that missing values work after table rewrite.
 ALTER TABLE foo ADD PRIMARY KEY (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 SELECT * FROM foo ORDER BY a;
  a | b |        c        |            d             | e  
 ---+---+-----------------+--------------------------+----
@@ -355,3 +358,8 @@ SELECT * FROM foo_part ORDER BY a, b;
   9 | default
  10 | default
 (12 rows)
+
+-- Verify that ADD COLUMN ... DEFAULT NOT NULL fails when the default value is
+-- null.
+ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
+ERROR:  column "g" contains null values

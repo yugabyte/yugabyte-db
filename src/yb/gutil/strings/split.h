@@ -667,6 +667,8 @@ void SplitGStringPieceToVector(const GStringPiece& full,
 // For even better performance, store the result in a vector<GStringPiece>
 // to avoid string copies.
 // ----------------------------------------------------------------------
+std::vector<std::string> SplitStringUsing(const std::string& full,
+                                          const char* delimiters);
 void SplitStringUsing(const std::string& full, const char* delimiters,
                       std::vector<std::string>* result);
 void SplitStringToSetUsing(const std::string& full, const char* delimiters,

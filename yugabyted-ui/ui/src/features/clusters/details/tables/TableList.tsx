@@ -359,9 +359,12 @@ export const TableList: FC<DatabaseListProps> = ({
           ) : (
             <YBTable
               data={indexTables}
-              columns={columns.slice(0, -1)}
+              columns={columns}
               options={{
                 pagination: true,
+                rowHover: true,
+                onRowClick: (_, { dataIndex }) =>
+                  onSelect(indexTables[dataIndex].name, indexTables[dataIndex].uuid),
               }}
               withBorder={false}
             />

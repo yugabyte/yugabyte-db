@@ -297,6 +297,8 @@ Status RpcServerBase::Init() {
     RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
   }
 
+  RETURN_NOT_OK(InitAutoFlags());
+
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
   builder.UseDefaultConnectionContextFactory(mem_tracker());
@@ -389,13 +391,11 @@ void RpcServerBase::MetricsLoggingThread() {
     buf << "metrics " << GetCurrentTimeMicros() << " ";
 
     // Collect the metrics JSON string.
-    MetricEntityOptions entity_opts;
-    entity_opts.metrics.push_back("*");
     MetricJsonOptions opts;
     opts.include_raw_histograms = true;
 
     JsonWriter writer(&buf, JsonWriter::COMPACT);
-    Status s = metric_registry_->WriteAsJson(&writer, entity_opts, opts);
+    Status s = metric_registry_->WriteAsJson(&writer, opts);
     if (!s.ok()) {
       WARN_NOT_OK(s, "Unable to collect metrics to log");
       next_log.AddDelta(kWaitBetweenFailures);
@@ -510,8 +510,6 @@ Status RpcAndWebServerBase::Init() {
   if (PREDICT_FALSE(FLAGS_TEST_simulate_port_conflict_error)) {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
-
-  RETURN_NOT_OK(InitAutoFlags());
 
   RETURN_NOT_OK(RpcServerBase::Init());
 

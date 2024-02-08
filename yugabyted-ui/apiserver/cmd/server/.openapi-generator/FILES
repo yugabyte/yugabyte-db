@@ -24,6 +24,8 @@ models/model_cluster_table_list_response.go
 models/model_cluster_tablet.go
 models/model_cluster_tablet_list_response.go
 models/model_column_info.go
+models/model_connection_stats_item.go
+models/model_connections_stats.go
 models/model_encryption_info.go
 models/model_entity_metadata.go
 models/model_errors_and_suggestions_details.go

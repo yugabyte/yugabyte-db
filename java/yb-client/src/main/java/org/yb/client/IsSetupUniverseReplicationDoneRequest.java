@@ -11,11 +11,11 @@ import org.yb.util.Pair;
 public class IsSetupUniverseReplicationDoneRequest
   extends YRpc<IsSetupUniverseReplicationDoneResponse> {
 
-  private final String producerId;
+  private final String replicationGroupId;
 
-  IsSetupUniverseReplicationDoneRequest(YBTable table, String producerId) {
+  IsSetupUniverseReplicationDoneRequest(YBTable table, String replicationGroupId) {
     super(table);
-    this.producerId = producerId;
+    this.replicationGroupId = replicationGroupId;
   }
 
   @Override
@@ -24,7 +24,7 @@ public class IsSetupUniverseReplicationDoneRequest
 
     final MasterReplicationOuterClass.IsSetupUniverseReplicationDoneRequestPB.Builder builder =
       MasterReplicationOuterClass.IsSetupUniverseReplicationDoneRequestPB.newBuilder()
-        .setProducerId(producerId.toString());
+        .setReplicationGroupId(replicationGroupId.toString());
 
     return toChannelBuffer(header, builder.build());
   }

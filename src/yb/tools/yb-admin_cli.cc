@@ -38,6 +38,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -1226,6 +1228,13 @@ Status get_wal_retention_secs_action(
   return Status::OK();
 }
 
+const auto get_auto_flags_config_args = "";
+Status get_auto_flags_config_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->GetAutoFlagsConfig(), "Unable to get AutoFlags config");
+  return Status::OK();
+}
+
 const auto promote_auto_flags_args =
     "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
 Status promote_auto_flags_action(
@@ -1761,7 +1770,7 @@ Status create_change_data_stream_action(
   }
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
-  std::string record_type = yb::ToString("CHANGE");
+  cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
 
@@ -1776,20 +1785,16 @@ Status create_change_data_stream_action(
 
   if (args.size() > 2) {
     ToUpperCase(args[2], &uppercase_record_type);
-    if (uppercase_record_type != yb::ToString("ALL") &&
-        uppercase_record_type != yb::ToString("CHANGE") &&
-        uppercase_record_type != yb::ToString("FULL_ROW_NEW_IMAGE") &&
-        uppercase_record_type != yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    if (!cdc::CDCRecordType_Parse(uppercase_record_type, &record_type_pb)) {
       return ClusterAdminCli::kInvalidArguments;
     }
-    record_type = uppercase_record_type;
   }
 
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
+      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type_pb),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -1920,19 +1925,19 @@ Status delete_universe_replication_action(
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   bool ignore_errors = false;
   if (args.size() >= 2 && args[1] == "ignore-errors") {
     ignore_errors = true;
   }
   RETURN_NOT_OK_PREPEND(
-      client->DeleteUniverseReplication(producer_id, ignore_errors),
-      Format("Unable to delete replication for universe $0", producer_id));
+      client->DeleteUniverseReplication(replication_group_id, ignore_errors),
+      Format("Unable to delete replication for universe $0", replication_group_id));
   return Status::OK();
 }
 
 const auto alter_universe_replication_args =
-    "<producer_universe_id>"
+    "<producer_universe_uuid>"
     "(set_master_addresses [<comma_separated_list_of_producer_master_addresses>] | "
     "add_table [<comma_separated_list_of_table_ids>] "
     "[<comma_separated_list_of_producer_bootstrap_ids>] | "
@@ -1952,7 +1957,7 @@ Status alter_universe_replication_action(
   vector<string> add_tables;
   vector<string> remove_tables;
   vector<string> bootstrap_ids_to_add;
-  string new_producer_universe_id = "";
+  string new_replication_group_id = "";
   bool remove_table_ignore_errors = false;
 
   vector<string> newElem, *lst;
@@ -1967,7 +1972,7 @@ Status alter_universe_replication_action(
     }
   } else if (args[1] == "rename_id") {
     lst = nullptr;
-    new_producer_universe_id = args[2];
+    new_replication_group_id = args[2];
   } else {
     return ClusterAdminCli::kInvalidArguments;
   }
@@ -1984,7 +1989,7 @@ Status alter_universe_replication_action(
   RETURN_NOT_OK_PREPEND(
       client->AlterUniverseReplication(
           replication_group_id, master_addresses, add_tables, remove_tables, bootstrap_ids_to_add,
-          new_producer_universe_id, remove_table_ignore_errors),
+          new_replication_group_id, remove_table_ignore_errors),
       Format("Unable to alter replication for universe $0", replication_group_id));
 
   return Status::OK();
@@ -2012,13 +2017,13 @@ Status set_universe_replication_enabled_action(
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[1])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetUniverseReplicationEnabled(producer_id, is_enabled),
+      client->SetUniverseReplicationEnabled(replication_group_id, is_enabled),
       Format(
           "Unable to $0 replication for universe $1", is_enabled ? "enable" : "disable",
-          producer_id));
+          replication_group_id));
   return Status::OK();
 }
 
@@ -2147,9 +2152,9 @@ Status get_replication_status_action(
   if (args.size() != 0 && args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_universe_uuid = args.size() == 1 ? args[0] : "";
+  const string replication_group_id = args.size() == 1 ? args[0] : "";
   RETURN_NOT_OK_PREPEND(
-      client->GetReplicationInfo(producer_universe_uuid), "Unable to get replication status");
+      client->GetReplicationInfo(replication_group_id), "Unable to get replication status");
   return Status::OK();
 }
 
@@ -2233,6 +2238,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(upgrade_ysql);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
+  REGISTER_COMMAND(get_auto_flags_config);
   REGISTER_COMMAND(promote_auto_flags);
   REGISTER_COMMAND(rollback_auto_flags);
   REGISTER_COMMAND(promote_single_auto_flag);
@@ -2263,6 +2269,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  // CDC commands
   REGISTER_COMMAND(create_cdc_stream);
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_cdc_stream);
@@ -2270,6 +2277,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  // xCluster commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);

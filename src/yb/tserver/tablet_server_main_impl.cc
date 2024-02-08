@@ -59,6 +59,7 @@
 #include "yb/server/skewed_clock.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
+#include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/flags.h"
@@ -279,9 +280,6 @@ int TabletServerMain(int argc, char** argv) {
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
-  if(!FLAGS_enable_ysql_conn_mgr)
-    FLAGS_enable_ysql_conn_mgr_stats = false;
-
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
@@ -311,11 +309,16 @@ int TabletServerMain(int argc, char** argv) {
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &ysql_conn_mgr_conf));
 
     // Construct the config file for the Ysql Connection Manager process.
+    const auto conn_mgr_shmem_key =
+        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0;
     ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
         ysql_conn_mgr_conf,
-        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0);
+        conn_mgr_shmem_key);
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
+
+    // Set the shared memory key for tserver so it can access stats as well.
+    server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
   }
 
   std::unique_ptr<RedisServer> redis_server;

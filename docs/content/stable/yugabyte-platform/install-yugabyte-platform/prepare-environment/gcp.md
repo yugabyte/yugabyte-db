@@ -96,7 +96,7 @@ For more information, see [Creating and managing service accounts](https://cloud
 
 ## Create a firewall rule
 
-To access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
+In order to access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
 - Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).

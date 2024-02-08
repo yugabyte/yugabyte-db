@@ -14,6 +14,8 @@ type: indexpage
 showRightNav: true
 ---
 
+{{<srcdiagram href="https://docs.google.com/presentation/d/1lEajQyVZLhmHRKmBxunf1LucWkQkrJ3rIthoHxZvyQc/edit#slide=id.g22bc5dd47b0_0_18">}}
+
 Internet and cloud technologies have revolutionized the way people interact and operate. Cloud introduces the possibility of distributing and replicating data across multiple geographies. Accessing and maintaining that globally distributed data demands a new class of global application.
 
 ## The need for global applications

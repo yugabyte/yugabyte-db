@@ -178,7 +178,7 @@ public class RotateAccessKey extends UniverseTaskBase {
         task = createTask(VerifyNodeSSHAccess.class);
       }
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -195,7 +195,7 @@ public class RotateAccessKey extends UniverseTaskBase {
     params.clusterUUID = clusterUUID;
     UpdateUniverseAccessKey task = createTask(UpdateUniverseAccessKey.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

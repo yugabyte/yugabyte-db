@@ -11,6 +11,8 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.ConfKeyInfo;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
@@ -187,22 +189,25 @@ public class NodeConfigValidator {
     switch (type) {
       case PROMETHEUS_SPACE:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_prometheus_space_mb");
+          int value =
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minPrometheusSpaceMb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case USER:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "user");
+          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.user);
           return nodeConfig.getValue().equalsIgnoreCase(value);
         }
       case USER_GROUP:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "user_group");
+          String value =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.userGroup);
           return nodeConfig.getValue().equalsIgnoreCase(value);
         }
       case HOME_DIR_SPACE:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_home_dir_space_mb");
+          int value =
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minHomeDirSpaceMb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case RAM_SIZE:
@@ -219,7 +224,8 @@ public class NodeConfigValidator {
         }
       case TMP_DIR_SPACE:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_tmp_dir_space_mb");
+          int value =
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minTempDirSpaceMb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case PAM_LIMITS_WRITABLE:
@@ -228,8 +234,13 @@ public class NodeConfigValidator {
         }
       case PYTHON_VERSION:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "min_python_version");
-          return new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
+          String minValue =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.minPyVer);
+          String maxValue =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.maxPyVer);
+          NaturalOrderComparator comparator = new NaturalOrderComparator();
+          return comparator.compare(nodeConfig.getValue(), minValue) >= 0
+              && comparator.compare(nodeConfig.getValue(), maxValue) < 0;
         }
       case CHRONYD_RUNNING:
         {
@@ -237,33 +248,41 @@ public class NodeConfigValidator {
         }
       case MOUNT_POINTS_VOLUME:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_mount_point_dir_space_mb");
+          int value =
+              getFromConfig(
+                  CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minMountPointDirSpaceMb);
           return checkJsonFieldsGreaterEquals(nodeConfig.getValue(), value);
         }
       case ULIMIT_CORE:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "ulimit_core");
-          return new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
+          String value =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.ulimitCore);
+          return "unlimited".equalsIgnoreCase(value)
+              || new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
         }
       case ULIMIT_OPEN_FILES:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "ulimit_open_files");
-          return new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
+          String value =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.ulimitOpenFiles);
+          return "unlimited".equalsIgnoreCase(value)
+              || new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
         }
       case ULIMIT_USER_PROCESSES:
         {
-          String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "ulimit_user_processes");
-          return new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
+          String value =
+              getFromConfig(CONFIG_STRING_SUPPLIER, provider, ProviderConfKeys.ulimitUserProcesses);
+          return "unlimited".equalsIgnoreCase(value)
+              || new NaturalOrderComparator().compare(nodeConfig.getValue(), value) >= 0;
         }
 
       case SWAPPINESS:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "swappiness");
+          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.swappiness);
           return Integer.parseInt(nodeConfig.getValue()) == value;
         }
       case VM_MAX_MAP_COUNT:
         {
-          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "vm_max_map_count");
+          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.vmMaxMemCount);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case MOUNT_POINTS_WRITABLE:
@@ -384,9 +403,9 @@ public class NodeConfigValidator {
     }
   }
 
-  private <T> T getFromConfig(Function<ConfigKey, T> function, Provider provider, String key) {
-    ConfigKey configKey =
-        ConfigKey.builder().provider(provider).path(String.format(CONFIG_KEY_FORMAT, key)).build();
+  private <T> T getFromConfig(
+      Function<ConfigKey, T> function, Provider provider, ConfKeyInfo<T> key) {
+    ConfigKey configKey = ConfigKey.builder().provider(provider).path(key.getKey()).build();
     T value = function.apply(configKey);
     log.debug("Value for {}: {}", configKey, value);
     return value;
@@ -450,7 +469,7 @@ public class NodeConfigValidator {
     ShellProcessContext shellProcessContext =
         ShellProcessContext.builder()
             .logCmdOutput(true)
-            .timeoutSecs(getFromConfig(CONFIG_INT_SUPPLIER, provider, "ssh_timeout"))
+            .timeoutSecs(getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.sshTimeout))
             .build();
     ShellResponse response = shellProcessHandler.run(commandList, shellProcessContext);
 

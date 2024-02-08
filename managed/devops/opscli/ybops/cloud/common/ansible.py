@@ -263,7 +263,7 @@ class AnsibleProcess(object):
             stdout, stderr = p.communicate()
             rc = p.returncode
         if print_output:
-            print(stdout.decode('utf-8'))
+            logging.info(stdout.decode('utf-8'))
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \

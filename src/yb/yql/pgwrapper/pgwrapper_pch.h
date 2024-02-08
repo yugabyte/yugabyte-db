@@ -17,7 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ipc.h>
 #include <sys/mman.h>
+#include <sys/shm.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -39,6 +41,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <fstream>
@@ -64,6 +67,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -82,6 +86,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/container/stable_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/core/enable_if.hpp>
 #include <boost/function.hpp>
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
@@ -110,16 +115,21 @@
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/pop_front.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/any_range.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
@@ -130,6 +140,7 @@
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <glog/stl_logging.h>
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
@@ -141,9 +152,11 @@
 #include <google/protobuf/map_entry.h>
 #include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/message_lite.h>
 #include <google/protobuf/metadata.h>
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
+#include <google/protobuf/stubs/port.h>
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
@@ -163,6 +176,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
@@ -182,8 +196,10 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/async_util.h"
@@ -209,6 +225,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -222,6 +239,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
@@ -230,7 +250,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
-#include "yb/util/lw_function.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
@@ -238,6 +258,7 @@
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -247,6 +268,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
@@ -255,12 +277,14 @@
 #include "yb/util/opid.h"
 #include "yb/util/opid.messages.h"
 #include "yb/util/opid.pb.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/promise.h"
+#include "yb/util/protobuf_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
@@ -296,6 +320,7 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -305,7 +330,9 @@
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"

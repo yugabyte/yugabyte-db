@@ -23,8 +23,11 @@ import com.typesafe.config.ConfigSyntax;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler.RunResult;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PerfAdvisorManualRunStatus;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
@@ -38,6 +41,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -88,6 +96,12 @@ public class PerfAdvisorController extends AuthenticatedController {
               + " details",
       response = PerformanceRecommendation.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID recommendationUuid) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -111,6 +125,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "org.yb.perf_advisor.models.paging.PerformanceRecommendationPagedQuery",
           required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -140,6 +160,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result hide(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
@@ -157,6 +183,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result resolve(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
@@ -176,6 +208,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -233,6 +271,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "org.yb.perf_advisor.models.paging.StateChangeAuditInfoPagedQuery",
           required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageAuditInfo(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -257,6 +301,12 @@ public class PerfAdvisorController extends AuthenticatedController {
               + "Get universe performance advisor settings",
       response = PerfAdvisorSettingsWithDefaults.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -305,6 +355,12 @@ public class PerfAdvisorController extends AuthenticatedController {
           required = true))
   @Transactional
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -337,6 +393,12 @@ public class PerfAdvisorController extends AuthenticatedController {
               + "Start performance advisor run for universe",
       response = PerfAdvisorManualRunStatus.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -360,6 +422,12 @@ public class PerfAdvisorController extends AuthenticatedController {
               + "Get last performance advisor run details",
       response = YBPSuccess.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLatestRun(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);

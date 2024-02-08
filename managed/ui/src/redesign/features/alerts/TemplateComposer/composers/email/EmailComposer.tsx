@@ -55,8 +55,8 @@ import { ReactComponent as Strikethrough } from '../icons/strikethrough.svg';
 import { FormatAlignCenter, FormatAlignLeft, FormatAlignRight } from '@material-ui/icons';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
 import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
-import { RbacValidator } from '../../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
 
 const ToolbarMarkIcons: Partial<Record<TextDecorators, { icon: React.ReactChild }>> = {
   italic: {
@@ -417,7 +417,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
             justifyContent="space-between"
           >
             <RbacValidator
-              accessRequiredOn={UserPermissionMap.editAlertsConfig}
+              accessRequiredOn={ApiPermissionMap.PREVIEW_ALERT_NOTIFICATION}
               isControl
             >
               <YBButton
@@ -441,9 +441,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 {t('common.cancel')}
               </YBButton>
               <RbacValidator
-                accessRequiredOn={{
-                  ...UserPermissionMap.createAlertsConfig
-                }}
+                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_TEMPLATE}
                 isControl
               >
                 <YBButton

@@ -9,27 +9,11 @@ menu:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 755
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../read-replicas-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../read-replicas-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<api-tabs>}}
 
 YugabyteDB supports the following types of reads:
 
@@ -295,3 +279,8 @@ The following illustration demonstrates that the entire read load moved to the o
 ![Primary cluster with two stopped nodes](/images/explore/multi-region-deployments/read-replicas11.png)
 
 For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
+
+## Learn more
+
+- [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/)

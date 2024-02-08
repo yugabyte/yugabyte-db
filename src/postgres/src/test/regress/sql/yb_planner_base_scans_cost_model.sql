@@ -14,8 +14,3 @@ ANALYZE test_18689;
 /*+ IndexScan(test_18689) */ SELECT count(*) FROM test_18689 WHERE k1 > 5 and k1 < 10 and k2 > 5 and k2 < 10;
 /*+ IndexScan(test_18689) */ SELECT count(*) FROM test_18689 WHERE k1 > 5 and k1 < 10 and k2 > 5 and k2 < 10 and k3 > 5;
 /*+ IndexScan(test_18689) */ SELECT count(*) FROM test_18689 WHERE k1 > 5 and k1 < 10 and k2 > 5 and k2 < 10 and k3 > 5 and k3 < 10;
-
-CREATE TABLE p100000(c1 INT, PRIMARY KEY(c1 ASC));
-INSERT INTO p100000 SELECT generate_series(1,100000);
-ANALYZE p100000;
-EXPLAIN SELECT * FROM p100000 ORDER BY c1 ASC;

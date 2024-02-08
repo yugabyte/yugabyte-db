@@ -4,8 +4,9 @@ import { YBCheckBox } from '../../common/forms/fields';
 import AlertsTable from './AlertsTable';
 import Select from 'react-select';
 
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+
 import './AlertListNew.scss';
 
 /**
@@ -133,9 +134,7 @@ export class AlertListNew extends Component {
       <div>
         <h2 className="content-title">Alerts</h2>
         <RbacValidator
-          accessRequiredOn={{
-            ...UserPermissionMap.readAlerts
-          }}
+          accessRequiredOn={ApiPermissionMap.GET_ALERTS}
         >
           <Row className="alerts-page">
             <Col lg={12} className="alerts-container">

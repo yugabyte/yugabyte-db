@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
@@ -174,6 +175,14 @@ public class HealthCheckMetrics {
                       .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeData.getNode())
                       .setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeData.getNodeIdentifier())
                       .setValue(value.getValue());
+              if (nodeData.getNodeName() != null
+                  && universe.getNode(nodeData.getNodeName()) != null) {
+                NodeDetails nodeDetails = universe.getNode(nodeData.getNodeName());
+                result.setLabel(KnownAlertLabels.NODE_REGION, nodeDetails.getRegion());
+                result.setLabel(
+                    KnownAlertLabels.NODE_CLUSTER_TYPE,
+                    universe.getCluster(nodeDetails.placementUuid).clusterType.name());
+              }
               if (CollectionUtils.isNotEmpty(value.getLabels())) {
                 value
                     .getLabels()

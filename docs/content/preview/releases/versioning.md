@@ -1,7 +1,7 @@
 ---
 title: Release versioning
-headerTitle: Release versioning
-linkTitle: Release versioning
+headerTitle: Release versioning and feature availability
+linkTitle: Versioning
 description: Explains the new release versioning convention for preview and stable releases.
 aliases:
   - /stable/releases/versioning/
@@ -12,7 +12,9 @@ aliases:
 type: docs
 ---
 
-Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are now three release types: long-term stable (LTS), standard-term stable (STS), and preview. The following sections cover the new release versioning convention and describe the release series types.
+Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are three release types: long-term support (LTS), standard-term support (STS), and preview.
+
+Individual features may also be made available as tech previews or early access, which have different documentation and support standards than general availability features.
 
 ## Release versioning convention
 
@@ -29,13 +31,15 @@ Examples are included in the relevant sections below.
 
 ### Stable releases
 
-Releases in LTS (long-term stable) and STS (standard-term stable) release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added after the last stable release. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
+Releases in LTS (long-term support) and STS (standard-term support) release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added after the last stable release. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
+
+Features in stable releases are considered to be {{<badge/ga>}} unless marked otherwise.
 
 Patch and revision releases in a stable release series (`MAJOR.EVEN`) include bug fixes and revisions that do not break backward compatibility.
 
 {{< note title="Important" >}}
 
-- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of supported stable releases, see [Current supported releases](../../releases/#current-supported-releases).
+- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../release-notes/) and [YugabyteDB Anywhere releases](../yba-releases/).
 - For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
 
 {{< /note >}}
@@ -43,6 +47,8 @@ Patch and revision releases in a stable release series (`MAJOR.EVEN`) include bu
 ### Preview releases
 
 Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduce new features and changes, and are intended for development, testing, and proof-of-concept projects. The v2.13 preview release series became the basis for the v2.14 LTS release series. **The current preview version is {{< yb-version version="preview" format="">}}**.
+
+Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
 
 Patch releases in the preview release series (`MAJOR.ODD.PATCH`) introduce new features, enhancements, and fixes.
 
@@ -57,13 +63,13 @@ Patch releases in the preview release series (`MAJOR.ODD.PATCH`) introduce new f
 
 YugabyteDB features are made available as one of the following:
 
-- Tech Preview (TP)
-- Early Access (EA)
-- General Availability (GA)
+- {{<badge/tp>}} Tech Preview
+- {{<badge/ea>}} Early Access
+- {{<badge/ga>}} General Availability
 
 Changes for EA and GA are always reported in the Release Notes.
 
-| Description | TP | EA | GA | Deprecated |
+| Description | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | Deprecated |
 | :--- | :--- | :--- | :--- | :--- |
 | Contact with Product Team | Y | N | N | N/A
 | Changes | Subject to change | Backwards compatible | Backwards compatible | N/A |
@@ -108,9 +114,9 @@ Documentation for EA features is marked as such.
 
 A feature in General Availability (GA) is enabled by default for all customers.
 
-GA features are supported by Yugabyte Support, and issues are addressed according to your Customer Agreement.
+GA features are supported by Yugabyte Support, and issues are addressed according to the [release support policy](../#release-support-policy).
 
-Documentation for GA features is not marked.
+Any feature not marked Tech Preview or Early Access should be considered GA.
 
 ### Deprecation
 

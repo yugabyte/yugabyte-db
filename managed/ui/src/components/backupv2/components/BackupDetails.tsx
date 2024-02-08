@@ -34,9 +34,10 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { handleCACertErrMsg } from '../../customCACerts';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './BackupDetails.scss';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
@@ -149,9 +150,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) =>
-                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-                )
+                (tableName) =>
+                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+              )
           };
         });
       }
@@ -202,8 +203,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;
@@ -247,10 +248,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         <div className="side-panel__content">
           <Row className="backup-details-actions">
             <RbacValidator
-              accessRequiredOn={{
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.deleteBackup
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
               isControl
               popOverOverrides={{ zIndex: 10000 }}
             >
@@ -268,10 +266,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             </RbacValidator>
             {!hideRestore && (
               <RbacValidator
-                accessRequiredOn={{
-                  onResource: currentUniverseUUID,
-                  ...UserPermissionMap.restoreBackup
-                }}
+                customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
                 isControl
                 popOverOverrides={{ zIndex: 10000 }}
               >
@@ -309,10 +304,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             )}
             {onEdit && (
               <RbacValidator
-                accessRequiredOn={{
-                  onResource: 'CUSTOMER_ID',
-                  ...UserPermissionMap.editBackup
-                }}
+                accessRequiredOn={ApiPermissionMap.EDIT_BACKUP}
                 isControl
                 popOverOverrides={{ zIndex: 10000 }}
               >
@@ -367,7 +359,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>
                   {formatBytes(
                     backupDetails.fullChainSizeInBytes ||
-                      backupDetails.commonBackupInfo.totalBackupSizeInBytes
+                    backupDetails.commonBackupInfo.totalBackupSizeInBytes
                   )}
                 </div>
               </div>
@@ -443,10 +435,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <RbacValidator
-                    accessRequiredOn={{
-                      onResource: currentUniverseUUID,
-                      ...UserPermissionMap.createBackup
-                    }}
+                    customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
                     overrideStyle={{
                       display: 'unset'
                     }}

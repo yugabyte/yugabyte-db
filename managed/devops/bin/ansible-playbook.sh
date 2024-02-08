@@ -31,7 +31,6 @@ if [ "$is_mac" == false ] && \
 else
   activate_virtualenv
   set -x
-  "$devops_bin_dir/ansible_runner.sh" ansible-playbook "$@"
-
+  ansible-playbook "$@"
 fi
 

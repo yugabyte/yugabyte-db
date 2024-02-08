@@ -52,7 +52,7 @@ EOT
 }
 
 generate_root_certs() {
-    mkdir -p $root_certs_path
+    mkdir -p "$root_certs_path"
 
     echo '# CA root configuration file
     [ ca ]
@@ -60,8 +60,8 @@ generate_root_certs() {
 
     [ yugabyted_root_ca ]
     default_days = 730
-    serial = '$root_certs_path'/serial.txt
-    database = '$root_certs_path'/index.txt
+    serial = '"$root_certs_path"'/serial.txt
+    database = '"$root_certs_path"'/index.txt
     default_md = sha256
     policy = yugabyted_policy
 
@@ -80,21 +80,21 @@ generate_root_certs() {
 
     [ YugabyteDB_extensions ]
     keyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign
-    basicConstraints = critical,CA:true,pathlen:1' > $root_certs_path/ca.conf
+    basicConstraints = critical,CA:true,pathlen:1' > "$root_certs_path"/ca.conf
 
-    touch $root_certs_path/index.txt
-    echo '01' > $root_certs_path/serial.txt
-    openssl genrsa -out $root_certs_path/ca.key
-    chmod 400 $root_certs_path/ca.key
-    openssl req -new -x509 -config $root_certs_path/ca.conf \
-                -key $root_certs_path/ca.key \
-                -out $root_certs_path/ca.crt
+    touch "$root_certs_path"/index.txt
+    echo '01' > "$root_certs_path"/serial.txt
+    openssl genrsa -out "$root_certs_path"/ca.key
+    chmod 400 "$root_certs_path"/ca.key
+    openssl req -new -x509 -config "$root_certs_path"/ca.conf \
+                -key "$root_certs_path"/ca.key \
+                -out "$root_certs_path"/ca.crt
 }
 
 generate_node_certs() {
-    mkdir -p $temp_certs_path
+    mkdir -p "$temp_certs_path"
 
-    cp $root_certs_path/ca.crt $temp_certs_path/
+    cp "$root_certs_path"/ca.crt "$temp_certs_path"/
 
     echo '# Example node configuration file
     [ req ]
@@ -103,39 +103,39 @@ generate_node_certs() {
 
     [ YugabyteDB_Node ]
     organizationName = Yugabyte
-    commonName = '$hostname > $temp_certs_path/node.conf
+    commonName = '"$hostname" > "$temp_certs_path"/node.conf
 
 
-    openssl genrsa -out $temp_certs_path/node.$hostname.key
-    chmod 400 $temp_certs_path/node.$hostname.key
+    openssl genrsa -out "$temp_certs_path"/node."$hostname".key
+    chmod 400 "$temp_certs_path"/node."$hostname".key
 
-    openssl req -new -config $temp_certs_path/node.conf \
-                -key $temp_certs_path/node.$hostname.key \
-                -out $temp_certs_path/node.csr
+    openssl req -new -config "$temp_certs_path"/node.conf \
+                -key "$temp_certs_path"/node."$hostname".key \
+                -out "$temp_certs_path"/node.csr
 
 
-    openssl ca -config $root_certs_path/ca.conf \
-                -keyfile $root_certs_path/ca.key \
-                -cert $root_certs_path/ca.crt \
+    openssl ca -config "$root_certs_path"/ca.conf \
+                -keyfile "$root_certs_path"/ca.key \
+                -cert "$root_certs_path"/ca.crt \
                 -policy yugabyted_policy \
-                -out $temp_certs_path/node.$hostname.crt \
-                -outdir $temp_certs_path \
-                -in $temp_certs_path/node.csr \
+                -out "$temp_certs_path"/node."$hostname".crt \
+                -outdir "$temp_certs_path" \
+                -in "$temp_certs_path"/node.csr \
                 -days 730 \
                 -batch
 
-    cp $temp_certs_path/ca.crt \
-        $temp_certs_path/node.$hostname.key \
-        $temp_certs_path/node.$hostname.crt \
-        $server_certs_path
+    cp "$temp_certs_path"/ca.crt \
+        "$temp_certs_path"/node."$hostname".key \
+        "$temp_certs_path"/node."$hostname".crt \
+        "$server_certs_path"
 
-    rm -rf $temp_certs_path
+    rm -rf "$temp_certs_path"
 }
 
 generate_key() {
-    mkdir -p $key_path
+    mkdir -p "$key_path"
 
-    openssl rand -out $key_path"/"$keyname".key" 32
+    openssl rand -out "$key_path/${keyname}.key" 32
 }
 
 while [[ $# -gt 0 ]]; do
@@ -148,29 +148,29 @@ while [[ $# -gt 0 ]]; do
         root_certs_generation=true
     ;;
     --root-ca-path|--rcp|-rcp)
-        root_certs_path=$2
+        root_certs_path="$2"
         shift
     ;;
     generate-server-cert)
         node_certs_generation=true
     ;;
     --server-certs-path|--scp|-scp)
-        server_certs_path=$2
+        server_certs_path="$2"
         shift
     ;;
     --hostname|--hn|-hn)
-        hostname=$2
+        hostname="$2"
         shift
     ;;
     generate-key)
         key_generation=true
     ;;
     --key-path|--kp|-kp)
-        key_path=$2
+        key_path="$2"
         shift
     ;;
     --keyname|--kn|-kn)
-        keyname=$2
+        keyname="$2"
         shift
     ;;
     esac
@@ -182,10 +182,10 @@ if [[ $root_certs_generation == "true" ]]; then
 fi
 
 if [[ $node_certs_generation == "true" ]]; then
-    temp_certs_path=$server_certs_path"/temp"
+    temp_certs_path="$server_certs_path/temp"
     generate_node_certs
 fi
 
-if [[ $key_generation == "true" ]]; then
+if [[ "$key_generation" == "true" ]]; then
     generate_key
 fi

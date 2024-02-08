@@ -1748,6 +1748,7 @@ _readModifyTable(void)
 	READ_NODE_FIELD(no_update_index_list);
 	READ_BOOL_FIELD(no_row_trigger);
 	READ_BOOL_FIELD(ybUseScanTupleInUpdate);
+	READ_BOOL_FIELD(ybHasWholeRowAttribute);
 
 	READ_DONE();
 }
@@ -2833,6 +2834,22 @@ _readPartitionRangeDatum(void)
 }
 
 /*
+ * _readYbExprParamDesc
+ */
+static YbExprColrefDesc *
+_readYbExprColrefDesc(void)
+{
+	READ_LOCALS(YbExprColrefDesc);
+
+	READ_INT_FIELD(attno);
+	READ_OID_FIELD(typid);
+	READ_INT_FIELD(typmod);
+	READ_OID_FIELD(collid);
+
+	READ_DONE();
+}
+
+/*
  * parseNodeString
  *
  * Given a character string representing a node tree, parseNodeString creates
@@ -3111,6 +3128,8 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("YBEXPRCOLREFDESC", 16))
+		return_value = _readYbExprColrefDesc();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

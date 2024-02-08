@@ -36,7 +36,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(
 SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
 
 -- Test yb_pushdown_is_not_null
-CREATE TABLE inn_hash(k int PRIMARY KEY, v int);
+CREATE TABLE inn_hash(k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON inn_hash(v ASC);
 INSERT INTO inn_hash VALUES (1,NULL),(2,102),(3,NULL),(4,104),(5,105),(6,NULL);
 SELECT * FROM inn_hash WHERE v IS NOT NULL;
@@ -53,7 +53,7 @@ SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST;
 EXPLAIN (COSTS OFF) SELECT * FROM usc_asc ORDER BY v NULLS FIRST;
 SELECT * FROM usc_asc ORDER BY v NULLS FIRST;
 
-CREATE TABLE usc_multi_asc(k int, r int, v int);
+CREATE TABLE usc_multi_asc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON usc_multi_asc(k, r ASC NULLS FIRST);
 INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
 EXPLAIN (COSTS OFF) SELECT * FROM usc_multi_asc WHERE k = 1;
@@ -70,7 +70,7 @@ SELECT * FROM sc_desc ORDER BY v DESC NULLS LAST;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc ORDER BY v NULLS FIRST;
 SELECT * FROM sc_desc ORDER BY v NULLS FIRST;
 
-CREATE TABLE sc_multi_desc(k int, r int, v int);
+CREATE TABLE sc_multi_desc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON sc_multi_desc(k, r DESC);
 INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
 EXPLAIN (COSTS OFF) SELECT * FROM sc_multi_desc WHERE k = 1;
@@ -82,7 +82,7 @@ EXPLAIN SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
 SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;
 
 -- Test NULLS last ordering.
-CREATE TABLE sc_desc_nl(h int, r int, v int);
+CREATE TABLE sc_desc_nl(h int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
 INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
 -- Rows should be ordered DESC NULLS LAST by r.
@@ -358,6 +358,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int
 SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
 SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);
+EXPLAIN (COSTS OFF) SELECT * FROM pk_range_int_desc WHERE r2 IN (1,3,5) ORDER BY r1 DESC, r2 DESC LIMIT 10;
+SELECT * FROM pk_range_int_desc WHERE r2 IN (1,3,5) ORDER BY r1 DESC, r2 DESC LIMIT 10;
 DROP TABLE pk_range_int_desc;
 
 CREATE TABLE pk_range_int_text (r1 INT, r2 TEXT, r3 BIGINT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));

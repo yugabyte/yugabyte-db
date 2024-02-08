@@ -13,12 +13,19 @@
 #include <time.h>
 
 #include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <cstdint>
+#include <ctime>
+#include <deque>
 #include <functional>
 #include <iosfwd>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -29,6 +36,7 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <glog/logging.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
@@ -46,12 +54,17 @@
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
+#include <gtest/gtest_prod.h>
 
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/callback_forward.h"
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/charset.h"
@@ -63,7 +76,11 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/walltime.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/logging_callback.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/string_case.h"
 #include "yb/util/strongly_typed_bool.h"

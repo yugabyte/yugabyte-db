@@ -344,6 +344,27 @@ public class CustomCAStoreManager {
 
   // -------------- PKCS12 CA trust-store specific methods ------------
 
+  public List<Map<String, String>> getYBAJavaKeyStoreConfig() {
+    String storagePath = AppConfigHelper.getStoragePath();
+    String trustStoreHome = getTruststoreHome(storagePath);
+    List ybaJavaKeyStoreConfig = new ArrayList<>();
+
+    if (Files.exists(Paths.get(trustStoreHome))) {
+      String javaTrustStorePathStr = pkcs12TrustStoreManager.getYbaTrustStorePath(trustStoreHome);
+      Path javaTrustStorePath = Paths.get(javaTrustStorePathStr);
+      if (Files.exists(javaTrustStorePath)) {
+        Map<String, String> trustStoreMap = new HashMap<>();
+        trustStoreMap.put("path", javaTrustStorePathStr);
+        trustStoreMap.put("type", pkcs12TrustStoreManager.getYbaTrustStoreType());
+        trustStoreMap.put("password", new String(getTruststorePassword()));
+        ybaJavaKeyStoreConfig.add(trustStoreMap);
+      }
+    }
+
+    log.debug("YBA's custom java trust store config is {}", ybaJavaKeyStoreConfig);
+    return ybaJavaKeyStoreConfig;
+  }
+
   private KeyStore getYbaKeyStore() {
     String storagePath = AppConfigHelper.getStoragePath();
     String trustStoreHome = getTruststoreHome(storagePath);

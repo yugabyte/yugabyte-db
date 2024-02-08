@@ -3,11 +3,11 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -42,10 +43,14 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITH_INSTANCE =
       ImmutableList.of(
-          TaskType.AnsibleDestroyServer, TaskType.DeleteNode, TaskType.UniverseUpdateSucceeded);
+          TaskType.FreezeUniverse,
+          TaskType.AnsibleDestroyServer,
+          TaskType.DeleteNode,
+          TaskType.UniverseUpdateSucceeded);
 
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITHOUT_INSTANCE =
-      ImmutableList.of(TaskType.DeleteNode, TaskType.UniverseUpdateSucceeded);
+      ImmutableList.of(
+          TaskType.FreezeUniverse, TaskType.DeleteNode, TaskType.UniverseUpdateSucceeded);
 
   @Override
   @Before
@@ -104,9 +109,8 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode("host-n2");
     assertNotNull(nodeDetails);
-
-    TaskInfo taskInfo = submitTask(taskParams, "host-n2");
-    assertEquals(Failure, taskInfo.getTaskState());
+    // Throws at validateParams check.
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n2"));
 
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     nodeDetails = universe.getNode("host-n2");

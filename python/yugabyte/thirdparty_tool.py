@@ -25,33 +25,34 @@ import logging
 import argparse
 import ruamel.yaml
 import time
-import json
+import pprint
 
+from io import StringIO
 from autorepr import autorepr  # type: ignore
 
 from github import Github, GithubException
 from github.GitRelease import GitRelease
 
-from typing import DefaultDict, Dict, List, Any, Optional, Pattern, Tuple
+from typing import DefaultDict, Dict, List, Any, Optional, Pattern, Tuple, Union, Set, cast
 from datetime import datetime
 
 from yugabyte.common_util import (
     init_logging,
     YB_SRC_ROOT,
     load_yaml_file,
-    write_yaml_file,
     to_yaml_str,
     arg_str_to_bool,
     make_parent_dir,
 )
 from yugabyte.file_util import read_file, write_file
 
+from yugabyte import common_util, arg_util
+
 from sys_detection import local_sys_conf, SHORT_OS_NAME_REGEX_STR, is_macos
 
 from collections import defaultdict
 
 from yugabyte.os_versions import adjust_os_type, is_compatible_os
-
 
 ruamel_yaml_object = ruamel.yaml.YAML()
 
@@ -69,6 +70,9 @@ ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
 
 PREFERRED_OS_TYPE = 'centos7'
+
+
+ThirdPartyArchivesYAML = Dict[str, Union[str, List[Dict[str, str]]]]
 
 
 def get_arch_regex(index: int) -> str:
@@ -102,8 +106,9 @@ TAG_RE_STR = ''.join([
 ])
 TAG_RE = re.compile(TAG_RE_STR)
 
-# We will store the SHA1 to be used for the local third-party checkout under this key.
-SHA_FOR_LOCAL_CHECKOUT_KEY = 'sha_for_local_checkout'
+# We will store the SHA1 to be used for the local third-party checkout, as well as to use by default
+# for individual archives unless it is overridden, under this key.
+SHA_KEY = 'sha'
 
 # Skip these problematic tags.
 BROKEN_TAGS = set(['v20210907234210-47a70bc7dc-centos7-x86_64-linuxbrew-gcc5'])
@@ -144,12 +149,21 @@ class ThirdPartyReleaseBase:
     def as_dict(self) -> Dict[str, str]:
         return {
             k: getattr(self, k) for k in self.KEY_FIELDS_WITH_TAG
+            if getattr(self, k) != ThirdPartyReleaseBase.get_default_field_value(k)
         }
 
     def get_sort_key(self, include_tag: bool = True) -> Tuple[str, ...]:
         return tuple(
             none_to_empty_string(getattr(self, k)) for k in
             (self.KEY_FIELDS_WITH_TAG if include_tag else self.KEY_FIELDS_NO_TAG))
+
+    @staticmethod
+    def get_default_field_value(field_name: str) -> Any:
+        if field_name == 'lto_type':
+            return None
+        if field_name == 'is_linuxbrew':
+            return False
+        return ''
 
 
 class SkipThirdPartyReleaseException(Exception):
@@ -280,12 +294,19 @@ class MetadataItem(ThirdPartyReleaseBase):
     file.
     """
 
-    def __init__(self, json_data: Dict[str, Any]) -> None:
+    def __init__(self, yaml_data: Dict[str, Any]) -> None:
+        processed_field_names: Set[str] = set()
         for field_name in GitHubThirdPartyRelease.KEY_FIELDS_WITH_TAG:
-            if field_name not in json_data:
-                raise ValueError("Key '%s' not found in JSON payload: %s",
-                                 field_name, json.dumps(json_data))
-            setattr(self, field_name, json_data[field_name])
+            field_value = yaml_data.get(field_name)
+            if field_value is None:
+                field_value = ThirdPartyReleaseBase.get_default_field_value(field_name)
+            setattr(self, field_name, field_value)
+            processed_field_names.add(field_name)
+        unknown_fields = set(yaml_data.keys() - processed_field_names)
+        if unknown_fields:
+            raise ValueError(
+                "Unknown fields found in third-party metadata YAML file: %s. "
+                "Entire item: %s" % (sorted(unknown_fields), pprint.pformat(yaml_data)))
 
     def url(self) -> str:
         return f'{DOWNLOAD_URL_PREFIX}{self.tag}/{get_archive_name_from_tag(self.tag)}'
@@ -379,7 +400,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--also-use-commit',
         nargs='+',
-        type=validate_git_commit,
+        type=arg_util.sha1_regex_arg_type,
         help='One or more Git commits in the yugabyte-db-thirdparty repository that we should '
              'find releases for, in addition to the most recent commit in that repository that is '
              'associated with any of the releases. For use with --update.')
@@ -389,6 +410,10 @@ def parse_args() -> argparse.Namespace:
              'This is typically OK, as long as no runtime libraries for e.g. ASAN or UBSAN '
              'need to be used, which have to be built for the exact same version of OS.',
         action='store_true')
+    parser.add_argument(
+        '--override-default-sha',
+        type=arg_util.sha1_regex_arg_type,
+        help='Use the given SHA at the top of the generated third-party archives file.')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -424,24 +449,28 @@ class MetadataUpdater:
     github_token_file_path: str
     tag_filter_pattern: Optional[Pattern]
     also_use_commits: List[str]
+    archive_metadata_path: str
+    override_default_sha: Optional[str]
 
     def __init__(
             self,
             github_token_file_path: str,
             tag_filter_regex_str: Optional[str],
-            also_use_commits: List[str]) -> None:
+            also_use_commits: List[str],
+            override_default_sha: Optional[str]) -> None:
         self.github_token_file_path = github_token_file_path
         if tag_filter_regex_str:
             self.tag_filter_pattern = re.compile(tag_filter_regex_str)
         else:
             self.tag_filter_pattern = None
         self.also_use_commits = also_use_commits
+        self.archive_metadata_path = get_archive_metadata_file_path()
+        self.override_default_sha = override_default_sha
 
     def update_archive_metadata_file(self) -> None:
         yb_version = read_file(os.path.join(YB_SRC_ROOT, 'version.txt')).strip()
 
-        archive_metadata_path = get_archive_metadata_file_path()
-        logging.info(f"Updating third-party archive metadata file in {archive_metadata_path}")
+        logging.info(f"Updating third-party archive metadata file in {self.archive_metadata_path}")
 
         github_client = Github(get_github_token(self.github_token_file_path))
         repo = github_client.get_repo('yugabyte/yugabyte-db-thirdparty')
@@ -547,15 +576,17 @@ class MetadataUpdater:
                         "Please check if there is an error.")
                 groups_to_use.append(releases_by_commit[extra_commit])
 
-        new_metadata: Dict[str, Any] = {
-            SHA_FOR_LOCAL_CHECKOUT_KEY: latest_release_sha,
-            'archives': []
-        }
         releases_to_use: List[GitHubThirdPartyRelease] = [
             rel for release_group in groups_to_use
             for rel in release_group.releases
             if rel.tag not in BROKEN_TAGS
         ]
+
+        default_sha = self.override_default_sha or latest_release_sha
+        archives: List[Dict[str, str]] = []
+        new_metadata: ThirdPartyArchivesYAML = {
+            SHA_KEY: default_sha
+        }
 
         releases_by_key_without_tag: DefaultDict[Tuple[str, ...], List[GitHubThirdPartyRelease]] = \
             defaultdict(list)
@@ -591,20 +622,60 @@ class MetadataUpdater:
         filtered_releases_to_use.sort(key=GitHubThirdPartyRelease.get_sort_key)
 
         for yb_thirdparty_release in filtered_releases_to_use:
-            new_metadata['archives'].append(yb_thirdparty_release.as_dict())
+            release_as_dict = yb_thirdparty_release.as_dict()
+            if release_as_dict['sha'] == default_sha:
+                # To reduce the size of diffs when updating third-party archives YAML file.
+                del release_as_dict['sha']
+            archives.append(release_as_dict)
+        new_metadata['archives'] = archives
 
-        write_yaml_file(new_metadata, archive_metadata_path)
+        self.write_metadata_file(new_metadata)
         logging.info(
             f"Wrote information for {len(filtered_releases_to_use)} pre-built "
-            f"yugabyte-db-thirdparty archives to {archive_metadata_path}.")
+            f"yugabyte-db-thirdparty archives to {self.archive_metadata_path}.")
+
+    def write_metadata_file(
+            self,
+            new_metadata: ThirdPartyArchivesYAML) -> None:
+        yaml = common_util.get_ruamel_yaml_instance()
+        string_stream = StringIO()
+        yaml.dump(new_metadata, string_stream)
+        yaml_lines = string_stream.getvalue().split('\n')
+        new_lines = []
+        for line in yaml_lines:
+            if line.startswith('  -'):
+                new_lines.append('')
+            new_lines.append(line)
+        while new_lines and new_lines[-1].strip() == '':
+            new_lines.pop()
+
+        with open(self.archive_metadata_path, 'w') as output_file:
+            output_file.write('\n'.join(new_lines) + '\n')
 
 
-def load_metadata() -> Dict[str, Any]:
-    return load_yaml_file(get_archive_metadata_file_path())
+def load_metadata_file(file_path: str) -> ThirdPartyArchivesYAML:
+    data = load_yaml_file(file_path)
+    default_sha = data.get('sha')
+    if default_sha is not None:
+        for archive in data['archives']:
+            if archive.get('sha', '').strip() == '':
+                archive['sha'] = default_sha
+    if 'archives' not in data:
+        data['archives'] = []
+    unexpected_keys = data.keys() - ['archives', 'sha']
+    if unexpected_keys:
+        raise ValueError(
+            f"Found unexpected keys in third-party archive metadata loaded from file {file_path}. "
+            f"Details: {pprint.pformat(data)}")
+    return data
 
 
-def load_manual_metadata() -> Dict[str, Any]:
-    return load_yaml_file(get_manual_archive_metadata_file_path())
+def load_metadata() -> ThirdPartyArchivesYAML:
+    return load_metadata_file(get_archive_metadata_file_path())
+
+
+def load_manual_metadata() -> ThirdPartyArchivesYAML:
+    return load_metadata_file(get_manual_archive_metadata_file_path())
 
 
 def filter_for_os(archive_candidates: List[MetadataItem], os_type: str) -> List[MetadataItem]:
@@ -776,19 +847,23 @@ def main() -> None:
         updater = MetadataUpdater(
             github_token_file_path=args.github_token_file,
             tag_filter_regex_str=args.tag_filter_regex,
-            also_use_commits=args.also_use_commit)
+            also_use_commits=args.also_use_commit,
+            override_default_sha=args.override_default_sha)
         updater.update_archive_metadata_file()
         return
 
     metadata = load_metadata()
     manual_metadata = load_manual_metadata()
     if args.get_sha1:
-        print(metadata[SHA_FOR_LOCAL_CHECKOUT_KEY])
+        print(metadata[SHA_KEY])
         return
 
     metadata_items = [
-        MetadataItem(item_json_data)
-        for item_json_data in metadata['archives'] + (manual_metadata['archives'] or [])
+        MetadataItem(cast(Dict[str, Any], item_yaml_data))
+        for item_yaml_data in (
+            cast(List[Dict[str, Any]], metadata['archives']) +
+            cast(List[Dict[str, Any]], manual_metadata['archives'])
+        )
     ]
 
     if args.list_compilers:

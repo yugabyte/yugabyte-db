@@ -49,14 +49,13 @@ public class RollbackAutoFlags extends ServerSubTaskBase {
         log.error(error.toString());
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, error.toString());
       }
-      if (!resp.getFlagsRolledBack()) {
-        log.error("Auto flags did not rolled back: ", resp);
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Auto flags roll back failed in yugabyte DB.");
+      if (resp.getFlagsRolledBack()) {
+        log.info(
+            "Some AutoFlags were rolled back. Sleeping {} ms to allow in-flight operations to"
+                + " complete",
+            SLEEP_AFTER_ROLLBACK_MS);
+        waitFor(Duration.ofMillis(SLEEP_AFTER_ROLLBACK_MS));
       }
-      log.debug("Sleeping for {} ms after rolling back auto flags", SLEEP_AFTER_ROLLBACK_MS);
-      waitFor(Duration.ofMillis(SLEEP_AFTER_ROLLBACK_MS));
-      Thread.sleep(SLEEP_AFTER_ROLLBACK_MS);
     } catch (Exception e) {
       log.error("Rollback AutoFlag task failed: ", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());

@@ -24,11 +24,13 @@ export const CellLocationPanel = (props) => {
   });
 
   const regionList = universeDetails.clusters.reduce((regions, cluster) => {
-    const placementRegions = getPlacementRegions(cluster);
-    return regions.concat(placementRegions);
-  }, []);
+    getPlacementRegions(cluster).forEach((region) => {
+      regions.add(region.code);
+    });
+    return regions;
+  }, new Set());
 
-  const regionListText = regionList.map((region) => region.code).join(', ');
+  const regionListText = Array.from(regionList).join(', ');
   const providersText = universeProviders.join(', ');
   return (
     <div>
@@ -42,7 +44,7 @@ export const CellLocationPanel = (props) => {
       </Row>
       <Row className="cell-position-detail">
         <Col sm={3} className="cell-num-nodes">
-          {pluralize('Region', regionList.length, true)}
+          {pluralize('Region', regionList.size, true)}
         </Col>
         <Col sm={9}>{regionListText}</Col>
       </Row>

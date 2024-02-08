@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: cloud-provider-config-issues
     parent: troubleshoot-yp
-    weight: 15
+    weight: 30
 type: docs
 ---
 

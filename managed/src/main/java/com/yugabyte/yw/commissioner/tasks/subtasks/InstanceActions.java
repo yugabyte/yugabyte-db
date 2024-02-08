@@ -21,8 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 public class InstanceActions extends NodeTaskBase {
 
   @Inject
-  protected InstanceActions(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected InstanceActions(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.

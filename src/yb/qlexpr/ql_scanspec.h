@@ -31,6 +31,7 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
@@ -54,9 +55,13 @@ class QLScanRange {
    public:
     const QLValuePB& GetValue() const { return value_; }
     bool IsInclusive() const { return is_inclusive_; }
+    bool is_lower_bound() const { return is_lower_bound_; }
+
     bool operator<(const QLBound& other) const;
     bool operator>(const QLBound& other) const;
     bool operator==(const QLBound& other) const;
+
+    std::string ToString() const;
 
    protected:
     QLBound(const QLValuePB& value, bool is_inclusive, bool is_lower_bound);
@@ -94,6 +99,12 @@ class QLScanRange {
     // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
     // are not set.
     bool is_not_null = false;
+
+    bool Active() const {
+      return min_bound || max_bound || is_not_null;
+    }
+
+    std::string ToString() const;
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
@@ -130,6 +141,8 @@ class QLScanRange {
 
   QLScanRange& operator=(QLScanRange&& other);
 
+  std::string ToString() const;
+
  private:
   template <class Cond>
   void Init(const Schema& schema, const Cond& cond);
@@ -143,6 +156,12 @@ class QLScanRange {
   bool has_in_hash_options_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(QLScanRange);
+};
+
+struct ScanBounds {
+  dockv::KeyBytes lower;
+  dockv::KeyBytes upper;
+  bool trivial = false;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -198,8 +217,9 @@ class YQLScanSpec {
   const QLScanRange* range_bounds() const { return range_bounds_.get(); }
 
   // Return the inclusive lower and upper bounds of the scan.
-  Result<dockv::KeyBytes> LowerBound() const;
-  Result<dockv::KeyBytes> UpperBound() const;
+  const ScanBounds& bounds() const {
+    return bounds_;
+  }
 
   // Used by distinct operator, default value is 0.
   size_t prefix_length() const { return prefix_length_; }
@@ -213,19 +233,16 @@ class YQLScanSpec {
   // Group details of different options.
   virtual const ColGroupHolder& options_groups() const = 0;
 
-  // RocksDB file filter to use for this scan.
-  virtual std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const = 0;
+  // Returns the lower/upper range components of the key.
+  virtual dockv::KeyEntryValues RangeComponents(
+      const bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr) const = 0;
+
+ protected:
+  // Lower and upper keys for range condition.
+  ScanBounds bounds_;
 
  private:
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  virtual Result<dockv::KeyBytes> Bound(const bool lower_bound) const = 0;
-
-  // Returns the lower/upper range components of the key.
-  virtual dockv::KeyEntryValues range_components(
-      const bool lower_bound,
-      std::vector<bool>* inclusivities = nullptr,
-      bool use_strictness = true) const = 0;
-
   // QLClient type of this scan.
   const QLClient client_type_;
 

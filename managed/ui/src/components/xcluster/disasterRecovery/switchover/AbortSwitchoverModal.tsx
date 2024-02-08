@@ -32,14 +32,12 @@ export const AbortSwitchoverModal = ({
       queryClient.invalidateQueries(drConfigQueryKey.ALL, { exact: true });
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfig.uuid));
 
-      queryClient.invalidateQueries(
-        universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-        { exact: true }
-      );
-      queryClient.invalidateQueries(
-        universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-        { exact: true }
-      );
+      queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+        exact: true
+      });
+      queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+        exact: true
+      });
       toast.success(t('success.requestSuccess'));
     },
     onError: (error: Error | AxiosError) =>

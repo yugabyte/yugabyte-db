@@ -40,7 +40,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   virtual MonoDelta default_client_timeout() = 0;
   virtual const std::string& permanent_uuid() const = 0;
-  virtual void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) = 0;
+  virtual void SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) = 0;
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
 
@@ -60,7 +60,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
   // Shared memory owned by the tablet server.
   std::unique_ptr<tserver::TServerSharedObject> shared_object_;
 
-  std::unique_ptr<client::AsyncClientInitialiser> async_client_init_;
+  std::unique_ptr<client::AsyncClientInitializer> async_client_init_;
 
   std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
   std::atomic<client::TransactionManager*> transaction_manager_{nullptr};

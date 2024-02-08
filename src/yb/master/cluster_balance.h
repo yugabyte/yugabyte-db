@@ -88,7 +88,7 @@ class ClusterLoadBalancer {
 
   // Runs the load balancer once for the live and all read only clusters, in order
   // of the cluster config.
-  virtual void RunLoadBalancer(const LeaderEpoch& epoch, Options* options = nullptr);
+  virtual void RunLoadBalancer(const LeaderEpoch& epoch);
 
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }

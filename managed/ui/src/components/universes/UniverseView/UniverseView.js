@@ -8,7 +8,7 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { find } from 'lodash';
 
 import {
   getUniversePendingTask,
@@ -54,10 +54,12 @@ import ellipsisIcon from '../../common/media/more.svg';
 
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { customPermValidateFunction, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import './UniverseView.scss';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -289,12 +291,10 @@ export const UniverseView = (props) => {
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
               <RbacValidator
                 isControl
-                accessRequiredOn={
-                  {
-                    onResource: row.universeUUID,
-                    ...UserPermissionMap.editUniverse
-                  }
-                }
+                accessRequiredOn={{
+                  onResource: row.universeUUID,
+                  ...ApiPermissionMap.RESUME_UNIVERSE
+                }}
               >
                 <YBMenuItem
                   onClick={() => {
@@ -316,12 +316,10 @@ export const UniverseView = (props) => {
             )}
           <RbacValidator
             isControl
-            accessRequiredOn={
-              {
-                onResource: row.universeUUID,
-                ...UserPermissionMap.deleteUniverse
-              }
-            }
+            accessRequiredOn={{
+              onResource: row.universeUUID,
+              ...ApiPermissionMap.DELETE_UNIVERSE
+            }}
             overrideStyle={{ display: 'block' }}
           >
             <YBMenuItem
@@ -582,6 +580,13 @@ export const UniverseView = (props) => {
     });
   }
 
+
+  if (!customPermValidateFunction((userPermissions) => {
+    return find(userPermissions, { resourceType: Resource.UNIVERSE, actions: [Action.READ] }) !== undefined;
+  })) {
+    return getWrappedChildren({});
+  }
+
   return (
     <React.Fragment>
       <DeleteUniverseContainer
@@ -612,8 +617,7 @@ export const UniverseView = (props) => {
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
           <RbacValidator
             accessRequiredOn={{
-              onResource: undefined,
-              ...UserPermissionMap.createUniverse
+              ...ApiPermissionMap.CREATE_UNIVERSE
             }}
             isControl
           >
@@ -623,6 +627,7 @@ export const UniverseView = (props) => {
                 disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                 btnText="Create Universe"
                 btnIcon="fa fa-plus"
+                data-testid="UniverseList-CreateUniverse"
               />
             </Link>
           </RbacValidator>

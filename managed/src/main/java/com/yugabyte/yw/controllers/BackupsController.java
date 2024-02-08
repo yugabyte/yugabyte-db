@@ -423,10 +423,13 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupHelper.validateStorageConfig(customerConfig);
     // Validate universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    if (!backupHelper.isSkipConfigBasedPreflightValidation(universe)) {
+      backupHelper.validateStorageConfig(customerConfig);
+    }
+
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     taskParams.customerUUID = customerUUID;
@@ -652,7 +655,7 @@ public class BackupsController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

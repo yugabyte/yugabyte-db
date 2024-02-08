@@ -22,8 +22,8 @@ import org.apache.commons.io.FileUtils;
 public class RunHooks extends NodeTaskBase {
 
   @Inject
-  protected RunHooks(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected RunHooks(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
@@ -75,7 +75,7 @@ public class RunHooks extends NodeTaskBase {
         hook.getUuid().toString(),
         Audit.ActionType.RunHook,
         body,
-        this.userTaskUUID,
+        getUserTaskUUID(),
         null,
         null);
 

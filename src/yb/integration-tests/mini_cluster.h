@@ -45,6 +45,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_fwd.h"
@@ -206,6 +207,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(size_t idx);
 
+  std::string GetYbControllerServerFsRoot(size_t idx);
+
   std::string GetTabletServerDrive(size_t idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
@@ -275,6 +278,8 @@ class MiniCluster : public MiniClusterBase {
 
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;
+
+  std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
 
   PortPicker port_picker_;
 };

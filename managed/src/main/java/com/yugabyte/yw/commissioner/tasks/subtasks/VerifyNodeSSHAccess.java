@@ -10,9 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 public class VerifyNodeSSHAccess extends NodeTaskBase {
 
   @Inject
-  protected VerifyNodeSSHAccess(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected VerifyNodeSSHAccess(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override

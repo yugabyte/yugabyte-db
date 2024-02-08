@@ -51,6 +51,10 @@
 #include "storage/procarray.h"
 #include "utils/builtins.h"
 
+/* YB includes. */
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
+
 /*
  * Replication slot on-disk data structure.
  */
@@ -99,6 +103,8 @@ ReplicationSlot *MyReplicationSlot = NULL;
 /* GUCs */
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
+
+const char *YB_OUTPUT_PLUGIN = "yboutput";
 
 static void ReplicationSlotShmemExit(int code, Datum arg);
 static void ReplicationSlotDropAcquired(void);
@@ -257,6 +263,17 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	Assert(MyReplicationSlot == NULL);
 
 	ReplicationSlotValidateName(name, ERROR);
+
+	/*
+	 * yb-master is the source of truth for replication slots. Skip the
+	 * ReplicationSlotCtl related stuff as it isn't applicable till we support
+	 * consuming replication slots via Walsender.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateReplicationSlot(name);
+		return;
+	}
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -648,6 +665,25 @@ void
 ReplicationSlotDrop(const char *name, bool nowait)
 {
 	Assert(MyReplicationSlot == NULL);
+
+	/*
+	 * yb-master is the source of truth for replication slots. Skip the
+	 * ReplicationSlotCtl related stuff as it isn't applicable till we support
+	 * consuming replication slots via Walsender.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		bool		stream_active;
+
+		YBCGetReplicationSlotStatus(name, &stream_active);
+		if (stream_active)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("replication slot \"%s\" is active", name)));
+
+		YBCDropReplicationSlot(name);
+		return;
+	}
 
 	ReplicationSlotAcquire(name, nowait);
 

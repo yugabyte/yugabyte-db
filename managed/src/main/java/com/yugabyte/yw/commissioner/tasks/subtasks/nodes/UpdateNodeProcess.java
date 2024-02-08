@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -25,8 +24,8 @@ import lombok.extern.slf4j.Slf4j;
 public class UpdateNodeProcess extends NodeTaskBase {
 
   @Inject
-  protected UpdateNodeProcess(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected UpdateNodeProcess(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Parameters for updateProcess type

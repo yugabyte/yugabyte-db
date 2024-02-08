@@ -159,6 +159,8 @@ CREATE TABLE testdb.users (
 Due to architectural differences, YugabyteDB does _not_ support most of the Apache Cassandra table level properties.
 `default_time_to_live` is one of the supported properties and the `transactions` property is added by YugabyteDB. For more details, see [table properties](../../../api/ycql/ddl_create_table/#table-properties-1).
 {{< /note >}}
+`default_time_to_live` is one of the supported properties. YugabyteDB adds the
+`transactions` property. See [table properties](/preview/api/ycql/ddl_create_table/#table-properties-1) for more details.
 
 ## Quit ycqlsh
 

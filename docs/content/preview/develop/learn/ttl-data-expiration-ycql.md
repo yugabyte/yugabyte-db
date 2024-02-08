@@ -63,6 +63,10 @@ SELECT * FROM pageviews;
 (0 rows)
 ```
 
+{{<warning>}}
+**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+{{</warning>}}
+
 ## Column-level TTL
 
 YCQL also allows you to set a column-level TTL, in which case the TTL is stored as part of the DocDB column value that you can set only when updating the column, as demonstrated by the following example:

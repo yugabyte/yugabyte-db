@@ -16,29 +16,9 @@ Use the `SET` statement to change the value of a run-time parameter.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  set
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -84,7 +64,7 @@ Specify the value of parameter.
 
 ### User-defined run-time parameters
 
-You can also create a user-defined run-time parameter, on the fly, by spelling it suitably. The duration of  a user-defined run-time parameter never exceeds that of the session. The spelling _must_ include a period. And, as long as  you double-quote in in the `set` statement, it can contain any combination of arbitrary characters. Try this:
+You can also create a user-defined run-time parameter, on the fly, by spelling it suitably. The duration of  a user-defined run-time parameter never exceeds that of the session. The spelling _must_ include a period. And, as long as  you double-quote in the `set` statement, it can contain any combination of arbitrary characters. Try this:
 
 ```plpgsql
 set min.værelse17 = 'stue';

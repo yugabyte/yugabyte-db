@@ -169,17 +169,18 @@ Start a new session to test it:
 ```plpgsql
 \c d0 d0$u0
 select pkg.value_of_a();
+```
+
+It shows the specified initial value for the "package global" _a_, i.e. _42_.
+
+Set a new value and observe the outcome:
+
+```plpgsql
 call pkg.set_a(17);
 select pkg.value_of_a();
 ```
 
-It shows the specified initial value for the "package global" _a_.
-
-```output
- value_of_a 
-------------
-         17
-```
+This confirms that the value of _a_ has been successfully set to _17_.
 
 Now start a second concurrent session to test the privacy of the "package" state:
 
@@ -197,9 +198,9 @@ This is the result:
          19
 ```
 
-You can now continue with _ad hoc_ testing variously setting and getting the "package" state in each of the two concurrent sessions in arbitrarily interleaving order. You'll see that you always get the value that you most-recently set, in each session, irrespectively of what the other session sets.
+Go back to the first session and observe the value of _a_ there. It's still _17_. You can now continue with _ad hoc_ testing variously setting and getting the "package" state in each of the two concurrent sessions in arbitrarily interleaving order. You'll see that you always get the value that you most-recently set, in each session, irrespectively of what the other session sets—in other words, the (simulated) package global variables are indeed session-private.
 
-{{< note title="Where to locate the calls to 'pkg.initialize_if_not_initialized()?'" >}}
+{{< note title="Where to locate the calls to 'pkg.initialize_if_not_initialized()'?" >}}
 It's certainly safe to implement every setter procedure and getter function by calling _pkg.initialize_if_not_initialized()_ at the start of each of these. And doing this makes the rest of the code uncluttered and therefore easy to understand. Writing this:
 
 ```plpgsql

@@ -62,7 +62,8 @@ TEST_F(PgSingleServerRestartTest, GetSafeTimeBeforeConsensusStarted) {
   ASSERT_OK(itest::WaitForServersToAgree(10s, ts_map, tablet_id, /* minimum_index = */ 4));
   SleepFor(1s);
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {tablet_id}, false));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
+      cluster_->tablet_server(0), {tablet_id}, tserver::FlushTabletsRequestPB::FLUSH));
   leader->Shutdown(SafeShutdown::kFalse);
   ASSERT_OK(cluster_->WaitForTSToCrash(leader, 10s));
 

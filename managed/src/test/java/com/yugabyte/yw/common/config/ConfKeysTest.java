@@ -27,9 +27,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
-import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
-import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import db.migration.default_.common.R__Sync_System_Roles;
@@ -37,7 +35,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -71,24 +68,17 @@ public class ConfKeysTest extends FakeDBApplication {
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
-    Role role1 =
-        Role.create(
-            defaultCustomer.getUuid(),
-            "FakeRole2",
-            "testDescription",
-            RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
-    ResourceDefinition rd3 =
-        ResourceDefinition.builder()
-            .resourceType(ResourceType.OTHER)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
-            .build();
-    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
-    RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
 
     // Run the system roles sync migration to validate the UseNewRbacAuthzListener.
     // Required for the "yb.rbac.use_new_authz" runtime config.
     R__Sync_System_Roles.syncSystemRoles();
+
+    Role role1 = Role.get(defaultCustomer.getUuid(), Users.Role.SuperAdmin.name());
+    RoleBinding.create(
+        user,
+        RoleBindingType.System,
+        role1,
+        ResourceGroup.getSystemDefaultResourceGroup(defaultCustomer.getUuid(), user));
   }
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {

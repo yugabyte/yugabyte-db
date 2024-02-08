@@ -7,8 +7,8 @@ import {
   getUniversePerNodeStatusResponse,
   getUniversePerNodeMetrics,
   getUniversePerNodeMetricsResponse,
-  getMasterLeader,
-  getMasterLeaderResponse,
+  getMasterNodesInfo,
+  getMasterNodesInfoResponse,
   resetMasterLeader,
   resetNodeDetails
 } from '../../../actions/universe';
@@ -29,9 +29,9 @@ function mapStateToProps(state) {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    getMasterLeader: (uuid) => {
-      dispatch(getMasterLeader(uuid)).then((response) => {
-        dispatch(getMasterLeaderResponse(response.payload));
+    getMasterNodesInfo: (uuid) => {
+      dispatch(getMasterNodesInfo(uuid)).then((response) => {
+        dispatch(getMasterNodesInfoResponse(response.payload));
       });
     },
 

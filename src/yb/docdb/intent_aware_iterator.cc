@@ -668,7 +668,9 @@ void IntentAwareIterator::SeekToSuitableIntent(const rocksdb::KeyValueEntry& ent
     }
     ProcessIntent();
     if (!status_.ok()) {
-      VLOG(4) << "ProcessIntent failed: " << status_;
+      LOG(WARNING) << "Entry: " << DebugDumpEntryToStr(*entry)
+                   << " ProcessIntent failed: " << status_
+                   << " TransactionOperationContext: " << txn_op_context_;
       return;
     }
     entry = &MoveIterator<direction>(&intent_iter_);

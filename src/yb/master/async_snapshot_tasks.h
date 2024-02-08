@@ -24,7 +24,7 @@ namespace master {
 
 // Send the "Create/Restore/.. Tablet Snapshot operation" to the leader replica for the tablet.
 // Keeps retrying until we get an "ok" response.
-class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
+class AsyncTabletSnapshotOp : public RetryingTSRpcTaskWithTable {
  public:
   AsyncTabletSnapshotOp(
       Master* master,

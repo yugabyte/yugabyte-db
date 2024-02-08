@@ -37,11 +37,17 @@ handle_test_result() {
 
   # In case of failure, persist failure output.
   if [ "$result" -ne 0 ]; then
-    cp "$test_output_path" "$test_output_path"."$datetime"
+    cp -r "$test_output_path" "$test_output_path"."$datetime"
   fi
 
-  # Output tsv row: date, test, exit code
-  echo -e "$datetime\t$test_descriptor\t$result" | tee -a "$test_result_dir/$results_file"
+  if [ $# -eq 4 ]; then
+    # Output tsv row: date, test, exit code
+    echo -e "$datetime\t$test_descriptor\t$result" | tee -a "$test_result_dir/$results_file"
+  else
+    fail_rate=$5
+    # Output tsv row: date, test, exit code, fail rate
+    echo -e "$datetime\t$test_descriptor\t$result\t$fail_rate" | tee -a "$test_result_dir/$results_file"
+  fi
 }
 
 grep_in_cxx_test() {
@@ -193,4 +199,109 @@ ysqlsh() {
   # -v "ON_ERROR_STOP=1": on error, return bad exit code
   # "$@": user-supplied extra args
   bin/ysqlsh -X -v "ON_ERROR_STOP=1" "${host_args[@]}" "$@"
+}
+
+run_flaky_tests() {
+  type=$1
+
+  case "$type" in
+    cxx|java)
+      ;;
+    *)
+      # Invalid argument.
+      return 1
+      ;;
+  esac
+
+  found_failure=false
+  while read -r line; do
+    test_program=$(cut -f 1 <<<"$line")
+    test_descriptor=$(cut -f 2 <<<"$line")
+    test_output_path="$test_result_dir"/"${test_descriptor//\//_}"
+
+    # Clean up from any old runs.
+    rm -rf "$test_output_path"
+    mkdir "$test_output_path"
+
+    # Conditions for overall pass:
+    # - Fails <= 3 times.
+    # - Fail rate is <= 30%.
+    # Examples:
+    # - P
+    # - F P P P
+    # - F P P F P F P P P P
+    max_fail_rate=0.3
+    max_fails=3
+    fails=0
+    iter=0
+    while [ "$fails" -le "$max_fails" ] \
+          && { [ "$iter" -eq 0 ] \
+               || [ "$(bc -l <<<"$fails / $iter > $max_fail_rate")" -eq 1 ]; }; do
+      # Run test, capturing out/err to file.
+      set +e
+      "$type"_test "$test_program" "$test_descriptor" \
+        |& tee "$test_output_path"/"$iter".txt
+      result=$?
+      set -e
+
+      if [ "$result" -ne 0 ]; then
+        fails=$((fails + 1))
+      fi
+      iter=$((iter + 1))
+    done
+    # Overall result.
+    if [ "$fails" -le "$max_fails" ] \
+       && [ "$(bc -l <<<"$fails / $iter <= $max_fail_rate")" -eq 1 ]; then
+      result=0
+    else
+      result=1
+    fi
+    fail_rate=$(bc -l <<<"scale=2; $fails / $iter")
+
+    handle_test_result "$test_output_path" "$test_descriptor" "$result" flaky_"$type"_results.tsv \
+      "$fail_rate"
+    if [ "$result" -ne 0 ]; then
+      found_failure=true
+    fi
+  done <pg15_tests/flaky_"$type".tsv
+
+  if "$found_failure"; then
+    return 1
+  fi
+}
+
+run_passing_tests() {
+  type=$1
+
+  case "$type" in
+    cxx|java)
+      ;;
+    *)
+      # Invalid argument.
+      return 1
+      ;;
+  esac
+
+  found_failure=false
+  while read -r line; do
+    test_program=$(cut -f 1 <<<"$line")
+    test_descriptor=$(cut -f 2 <<<"$line")
+    test_output_path="$test_result_dir"/"${test_descriptor//\//_}".txt
+
+    # Run test, capturing out/err to file.
+    set +e
+    "$type"_test "$test_program" "$test_descriptor" \
+      |& tee "$test_output_path"
+    result=$?
+    set -e
+
+    handle_test_result "$test_output_path" "$test_descriptor" "$result" passing_"$type"_results.tsv
+    if [ $result -ne 0 ]; then
+      found_failure=true
+    fi
+  done <pg15_tests/passing_"$type".tsv
+
+  if "$found_failure"; then
+    exit 1
+  fi
 }

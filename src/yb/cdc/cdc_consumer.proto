@@ -81,8 +81,11 @@ message ProducerEntryPB {
   // Map from stream id to metadata for that stream.
   map<string, StreamEntryPB> stream_map = 1;
   repeated HostPortPB master_addrs = 2;
-  repeated HostPortPB DEPRECATED_tserver_addrs = 3; // See issue #11989.
+  // Reserved for depreacted tserver_addrs. See issue #11989.
+  reserved 3;
   bool disable_stream = 4; // [default = false] implicit in proto3
+  uint32 compatible_auto_flag_config_version = 5; // [default = 0] implicit in proto3
+  uint32 validated_auto_flags_config_version = 6; // [default = 0] implicit in proto3
 }
 
 enum XClusterRole {
@@ -91,7 +94,7 @@ enum XClusterRole {
 }
 
 message ConsumerRegistryPB {
-  // Map from producer universe uuid to metadata for that producer.
+  // Map from ReplicationGroupId to metadata for that ReplicationGroup.
   map<string, ProducerEntryPB> producer_map = 1;
   // Reserved for deprecated enable_replicate_transaction_status_table field.
   reserved 2;

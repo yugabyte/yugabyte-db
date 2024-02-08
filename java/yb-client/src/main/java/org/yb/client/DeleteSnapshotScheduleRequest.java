@@ -12,8 +12,8 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterBackupOuterClass.DeleteSnapshotScheduleResponsePB;
 import org.yb.master.MasterBackupOuterClass.DeleteSnapshotScheduleRequestPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
-import org.yb.util.SnapshotUtil;
 
 @InterfaceAudience.Public
 public class DeleteSnapshotScheduleRequest extends YRpc<DeleteSnapshotScheduleResponse> {
@@ -30,7 +30,7 @@ public class DeleteSnapshotScheduleRequest extends YRpc<DeleteSnapshotScheduleRe
         assert header.isInitialized();
         final DeleteSnapshotScheduleRequestPB.Builder builder =
                 DeleteSnapshotScheduleRequestPB.newBuilder();
-        builder.setSnapshotScheduleId(SnapshotUtil.convertToByteString(snapshotScheduleUUID));
+        builder.setSnapshotScheduleId(CommonUtil.convertToByteString(snapshotScheduleUUID));
         return toChannelBuffer(header, builder.build());
     }
 

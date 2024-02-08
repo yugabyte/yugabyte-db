@@ -118,6 +118,8 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       ChangePeerRoleResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void DumpStatusHtml(std::ostream& out);
+
  private:
   struct SessionData {
     scoped_refptr<RemoteBootstrapSession> session;

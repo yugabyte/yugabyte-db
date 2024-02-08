@@ -26,8 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleSetupServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.
@@ -46,6 +46,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean isSystemdUpgrade = false;
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
     public boolean ignoreUseCustomImageConfig = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
   }
 
   @Override

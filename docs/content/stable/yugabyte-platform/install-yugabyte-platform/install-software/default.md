@@ -22,6 +22,7 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
     <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
+
   <li>
     <a href="../default/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -109,7 +110,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview">}}/yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable">}}/yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:

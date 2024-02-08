@@ -2,7 +2,7 @@
 title: Restore a single YSQL table
 headerTitle: Restore a single YSQL table
 linkTitle: Restore a single YSQL table
-description: Use YugabyteDB Anywhere to restore data.
+description: Use YugabyteDB Anywhere to restore a single table in YSQL.
 headContent: Restore from full or incremental backups
 menu:
   stable_yugabyte-platform:

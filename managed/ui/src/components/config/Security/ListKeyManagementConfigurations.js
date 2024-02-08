@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { Component, Fragment } from 'react';
+import { find } from 'lodash';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -8,9 +9,10 @@ import { YBPanelItem } from '../../panels';
 import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
@@ -29,31 +31,28 @@ export class ListKeyManagementConfigurations extends Component {
           onClick={() => {
             this.setState({ configDetail: row });
           }}
+          data-testid="EAR-Details"
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         {(isAdmin || isRbacEnabled()) && (
           <RbacValidator
-            accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.editEncryptionAtRest
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_CERTIFICATE}
             isControl
             overrideStyle={{ display: 'block' }}
           >
             <MenuItem
               onClick={() => {
                 onEdit(row);
-              }}>
+              }}
+              data-testid="EAR-EditConfiguration"
+            >
               <i className="fa fa-pencil"></i> Edit Configuration
             </MenuItem>
           </RbacValidator>
         )}
         <RbacValidator
-          accessRequiredOn={{
-            onResource: "CUSTOMER_ID",
-            ...UserPermissionMap.deleteEncryptionAtRest
-          }}
+          accessRequiredOn={ApiPermissionMap.DELETE_CERTIFICATE}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -63,17 +62,26 @@ export class ListKeyManagementConfigurations extends Component {
             onClick={() => {
               !inUse && this.setState({ deleteConfig: row });
             }}
+            data-testid="EAR-DeleteConfiguration"
           >
             <i className="fa fa-trash"></i> Delete Configuration
           </MenuItem>
         </RbacValidator>
-        <MenuItem
-          onClick={() => {
-            this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
-          }}
+
+        <RbacValidator
+          customValidateFunction={(userPermissions) => find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-eye"></i> Show Universes
-        </MenuItem>
+          <MenuItem
+            onClick={() => {
+              this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
+            }}
+            data-testid="EAR-ShowUniverses"
+          >
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -129,10 +137,7 @@ export class ListKeyManagementConfigurations extends Component {
               <FlexContainer className="pull-right">
                 <FlexShrink>
                   <RbacValidator
-                    accessRequiredOn={{
-                      onResource: "CUSTOMER_ID",
-                      ...UserPermissionMap.createEncryptionAtRest
-                    }}
+                    accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE}
                     isControl
                   >
                     <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>

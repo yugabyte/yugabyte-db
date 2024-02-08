@@ -23,8 +23,8 @@ import { Badge_Types, StatusBadge } from '../../../../../common/badge/StatusBadg
 import { getKMSConfigs } from '../../../../common/BackupAPI';
 import { YBLabel } from '../../../../../common/descriptors';
 import { isYBCEnabledInUniverse } from '../../RestoreUtils';
-import { hasNecessaryPerm } from '../../../../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../../../redesign/features/rbac/UserPermPathMapping';
+import { hasNecessaryPerm } from '../../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 const useStyles = makeStyles((theme) => ({
   root: {},
@@ -97,9 +97,9 @@ const ChooseUniverseConfig = () => {
 
   let kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-      return { value: config.metadata.configUUID, label: labelName };
-    })
+        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+        return { value: config.metadata.configUUID, label: labelName };
+      })
     : [];
 
   const universe = find(universeList, { universeUUID: backupDetails?.universeUUID });
@@ -165,7 +165,7 @@ const ChooseUniverseConfig = () => {
                     value: universe.universeUUID,
                     isDisabled: !hasNecessaryPerm({
                       onResource: universe.universeUUID,
-                      ...UserPermissionMap.restoreBackup
+                      ...ApiPermissionMap.UNIVERSE_RESTORE_BACKUP
                     })
                   };
                 })}

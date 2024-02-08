@@ -866,6 +866,7 @@ add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
 add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 
 set(YB_SUBDIR_NAMES
+    ash
     bfcommon
     bfpg
     bfql

@@ -70,6 +70,14 @@ export enum QUERY_KEY {
 // TODO: Upgrade React Query to 3.17+ to get the change for supporting
 //       annotating these as readonly query keys. (PLAT-4896)
 
+export const taskQueryKey = {
+  ALL: ['task'],
+  customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
+  universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
+  provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
+  xCluster: (xClusterUuid: string) => [...taskQueryKey.ALL, 'xCluster', xClusterUuid]
+};
+
 export const providerQueryKey = {
   ALL: ['provider'],
   detail: (providerUuid: string) => [...providerQueryKey.ALL, providerUuid]
@@ -145,23 +153,61 @@ export interface CreateDrConfigRequest {
   name: string;
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
-  dbs: string[]; // Selected Databases
+  dbs: string[]; // Database uuids (from source universe) selected for replication.
   bootstrapBackupParams: {
     storageConfigUUID: string;
     parallelism?: number;
-  };
-  pitrParams: {
-    retentionPeriodSec: number;
   };
 
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
 }
 
-export interface EditDrConfigRequest {
-  newTargetUniverseUuid?: string;
-  bootstrapBackupParams?: {
-    storageConfigUUID: string;
-    parallelism?: number;
+export interface ReplaceDrReplicaRequest {
+  primaryUniverseUuid: string; // The current primary universe.
+  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
+  // Bootstrap Params is required now, but it will be removed in future releases when
+  // we're able to save a storage config for each DR config.
+  bootstrapParams: {
+    backupRequestParams?: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export interface DrSwitchoverRequest {
+  // primaryUniverseUuid is new primary universe AFTER switchover (i.e. current DR replica universe).
+  primaryUniverseUuid: string;
+  // drReplicaUniverseUuid is the new DR replica universe AFTER switchover (i.e. current primary universe).
+  drReplicaUniverseUuid: string;
+}
+
+export interface DrFailoverRequest {
+  // primaryUniverseUuid is new primary universe AFTER failover (i.e. current DR replica universe).
+  primaryUniverseUuid: string;
+  // drReplicaUniverseUuid is the new DR replica universe AFTER failover (i.e. current primary universe).
+  drReplicaUniverseUuid: string;
+  namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
+}
+
+export interface RestartDrConfigRequest {
+  dbs: string[]; // Database uuids (from the source universe) to be restarted.
+  // Bootstrap Params is required now, but it will be removed in future releases when
+  // we're able to save a storage config for each DR config.
+  bootstrapParams: {
+    backupRequestParams?: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export interface UpdateTablesInDrRequest {
+  tables: string[];
+  // Bootstrap Params is required now, but it will be removed in future releases when
+  // we're able to save a storage config for each DR config.
+  bootstrapParams: {
+    backupRequestParams?: {
+      storageConfigUUID: string;
+    };
   };
 }
 
@@ -335,17 +381,12 @@ class ApiService {
     }
   };
 
+  //--------------------------------------------------------------------------------------------
+  // Disaster Recovery (DR) API request helpers
+
   createDrConfig = (createDRConfigRequest: CreateDrConfigRequest): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs`;
     return axios.post(requestUrl, createDRConfigRequest).then((response) => response.data);
-  };
-
-  editDrConfig = (
-    drConfigUuid: string,
-    editDRConfigRequest: EditDrConfigRequest
-  ): Promise<YBPTask> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-    return axios.put(requestUrl, editDRConfigRequest).then((response) => response.data);
   };
 
   fetchDrConfig = (drConfigUuid: string | undefined): Promise<DrConfig> => {
@@ -362,27 +403,57 @@ class ApiService {
     return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
   };
 
-  initiateSwitchover = (drConfigUuid: string): Promise<YBPTask> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/failover`;
-    return axios
-      .post<YBPTask>(requestUrl, { type: 'PLANNED' })
-      .then((response) => response.data);
+  initiateSwitchover = (
+    drConfigUuid: string,
+    drSwitchoverRequest: DrSwitchoverRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/switchover`;
+    return axios.post<YBPTask>(requestUrl, drSwitchoverRequest).then((response) => response.data);
   };
 
   initiateFailover = (
     drConfigUuid: string,
-    namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string }
+    drFailoverRequest: DrFailoverRequest
   ): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/failover`;
-    return axios
-      .post<YBPTask>(requestUrl, { type: 'UNPLANNED', namespaceIdSafetimeEpochUsMap })
-      .then((response) => response.data);
+    return axios.post<YBPTask>(requestUrl, drFailoverRequest).then((response) => response.data);
+  };
+
+  replaceDrReplica = (
+    drConfigUuid: string,
+    replaceDrReplicaRequest: ReplaceDrReplicaRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/replace_replica`;
+    return axios.post(requestUrl, replaceDrReplicaRequest).then((response) => response.data);
   };
 
   fetchCurrentSafetimes = (drConfigUuid: string): Promise<DrConfigSafetimeResponse> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/safetime`;
     return axios.get<DrConfigSafetimeResponse>(requestUrl).then((response) => response.data);
   };
+
+  // The following DR API request helpers manage the underlying replication used in the DR config.
+
+  restartDrConfig = (drConfigUuid: string, restartDrConfigRequest: RestartDrConfigRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/restart`;
+    return axios
+      .post<YBPTask>(requestUrl, restartDrConfigRequest)
+      .then((response) => response.data);
+  };
+
+  updateTablesInDr = (drConfigUuid: string, updateTablesInDrRequest: UpdateTablesInDrRequest) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_tables`;
+    return axios
+      .post<YBPTask>(requestUrl, updateTablesInDrRequest)
+      .then((response) => response.data);
+  };
+
+  syncDrConfig = (drConfigUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/sync`;
+    return axios.post<YBPTask>(requestUrl).then((response) => response.data);
+  };
+
+  //--------------------------------------------------------------------------------------------
 
   abortTask = (taskUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/task/${taskUuid}/abort`;
@@ -536,6 +607,13 @@ class ApiService {
   deleteCertificate = (certUUID: string, customerUUID: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${customerUUID}/certificates/${certUUID}`;
     return axios.delete<any>(requestUrl).then((res) => res.data);
+  };
+
+  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
+    return axios
+      .get<any>(requestUrl, { params: { uUUID: universeUuid } })
+      .then((response) => response.data);
   };
 
   getAlerts = (

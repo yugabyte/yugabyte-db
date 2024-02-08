@@ -39,8 +39,8 @@ The following table describes key cache metrics for the storage (RocksDB) layer.
 | :----- | :--- | :--- | :---------- |
 | `rocksdb_block_cache_hit` | blocks | counter | The total number of block cache hits (cache index + cache filter + cache data). |
 | `rocksdb_block_cache_miss` | blocks | counter | The total number of block cache misses (cache index + cache filter + cache data). |
-| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read more than once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
-| `block_cache_multi_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in the multi-touch portion of the cache. The size (in bytes) of the cache usage by blocks having multiple touches. |
+| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
+| `block_cache_multi_touch_usage` | blocks | counter | Blocks of data cached and read more than once by the YSQL layer are classified in the multi-touch portion of the cache. The size (in bytes) of the cache usage by blocks having multiple touches. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 

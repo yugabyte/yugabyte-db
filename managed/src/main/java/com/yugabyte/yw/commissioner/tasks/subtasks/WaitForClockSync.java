@@ -15,7 +15,6 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -40,10 +39,8 @@ public class WaitForClockSync extends NodeTaskBase {
 
   @Inject
   protected WaitForClockSync(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeUniverseManager nodeUniverseManager) {
-    super(baseTaskDependencies, nodeManager);
+      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+    super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
   }
 

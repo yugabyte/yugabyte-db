@@ -23,52 +23,59 @@ namespace yb::qlexpr {
 
 dockv::KeyEntryValues GetRangeKeyScanSpec(
     const Schema& schema,
-    const dockv::KeyEntryValues* prefixed_hash_components,
+    const dockv::KeyEntryValues* prefixed_range_components,
     const QLScanRange* scan_range,
-    std::vector<bool> *inclusivities,
+    std::vector<bool>* inclusivities,
     bool lower_bound,
     bool include_static_columns,
-    bool use_strictness) {
+    bool* trivial_scan_ptr) {
+  bool ignored_trivial = false;
+  bool& trivial = trivial_scan_ptr ? *trivial_scan_ptr : ignored_trivial;
   dockv::KeyEntryValues range_components;
   range_components.reserve(schema.num_range_key_columns());
-  if (prefixed_hash_components) {
+  if (prefixed_range_components) {
     range_components.insert(range_components.begin(),
-                            prefixed_hash_components->begin(),
-                            prefixed_hash_components->end());
+                            prefixed_range_components->begin(),
+                            prefixed_range_components->end());
     if (inclusivities) {
-      for (size_t i = 0; i < prefixed_hash_components->size(); i++) {
-        inclusivities->push_back(true);
-      }
+      inclusivities->resize(inclusivities->size() + prefixed_range_components->size(), true);
     }
   }
   if (scan_range != nullptr) {
     // Return the lower/upper range components for the scan.
-
-    for (size_t i = schema.num_hash_key_columns() + range_components.size();
-         i < schema.num_key_columns();
-         i++) {
+    trivial = true;
+    size_t start = schema.num_hash_key_columns() + range_components.size();
+    size_t i = start;
+    while (i < schema.num_key_columns()) {
       const auto& column = schema.column(i);
       const auto& range = scan_range->RangeFor(schema.column_id(i));
+      if (range.Active() && (range.is_not_null || (i > start))) {
+        trivial = false;
+      }
+      ++i;
       range_components.emplace_back(
           GetQLRangeBoundAsPVal(range, column.sorting_type(), lower_bound));
+      auto is_inclusive = GetQLRangeBoundIsInclusive(range, column.sorting_type(), lower_bound);
       if (inclusivities) {
-        inclusivities->push_back(GetQLRangeBoundIsInclusive(range,
-                                                            column.sorting_type(),
-                                                            lower_bound));
-      }
-
-      // If this bound in non-inclusive then we append kHighest/kLowest
-      // after and stop to fit the given bound
-      if (use_strictness
-          && !GetQLRangeBoundIsInclusive(range, column.sorting_type(), lower_bound)) {
+        inclusivities->push_back(is_inclusive);
+      } else if (!is_inclusive) {
+        // If this bound is non-inclusive then we append kHighest/kLowest
+        // after and stop to fit the given bound
         range_components.push_back(dockv::KeyEntryValue(
             lower_bound ? dockv::KeyEntryType::kHighest : dockv::KeyEntryType::kLowest));
-        if (inclusivities) {
-          inclusivities->push_back(true);
-        }
         break;
       }
     }
+    if (trivial_scan_ptr) {
+      for (; trivial && i != schema.num_key_columns(); ++i) {
+        if (scan_range->RangeFor(schema.column_id(i)).Active()) {
+          trivial = false;
+          break;
+        }
+      }
+    }
+  } else {
+    trivial = true;
   }
 
   if (!lower_bound) {
