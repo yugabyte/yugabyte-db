@@ -10,8 +10,6 @@ menu:
     parent: migration-types
     weight: 104
 techPreview: /preview/releases/versioning/#feature-availability
-rightNav:
-  hideH4: true
 type: docs
 ---
 

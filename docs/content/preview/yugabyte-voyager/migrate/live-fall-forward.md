@@ -10,8 +10,6 @@ menu:
     parent: migration-types
     weight: 103
 techPreview: /preview/releases/versioning/#feature-availability
-rightNav:
-  hideH4: true
 type: docs
 ---
 
@@ -723,7 +721,7 @@ Perform the following steps to prepare your source-replica database:
     GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
     ```
 
-1. Set the following variables on the client machine where yb-voyager is running (only if yb-voyager is installed on Ubuntu or RHEL) :
+1. If yb-voyager is installed on Ubuntu or RHEL, set the following variables on the client machine where yb-voyager is running:
 
     ```sh
     export ORACLE_HOME=/usr/lib/oracle/21/client64

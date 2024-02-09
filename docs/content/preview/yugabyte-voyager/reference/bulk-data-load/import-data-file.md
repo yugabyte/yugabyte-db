@@ -24,8 +24,8 @@ Usage: yb-voyager import data file [ <arguments> ... ]
 The valid *arguments* for import data file are described in the following table:
 
 | Argument | Description/valid options |
-| :------- | :------------------------ |
-| --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. <br> Default: 20000 rows |
+| :--- | :---- |
+| --batch-size `-number-` | Size of batches in the number of rows generated for ingestion during import data. <br> Default: 20000 rows |
 | --data-dir <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location such as an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).|
 | --delimiter | Character used as a delimiter to separate column values in rows of the datafile(s). <br> Default: comma `','` for CSV file format and tab `'\t'` for TEXT file format.<br>Example: `yb-voyager import data file .... --delimiter ','` |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1|
