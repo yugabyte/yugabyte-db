@@ -144,6 +144,7 @@ public class EditDrConfig extends CreateXClusterConfig {
       XClusterConfig currentXClusterConfig,
       XClusterConfig newXClusterConfig,
       boolean forceDeleteCurrentXClusterConfig) {
+
     // Delete the main replication config.
     createDeleteXClusterConfigSubtasks(
         currentXClusterConfig,
@@ -153,7 +154,6 @@ public class EditDrConfig extends CreateXClusterConfig {
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
-    // Create the new xCluster config.
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
     createXClusterConfigSetStatusForTablesTask(

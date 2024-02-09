@@ -432,7 +432,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // Delete hanging replication streams, otherwise deleting the database will fail.
         createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName);
         // If the table type is YSQL, delete the database from the target universe before restore.
-        createDeleteKeySpaceTask(namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE);
+        createDeleteKeySpaceTask(
+            namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE, true /*ysqlForce*/);
       }
 
       // Wait for sometime to make sure the above drop database has reached all the nodes.

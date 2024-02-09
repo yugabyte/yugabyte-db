@@ -39,7 +39,7 @@ export const DeleteConfigModal = ({
   redirectUrl
 }: DeleteConfigModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isForceDelete, setIsForceDelete] = useState<boolean>(true);
+  const [isForceDelete, setIsForceDelete] = useState<boolean>(false);
   const [confirmationText, setConfirmationText] = useState<string>('');
   const classes = useStyles();
   const queryClient = useQueryClient();
