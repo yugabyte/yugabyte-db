@@ -2034,6 +2034,19 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get information about the namespace/database.
+   * @param keyspaceName namespace name to get details about.
+   * @param databaseType database type the database belongs to.
+   * @return details for the namespace.
+   * @throws Exception
+   */
+  public GetNamespaceInfoResponse getNamespaceInfo(String keyspaceName,
+      YQLDatabase databaseType) throws Exception {
+    Deferred<GetNamespaceInfoResponse> d = asyncClient.getNamespaceInfo(keyspaceName, databaseType);
+    return d.join(getDefaultOperationTimeoutMs());
+  }
+
+  /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
   public ListCDCStreamsResponse listCDCStreams(

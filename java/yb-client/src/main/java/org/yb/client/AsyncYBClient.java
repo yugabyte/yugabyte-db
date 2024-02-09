@@ -1455,6 +1455,22 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * It returns information about a database/namespace after we pass in the databse name.
+   * @param keyspaceName database name to get details about.
+   * @param databaseType the type of database the database name is in.
+   * @return details about the database, including the namespace id, etc.
+   */
+  public Deferred<GetNamespaceInfoResponse> getNamespaceInfo(
+      String keyspaceName,
+      YQLDatabase databaseType) {
+    checkIsClosed();
+    GetNamespaceInfoRequest request = new GetNamespaceInfoRequest(
+        this.masterTable, keyspaceName, databaseType);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It sets the universe role for transactional xClusters.
    *
    * @param role The role to set the universe to
