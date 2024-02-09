@@ -1199,6 +1199,7 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.6.0.min.js
