@@ -182,7 +182,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 taskParams().getTableIdsToAdd(),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
-                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+                false /*isForceBootstrap*/);
 
     // Add the subtasks to set up replication for tables that do not need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =

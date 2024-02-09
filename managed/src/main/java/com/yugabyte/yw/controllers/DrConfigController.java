@@ -390,6 +390,7 @@ public class DrConfigController extends AuthenticatedController {
             : XClusterConfigTaskBase.getTableIds(
                 getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
 
+    log.info("DR state is {}", drConfig.getState());
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getRestartTaskParams(
             ybService,
@@ -399,7 +400,8 @@ public class DrConfigController extends AuthenticatedController {
             tableIds,
             restartForm.bootstrapParams,
             false /* dryRun */,
-            isForceDelete);
+            isForceDelete,
+            drConfig.isHalted() /*isForceBootstrap*/);
 
     UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
     CustomerTask.create(

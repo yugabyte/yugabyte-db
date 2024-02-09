@@ -96,7 +96,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               taskParams().getTableInfoList(),
               taskParams().getMainTableIndexTablesMap(),
               taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
-              taskParams().getPitrParams());
+              taskParams().getPitrParams(),
+              taskParams().isForceBootstrap());
         } else {
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
