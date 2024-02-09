@@ -55,11 +55,10 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s (targetUniverse=%s, xClusterUuid=%s, tableIds=%s)",
+        "%s (targetUniverse=%s, xClusterUuid=%s)",
         super.getName(),
         taskParams().getUniverseUUID(),
-        taskParams().getXClusterConfig().getUuid(),
-        taskParams().tableIds);
+        taskParams().getXClusterConfig().getUuid());
   }
 
   @Override
