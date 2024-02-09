@@ -71,7 +71,10 @@ public class RestartXClusterConfig extends EditXClusterConfig {
 
           // Delete the replication group.
           createDeleteXClusterConfigSubtasks(
-              xClusterConfig, true /* keepEntry */, taskParams().isForced());
+              xClusterConfig,
+              true /* keepEntry */,
+              taskParams().isForced(),
+              false) /* deletePitrConfigs */;
 
           if (xClusterConfig.isUsedForDr()) {
             createSetDrStatesTask(
