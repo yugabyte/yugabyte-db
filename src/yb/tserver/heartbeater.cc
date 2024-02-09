@@ -77,6 +77,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
@@ -86,9 +87,9 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -738,7 +739,7 @@ Status Heartbeater::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
 
   rpcs_.Shutdown();
@@ -751,7 +752,7 @@ Status Heartbeater::Thread::Stop() {
 void Heartbeater::Thread::TriggerASAP() {
   MutexLock l(mutex_);
   heartbeat_asap_ = true;
-  cond_.Signal();
+  YB_PROFILE(cond_.Signal());
 }
 
 

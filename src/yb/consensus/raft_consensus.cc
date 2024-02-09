@@ -64,6 +64,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -1389,7 +1390,7 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
   if (s.ok()) {
-    leader_lease_wait_cond_.notify_all();
+    YB_PROFILE(leader_lease_wait_cond_.notify_all());
   } else {
     LOG(WARNING) << "Leader lease expiration was not set: " << s;
   }

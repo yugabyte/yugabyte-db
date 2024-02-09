@@ -40,6 +40,7 @@
 
 #include "yb/gutil/stringprintf.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
 #include "yb/util/flags.h"
@@ -50,6 +51,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
+
+#include "yb/server/total_mem_watcher.h"
 
 using std::shared_ptr;
 using std::string;
@@ -149,7 +152,7 @@ void MaintenanceManager::Shutdown() {
       return;
     }
     shutdown_ = true;
-    cond_.notify_all();
+    YB_PROFILE(cond_.notify_all());
   }
   if (monitor_thread_.get()) {
     CHECK_OK(ThreadJoiner(monitor_thread_.get()).Join());
@@ -464,7 +467,7 @@ void ScopedMaintenanceOpRun::Reset() {
   }
   std::lock_guard lock(op_->manager_->mutex_);
   if (--op_->running_ == 0) {
-    op_->cond_.notify_all();
+    YB_PROFILE(op_->cond_.notify_all());
   }
   --op_->manager_->running_ops_;
   op_ = nullptr;

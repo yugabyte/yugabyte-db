@@ -26,6 +26,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/util/flags.h"
@@ -168,7 +169,7 @@ void XClusterPoller::StartShutdown() {
 
   DCHECK(!shutdown_);
   shutdown_ = true;
-  shutdown_cv_.notify_all();
+  YB_PROFILE(shutdown_cv_.notify_all());
 
   if (output_client_) {
     output_client_->StartShutdown();

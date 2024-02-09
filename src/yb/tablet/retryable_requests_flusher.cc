@@ -33,6 +33,7 @@
 #include "yb/tablet/retryable_requests_flusher.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 
@@ -93,7 +94,7 @@ void RetryableRequestsFlusher::SetIdleAndNotifyAll() {
   {
     std::unique_lock<std::mutex> lock(flush_mutex_);
   }
-  flush_cond_.notify_all();
+  YB_PROFILE(flush_cond_.notify_all());
 }
 
 Status RetryableRequestsFlusher::FlushRetryableRequests(RetryableRequestsFlushState expected) {
@@ -189,7 +190,7 @@ void RetryableRequestsFlusher::Shutdown() {
   {
     std::unique_lock<std::mutex> lock(flush_mutex_);
   }
-  flush_cond_.notify_all();
+  YB_PROFILE(flush_cond_.notify_all());
   flush_retryable_requests_pool_token_.reset();
 }
 

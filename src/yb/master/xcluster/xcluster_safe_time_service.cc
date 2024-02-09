@@ -29,7 +29,9 @@
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/string_util.h"
@@ -87,7 +89,7 @@ Status XClusterSafeTimeService::Init() {
 
 void XClusterSafeTimeService::Shutdown() {
   shutdown_ = true;
-  shutdown_cond_.Broadcast();
+  YB_PROFILE(shutdown_cond_.Broadcast());
 
   if (thread_pool_token_) {
     thread_pool_token_->Shutdown();

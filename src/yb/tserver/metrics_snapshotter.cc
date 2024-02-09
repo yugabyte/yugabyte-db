@@ -64,6 +64,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/util/callsite_profiling.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/capabilities.h"
@@ -612,7 +613,7 @@ Status MetricsSnapshotter::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;

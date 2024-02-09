@@ -22,6 +22,7 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -164,7 +165,7 @@ class TransactionLoader::Executor {
       // after that we would check all_loaded_ and exit the loop at line 1.
       std::lock_guard lock(loader_.mutex_);
     }
-    loader_.load_cond_.notify_all();
+    YB_PROFILE(loader_.load_cond_.notify_all());
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
     return Status::OK();
   }
@@ -266,7 +267,7 @@ class TransactionLoader::Executor {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
     }
-    loader_.load_cond_.notify_all();
+    YB_PROFILE(loader_.load_cond_.notify_all());
     return Status::OK();
   }
 
