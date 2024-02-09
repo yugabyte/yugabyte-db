@@ -117,7 +117,7 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
 
       log.debug("Successfully deleted all remnant streams.");
     } catch (Exception e) {
-      if (e.getMessage().contains("keyspace name not found")) {
+      if (e.getMessage().toLowerCase().contains("keyspace name not found")) {
         log.debug("Namespace {} does not exist. Skipping clean up ...", taskParams().namespaceName);
         return;
       }
