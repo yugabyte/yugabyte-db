@@ -39,13 +39,17 @@ BEGIN TRANSACTION READ ONLY;
 COMMIT;
 ```
 
-This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (default: 30s). This is the case even if the read goes to a leader. The staleness value can be changed using another setting like:
+This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (the default staleness is 30 seconds). This is the case even if the read goes to a leader.
+
+You can change the staleness value using the following configuration parameter:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s
 ```
 
-{{<note title="Note">}}
+Although the default is recommended, you can set the staleness to a shorter value such as 2000 or 1000 ms. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
+
+{{<note>}}
 Follower reads only affect reads. All writes are still handled by the leader.
 {{</note>}}
 
