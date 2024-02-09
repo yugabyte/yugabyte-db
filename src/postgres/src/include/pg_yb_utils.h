@@ -997,8 +997,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 						 PG_FUNCNAME_MACRO, \
 						 TEXTDOMAIN)) \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
-				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				Assert(msg_buf); \
+				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
+				if (detail_buf) \
+					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
