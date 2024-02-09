@@ -427,12 +427,12 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 #### Import indexes and triggers
 
-Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
+Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
 
-- Snapshot exported is imported completely on the target.
+- The exported snapshot has been completely imported on the target.
 - All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
-After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -645,4 +645,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 - Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
 - SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions after `2.20.1.1` (build 4).
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions after 2.20.1.1 (build 4).

@@ -426,7 +426,7 @@ Create a new database user, and assign the necessary user permissions.
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group> as follows:
+1. Transfer ownership of the tables to the role `replication_group` as follows:
 
     ```sql
     DO $$
@@ -503,7 +503,7 @@ Create a new database user, and assign the necessary user permissions.
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
 1. Grant `SELECT` permission on all the tables and sequences as follows:
 
@@ -908,7 +908,7 @@ Note that the CDC phase will start only after a snapshot of the entire intereste
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
 
 {{<note title="Important">}}
-yb-voyager creates a replication slot in the source database where disk space can be used up rapidly. To avoid this, execute the [Cutover to the target](#cutover-to-the-target) or [End Migration](#end-migration) steps to delete the replication slot. If you choose to skip the steps, then you must delete the replication slot manually to reduce disk usage.
+yb-voyager creates a replication slot in the source database where disk space can be used up rapidly. To avoid this, execute the [Cutover to the target](#cutover-to-the-target) or [End Migration](#end-migration) steps to delete the replication slot. If you choose to skip these steps, then you must delete the replication slot manually to reduce disk usage.
 {{</note>}}
 
 #### Caveats
