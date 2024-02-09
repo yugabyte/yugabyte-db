@@ -156,6 +156,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
 
       // For txn xCluster set the target universe role to standby.
       if (xClusterConfig.getType().equals(ConfigType.Txn) && xClusterConfig.isTargetActive()) {
+        log.info("Setting the role of universe {} to STANDBY", targetUniverse.getUniverseUUID());
         client.changeXClusterRole(XClusterRole.STANDBY);
         xClusterConfig.setTargetActive(false);
         xClusterConfig.update();
