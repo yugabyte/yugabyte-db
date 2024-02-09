@@ -21,7 +21,7 @@ A provider configuration describes your cloud environment (such as its security 
 | To deploy YugbayteDB universes to | Create provider |
 | :--- | :--- |
 | Cloud provider | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
-| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzugcp/)<br>[OpenShift](openshift/) |
+| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) |
 | Private cloud | [On-premises](on-premises/) |
 
 {{<index/block>}}
