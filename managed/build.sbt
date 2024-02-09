@@ -972,24 +972,21 @@ lazy val swagger = project
       )
     }.value,
 
-    swaggerGenTest := Def.taskDyn {
-      Def.sequential(
-        (root / Test / testOnly).toTask(s" com.yugabyte.yw.controllers.YbaApiTest"),
-        (Test / testOnly).toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest"),
-      )
-    }.value
+    swaggerGenTest := {
+        (root / Test / testOnly).toTask(s" com.yugabyte.yw.controllers.YbaApiTest").value
+        (Test / testOnly).toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest").value
+    }
   )
 
 Test / test := (Test / test).dependsOn(swagger / Test / test).value
 
-swaggerGen := Def.taskDyn {
-  Def.sequential(
-    swagger /swaggerGen,
-    swagger /swaggerGenTest,
-    openApiGenClients,
-    openApiCompileClients,
-  )
-}.value
+commands += Command.command("swaggerGen") { state =>
+  "swagger/swaggerGen" ::
+  "swagger/swaggerGenTest" ::
+  "openApiGenClients" ::
+  "openApiCompileClients" ::
+  state
+}
 
 val grafanaGen: TaskKey[Unit] = taskKey[Unit](
   "generate dashboard.json"
