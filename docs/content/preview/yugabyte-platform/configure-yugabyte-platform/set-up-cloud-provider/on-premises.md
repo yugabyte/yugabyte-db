@@ -18,14 +18,6 @@ Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA
 
 With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
-YBA supports 3 ways of preparing nodes for running YugabyteDB depending upon the level of access provided to YBA:
-
-| Provisioning | Description |
-| :--- | :--- |
-| Automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. |
-| Assisted&nbsp;manual | YBA doesn't have access to an SSH user with sudo access, but the user can run a script interactively on YBA and provide the script with parameters for credentials for the SSH user with sudo access. |
-| Fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. In this case the user has to follow manual steps (link to fully manual provisioning) to provision the node. |
-
 ## Overview
 
 To create, provision, and add nodes to your on-premises provider, you will perform tasks in roughly three stages.
@@ -58,11 +50,15 @@ Refer to [Create the provider configuration](../on-premises-provider/).
 In YBA, navigate to the provider you created in Stage 2 and do the following:
 
 1. Define instance types. An instance type defines some basic properties of the VMs you will be adding.
-1. Add the VMs (instances). How you do this depends on whether you are using automatic or manual provisioning.
+1. Provision the VMs. YBA supports 3 ways of provisioning nodes for running YugabyteDB depending upon the level of SSH access provided to YBA:
 
-    - Automatic - YBA automatically provisions the VMs that you add and you don't have to take any action.
-    - Assisted manual - you run a script provided by YBA to provision each VM before adding the VM to the pool.
-    - Fully manual - you follow a sequence of steps to provision each VM manually before adding the VM to the pool.
+    | Provisioning | Description | What happens |
+    | :--- | :--- | :--- |
+    | Automatic | YBA is provided an SSH user with sudo access for the nodes it needs to provision. For example, the `ec2-user` for AWS EC2 instances. | No action. YBA will automatically provision the VMs that you add. |
+    | Assisted&nbsp;manual | The SSH user requires a password for sudo access. | Run a script, provided by YBA, to provision each VM, providing credentials for the SSH user with sudo access. |
+    | Fully manual | Neither YBA nor the user has access to an SSH user with sudo access; only a local (non-SSH) user is available with sudo access. | Follow a sequence of steps to provision each VM manually before adding the VM to the pool. |
+
+1. Add the VMs (instances). How you do this depends on whether you are using automatic or manual provisioning.
 
 1. Run pre-checks to validate the nodes you added.
 
@@ -156,14 +152,6 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 --data-raw '"true"'
 ```
 
-<!--
-Creating an on-premises provider requires the following steps:
+## Next step
 
-1. Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
-1. [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs while setting up the provider, and the regions where the nodes are located.
-1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
-1. If required, [manually provision the VMs](../on-premises-script/) with the YugabyteDB database software. If your SSH user has password-less sudo access to the nodes, you can skip this step, as YBA will be able to automatically provision the nodes.
-1. [Add the compute instances](#add-instances) that the provider will use for deploying YugabyteDB universes to the pool of nodes.
-
-![Configure on-prem provider](/images/yb-platform/config/yba-onprem-config-flow.png)
--->
+- [Create on-premises provider configuration](../on-premises-provider/)
