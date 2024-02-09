@@ -271,4 +271,9 @@ public class DrConfig extends Model {
     bootstrapParams.backupRequestParams = backupRequestParams;
     return bootstrapParams;
   }
+
+  @JsonIgnore
+  public boolean isHalted() {
+    return state == State.Halted;
+  }
 }
