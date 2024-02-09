@@ -34,13 +34,11 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.Config;
-import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.NamedAuthInfo;
 import io.fabric8.kubernetes.api.model.NamedCluster;
 import io.fabric8.kubernetes.api.model.NamedContext;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
 import java.lang.annotation.Annotation;
@@ -751,43 +749,26 @@ public class CloudProviderHelper {
     return metadata.get("name").asText();
   }
 
-  public String getKubernetesImageRepository() {
-    String podName = System.getenv("HOSTNAME");
-    if (podName == null) {
-      podName = "yugaware-0";
-    }
-
-    String containerName = System.getenv("container");
-    if (containerName == null) {
-      containerName = "yugaware";
-    }
-    // Container Name can change between yugaware and yugaware-docker.
-    containerName = containerName.split("-")[0];
-
-    Pod podObject = kubernetesManagerFactory.getManager().getPodObject(null, null, podName);
-    if (podObject == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching pod details for yugaware");
-    }
-    String imageName = null;
-    List<Container> containers = podObject.getSpec().getContainers();
-    for (Container c : containers) {
-      if (containerName.equals(c.getName())) {
-        imageName = c.getImage();
-      }
-    }
-    if (imageName == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching image details for yugaware");
-    }
-    String[] parsed = imageName.split("/");
-    /* Algorithm Used
-    Take last element, split it with ":", take the 0th element of that list.
+  public String getKubernetesImageRepository(String yugawareImageRepository) {
+    /*
+    Algorithm Used - Take last element, split it with ":", take the 0th element of that list.
     in that element replace string yugaware with yugabyte.
+    in case this is a yugabyte-k8s-operator build do the same with yugabyte-k8s-operator string.
+    if not found replace it with yugabyte, and join the list with "/"
     gcr.io/yugabyte/dev-ci-yugaware:2.17.2.0-b9999480 -> gcr.io/yugabyte/dev-ci-yugabyte */
+    String[] parsed = yugawareImageRepository.split("/");
     parsed[parsed.length - 1] = parsed[parsed.length - 1].split(":")[0];
-    parsed[parsed.length - 1] = parsed[parsed.length - 1].replace("yugaware", "yugabyte");
-    return String.join("/", parsed);
+    if (parsed[parsed.length - 1].contains("yugaware")) {
+      parsed[parsed.length - 1] = parsed[parsed.length - 1].replace("yugaware", "yugabyte");
+    } else if (parsed[parsed.length - 1].contains("yugabyte-k8s-operator")) {
+      parsed[parsed.length - 1] =
+          parsed[parsed.length - 1].replace("yugabyte-k8s-operator", "yugabyte");
+    } else {
+      parsed[parsed.length - 1] = "yugabyte";
+    }
+    String imageRegistry = String.join("/", parsed);
+    log.info("Image Registry is: {}", imageRegistry);
+    return imageRegistry;
   }
 
   public Set<Region> checkIfRegionsToAdd(Provider editProviderReq, Provider provider) {
