@@ -52,8 +52,7 @@ DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
-DEFINE_NON_RUNTIME_int32(
-    tablet_overhead_size_percentage, 0,
+DEFINE_NON_RUNTIME_int32(tablet_overhead_size_percentage, 0,
     "Percentage of total available memory to use for tablet-related overheads. Default is 0, "
     "meaning no limit. Must be between 0 and 100 inclusive.");
 
@@ -93,6 +92,8 @@ namespace yb::tserver {
 using strings::Substitute;
 
 namespace {
+
+DEFINE_validator(tablet_overhead_size_percentage, &::yb::ValidatePercentageFlag);
 
 class FunctorGC : public GarbageCollector {
  public:
@@ -158,16 +159,6 @@ size_t GetLogCacheSize(tablet::TabletPeer* peer) {
   return consensus_result.get()->LogCacheSize();
 }
 
-int64 ComputeTabletOverheadLimit() {
-  CHECK(0 <= FLAGS_tablet_overhead_size_percentage && FLAGS_tablet_overhead_size_percentage <= 100)
-      << Format(
-             "Flag tablet_overhead_size_percentage must be between 0 and 100 inclusive. Current "
-             "value: $0",
-             FLAGS_tablet_overhead_size_percentage);
-  if (0 == FLAGS_tablet_overhead_size_percentage) return -1;
-  return MemTracker::GetRootTracker()->limit() * FLAGS_tablet_overhead_size_percentage / 100;
-}
-
 }  // namespace
 
 TabletMemoryManager::TabletMemoryManager(
@@ -178,8 +169,10 @@ TabletMemoryManager::TabletMemoryManager(
     const std::function<std::vector<tablet::TabletPeerPtr>()>& peers_fn) {
   server_mem_tracker_ = mem_tracker;
   peers_fn_ = peers_fn;
+  // TODO after #20876 and #20879, change the -1 below back into ComputeTabletOverheadLimit().
+  // See #20667 for why removing this limit temporarily was necessary.
   tablets_overhead_mem_tracker_ = MemTracker::FindOrCreateTracker(
-      ComputeTabletOverheadLimit(), "Tablets_overhead", server_mem_tracker_);
+      /*no limit*/ -1, "Tablets_overhead", server_mem_tracker_);
 
   InitBlockCache(metrics, default_block_cache_size_percentage, options);
   InitLogCacheGC();
@@ -375,6 +368,13 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
   return Substitute("T $0 P $1 : ",
       peer->tablet_id(),
       peer->permanent_uuid());
+}
+
+int64 ComputeTabletOverheadLimit() {
+  if (0 == FLAGS_tablet_overhead_size_percentage) {
+    return -1;
+  }
+  return MemTracker::GetRootTracker()->limit() * FLAGS_tablet_overhead_size_percentage / 100;
 }
 
 int32_t GetDbBlockCacheNumShardBits() {
