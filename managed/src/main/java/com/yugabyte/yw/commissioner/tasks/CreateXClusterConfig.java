@@ -277,7 +277,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 log.info(
                     "Deleting the existing PITR config and creating a new one with the new"
                         + " parameters");
-                createDeletePitrConfigTask(pitrConfigOptional.get().getUuid());
+                createDeletePitrConfigTask(
+                    pitrConfigOptional.get().getUuid(),
+                    targetUniverse.getUniverseUUID(),
+                    false /* ignoreErrors */);
                 createCreatePitrConfigTask(
                     targetUniverse,
                     namespace.getName(),
@@ -376,10 +379,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       // Before dropping the tables on the target universe, delete the associated PITR configs.
       Optional<PitrConfig> pitrConfigOptional =
-          PitrConfig.maybeGet(xClusterConfig.getTargetUniverseUUID(), tableType, namespaceName);
+          PitrConfig.maybeGet(
+              xClusterConfig.getTargetUniverseUUID(),
+              tableType,
+              namespaceName); // Need to drop pitr configs that may be dangling.
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
         pitrConfigOptional.ifPresent(
-            pitrConfig -> createDeletePitrConfigTask(pitrConfig.getUuid()));
+            pitrConfig ->
+                createDeletePitrConfigTask(
+                    pitrConfig.getUuid(),
+                    targetUniverse.getUniverseUUID(),
+                    false /* ignoreErrors */));
       }
 
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
