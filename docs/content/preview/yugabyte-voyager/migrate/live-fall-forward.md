@@ -723,7 +723,7 @@ Perform the following steps to prepare your source-replica database:
     GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
     ```
 
-1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
+1. Set the following variables on the client machine where yb-voyager is running (only if yb-voyager is installed on Ubuntu or RHEL) :
 
     ```sh
     export ORACLE_HOME=/usr/lib/oracle/21/client64
@@ -991,12 +991,12 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 #### Import indexes and triggers
 
-Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
+Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
 
-- Snapshot exported is imported completely on the source replica.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+- The exported snapshot has been completely imported on the target.
+- All the events accumulated on local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) have caught up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
-After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -1197,4 +1197,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions after `2.20.1.1` (build 4).
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

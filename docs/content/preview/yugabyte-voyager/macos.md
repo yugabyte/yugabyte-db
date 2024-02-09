@@ -20,7 +20,7 @@ Perform the following steps to install yb-voyager using brew for macOS:
 
     The repository contains the formula to build and install `yb-voyager` on your macOS device.
 
-    Note that the tap `yugabyte/yugabytedb` has been updated to `yugabyte/tap`. if you have previously installed yb-voyager using the tap `yugabyte/yugabytedb`, untap the entry using `brew untap yugabyte/yugabytedb`, and then tap using the preceding command.
+    Note that the tap `yugabyte/yugabytedb` has been updated to `yugabyte/tap`. If you have previously installed yb-voyager using the tap `yugabyte/yugabytedb`, untap the entry using `brew untap yugabyte/yugabytedb`, and then tap using the preceding command.
 
 1. Install `yb-voyager` and its dependencies using the following command:
 

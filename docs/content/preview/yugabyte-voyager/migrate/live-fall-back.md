@@ -430,7 +430,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
 
 - The exported snapshot has been completely imported on the target.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+- All the events accumulated on local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) have caught up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
 After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
@@ -498,7 +498,7 @@ Perform the following steps as part of the cutover process:
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
 
        {{<note title="Event duplication">}}
-The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
+The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source database. For such situations, it is recommended to manually verify data in the source or target database to ensure accuracy and consistency.
         {{</note>}}
 
     1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
@@ -535,21 +535,19 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     ```sql
     --disable triggers
-
     BEGIN
         FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
         LOOP
-           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
+          EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
         END LOOP;
     END;
     /
 
     --disable referential constraints
-
     BEGIN
         FOR c IN (SELECT table_name, constraint_name
-                FROM user_constraints
-                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
+          FROM user_constraints
+          WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
         LOOP
           EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
         END LOOP;
@@ -645,4 +643,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 - Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
 - SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions after 2.20.1.1 (build 4).
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

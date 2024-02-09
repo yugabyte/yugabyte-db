@@ -859,12 +859,12 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 #### Import indexes and triggers
 
-Import indexes and triggers on the target YugabyteDB database after the following steps are complete by `import data to target`:
+Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
 
-- Snapshot exported is imported completely on the target.
-- All the events accumulated in local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) catches up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+- The exported snapshot has been completely imported on the target.
+- All the events accumulated on local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) have caught up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
 
-After the preceding steps are completed, you can start importing indexes and triggers in parallel with `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
