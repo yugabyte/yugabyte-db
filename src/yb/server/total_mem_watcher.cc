@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include "yb/util/atomic.h"
 #if defined(__linux__)
 #include <unistd.h>
 #endif
@@ -20,14 +19,17 @@
 #include <chrono>
 #include <thread>
 
-#include "yb/server/total_mem_watcher.h"
+#include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
+
+#include "yb/server/total_mem_watcher.h"
 
 using namespace std::literals;
 
@@ -67,7 +69,7 @@ void TotalMemWatcher::Shutdown() {
     std::lock_guard l(exit_loop_mutex_);
     exit_loop_ = true;
   }
-  exit_loop_cv_.notify_all();
+  YB_PROFILE(exit_loop_cv_.notify_all());
 }
 
 void TotalMemWatcher::MemoryMonitoringLoop(std::function<void()> trigger_termination_fn) {

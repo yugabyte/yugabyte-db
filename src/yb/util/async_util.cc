@@ -14,6 +14,7 @@
 
 #include "yb/gutil/bind.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h" // Required in NDEBUG mode
 #include "yb/util/status_log.h"
 
@@ -39,7 +40,7 @@ void Synchronizer::StatusCB(const Status& status) {
   if (!assigned_) {
     assigned_ = true;
     status_ = status;
-    cond_.notify_all();
+    YB_PROFILE(cond_.notify_all());
   } else {
     LOG(DFATAL) << "Status already assigned, existing: " << status_ << ", new: " << status;
   }

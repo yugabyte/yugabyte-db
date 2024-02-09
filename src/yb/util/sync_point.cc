@@ -18,6 +18,7 @@
 // under the License.
 //
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
@@ -40,7 +41,7 @@ void SyncPoint::LoadDependency(const std::vector<Dependency>& dependencies) {
     successors_[dependency.predecessor].push_back(dependency.successor);
     predecessors_[dependency.successor].push_back(dependency.predecessor);
   }
-  cv_.notify_all();
+  YB_PROFILE(cv_.notify_all());
 }
 
 bool SyncPoint::PredecessorsAllCleared(const std::string& point) {
@@ -80,7 +81,7 @@ void SyncPoint::DisableProcessing() {
     std::unique_lock lock(mutex_);
     enabled_ = false;
   }
-  cv_.notify_all();
+  YB_PROFILE(cv_.notify_all());
 }
 
 void SyncPoint::ClearTrace() {
@@ -100,7 +101,7 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
     callback_pair->second(cb_arg);
     lock.lock();
     --num_callbacks_running_;
-    cv_.notify_all();
+    YB_PROFILE(cv_.notify_all());
   }
 
   if (!PredecessorsAllCleared(point)) {
@@ -110,7 +111,7 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
   }
 
   cleared_points_.insert(point);
-  cv_.notify_all();
+  YB_PROFILE(cv_.notify_all());
 }
 
 void TEST_sync_point(const std::string& point, void* cb_arg) {
