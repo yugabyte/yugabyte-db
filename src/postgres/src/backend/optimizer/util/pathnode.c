@@ -428,6 +428,9 @@ set_cheapest(RelOptInfo *parent_rel)
  *	  Path.  Currently this occurs only for IndexPath objects, which may be
  *	  referenced as children of BitmapHeapPaths as well as being paths in
  *	  their own right.  Hence, we don't pfree IndexPaths when rejecting them.
+ *	  YB: We ensure that such behavior is avoided for distinct pushdown paths
+ *	  in create_distinct_paths by avoiding distinctifying already distinct
+ *	  paths.
  *
  * 'parent_rel' is the relation entry to which the path corresponds.
  * 'new_path' is a potential path for parent_rel.
@@ -1972,6 +1975,8 @@ create_gather_merge_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.pathkeys = pathkeys;
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&subpath->yb_path_info);
+	/* YB: Sub paths may contain duplicate rows. */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 	pathnode->path.pathtarget = target ? target : rel->reltarget;
 	pathnode->path.rows += subpath->rows;
 
@@ -2062,6 +2067,8 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&subpath->yb_path_info);
+	/* YB: There may be duplicate rows across sub paths. */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->subpath = subpath;
 	pathnode->num_workers = subpath->parallel_workers;
@@ -2863,6 +2870,11 @@ create_set_projection_path(PlannerInfo *root,
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&subpath->yb_path_info);
+	/*
+	 * YB: SRFs can produce multiple rows for each row.
+	 * Example: col1, GENERATE_SERIES(1, 1000) produces 1000 rows for each col1.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->subpath = subpath;
 
@@ -3191,6 +3203,8 @@ create_groupingsets_path(PlannerInfo *root,
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&subpath->yb_path_info);
+	/* YB: Set of unique keys is not preserved. */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->aggstrategy = aggstrategy;
 	pathnode->rollups = rollups;
@@ -3530,6 +3544,8 @@ create_recursiveunion_path(PlannerInfo *root,
 	yb_propagate_fields2(&pathnode->path.yb_path_info,
 						 &leftpath->yb_path_info,
 						 &rightpath->yb_path_info);
+	/* YB: Union may introduce duplicate rows. */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->leftpath = leftpath;
 	pathnode->rightpath = rightpath;
@@ -4379,6 +4395,7 @@ yb_create_distinct_index_path(PlannerInfo *root,
 	ListCell   *lc;
 	int			i;
 	Selectivity selectivity;
+	double		run_cost = 0;
 
 	/*
 	 * XXX: Memcpy'ing the index scan path the same way it is done in the
@@ -4431,7 +4448,9 @@ yb_create_distinct_index_path(PlannerInfo *root,
 										  NULL);
 	selectivity = ((Cost) numDistinctRows) / ((Cost) pathnode->path.rows);
 
-	pathnode->path.total_cost *= selectivity;
+	run_cost = pathnode->path.total_cost - pathnode->path.startup_cost;
+	run_cost *= selectivity;
+	pathnode->path.total_cost = pathnode->path.startup_cost + run_cost;
 	pathnode->path.rows = numDistinctRows;
 	pathnode->indextotalcost *= selectivity;
 	pathnode->indexselectivity *= selectivity;
