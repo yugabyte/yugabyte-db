@@ -146,7 +146,10 @@ public class EditDrConfig extends CreateXClusterConfig {
       boolean forceDeleteCurrentXClusterConfig) {
     // Delete the main replication config.
     createDeleteXClusterConfigSubtasks(
-        currentXClusterConfig, false /* keepEntry */, forceDeleteCurrentXClusterConfig);
+        currentXClusterConfig,
+        false /* keepEntry */,
+        forceDeleteCurrentXClusterConfig,
+        true /* deletePitrConfig */);
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 

@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -86,8 +87,13 @@ public class FailoverDrConfig extends EditDrConfig {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         // Delete the main replication config.
+        // MUST skip deleting pitr configs here, otherwise we will not be able to restore to
+        // safetime.
         createDeleteXClusterConfigSubtasks(
-            currentXClusterConfig, false /* keepEntry */, true /* forceDelete */);
+            currentXClusterConfig,
+            false /* keepEntry */,
+            true /* forceDelete */,
+            false /* deletePitrConfigs */);
 
         createPromoteSecondaryConfigToMainConfigTask(failoverXClusterConfig);
 
@@ -128,6 +134,13 @@ public class FailoverDrConfig extends EditDrConfig {
                       pitrConfigOptional.get(),
                       TimeUnit.MICROSECONDS.toMillis(namespaceSafetimeEpochUs));
                 });
+
+        // Delete PITR on failover as standby is now the new primary and we have restored snapshot.
+        List<PitrConfig> pitrConfigs = currentXClusterConfig.getPitrConfigs();
+        for (PitrConfig pitrConfig : pitrConfigs) {
+          createDeletePitrConfigTask(
+              pitrConfig.getUuid(), targetUniverse.getUniverseUUID(), true /* ignoreErrors */);
+        }
 
         createSetDrStatesTask(
                 failoverXClusterConfig,
