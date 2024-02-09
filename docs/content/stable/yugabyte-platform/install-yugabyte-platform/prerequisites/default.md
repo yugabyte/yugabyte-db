@@ -80,7 +80,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 YugabyteDB Anywhere aims to support _all_ officially supported versions of YugabyteDB.
 
-This version of YBA supports the following YugabyteDB versions:
+YBA {{< yb-version version="stable" format="short">}} supports deploying the following versions of YugabyteDB:
 
 - v2.14 series: 2.14.0 to 2.14.15
 - v2.18 series: 2.18.0 to 2.18.5
