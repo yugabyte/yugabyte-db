@@ -47,7 +47,7 @@ You can change the staleness value using the following configuration parameter:
 SET yb_follower_read_staleness_ms = 10000; -- 10s
 ```
 
-Although the default is recommended, you can set the staleness to a shorter value such as 2000 or 1000 ms. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
+Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
 
 {{<note>}}
 Follower reads only affect reads. All writes are still handled by the leader.
