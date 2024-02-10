@@ -15,7 +15,7 @@ menu:
       hideLink: true
 ---
 
-<span style="color: black;">The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
+<span style="color: black;">The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:</p>
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
