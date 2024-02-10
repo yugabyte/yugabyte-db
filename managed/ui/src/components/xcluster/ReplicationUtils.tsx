@@ -36,6 +36,7 @@ import {
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import { DrConfigState } from './disasterRecovery/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -355,8 +356,13 @@ export const parseFloatIfDefined = (input: string | number | undefined) => {
 export const getEnabledConfigActions = (
   replication: XClusterConfig,
   sourceUniverse: Universe | undefined,
-  targetUniverse: Universe | undefined
+  targetUniverse: Universe | undefined,
+  drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
+  if (drConfigState === DrConfigState.ERROR) {
+    // When DR config is in error state, we only allow the DR config delete operation.
+    return [];
+  }
   if (
     UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
     UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)

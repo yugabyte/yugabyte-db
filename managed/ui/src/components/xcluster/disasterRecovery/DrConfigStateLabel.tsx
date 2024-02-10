@@ -30,6 +30,9 @@ const useStyles = makeStyles((theme) => ({
   warning: {
     color: theme.palette.ybacolors.warning
   },
+  error: {
+    color: theme.palette.ybacolors.error
+  },
   infoIcon: {
     '&:hover': {
       cursor: 'pointer'
@@ -78,6 +81,17 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           >
             <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
           </YBTooltip>
+        </Typography>
+      );
+    case DrConfigState.ERROR:
+      return (
+        <Typography
+          variant={variant}
+          component="span"
+          className={clsx(classes.label, classes.error)}
+        >
+          <i className="fa fa-exclamation-triangle" />
+          {t(drConfig.state)}
         </Typography>
       );
     default:

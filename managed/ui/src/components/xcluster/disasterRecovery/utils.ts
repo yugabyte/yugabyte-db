@@ -29,6 +29,7 @@ export const getEnabledDrConfigActions = (
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
+    case DrConfigState.ERROR:
       return [DrConfigActions.DELETE];
     case DrConfigState.REPLICATING:
       return [
