@@ -160,6 +160,7 @@ static inline Datum * GenerateNullEqualityIndexTerms(int32 *nentries, bool **par
 													 pgbsonelement *filterElement,
 													 const IndexTermCreateMetadata *
 													 metadata);
+static bson_value_t GetLowerBoundForLessThan(bson_type_t inputBsonType);
 
 inline static bool
 HandleConsistentEqualsNull(bool *check, bool *recheck)
@@ -1529,10 +1530,11 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 		(*extra_data)[0] = (Pointer) serializedTerm.indexTermVal;
 
 		/* now create a bson for that path which has the min value for the field */
-		/* TODO: Today we set this as MinKey but this can be set as the min value for the equivalent */
+		/* Today we set this as the min value for the equivalent */
 		/* type (i.e. the lowest possible value for that type OR the highest possible value of the prior type) */
-		/* since we don't have the table of these values, we safely start out with Minkey. */
-		documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
+		/* When we don't have the table of these values, we safely start out with Minkey. */
+		documentElement.bsonValue = GetLowerBoundForLessThan(
+			queryElement.bsonValue.value_type);
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
 															&args->termMetadata).
 									 indexTermVal);
@@ -1588,10 +1590,11 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 	(*extra_data)[0] = (Pointer) serializedTerm.indexTermVal;
 
 	/* now create a bson for that path which has the min value for the field */
-	/* TODO: Today we set this as MinKey but this can be set as the min value for the equivalent */
+	/* Today we set this as the min value for the equivalent */
 	/* type (i.e. the lowest possible value for that type OR the highest possible value of the prior type) */
-	/* since we don't have the table of these values, we safely start out with Minkey. */
-	documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
+	/* When we don't have the table of these values, we safely start out with Minkey. */
+	documentElement.bsonValue = GetLowerBoundForLessThan(
+		queryElement.bsonValue.value_type);
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
 														&args->termMetadata).
 								 indexTermVal);
@@ -3201,4 +3204,111 @@ GenerateEmptyArrayTerm(pgbsonelement *filterElement,
 	pgbsonelement termElement;
 	PgbsonToSinglePgbsonElement(doc, &termElement);
 	return PointerGetDatum(SerializeBsonIndexTerm(&termElement, metadata).indexTermVal);
+}
+
+
+/*
+ * Given a bson type returns the lowest value for that type bracket
+ * for the sort order type.
+ */
+static bson_value_t
+GetLowerBoundForLessThan(bson_type_t inputBsonType)
+{
+	bson_value_t minValue = { 0 };
+	minValue.value_type = BSON_TYPE_MINKEY;
+	switch (inputBsonType)
+	{
+		case BSON_TYPE_EOD:
+		case BSON_TYPE_MINKEY:
+		{
+			/* The minValue for MinKey is MinKey */
+			return minValue;
+		}
+
+		case BSON_TYPE_UNDEFINED:
+		case BSON_TYPE_NULL:
+		{
+			/* Use MinKey here since null has custom semantics */
+			return minValue;
+		}
+
+		case BSON_TYPE_DOUBLE:
+		case BSON_TYPE_INT32:
+		case BSON_TYPE_INT64:
+		case BSON_TYPE_DECIMAL128:
+		{
+			minValue.value_type = BSON_TYPE_DOUBLE;
+			minValue.value.v_double = NAN;
+			return minValue;
+		}
+
+		case BSON_TYPE_UTF8:
+		case BSON_TYPE_SYMBOL:
+		{
+			minValue.value_type = inputBsonType;
+			minValue.value.v_utf8.len = 0;
+			minValue.value.v_utf8.str = "";
+			return minValue;
+		}
+
+		case BSON_TYPE_DOCUMENT:
+		{
+			/* Return an empty document */
+			pgbson *bson = PgbsonInitEmpty();
+			return ConvertPgbsonToBsonValue(bson);
+		}
+
+		case BSON_TYPE_ARRAY:
+		{
+			pgbson_writer bsonWriter;
+
+			/* now create a bson for that path which has the min value for the field */
+			/* we map this to an empty array since that's the smallest value we'll encounter */
+			PgbsonWriterInit(&bsonWriter);
+			PgbsonWriterAppendEmptyArray(&bsonWriter, "", 0);
+			pgbson *doc = PgbsonWriterGetPgbson(&bsonWriter);
+
+			pgbsonelement termElement;
+			PgbsonToSinglePgbsonElement(doc, &termElement);
+			return termElement.bsonValue;
+		}
+
+		case BSON_TYPE_BOOL:
+		{
+			minValue.value_type = BSON_TYPE_BOOL;
+			minValue.value.v_bool = false;
+			return minValue;
+		}
+
+		case BSON_TYPE_DATE_TIME:
+		{
+			minValue.value_type = BSON_TYPE_DATE_TIME;
+			minValue.value.v_datetime = INT64_MIN;
+			return minValue;
+		}
+
+		case BSON_TYPE_MAXKEY:
+		{
+			/* MaxKey has custom semantics that does cross-type comparisons */
+			return minValue;
+		}
+
+		case BSON_TYPE_BINARY:
+		case BSON_TYPE_OID:
+		case BSON_TYPE_TIMESTAMP:
+		case BSON_TYPE_REGEX:
+		case BSON_TYPE_DBPOINTER:
+		case BSON_TYPE_CODE:
+		case BSON_TYPE_CODEWSCOPE:
+		{
+			/* Thunk to minkey until we have something better */
+			return minValue;
+		}
+
+		default:
+		{
+			/* not known, use minkey */
+			return minValue;
+		}
+	}
 }

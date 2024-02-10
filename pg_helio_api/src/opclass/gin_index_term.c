@@ -45,8 +45,8 @@ PG_FUNCTION_INFO_V1(gin_bson_compare);
 Datum
 gin_bson_compare(PG_FUNCTION_ARGS)
 {
-	bytea *left = PG_GETARG_BYTEA_P(0);
-	bytea *right = PG_GETARG_BYTEA_P(1);
+	bytea *left = PG_GETARG_BYTEA_PP(0);
+	bytea *right = PG_GETARG_BYTEA_PP(1);
 
 	BsonIndexTerm leftTerm;
 	BsonIndexTerm rightTerm;
@@ -54,7 +54,12 @@ gin_bson_compare(PG_FUNCTION_ARGS)
 	InitializeBsonIndexTerm(left, &leftTerm);
 	InitializeBsonIndexTerm(right, &rightTerm);
 	bool isComparisonValidIgnore = false;
-	return CompareBsonIndexTerm(&leftTerm, &rightTerm, &isComparisonValidIgnore);
+	int32_t compareTerm = CompareBsonIndexTerm(&leftTerm, &rightTerm,
+											   &isComparisonValidIgnore);
+
+	PG_FREE_IF_COPY(left, 0);
+	PG_FREE_IF_COPY(right, 1);
+	return compareTerm;
 }
 
 
