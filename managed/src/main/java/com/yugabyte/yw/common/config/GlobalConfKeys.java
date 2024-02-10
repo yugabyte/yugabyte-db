@@ -910,6 +910,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> nodeAgentInstallPath =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.install_path",
+          ScopeType.GLOBAL,
+          "Node Agent Server Installation Path",
+          "Installation path for node agent",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> waitForProviderTasksTimeoutMs =
       new ConfKeyInfo<>(
           "yb.edit_provider.new.wait_for_tasks_timeout_ms",

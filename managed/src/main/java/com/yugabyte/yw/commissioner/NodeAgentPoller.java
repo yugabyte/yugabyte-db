@@ -27,6 +27,7 @@ import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.ServerInfo;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -312,7 +313,8 @@ public class NodeAgentPoller {
       }
       if (nodeAgent.getState() == State.UPGRADE) {
         log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
-        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
+        InstallerFiles installerFiles =
+            nodeAgentManager.getInstallerFiles(nodeAgent, Paths.get(nodeAgent.getHome()));
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
         NodeAgentUpgradeParam upgradeParam =
