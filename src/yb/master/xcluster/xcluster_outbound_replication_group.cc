@@ -37,8 +37,9 @@ struct TableSchemaNamePairHash {
 XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-    HelperFunctions helper_functions)
-    : helper_functions_(std::move(helper_functions)) {
+    HelperFunctions helper_functions, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)),
+      helper_functions_(std::move(helper_functions)) {
   outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
   outbound_rg_info_->Load(outbound_replication_group_pb);
 }

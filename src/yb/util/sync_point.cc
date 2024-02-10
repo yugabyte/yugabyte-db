@@ -70,6 +70,7 @@ void SyncPoint::ClearAllCallBacks() {
 }
 
 void SyncPoint::EnableProcessing() {
+  DCHECK(FLAGS_TEST_enable_sync_points);
   std::unique_lock lock(mutex_);
   enabled_ = true;
 }
