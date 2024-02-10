@@ -43,7 +43,7 @@
       "failedToFetchUniverselist": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
-      "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
@@ -736,7 +736,8 @@
             "Halted": {
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
-            }
+            },
+            "Error": "Error"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",
