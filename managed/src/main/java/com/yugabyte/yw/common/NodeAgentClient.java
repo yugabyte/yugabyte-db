@@ -283,9 +283,9 @@ public class NodeAgentClient {
 
     @Override
     public void onError(Throwable throwable) {
+      this.throwable = throwable;
       latch.countDown();
       log.error("Error encountered for {}", getId(), throwable);
-      this.throwable = throwable;
     }
 
     @Override
