@@ -485,6 +485,8 @@ func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
 			util.UpgradeScriptPath(),
 			"--command",
 			"upgrade",
+			"--install_path",
+			util.InstallDir(),
 		},
 	)
 	_, err := upgradeScriptTask.Process(ctx)
