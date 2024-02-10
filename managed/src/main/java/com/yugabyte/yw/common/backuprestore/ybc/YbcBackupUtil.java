@@ -461,7 +461,7 @@ public class YbcBackupUtil {
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskID, namespaceType, extendedArgs);
     backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
-    if (!backupTableParams.allTables
+    if ((!backupTableParams.allTables || backupTableParams.tableByTableBackup)
         && CollectionUtils.isNotEmpty(backupTableParams.tableNameList)) {
       backupServiceTaskCreateRequestBuilder.setTbs(getTableBackupSpec(backupTableParams));
     } else {
