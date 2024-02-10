@@ -33,19 +33,19 @@ ysql_upgrade_using_node_2
 # YB_TODO: Test that DDLs are prohibited when the functionality is implemented.
 
 # Insert from PG15
-diff <(ysqlsh 2 <<EOT
+diff <(ysqlsh 2 <<EOT | sed 's/ *$//'
 SHOW server_version_num;
 INSERT INTO t VALUES (15, 'fifteen', cosh(0), '15', '{"num" : 15}', '{15}');
 SELECT * FROM t ORDER BY h,r;
 EOT
 ) - <<EOT
- server_version_num 
+ server_version_num
 --------------------
  150002
 (1 row)
 
 INSERT 0 1
- h  |    r    |     v1      | v2  |     v3      |    v4     
+ h  |    r    |     v1      | v2  |     v3      |    v4
 ----+---------+-------------+-----+-------------+-----------
   1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
   1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
@@ -55,19 +55,19 @@ INSERT 0 1
 
 EOT
 # Insert from PG11, and note the PG15 insertion is visible
-diff <(ysqlsh <<EOT
+diff <(ysqlsh <<EOT | sed 's/ *$//'
 SHOW server_version_num;
 INSERT INTO t VALUES (11, 'eleven', 11, '11', '{"num": 11}', '{11}');
 SELECT * FROM t ORDER BY h,r;
 EOT
 ) - <<EOT
- server_version_num 
+ server_version_num
 --------------------
  110002
 (1 row)
 
 INSERT 0 1
- h  |    r    |     v1      | v2  |     v3      |    v4     
+ h  |    r    |     v1      | v2  |     v3      |    v4
 ----+---------+-------------+-----+-------------+-----------
   1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
   1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
@@ -80,7 +80,7 @@ EOT
 
 # Upgrade is complete. After the restart, demonstrate that DDLs work.
 yb_ctl restart
-diff <(ysqlsh <<EOT
+diff <(ysqlsh <<EOT | sed 's/ *$//'
 SHOW server_version_num;
 SELECT * FROM t ORDER BY h,r;
 CREATE INDEX ON t (v1);
@@ -88,12 +88,12 @@ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM t WHERE v1 = 11;
 SELECT COUNT(*) FROM t WHERE v1 = 11;
 EOT
 ) - <<EOT
- server_version_num 
+ server_version_num
 --------------------
  150002
 (1 row)
 
- h  |    r    |     v1      | v2  |     v3      |    v4     
+ h  |    r    |     v1      | v2  |     v3      |    v4
 ----+---------+-------------+-----+-------------+-----------
   1 | a       |  5000000000 | abc | {"a": 3.5}  | {1,2,3}
   1 | b       | -5000000000 | def | {"b": 5}    | {1,1,2,3}
@@ -103,14 +103,14 @@ EOT
 (5 rows)
 
 CREATE INDEX
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Aggregate
    ->  Index Only Scan using t_v1_idx on t
          Index Cond: (v1 = 11)
 (3 rows)
 
- count 
+ count
 -------
      1
 (1 row)
