@@ -56,7 +56,8 @@ export const DrConfigState = {
   REPLICATING: 'Replicating',
   SWITCHOVER_IN_PROGRESS: 'Switchover in Progress',
   FAILOVER_IN_PROGRESS: 'Failover in Progress',
-  HALTED: 'Halted'
+  HALTED: 'Halted',
+  ERROR: 'Error'
 } as const;
 export type DrConfigState = typeof DrConfigState[keyof typeof DrConfigState];
 

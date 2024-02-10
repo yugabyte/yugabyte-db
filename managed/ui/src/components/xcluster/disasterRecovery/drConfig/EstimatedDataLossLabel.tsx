@@ -18,7 +18,7 @@ export const EstimatedDataLossLabel = ({ drConfigUuid }: EstimatedDataLossLabelP
   );
 
   if (currentSafetimesQuery.isLoading) {
-    return <YBLoading />;
+    return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
 
   const safeTimes = currentSafetimesQuery.data?.safetimes;

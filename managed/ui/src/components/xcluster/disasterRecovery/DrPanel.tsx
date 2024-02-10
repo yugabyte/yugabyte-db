@@ -48,6 +48,7 @@ import { EditConfigModal } from './editConfig/EditConfigModal';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
 import { XClusterConfig } from '../dtos';
+import { DrConfigState } from './dtos';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -291,7 +292,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
-    targetUniverse
+    targetUniverse,
+    drConfig.state
   );
   return (
     <>
