@@ -211,6 +211,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     NamespaceInfoMap& operator[](YQLDatabase db_type);
     const NamespaceInfoMap& operator[](YQLDatabase db_type) const;
     void clear();
+    std::vector<scoped_refptr<NamespaceInfo>> GetAll() const;
 
    private:
     std::array<NamespaceInfoMap, 4> typed_maps_;
@@ -857,6 +858,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // been successfully loaded into memory. CatalogManager must be
   // initialized before calling this method.
   Status CheckIsLeaderAndReady() const override;
+
+  Status IsEpochValid(const LeaderEpoch& epoch) const;
+
+  auto GetValidateEpochFunc() const {
+    return std::bind(&CatalogManager::IsEpochValid, this, std::placeholders::_1);
+  }
 
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
@@ -1559,6 +1566,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
       CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
+  auto GetTasksTracker() { return tasks_tracker_; }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2004,7 +2013,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Removes all tasks from jobs_tracker_ and tasks_tracker_.
   void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
-  void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
+  void AbortAndWaitForAllTasks() EXCLUDES(mutex_);
   void AbortAndWaitForAllTasksUnlocked() REQUIRES_SHARED(mutex_);
 
   // Can be used to create background_tasks_ field for this master.

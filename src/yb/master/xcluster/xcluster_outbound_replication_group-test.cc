@@ -72,7 +72,8 @@ class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicatio
  public:
   explicit XClusterOutboundReplicationGroupMocked(
       const xcluster::ReplicationGroupId& replication_group_id, HelperFunctions helper_functions)
-      : XClusterOutboundReplicationGroup(replication_group_id, {}, std::move(helper_functions)) {
+      : XClusterOutboundReplicationGroup(
+            replication_group_id, {}, std::move(helper_functions), /*tasks_tracker=*/nullptr) {
     remote_client_ = std::make_shared<XClusterRemoteClientMocked>();
   }
 
