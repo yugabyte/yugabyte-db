@@ -16,11 +16,13 @@ showRightNav: true
 
 YugabyteDB Managed provides the following tools to manage clusters:
 
-- [Scaling](configure-clusters/) - To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change.
-- [Read replicas](managed-read-replica/) - Add read replicas to lower read latencies in regions that are distant from your primary cluster.
-- [Backups](backup-clusters/) - Configure a regular backup schedule, run manual backups, and review previous backups.
-- [Maintenance windows](cloud-maintenance/) - Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure.
-- [PostgreSQL extensions](add-extensions/) - Extend the functionality of your cluster using PostgreSQL extensions.
+| Feature | Description |
+| :--- | :--- |
+| [Scaling](configure-clusters/) | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
+| [Read replicas](managed-read-replica/) | Add read replicas to lower read latencies in regions that are distant from your primary cluster. |
+| [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, and review previous backups. |
+| [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
+| [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
 
 ### Pause, resume, and delete clusters
 
@@ -47,68 +49,40 @@ The following operations lock the cluster and only one can happen at the same ti
 
 In addition, on AWS, any disk modification (size or IOPS) blocks further disk modifications for six hours (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
+Your database will continue to function normally during infrastructure operations, but these operations can temporarily degrade application performance. You should schedule infrastructure operations during periods of low traffic.
+
 Make sure that you schedule maintenance and backups so that they do not conflict.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Scale clusters</div>
-      </div>
-      <div class="body">
-        Scale clusters horizontally or vertically.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Scale clusters"
+    body="Scale clusters horizontally or vertically."
+    href="configure-clusters/"
+    icon="/images/section_icons/explore/linear_scalability.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-read-replica/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Read replicas</div>
-      </div>
-      <div class="body">
-        Serve read requests from remote regions.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Read replicas"
+    body="Serve read requests from remote regions."
+    href="managed-read-replica/"
+    icon="/images/section_icons/explore/planet_scale.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-clusters/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Back up clusters</div>
-      </div>
-      <div class="body">
-        Perform on-demand backups and restores, and customize the backup policy.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Back up clusters"
+    body="Perform on-demand backups and restores, and customize the backup policy."
+    href="backup-clusters/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-maintenance/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Maintenance windows</div>
-      </div>
-      <div class="body">
-        Set up maintenance windows and exclusion periods for cluster upgrades.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Maintenance windows"
+    body="Set up maintenance windows and exclusion periods for cluster upgrades."
+    href="cloud-maintenance/"
+    icon="/images/section_icons/manage/backup.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="add-extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
-        <div class="title">Create extensions</div>
-      </div>
-      <div class="body">
-        Create PostgreSQL extensions in YugabyteDB Managed clusters.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Create extensions"
+    body="Create PostgreSQL extensions in YugabyteDB Managed clusters."
+    href="add-extensions/"
+    icon="/images/section_icons/explore/administer.png">}}
 
-</div>
+{{</index/block>}}
