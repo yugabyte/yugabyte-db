@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -210,6 +212,14 @@ Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
       master::CreateCDCStreamRequestPB create_stream_req;
       master::CreateCDCStreamResponsePB create_stream_resp;
       create_stream_req.set_table_id(table_info->id());
+
+      std::unordered_map<std::string, std::string> options;
+      auto record_type_option = create_stream_req.add_options();
+      record_type_option->set_key(cdc::kRecordType);
+      record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+      auto record_format_option = create_stream_req.add_options();
+      record_format_option->set_key(cdc::kRecordFormat);
+      record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
       RETURN_NOT_OK(catalog_manager_.CreateNewXReplStream(
           create_stream_req, CreateNewCDCStreamMode::kXClusterTableIds, {table_id},

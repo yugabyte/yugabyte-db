@@ -1399,6 +1399,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<UniverseReplicationInfo> GetUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id);
 
+  std::vector<scoped_refptr<UniverseReplicationInfo>> GetAllUniverseReplications() const;
+
   // Checks if the universe is in an active state or has failed during setup.
   Status IsSetupUniverseReplicationDone(
       const IsSetupUniverseReplicationDoneRequestPB* req,
@@ -1567,6 +1569,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   auto GetTasksTracker() { return tasks_tracker_; }
+
+  void MarkUniverseForCleanup(const xcluster::ReplicationGroupId& replication_group_id)
+      EXCLUDES(mutex_);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -3054,12 +3059,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::set<TabletId>& new_running_tablets = {});
 
   void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
-
-  Result<xcluster::ReplicationGroupId> GetIndexesTableReplicationGroup(const TableInfo& index_info);
-
-  Status BootstrapTable(
-      const xcluster::ReplicationGroupId& replication_group_id, const TableInfo& index_info,
-      client::BootstrapProducerCallback callback);
 
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableXClusterConsumer(const TableInfo& table_info) const EXCLUDES(mutex_);

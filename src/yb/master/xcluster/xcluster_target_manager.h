@@ -74,8 +74,6 @@ class XClusterTargetManager {
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
-  bool ShouldAddTableToXClusterTarget(const TableInfo& table_info) const;
-
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
