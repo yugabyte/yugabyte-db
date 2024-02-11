@@ -1,6 +1,6 @@
 ---
 title: Enable YugabyteDB Anywhere authentication via LDAP
-headerTitle: Enable authentication
+headerTitle: Configure authentication
 description: Use LDAP for authentication in YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere users using LDAP
 linkTitle: Configure authentication
