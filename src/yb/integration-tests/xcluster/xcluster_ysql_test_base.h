@@ -116,6 +116,11 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
+  Status CheckpointReplicationGroup();
+  Status CreateReplicationFromCheckpoint();
+  Result<bool> IsCreateXClusterReplicationDone();
+  Status WaitForCreateReplicationToFinish();
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 
