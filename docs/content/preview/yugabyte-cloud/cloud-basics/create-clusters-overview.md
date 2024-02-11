@@ -27,7 +27,7 @@ The following best practices are recommended for production clusters.
 
 ## In depth
 
-Note that the availability of some features depends on your plan. See [Pricing plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/) for plan details.
+Note that the availability of some features depends on your plan. See [Pricing plan](https://www.yugabyte.com/pricing/) for plan details.
 
 ### Topology
 
@@ -233,7 +233,7 @@ For more information on users and roles in YugabyteDB Managed, refer to [Databas
 
 The biggest factor in the price of a cluster is the number vCPUs.
 
-Cluster charges are based on the total number of vCPUs used and how long they have been running. The rate is determined by your [pricing plan](https://www.yugabyte.com/yugabytedb-managed-standard-price-list/).
+Cluster charges are based on the total number of vCPUs used and how long they have been running. The rate is determined by your [pricing plan](https://www.yugabyte.com/pricing/).
 
 ## Cloud provider regions
 
