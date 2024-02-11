@@ -17,7 +17,7 @@ There are no set-up charges or commitments to begin using YugabyteDB Managed. At
 
 Review your usage and plan details, manage your billing information, and review invoices from the **Usage & Billing** page.
 
-For information on available plans and their features, refer to [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/pricing/).
+For information on available plans and their features, refer to [YugabyteDB Pricing](https://www.yugabyte.com/pricing/).
 
 <div class="row">
 
