@@ -27,7 +27,7 @@ The following best practices are recommended for production clusters.
 
 ## In depth
 
-Note that the availability of some features depends on your plan. See [Pricing plan](https://www.yugabyte.com/pricing/) for plan details.
+Note that the availability of some features depends on your plan. To review your plan, navigate to **Usage & Billing > Plan**.
 
 ### Topology
 
