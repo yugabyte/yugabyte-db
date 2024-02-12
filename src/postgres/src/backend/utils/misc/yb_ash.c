@@ -31,6 +31,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/analyze.h"
+#include "parser/scansup.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
@@ -77,7 +78,8 @@ static YbAsh *yb_ash = NULL;
 static int yb_ash_cb_max_entries(void);
 static void yb_set_ash_metadata(uint64 query_id);
 static void yb_unset_ash_metadata();
-static uint64 yb_ash_utility_query_id(const char *str, int len);
+static uint64 yb_ash_utility_query_id(const char *query, int query_len,
+									  int query_location);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 
@@ -205,7 +207,8 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
 	 */
 	uint64 query_id = query->queryId != 0
 					  ? query->queryId
-					  : yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len);
+					  : yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
+					  							query->stmt_location);
 	yb_set_ash_metadata(query_id);
 }
 
@@ -218,10 +221,12 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 */
 	if (MyProc->yb_is_ash_metadata_set == false)
 	{
+		/* Query id can be zero here only if pg_stat_statements is disabled */
 		uint64 query_id = queryDesc->plannedstmt->queryId != 0
 						  ? queryDesc->plannedstmt->queryId
 						  : yb_ash_utility_query_id(queryDesc->sourceText,
-					   								queryDesc->plannedstmt->stmt_len);
+					   								queryDesc->plannedstmt->stmt_len,
+													queryDesc->plannedstmt->stmt_location);
 		yb_set_ash_metadata(query_id);
 	}
 
@@ -296,16 +301,46 @@ yb_unset_ash_metadata()
 }
 
 /*
- * Calculate the query id for utility statements like pg_stat_statements.
+ * Calculate the query id for utility statements. This takes parts of pgss_store
+ * from pg_stat_statements.
  */
 static uint64
-yb_ash_utility_query_id(const char *str, int len)
+yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 {
 	const char *redacted_query;
 	int			redacted_query_len;
 
-	Assert(str != NULL);
-	YbGetRedactedQueryString(str, len, &redacted_query, &redacted_query_len);
+	Assert(query != NULL);
+
+	if (query_location >= 0)
+	{
+		Assert(query_location <= strlen(query));
+		query += query_location;
+		/* Length of 0 (or -1) means "rest of string" */
+		if (query_len <= 0)
+			query_len = strlen(query);
+		else
+			Assert(query_len <= strlen(query));
+	}
+	else
+	{
+		/* If query location is unknown, distrust query_len as well */
+		query_location = 0;
+		query_len = strlen(query);
+	}
+
+	/*
+	 * Discard leading and trailing whitespace, too.  Use scanner_isspace()
+	 * not libc's isspace(), because we want to match the lexer's behavior.
+	 */
+	while (query_len > 0 && scanner_isspace(query[0]))
+		query++, query_location++, query_len--;
+	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
+		query_len--;
+
+	/* Use the redacted query for checking purposes. */
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+
 	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
 											redacted_query_len, 0));
 }
