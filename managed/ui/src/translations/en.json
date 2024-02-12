@@ -38,6 +38,9 @@
       "endDate": "End Date",
       "dot": "."
     },
+    "imgAltText": {
+      "infoIcon": "Information Icon"
+    },
     "task": {
       "viewDetails": "View Details"
     },
@@ -659,7 +662,7 @@
           "switchoverInProgress": "<bold>Switchover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
           "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. ",
-          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary. -- TODO: Text update."
+          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary."
         },
         "switchover": {
           "initiateModal": {
@@ -786,7 +789,7 @@
           "property": {
             "drStatus": {
               "label": "DR status",
-              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe. An unhealthy stream means there is significant replication lag. **TODO: Needs to be updated."
+              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe."
             },
             "estimatedDataLoss": {
               "label": "Potential data loss on failover",
