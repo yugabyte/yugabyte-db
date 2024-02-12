@@ -2674,6 +2674,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
+		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
+		 NULL
+		},
+		&yb_locks_txn_locks_per_tablet,
+		200, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_conn_mgr_sticky_object_count", PGC_INTERNAL, CUSTOM_OPTIONS,
 			gettext_noop("Shows the count of database objects that require a sticky connection within this session."),
 			NULL
