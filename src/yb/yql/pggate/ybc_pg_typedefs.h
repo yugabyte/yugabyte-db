@@ -615,6 +615,13 @@ typedef struct YBCBindColumn {
   uint64_t datum;
 } YBCBindColumn;
 
+// Postgres replication slot snapshot action defined in Postgres' walsender.h
+// It does not include EXPORT_SNAPSHOT since it isn't supported yet.
+typedef enum PgReplicationSlotSnapshotAction {
+  YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
+  YB_REPLICATION_SLOT_USE_SNAPSHOT
+} YBCPgReplicationSlotSnapshotAction;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

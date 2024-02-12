@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 
 #include "yb/util/thread_restrictions.h"
@@ -38,7 +39,7 @@ void CountDownLatch::CountDown(uint64_t amount) {
   if (amount >= existing_value) {
     count_.store(0, std::memory_order_release);
     // Latch has triggered.
-    cond_.Broadcast();
+    YB_PROFILE(cond_.Broadcast());
   } else {
     count_.store(existing_value - amount, std::memory_order_release);
   }
@@ -84,7 +85,7 @@ void CountDownLatch::Reset(uint64_t count) {
     return;
   }
   // Awake any waiters if we reset to 0.
-  cond_.Broadcast();
+  YB_PROFILE(cond_.Broadcast());
 }
 
 uint64_t CountDownLatch::count() const {

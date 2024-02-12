@@ -106,7 +106,7 @@ class SingletonMetadataCowWrapper : public MetadataCowWrapper<PersistentDataEntr
 class CatalogEntityWithTasks {
  public:
   explicit CatalogEntityWithTasks(scoped_refptr<TasksTracker> tasks_tracker);
-  virtual ~CatalogEntityWithTasks() = default;
+  virtual ~CatalogEntityWithTasks();
 
   bool HasTasks() const EXCLUDES(mutex_);
   bool HasTasks(server::MonitoredTaskType type) const EXCLUDES(mutex_);
@@ -123,6 +123,22 @@ class CatalogEntityWithTasks {
   void AbortTasksAndClose() EXCLUDES(mutex_);
   // Wait for all inflight tasks to complete.
   void WaitTasksCompletion() EXCLUDES(mutex_);
+
+  void CloseAndWaitForAllTasksToAbort() EXCLUDES(mutex_);
+
+  template <typename IterableCatalogEntityWithTasks>
+  static void CloseAbortAndWaitForAllTasks(
+      const IterableCatalogEntityWithTasks& entity_collection) {
+    for (const auto& entity : entity_collection) {
+      VLOG(1) << entity->ToString() << ": Closing and aborting tasks";
+      entity->AbortTasksAndClose();
+    }
+    for (const auto& entity : entity_collection) {
+      VLOG(1) << entity->ToString() << ": Waiting for tasks for complete";
+      entity->WaitTasksCompletion();
+      VLOG(1) << entity->ToString() << ": Completed wait for tasks to complete";
+    }
+  }
 
  private:
   void AbortTasksAndCloseIfRequested(bool close) EXCLUDES(mutex_);

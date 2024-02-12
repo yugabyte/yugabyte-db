@@ -243,7 +243,10 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
         // Delete the xCluster config.
         createDeleteXClusterConfigSubtasks(
-            xClusterConfig, true /* keepEntry */, taskParams().isForced());
+            xClusterConfig,
+            true /* keepEntry */,
+            taskParams().isForced(),
+            false /* deletePitrConfigs */);
 
         if (xClusterConfig.isUsedForDr()) {
           createSetDrStatesTask(

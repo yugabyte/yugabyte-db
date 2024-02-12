@@ -19,6 +19,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/server/server_base.h"
@@ -248,7 +249,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     colocation_id_string = Format("colocation_id = $0", colocation_id);
   }
   if (!schema_name.empty()) {
-    EXPECT_OK(conn.Execute(Format("CREATE SCHEMA IF NOT EXISTS $0;", schema_name)));
+    RETURN_NOT_OK(conn.Execute(Format("CREATE SCHEMA IF NOT EXISTS $0;", schema_name)));
   }
   std::string full_table_name =
       schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
@@ -283,7 +284,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
       }
     }
   }
-  EXPECT_OK(conn.Execute(query));
+  RETURN_NOT_OK(conn.Execute(query));
 
   // Only check the schema name if it is set AND we created the table with a valid pgschema_name.
   bool verify_schema_name =
@@ -798,6 +799,79 @@ Status XClusterYsqlTestBase::SetUpWithParams(
   }));
 
   return PostSetUp();
+}
+
+Status XClusterYsqlTestBase::CheckpointReplicationGroup() {
+  auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
+  auto namespace_id_out = VERIFY_RESULT(producer_client()->XClusterCreateOutboundReplicationGroup(
+      kReplicationGroupId, {namespace_name}));
+  SCHECK_EQ(namespace_id_out.size(), 1, IllegalState, "Namespace count does not match");
+  SCHECK_EQ(namespace_id_out[0], producer_namespace_id, IllegalState, "NamespaceId does not match");
+
+  std::promise<Result<bool>> promise;
+  auto future = promise.get_future();
+  RETURN_NOT_OK(producer_client()->IsXClusterBootstrapRequired(
+      CoarseMonoClock::now() + MonoDelta::FromSeconds(kRpcTimeout), kReplicationGroupId,
+      producer_namespace_id, [&promise](Result<bool> res) { promise.set_value(res); }));
+  auto bootstrap_required = VERIFY_RESULT(future.get());
+  SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+
+  return Status::OK();
+}
+
+Result<bool> XClusterYsqlTestBase::IsCreateXClusterReplicationDone() {
+  master::IsCreateXClusterReplicationDoneRequestPB req;
+  master::IsCreateXClusterReplicationDoneResponsePB resp;
+  req.set_replication_group_id(kReplicationGroupId.ToString());
+  auto master_addr = consumer_cluster()->GetMasterAddresses();
+  auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+
+  auto master_proxy = VERIFY_RESULT(GetProducerMasterProxy());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  RETURN_NOT_OK(master_proxy.IsCreateXClusterReplicationDone(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.done();
+}
+
+Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
+  RETURN_NOT_OK(LoggedWaitFor(
+      [this]() { return IsCreateXClusterReplicationDone(); }, MonoDelta::FromSeconds(kRpcTimeout),
+      __func__));
+
+  // Wait for the xcluster safe time to propagate to the tserver nodes.
+  return WaitForSafeTimeToAdvanceToNow();
+}
+
+Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint() {
+  RETURN_NOT_OK(SetupCertificates(kReplicationGroupId));
+
+  master::CreateXClusterReplicationRequestPB req;
+  master::CreateXClusterReplicationResponsePB resp;
+  req.set_replication_group_id(kReplicationGroupId.ToString());
+  auto master_addr = consumer_cluster()->GetMasterAddresses();
+  auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
+
+  auto master_proxy = VERIFY_RESULT(GetProducerMasterProxy());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  RETURN_NOT_OK(master_proxy.CreateXClusterReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return WaitForCreateReplicationToFinish();
 }
 
 }  // namespace yb

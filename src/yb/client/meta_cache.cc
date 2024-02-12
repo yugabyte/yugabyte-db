@@ -68,6 +68,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -2229,7 +2230,7 @@ bool MetaCache::AcquireMasterLookupPermit() {
 }
 
 void MetaCache::ReleaseMasterLookupPermit() {
-  master_lookup_sem_.Release();
+  YB_PROFILE(master_lookup_sem_.Release());
 }
 
 std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFuture(

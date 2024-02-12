@@ -5,7 +5,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
@@ -269,7 +269,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
           <div className={classes.propertyLabel}>
             <Typography variant="body1">{t('estimatedDataLoss.label')}</Typography>
             <YBTooltip title={t('estimatedDataLoss.tooltip')}>
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
           <div>

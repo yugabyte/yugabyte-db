@@ -734,6 +734,7 @@ class PgApiImpl {
   // Create Replication Slot.
   Status NewCreateReplicationSlot(const char *slot_name,
                                   const PgOid database_oid,
+                                  YBCPgReplicationSlotSnapshotAction snapshot_action,
                                   PgStatement **handle);
   Status ExecCreateReplicationSlot(PgStatement *handle);
 

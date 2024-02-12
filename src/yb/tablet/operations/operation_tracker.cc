@@ -42,6 +42,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -231,7 +232,7 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
     notify = pending_operations_.empty();
   }
   if (notify) {
-    cond_.notify_all();
+    YB_PROFILE(cond_.notify_all());
   }
 
   if (mem_tracker_ && state.memory_footprint) {

@@ -49,6 +49,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -117,7 +118,7 @@ void AreNodesSafeToTakeDownCallbackHandler::ReportHealthCheck(
   }
 
   if (DoneProcessing()) {
-    cv_.notify_one();
+    YB_PROFILE(cv_.notify_one());
   }
 }
 

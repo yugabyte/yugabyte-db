@@ -313,6 +313,10 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
                         common_extra_flags.begin(),
                         common_extra_flags.end());
   }
+  // Given how little memory kDefaultMemoryLimitHardBytes provides, we will need to use more of
+  // our memory for per-tablet overhead.
+  opts_.extra_tserver_flags.insert(
+      opts_.extra_tserver_flags.begin(), "--tablet_overhead_size_percentage=30"s);
   AddExtraFlagsFromEnvVar("YB_EXTRA_MASTER_FLAGS", &opts_.extra_master_flags);
   AddExtraFlagsFromEnvVar("YB_EXTRA_TSERVER_FLAGS", &opts_.extra_tserver_flags);
 }

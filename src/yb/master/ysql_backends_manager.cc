@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_util.h"
@@ -700,7 +701,7 @@ bool BackendsCatalogVersionJob::CompareAndSwapState(
   if (state_.compare_exchange_strong(old_state, new_state)) {
     if (IsStateTerminal(new_state)) {
       completion_timestamp_ = MonoTime::Now();
-      state_cv_.Broadcast();
+      YB_PROFILE(state_cv_.Broadcast());
     }
     return true;
   }
