@@ -60,7 +60,8 @@ public class DrConfigStates {
     Replicating("Replicating"),
     SwitchoverInProgress("Switchover in Progress"),
     FailoverInProgress("Failover in Progress"),
-    Halted("Halted");
+    Halted("Halted"),
+    Error("Error");
 
     private final String state;
 

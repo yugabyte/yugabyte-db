@@ -46,6 +46,8 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
@@ -202,7 +204,7 @@ void XClusterConsumer::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutting down XClusterConsumer";
   is_shutdown_ = true;
 
-  run_thread_cond_.notify_all();
+  YB_PROFILE(run_thread_cond_.notify_all());
 
   // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
@@ -330,7 +332,7 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
-    run_thread_cond_.notify_all();
+    YB_PROFILE(run_thread_cond_.notify_all());
     return;
   }
 
@@ -362,7 +364,7 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
     UpdateReplicationGroupInMemState(replication_group_id, producer_entry_pb);
   }
   // Wake up the background thread to stop old pollers and start new ones.
-  run_thread_cond_.notify_all();
+  YB_PROFILE(run_thread_cond_.notify_all());
 }
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly

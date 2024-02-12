@@ -54,6 +54,7 @@ core.*
 
 # Temporary files
 .DS_Store
+.DS_Store.out
 .\#*.proto
 
 # C# Object files

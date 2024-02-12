@@ -270,6 +270,7 @@ set(UTIL_SRCS
   write_buffer.cc
   yb_partition.cc
   zlib.cc
+  callsite_profiling.cc
   )
 
 set(UTIL_LIBS

@@ -1177,7 +1177,7 @@
 [[headers]]
   #
   # https://docs.netlify.com/configure-builds/file-based-configuration/#headers
-  #
+  # CSP
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
@@ -1186,6 +1186,7 @@
         ;
 
         connect-src 'self'
+            https://app.clearbit.com
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
             https://raw.githubusercontent.com/
@@ -1199,12 +1200,14 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.6.0.min.js
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
+            https://tag.clearbitscripts.com
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1214,6 +1217,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
+            https://x.clearbitjs.com
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1246,6 +1250,7 @@
             https://raw.githubusercontent.com/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://www.gstatic.com/
         ;
 
         child-src 'self' 'unsafe-inline'

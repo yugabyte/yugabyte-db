@@ -66,11 +66,12 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/crc.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
@@ -86,9 +87,9 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/trace.h"
@@ -1280,7 +1281,7 @@ Status Log::UpdateSegmentReadableOffset() {
   {
     std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     last_synced_entry_op_id_.store(last_appended_entry_op_id_, boost::memory_order_release);
-    last_synced_entry_op_id_cond_.notify_all();
+    YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
   }
   return Status::OK();
 }
@@ -1977,7 +1978,7 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
     std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     old_value = last_synced_entry_op_id_.load(boost::memory_order_acquire);
     last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
-    last_synced_entry_op_id_cond_.notify_all();
+    YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
   }
   LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
 

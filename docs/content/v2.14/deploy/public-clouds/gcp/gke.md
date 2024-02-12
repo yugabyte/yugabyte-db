@@ -36,4 +36,4 @@ type: docs
 
 </ul>
 
-Refer the [GKE deployment](../../../kubernetes/gke/) instructions in the Kubernetes section.
+Refer to the [GKE deployment](../../../kubernetes/) instructions in the Kubernetes section.

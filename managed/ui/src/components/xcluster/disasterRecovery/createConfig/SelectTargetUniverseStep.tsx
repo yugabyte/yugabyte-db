@@ -14,7 +14,7 @@ import {
 } from '../constants';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../../redesign/components';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
@@ -116,7 +116,7 @@ export const SelectTargetUniverseStep = ({
                 </Typography>
               }
             >
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </Typography>
           <Typography variant="body2" className={classes.fieldLabel}>

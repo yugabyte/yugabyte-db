@@ -10,7 +10,7 @@ import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/he
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import { DrConfig } from '../dtos';
@@ -148,7 +148,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
           </Typography>
         }
       >
-        <InfoIcon className={classes.infoIcon} />
+        <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
       </YBTooltip>
     </Typography>
   );

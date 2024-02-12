@@ -64,6 +64,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/util/callsite_profiling.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
@@ -687,7 +688,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   auto se = ScopeExit([this] {
     std::unique_lock<std::mutex> l(this->backfill_lock_);
     this->num_tablets_backfilling_--;
-    this->backfill_cond_.notify_all();
+    YB_PROFILE(this->backfill_cond_.notify_all());
   });
 
   // Wait for SafeTime to get past read_at;

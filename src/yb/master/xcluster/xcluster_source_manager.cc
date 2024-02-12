@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -61,8 +63,12 @@ XClusterSourceManager::XClusterSourceManager(
 XClusterSourceManager::~XClusterSourceManager() {}
 
 void XClusterSourceManager::Clear() {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
-  outbound_replication_group_map_.clear();
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(GetAllOutboundGroups());
+
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_.clear();
+  }
 }
 
 Status XClusterSourceManager::RunLoaders() {
@@ -81,20 +87,33 @@ void XClusterSourceManager::DumpState(std::ostream& out, bool on_disk_dump) cons
     return;
   }
 
-  std::lock_guard l(outbound_replication_group_map_mutex_);
-  if (outbound_replication_group_map_.empty()) {
+  auto all_outbound_groups = GetAllOutboundGroups();
+  if (all_outbound_groups.empty()) {
     return;
   }
   out << "XClusterOutboundReplicationGroups:\n";
 
-  for (const auto& [replication_group_id, outbound_rg] : outbound_replication_group_map_) {
+  for (const auto& outbound_rg : all_outbound_groups) {
     auto metadata = outbound_rg->GetMetadata();
     if (metadata.ok()) {
-      out << "  ReplicationGroupId: " << replication_group_id
+      out << "  ReplicationGroupId: " << outbound_rg->Id()
           << "\n  metadata: " << metadata->ShortDebugString() << "\n";
     }
     // else deleted.
   }
+}
+
+std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>>
+XClusterSourceManager::GetAllOutboundGroups() const {
+  std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>> result;
+  SharedLock l(outbound_replication_group_map_mutex_);
+  for (auto& [_, outbound_rg] : outbound_replication_group_map_) {
+    if (outbound_rg) {
+      result.emplace_back(outbound_rg);
+    }
+  }
+
+  return result;
 }
 
 Status XClusterSourceManager::InsertOutboundReplicationGroup(
@@ -158,7 +177,8 @@ XClusterSourceManager::InitOutboundReplicationGroup(
   };
 
   return std::make_shared<XClusterOutboundReplicationGroup>(
-      replication_group_id, metadata, std::move(helper_functions));
+      replication_group_id, metadata, std::move(helper_functions),
+      catalog_manager_.GetTasksTracker());
 }
 
 Result<std::shared_ptr<XClusterOutboundReplicationGroup>>
@@ -192,6 +212,14 @@ Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
       master::CreateCDCStreamRequestPB create_stream_req;
       master::CreateCDCStreamResponsePB create_stream_resp;
       create_stream_req.set_table_id(table_info->id());
+
+      std::unordered_map<std::string, std::string> options;
+      auto record_type_option = create_stream_req.add_options();
+      record_type_option->set_key(cdc::kRecordType);
+      record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+      auto record_format_option = create_stream_req.add_options();
+      record_format_option->set_key(cdc::kRecordFormat);
+      record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
       RETURN_NOT_OK(catalog_manager_.CreateNewXReplStream(
           create_stream_req, CreateNewCDCStreamMode::kXClusterTableIds, {table_id},
@@ -256,9 +284,8 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   // tables namespace.
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
   const auto namespace_id = table_info->namespace_id();
-  SharedLock l(outbound_replication_group_map_mutex_);
-  for (const auto& [_, outbound_replication_group] : outbound_replication_group_map_) {
-    if (outbound_replication_group && outbound_replication_group->HasNamespace(namespace_id)) {
+  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
+    if (outbound_replication_group->HasNamespace(namespace_id)) {
       tasks.emplace_back(std::make_shared<AddTableToXClusterSourceTask>(
           outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));
     }
@@ -269,9 +296,8 @@ XClusterSourceManager::GetPostTabletCreateTasks(
 
 std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
     const NamespaceId& namespace_id) const {
-  SharedLock l(outbound_replication_group_map_mutex_);
-  for (const auto& [_, outbound_replication_group] : outbound_replication_group_map_) {
-    if (outbound_replication_group && outbound_replication_group->HasNamespace(namespace_id)) {
+  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
+    if (outbound_replication_group->HasNamespace(namespace_id)) {
       return FLAGS_cdc_wal_retention_time_secs;
     }
   }

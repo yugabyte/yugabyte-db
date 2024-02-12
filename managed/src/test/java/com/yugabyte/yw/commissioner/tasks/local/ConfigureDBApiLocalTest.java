@@ -58,7 +58,6 @@ public class ConfigureDBApiLocalTest extends LocalProviderUniverseTestBase {
     // Enable YSQL Auth for the universe.
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
-
     // Enable YSQL Auth for the universe.
     ConfigureYSQLFormData formData = new ConfigureYSQLFormData();
     formData.enableYSQL = true;
