@@ -34,21 +34,26 @@ A syntax rule is specified using [EBNF notation](https://en.wikipedia.org/wiki/E
 
 The following is an example of the syntax for the [`PREPARE`](../../../api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
-```ebnf
+```output.ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
+|-- Rule Name --|     |-- Rule Definition -->
 ```
 
-When this is presented on the "Grammar" tab in the [_syntax diagram_](#syntax-diagram), it is transformed into the PostgreSQL notation. This is widely used in database documentation. But it is not suitable as input for a program that generate diagrams.
+When this is presented on the **Grammar** tab in the [_syntax diagram_](#syntax-diagram), it is transformed into the PostgreSQL notation. This is widely used in database documentation. But it is not suitable as input for a program that generate diagrams.
 
-The left-hand side of `::=` is the rule's name. The right-hand side is its definition. The definition has three kinds of element:
+A syntax rule has two parts:
 
-- _EBNF syntax elements_ like these: `[  ]  (  )  '  {  }  ,`
+- Rule name - This is left of `::=` in the rule. Names conventionally use lower case with underscores.
 
-- _Keywords and punctuation that are part of the grammar that is being defined_. Keywords are conventionally spelled in upper case. Each individual keyword is surrounded by single quotes. This conveys the meaning that whitespace between these, and other elements in the target grammar, is insignificant. Punctuation characters in the target grammar are surrounded by single quotes to distinguish them from punctuation characters in the EBNF grammar.
+- Rule definition - This is right of `::=` in the rule. The definition has three kinds of element:
 
-- _References to other rule names_. These become clickable links in the generated diagrams (but not in the generated grammars). Rule names are spelled in lower case. Notice how underscore is used between the individual English words.
+  - _EBNF syntax elements_ like these: `[  ]  (  )  '  {  }  ,`
 
-The single space before the `;` terminator is significant.
+  - _Keywords and punctuation that are part of the grammar that is being defined_. Keywords are conventionally spelled in upper case. Each individual keyword is surrounded by single quotes. This conveys the meaning that whitespace between these, and other elements in the target grammar, is insignificant. Punctuation characters in the target grammar are surrounded by single quotes to distinguish them from punctuation characters in the EBNF grammar.
+
+  - _References to other rule names_. These become clickable links in the generated diagrams (but not in the generated grammars). Rule names are spelled in lower case. Notice how underscore is used between the individual English words.
+
+  The single space before the `;` terminator is significant.
 
 ### Syntax diagram
 
@@ -92,7 +97,7 @@ There are typically two workflows:
 
     You do this by editing the [_diagram definition file_](#diagram-definition-file).
 
-1. Add or modify the syntax diagrams to be displayed on a page.
+1. Specify the syntax diagrams to be displayed on a page.
 
     You do this by adding an `ebnf` block to the page.
 
@@ -100,13 +105,13 @@ There are typically two workflows:
 
 To add a new syntax rule or modify an existing one, edit the [_diagram definition file_](#diagram-definition-file).
 
-{{<note title="Note">}}
-If you are developing on a local machine, you need to restart Hugo after modifying the [_diagram definition file_](#diagram-definition-file) for the changes to be reflected on the local preview. Note that regenerating diagrams can take upwards of a minute or more, and longer if there are errors. Check the syntax of your rule carefully; refer to [Caveats](#caveats) for examples of errors you can encounter.
-{{</note>}}
+If you are developing on a local machine, you need to restart Hugo after modifying the [_diagram definition file_](#diagram-definition-file) for the changes to be reflected on the local preview. Note that regenerating diagrams can take upwards of a minute or more, and longer if there are errors.
 
-### Add and modify syntax diagrams displayed on a page
+Check the syntax of your rule carefully; refer to [Caveats](#caveats) for examples of errors you can encounter.
 
-To add a syntax diagram to a page, use the `ebnf` shortcode and specify each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
+### Specify syntax diagrams to be displayed on a page
+
+To specify the syntax diagrams to display on a page, use the `ebnf` shortcode and provide the rule name of each [_syntax rule_](#syntax-rule) that you want included as a separate line ending with a comma.
 
 For example, for [window function invocations](../../../api/ysql/exprs/window_functions/invocation-syntax-semantics#syntax), to show `select_start` and `window_clause` on the page, you would add the following syntax diagram set:
 
@@ -124,7 +129,9 @@ This would add the grammar and syntax tabs as follows:
   window_clause
 {{%/ebnf%}}
 
-The syntax and grammar diagrams are generated in the same order as included in the `ebnf` shortcode. Suppose that a syntax rule includes a reference to another syntax rule. If the referenced syntax rule is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the syntax rule in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the syntax rule in that same syntax diagram set. Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated syntax diagram.
+The syntax and grammar diagrams are generated in the same order as included in the `ebnf` shortcode.
+
+Suppose that a syntax rule includes a reference to another syntax rule. If the referenced syntax rule is included in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the syntax rule in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the syntax rule in that same syntax diagram set. Otherwise the generated link target of the referring rule is in the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, in the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated syntax diagram.
 
 In the case you have multiple syntax diagram sets on the same page and would like to cross-reference each other on the same page, specify the local rules that need to be cross referenced as comma separated values in the `localrefs` argument of the `ebnf` shortcode. For example,
 
