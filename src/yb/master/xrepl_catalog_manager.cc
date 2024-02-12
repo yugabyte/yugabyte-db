@@ -4073,6 +4073,14 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     for (const auto& stream : streams) {
       auto last_active_time = GetCurrentTimeMicros();
 
+      std::optional<cdc::CDCStateTableEntry> parent_entry_opt;
+      if (stream_type == cdc::CDCSDK) {
+         parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          {split_tablet_ids.source, stream->StreamId()},
+          cdc::CDCStateTableEntrySelector().IncludeActiveTime().IncludeCDCSDKSafeTime()));
+        DCHECK(parent_entry_opt);
+      }
+
       // In the case of a Consistent Snapshot Stream, set the active_time of the children tablets
       // to the corresponding value in the parent tablet.
       // This will allow to establish that a child tablet is of interest to a stream
@@ -4083,11 +4091,6 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         LOG_WITH_FUNC(INFO) << "Copy active time from parent to child tablets"
                             << " Tablets involved: " << split_tablet_ids.ToString()
                             << " Consistent Snapshot StreamId: " << stream->StreamId();
-
-        auto parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-            {split_tablet_ids.source, stream->StreamId()},
-            cdc::CDCStateTableEntrySelector().IncludeActiveTime()));
-        DCHECK(parent_entry_opt);
         DCHECK(parent_entry_opt->active_time);
         if (parent_entry_opt && parent_entry_opt->active_time) {
             last_active_time = *parent_entry_opt->active_time;
@@ -4114,7 +4117,17 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
 
         if (stream_type == cdc::CDCSDK) {
           entry.active_time = last_active_time;
-          entry.cdc_sdk_safe_time = last_active_time;
+          DCHECK(parent_entry_opt->cdc_sdk_safe_time);
+          if (parent_entry_opt && parent_entry_opt->cdc_sdk_safe_time) {
+            entry.cdc_sdk_safe_time = *parent_entry_opt->cdc_sdk_safe_time;
+          } else {
+            LOG_WITH_FUNC(WARNING) << Format(
+                                          "Did not find $0 value in the cdc state table",
+                                          parent_entry_opt ? "cdc_sdk_safe_time" : "row")
+                                   << " for parent tablet: " << split_tablet_ids.source
+                                   << " and stream: " << stream->StreamId();
+            entry.cdc_sdk_safe_time = last_active_time;
+          }
         }
 
         entries.push_back(std::move(entry));
