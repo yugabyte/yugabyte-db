@@ -51,7 +51,6 @@ type: indexpage
     href="enable-encryption-at-rest/"
     icon="/images/section_icons/secure/tls-encryption.png">}}
 
-
   {{<index/item
     title="Create a KMS configuration"
     body="Configure a key management service with a customer managed key to use for encryption at rest."
