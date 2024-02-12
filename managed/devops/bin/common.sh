@@ -581,7 +581,7 @@ activate_pex() {
     # version we will want to regenerate the pex venv.
     if [[ -L $VENV_PY && (! -e $VENV_PY || $($VENV_PY --version) != $($PYTHON_EXECUTABLE --version)) ]]; then
       log "detected python version mismatch between pex venv and ${PYTHON_EXECUTABLE}. Deleting pex venv to regenerate"
-      rm -rf $pex_venv_dir
+      rm -rf "$pex_venv_dir"
     fi
     if [[ ! -d $pex_venv_dir && -d $PEX_PATH ]]; then
       deactivate_virtualenv
