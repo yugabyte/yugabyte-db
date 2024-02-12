@@ -732,6 +732,14 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 			matviewPgTableId = OIDOldHeap;
 		}
 
+		bool is_null;
+		HeapTuple tuple = SearchSysCache1(RELOID,
+			ObjectIdGetDatum(RelationGetRelid(OldHeap)));
+		Datum datum = SysCacheGetAttr(RELOID,
+			tuple, Anum_pg_class_reloptions, &is_null);
+		if (!is_null)
+			dummyStmt->options = untransformRelOptions(datum);
+		ReleaseSysCache(tuple);
 		YBCCreateTable(dummyStmt, relkind, OldHeapDesc, OIDNewHeap, namespaceid,
 					   InvalidOid, InvalidOid, NewTableSpace, matviewPgTableId);
 	}
