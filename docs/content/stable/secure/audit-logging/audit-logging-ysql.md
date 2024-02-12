@@ -43,7 +43,7 @@ To enable audit logging, first configure audit logging for the cluster. This is 
     Provide the options as a comma separated values. For example:
 
     ```sh
-    ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_client=on,pgaudit.log_level=notice"
+    --ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_client=on,pgaudit.log_level=notice"
     ```
 
     Use double quotes to enclose any settings that include commas.
