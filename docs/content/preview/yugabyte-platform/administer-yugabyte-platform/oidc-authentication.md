@@ -35,7 +35,7 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 **Learn more**
 
-- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication using Azure AD as the IdP, refer to [OIDC authentication with Azure AD](../../security/authentication/oidc-authentication-aad/)
+- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication using Azure AD as the IdP, refer to [OIDC authentication with Azure AD](../../security/authentication/oidc-authentication-aad/).
 
 ## Enable OIDC for YugabyteDB Anywhere
 

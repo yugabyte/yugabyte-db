@@ -28,7 +28,7 @@ Authentication requires that all clients provide valid credentials before they c
 
 You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Enable database authentication](../authorization-platform/#enable-database-authentication).
 
-YugabyteDB Anywhere and YugabyteDB also support LDAP and OIDC for managing authentication. See [Database authentication](../authentication/)
+YugabyteDB Anywhere and YugabyteDB also support LDAP and OIDC for managing authentication. See [Database authentication](../authentication/).
 
 For more information on authentication in YugabyteDB, see [Enable authentication](../../../secure/enable-authentication/).
 
