@@ -3,7 +3,7 @@ import { Variant } from '@material-ui/core/styles/createTypography';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import { ReactComponent as InfoIcon } from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 
@@ -76,7 +76,7 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           <YBTooltip
             title={<Typography variant="body2">{t(`${drConfig.state}.tooltip`)}</Typography>}
           >
-            <InfoIcon className={classes.infoIcon} />
+            <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
           </YBTooltip>
         </Typography>
       );

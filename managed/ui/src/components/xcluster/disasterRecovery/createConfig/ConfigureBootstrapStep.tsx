@@ -3,7 +3,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 
 import { YBTooltip } from '../../../../redesign/components';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
@@ -72,7 +72,7 @@ export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapSte
                 </Typography>
               }
             >
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
           <ReactSelectStorageConfigField
