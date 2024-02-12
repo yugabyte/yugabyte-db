@@ -40,16 +40,17 @@ type: indexpage
     icon="/images/section_icons/secure/authorization.png">}}
 
   {{<index/item
+    title="Enable encryption in transit (TLS)"
+    body="Enable encryption in transit using TLS to secure data in transit."
+    href="enable-encryption-in-transit/"
+    icon="/images/section_icons/secure/tls-encryption.png">}}
+
+  {{<index/item
     title="Enable encryption at rest"
     body="Enable encryption at rest to protect data in storage."
     href="enable-encryption-at-rest/"
     icon="/images/section_icons/secure/tls-encryption.png">}}
 
-  {{<index/item
-    title="Enable encryption in transit (TLS)"
-    body="Enable encryption in transit using TLS and protect data between nodes and clients."
-    href="enable-encryption-in-transit/"
-    icon="/images/section_icons/secure/tls-encryption.png">}}
 
   {{<index/item
     title="Create a KMS configuration"
