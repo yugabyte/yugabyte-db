@@ -22,10 +22,9 @@ namespace yb::xcluster {
 static const char* const kDDLQueuePgSchemaName = "yb_xcluster_ddl_replication";
 static const char* const kDDLQueueTableName = "ddl_queue";
 static const char* const kDDLReplicatedTableName = "replicated_ddls";
-static const char* const kDDLQueueStartTime = "start_time";
-static const char* const kDDLQueueNodeId = "node_id";
-static const char* const kDDLQueuePgBackendId = "pg_backend_pid";
-static const char* const kDDLQueueYbData = "yb_data";
+static const char* const kDDLQueueStartTimeColumn = "start_time";
+static const char* const kDDLQueueQueryIdColumn = "query_id";
+static const char* const kDDLQueueYbDataColumn = "yb_data";
 
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
