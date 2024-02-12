@@ -22,7 +22,7 @@ The following describes how to create and edit the syntax grammar and diagrams f
 
 ## Terminology
 
-It's useful to understand some basic terminology before understanding how to modify syntax diagrams.
+Before editing syntax diagrams, you should understand some basic terminology.
 
 ### Syntax rule
 
