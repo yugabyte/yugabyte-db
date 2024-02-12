@@ -1177,7 +1177,7 @@
 [[headers]]
   #
   # https://docs.netlify.com/configure-builds/file-based-configuration/#headers
-  #
+  # CSP
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
@@ -1186,6 +1186,7 @@
         ;
 
         connect-src 'self'
+            https://app.clearbit.com
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
             https://raw.githubusercontent.com/
