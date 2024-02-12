@@ -63,6 +63,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
+extern int yb_locks_txn_locks_per_tablet;
 
 using namespace std::literals;
 
@@ -724,6 +725,7 @@ class PgClient::Impl : public BigDataFetcher {
     }
     req.set_min_txn_age_ms(yb_locks_min_txn_age);
     req.set_max_num_txns(yb_locks_max_transactions);
+    req.set_max_txn_locks_per_tablet(yb_locks_txn_locks_per_tablet);
 
     RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
