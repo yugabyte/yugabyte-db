@@ -756,6 +756,10 @@ public class CloudProviderHelper {
     in case this is a yugabyte-k8s-operator build do the same with yugabyte-k8s-operator string.
     if not found replace it with yugabyte, and join the list with "/"
     gcr.io/yugabyte/dev-ci-yugaware:2.17.2.0-b9999480 -> gcr.io/yugabyte/dev-ci-yugabyte */
+    if (StringUtils.isBlank(yugawareImageRepository)) {
+      // It can be empty for test cases or where we might not be running in k8s.
+      return "";
+    }
     String[] parsed = yugawareImageRepository.split("/");
     parsed[parsed.length - 1] = parsed[parsed.length - 1].split(":")[0];
     if (parsed[parsed.length - 1].contains("yugaware")) {
