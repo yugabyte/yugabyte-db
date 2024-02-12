@@ -116,6 +116,16 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
       xClusterConfig.updateStatusForTables(
           tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+      // Prevent all other DR tasks except delete from running.
+      log.info(
+          "Setting the dr config state of xCluster config {} to {} from {}",
+          xClusterConfig.getUuid(),
+          State.Error,
+          xClusterConfig.getDrConfig().getState());
+      xClusterConfig.getDrConfig().setState(State.Error);
+      xClusterConfig.getDrConfig().update();
+
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
       for (Restore restore : restoreList) {

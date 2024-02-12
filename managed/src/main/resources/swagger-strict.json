@@ -4738,7 +4738,7 @@
         },
         "state" : {
           "description" : "The state of the DR config",
-          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted" ],
+          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted", "Error" ],
           "type" : "string"
         },
         "uuid" : {
