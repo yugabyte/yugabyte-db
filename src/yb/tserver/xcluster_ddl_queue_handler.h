@@ -43,19 +43,11 @@ class XClusterDDLQueueHandler {
  private:
   friend class XClusterDDLQueueHandlerMocked;
 
-  virtual Status HandleCreateTable(
-      bool already_processed, const std::string& query, const rapidjson::Document& doc);
-  virtual Status HandleDropTable(
-      bool already_processed, const std::string& query, const rapidjson::Document& doc);
+  virtual Status ProcessDDLQuery(int64 start_time, int64 query_id, const std::string& query);
 
   virtual Status InitPGConnection(const HybridTime& apply_safe_time);
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
-  virtual Result<std::vector<std::tuple<int64, yb::Uuid, int, std::string>>> GetRowsToProcess();
-  virtual Result<bool> CheckIfAlreadyProcessed(
-      int64 start_time, const yb::Uuid& node_id, int pg_backend_pid);
-  virtual Status StoreSessionVariables(
-      int64 start_time, const yb::Uuid& node_id, int pg_backend_pid);
-  virtual Status RemoveDdlQueueEntry(int64 start_time, const yb::Uuid& node_id, int pg_backend_pid);
+  virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess();
 
   const std::shared_ptr<XClusterClient> local_client_;
 
@@ -63,6 +55,11 @@ class XClusterDDLQueueHandler {
   NamespaceName namespace_name_;
   NamespaceId namespace_id_;
   ConnectToPostgresFunc connect_to_pg_func_;
+
+  // Whether we have applied new rows to the ddl_queue table since the last apply_safe_time update.
+  // If false we can skip processing new DDLs.
+  // Set to true initially to handle any rows written but not processed from previous pollers.
+  bool applied_new_records_ = true;
 };
 }  // namespace tserver
 }  // namespace yb
