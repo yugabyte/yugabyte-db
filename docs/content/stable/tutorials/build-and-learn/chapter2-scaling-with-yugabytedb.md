@@ -58,7 +58,7 @@ The command pulls the latest Docker image of YugabyteDB, starts the container an
 The container exposes the following port numbers to your host operating system:
 
 * `15433` - the YugabyteDB UI
-* `5433` - the database port your client applications connect to. *(spoiler alert: it's just a PostgreSQL process. But more on this in the PostgreSQL compatibility section in the end of the chapter.)*
+* `5433` - the database port your client applications connect to. This the PostgreSQL server/postmaster process that is responsible for managing client connections and starting new backend processes.
 
 For a complete list of ports, refer to the [default ports](https://docs.yugabyte.com/preview/reference/configuration/default-ports/) documentation.
 {{< /note >}}
@@ -162,7 +162,7 @@ Next, refresh the YugabyteDB UI's main dashboard:
 You'll see that:
 
 * All three nodes are healthy and in the `RUNNING` state
-* The **replication factor** is now set to `3` meaning that each node will keep a copy of your data that is synchronized using the Raft consensus protocol. This will let you tolerate an outage of one of the nodes without compromising the availability of the database and consistency of your data.
+* The **replication factor** is now set to `3` meaning that each node will keep a copy of your data that is replicated synchronously with the Raft consensus protocol. This will let you tolerate an outage of one of the nodes without compromising the availability of the database and consistency of your data.
 
 Finally, open the **Nodes** dashboard that provides detailed information about the nodes: <http://localhost:15433/?tab=tabNodes>
 
@@ -176,11 +176,79 @@ TBD You'll see that:
 
 {{< header Level="2" >}}Switch YugaPlus to YugabyteDB{{< /header >}}
 
-TBD
+Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
-Just switch the note. But add a tip about the Voyager that can be used for the migration of the production-level app created for Postgres or other databases.
+All you need to do is to restart the `yugaplus-backend` container with updated database connectivity settings:
 
-{{< header Level="2" >}}More on PostgreSQL Compatibility{{< /header >}}
+1. Stop and remove the application backend:
 
-TBD:
-Notes on the compatibility. Show that you have PostgreSQL processess running in the container.
+    ```shell
+    docker stop yugaplus-backend
+    docker rm  yugaplus-backend
+    ```
+
+2. Start the backend connecting it to the YugabyteDB cluster:
+
+    ```shell
+    docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
+        -e DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte \
+        -e DB_USER=yugabyte \
+        -e DB_PASSWORD=yugabyte \
+        -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
+        yugaplus-backend
+    ```
+
+The backend connects to YugabyteDB that listens on port `5433` using the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`). The application uses the default username and password which is `yugabyte`.
+
+Upon successful connection, the backend uses Flyway to apply database migrations:
+
+```output
+.DbMigrate      : Current version of schema "public": << Empty Schema >>
+2024-02-12T17:10:03.143Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1 - enable pgvector"
+2024-02-12T17:10:07.745Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.1 - create movie table"
+2024-02-12T17:10:07.794Z  INFO 1 --- [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: table "movie" does not exist, skipping
+2024-02-12T17:10:14.164Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.2 - load movie dataset with embeddings"
+2024-02-12T17:10:27.642Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.3 - create user table"
+2024-02-12T17:10:27.669Z  INFO 1 --- [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: table "user_account" does not exist, skipping
+2024-02-12T17:10:30.679Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.4 - create user library table"
+2024-02-12T17:10:30.758Z  INFO 1 --- [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: table "user_library" does not exist, skipping
+2024-02-12T17:10:38.463Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 5 migrations to schema "public", now at version v1.4 (execution time 00:30.066s)
+```
+
+{{< tip title="YugabyteDB Voyager - Database Migration Tool" >}}
+For real production workloads consider using [YugabyteDB Voyager](https://docs.yugabyte.com/preview/yugabyte-voyager/) an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager easily migrates data from PostgreSQL, MySQL, and Oracle databases.
+{{< /tip >}}
+
+After schema is created and data is loaded, refresh the frontend UI and log into the app one more time: <http://localhost:3000/login>
+
+![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/chapter1-login-screen.png)
+
+Search for movie recommendations:
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      Similarity Search (OpenAI)
+    </a>
+  </li>
+  <li>
+    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="false">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Full-text search
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter2-similarity-search.md" %}}
+  </div>
+  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  {{% includeMarkdown "includes/chapter2-full-text-search.md" %}}
+  </div>
+</div>
+
+Congratulations, you've completed Chapter 2! You have successfully deployed a multi-node YugabyteDB cluster and switched the YugaPlus movie recommendations service to the distributed database with no code-level changes. The application took advantage of YugabyteDB's feature and runtime compatibility with PostgreSQL by continuing using libraries, drivers, frameworks, and extensions that were originally created for PostgreSQL.

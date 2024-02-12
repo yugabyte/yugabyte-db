@@ -17,7 +17,7 @@ The first version of the YugaPlus streaming service was set for its prime time d
 The launch was successful, with the first user signing up for YugaPlus to enjoy their favorite movies on demand. The service, powered by PostgreSQL, handled the incoming traffic with ease.
 {{< /note >}}
 
-In this chapter, you'll deploy one of the YugaPlus microservices responsible for searching the movie catalog and managing the user library.
+In this chapter, you'll learn to deploy one of the YugaPlus services - the movie recommendations service that takes user questions in plain English and uses an underlying generative AI stack (OpenAI, Spring AI and PostgreSQL pgvector) to provide the user with the most relevant movies recommendations.
 
 You'll learn the following:
 
@@ -27,11 +27,11 @@ You'll learn the following:
 **Prerequisites**
 
 * [Docker](https://www.docker.com) 20 or later.
-* An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the microservice will perform full-text searches over the movie catalog instead of vector similarity searches. Note that the full-text search version is much less advanced.
+* An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the application will perform full-text searches over the movie catalog instead of vector similarity searches. Note that the full-text search version is much less advanced.
 
 {{< header Level="2" >}}Start PostgreSQL With pgvector{{< /header >}}
 
-The pgvector extension transforms PostgreSQL into a vector database capable of storing and accessing vectorized data. The movie catalog microservice utilizes pgvector to provide users with highly relevant movie recommendations based on their input.
+The pgvector extension transforms PostgreSQL into a vector database capable of storing and accessing vectorized data. The movie recommendations service utilizes pgvector to provide users with highly relevant recommendations based on their input.
 
 Follow these steps to start a PostgreSQL instance with pgvector and enable the extension:
 
@@ -71,9 +71,9 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
 
 With the database operational, you're now ready to deploy the first version of YugaPlus on your machine!
 
-{{< header Level="2" >}}Deploy YugaPlus Microservice{{< /header >}}
+{{< header Level="2" >}}Deploy YugaPlus Movie Recommendations Service{{< /header >}}
 
-The microservice consists of a React frontend and a Java backend. You don't need prior knowledge of React or Java, nor do you have to install any language-specific toolchains. Both the frontend and backend are deployed in Docker, which automatically pulls all required libraries and frameworks.
+The service consists of a React frontend and a Java backend. You don't need prior knowledge of React or Java, nor do you have to install any language-specific toolchains. Both the frontend and backend are deployed in Docker, which automatically pulls all required libraries and frameworks.
 
 **Prepare for the deployment:**
 
@@ -158,7 +158,7 @@ Once logged in, you'll arrive at the YugaPlus home page, which is divided into t
 
 ![YugaPlus Home Screen](/images/tutorials/build-and-learn/chapter1-home-screen.png)
 
-Internally, the microservice uses the following database schema:
+Internally, the service uses the following database schema:
 
 ![YugaPlus Home Screen](/images/tutorials/build-and-learn/yugaplus-schema.png)
 
@@ -194,4 +194,4 @@ Next, go ahead and ask YugaPlus to suggest a few movies for your upcoming evenin
   </div>
 </div>
 
-Congratulations, you've completed Chapter 1! You have successfully deployed the first version of the YugaPlus movies catalog microservice and got it operational on a PostgreSQL instance with the pgvector extension.
+Congratulations, you've completed Chapter 1! You have successfully deployed the first version of the YugaPlus movie recommendations service and got it operational on a PostgreSQL instance with the pgvector extension.

@@ -18,4 +18,4 @@ Eventually, the team restored the YugaPlus service by connecting the application
 In this chapter you'll learn:
 
 * Smart driver
-* How to tolerate zone or region-level outages
+* How to tolerate zone or region-level outages (switch to a multi-region cluster)
