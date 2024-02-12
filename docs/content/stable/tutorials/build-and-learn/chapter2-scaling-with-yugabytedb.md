@@ -68,6 +68,10 @@ Next, open a database connection and run a few SQL requests:
 1. Connect to the container and open a database connection using the [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) command-line tool:
 
     ```shell
+    # Wait until the node is initialize and ready to accept connection
+    while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
+
+    # Open a SQL-session with the node
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1
     ```
 
@@ -198,7 +202,15 @@ All you need to do is to restart the `yugaplus-backend` container with updated d
         yugaplus-backend
     ```
 
-The backend connects to YugabyteDB that listens on port `5433` using the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`). The application uses the default username and password which is `yugabyte`.
+{{< note title="Flyway and Advisory Locks" >}}
+If you use YugabyteDB 2.20.1 or later, then add the following environment variable to the `docker run` command above:
+
+`-e DB_CONN_INIT_SQL="SET yb_silence_advisory_locks_not_supported_error=true" \`
+
+The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB yet. You can use Flyway with YugabyteDB even without this type of locks.
+{{< /note >}}
+
+The application backend connects to YugabyteDB that listens on port `5433` using the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`). The application uses the default username and password which is `yugabyte`.
 
 Upon successful connection, the backend uses Flyway to apply database migrations:
 
