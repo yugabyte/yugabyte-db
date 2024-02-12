@@ -14,14 +14,14 @@ type: indexpage
 showRightNav: true
 ---
 
-Use disaster recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing and failback after a failover.
+Use disaster recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
 
 A DR configuration consists of the following:
 
 - a DR primary universe, which serves both reads and writes.
 - a DR replica universe, which can also serve reads.
 
-Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR primary can be lost during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
+Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR primary _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
 
 The recovery time objective (RTO) is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
@@ -82,7 +82,7 @@ xCluster DR targets one specific and common xCluster deployment model: [active-a
 
 - Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
 
-- Transactional SQL means that the application is using SQL (and not CQL) and write-ordering is guaranteed. Furthermore, transactions are guaranteed to be atomic.
+- Transactional SQL means that the application is using SQL (and not CQL), and write-ordering is guaranteed. Furthermore, transactions are guaranteed to be atomic.
 
 xCluster DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of the DR primary to DR replica simple and turnkey. This orchestration includes the following:
 
@@ -90,7 +90,7 @@ xCluster DR adds higher-level orchestration workflows to this deployment to make
 - During switchover, xCluster DR waits for the DR primary to drain before switching over.
 - During both switchover and failover, xCluster DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR primary from read and write to read only.
 
-For all deployment models other than active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
+For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
 
 For example, use xCluster replication for the following:
 

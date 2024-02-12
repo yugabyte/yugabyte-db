@@ -20,7 +20,7 @@ Switchover can be used by enterprises when performing regular business continuit
 
 First, confirm there is no excessive lag between the DR primary and replica. You can monitor lag on the **Disaster Recovery** tab.
 
-If the DR config has any tables that don't have a status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
+If the DR config has any tables that don't have a replication status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
 
 - Perform a full copy from the DR primary to the DR replica.
 - [Unplanned Failover](../disaster-recovery-failover/).
@@ -29,7 +29,7 @@ Verify that the list of tables in the DR primary's database(s) match the list of
 
 Use the following steps to perform a planned switchover:
 
-1. Ensure there is no significant lag between DR primary and replica and that there are no critical alerts active on either universe.
+1. Ensure there is no significant lag between DR primary and replica, and that there are no critical alerts active on either universe.
 
 1. Stop the application traffic on the DR primary.
 

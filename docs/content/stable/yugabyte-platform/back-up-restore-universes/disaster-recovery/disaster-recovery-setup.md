@@ -20,11 +20,11 @@ Ensure the universes have the following characteristics:
 
 - Both universes have the same encryption in transit settings.
 - They can be backed up and restored using the same backup configuration.
-- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition or a temporary outage of the DR replica universe.
+- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
-On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary and automatically creates tables and objects and restores data on the DR replica from the DR primary.
+On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
 
 After DR is configured, the DR replica will only be available for reads.
 
@@ -88,11 +88,11 @@ In addition, you can monitor the following metrics on the **Metrics** tab:
 
 - Consumer Safe Time Lag
 
-    The time elapsed in microseconds between the physical time and safe time. Safe time is the time (usually in the past) at which the database or tables can be read with full correctness and consistency. For example, even though the actual time may be 3:00:00, a query or read against the DR Replica database may be able to only return a result as of 2:59:59 (that is 1 second ago) due to network lag and/or out-of-order delivery of datagrams.
+    The time elapsed in microseconds between the physical time and safe time. Safe time is the time (usually in the past) at which the database or tables can be read with full correctness and consistency. For example, even though the actual time may be 3:00:00, a query or read against the DR replica database may be able to only return a result as of 2:59:59 (that is 1 second ago) due to network lag and/or out-of-order delivery of datagrams.
 
 - Consumer Safe Time Skew
 
-    The time elapsed in microseconds for replication between the most caught up tablet and the tablet lags the most on the DR replica. This metric is available only on the DR replica.
+    The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the DR replica. This metric is available only on the DR replica.
 
 Consider the following scenario.
 
@@ -120,13 +120,13 @@ The **Disaster Recovery** tab also lists all the tables in replication and their
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To check if the replication has been properly configured for a table, check the status. If properly configured, the table's status is shown as _Operational_.
+- To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
 
     The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
     If the replication lag increases beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as _Warning_.
 
-    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Error: the table's replication stream is broken_, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
+    If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Error: the table's replication stream is broken_, and [restarting the replication](#restart-replication) is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
 
     If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
 
@@ -147,7 +147,7 @@ To create an alert:
 1. Set the conditions for the alert.
 1. Click **Save** when you are done.
 
-When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
+When DR is set up, YugabyteDB automatically creates an alert for _YSQL Tables in DR/xCluster Config Inconsistent With Primary/Source_. This alert fires when tables are added or dropped from DR primary's databases under replication, but are not yet added or dropped from the YugabyteDB Anywhere DR configuration.
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
