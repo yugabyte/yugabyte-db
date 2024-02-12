@@ -3,7 +3,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { YBTooltip } from '../../../../redesign/components';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
@@ -77,7 +77,7 @@ export const ConfigureBootstrapStep = ({
               </Typography>
             }
           >
-            <InfoIcon className={classes.infoIcon} />
+            <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
           </YBTooltip>
         )}
       </div>
