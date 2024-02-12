@@ -347,7 +347,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           }
                         }
                         log.info("Removing finalizers...");
-                        if (ybUniverse.getStatus() != null) {
+                        if (ybUniverse.getMetadata() != null) {
                           objectMeta.setFinalizers(Collections.emptyList());
                           ybUniverseClient
                               .inNamespace(resourceNamespace)
