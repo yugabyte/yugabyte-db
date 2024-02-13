@@ -1051,3 +1051,22 @@ SELECT * FROM min_updates_test ORDER BY f1;
 (2 rows)
 
 -- YB_TODO: end
+-- suppress warning that depends on wal_level
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION p;
+RESET client_min_messages;
+ALTER PUBLICATION p ADD TABLES IN SCHEMA public;
+ERROR:  CREATE/ALTER PUBLICATION SCHEMA not supported yet
+LINE 1: ALTER PUBLICATION p ADD TABLES IN SCHEMA public;
+                                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ALTER PUBLICATION p DROP TABLES IN SCHEMA CURRENT_SCHEMA;
+ERROR:  CREATE/ALTER PUBLICATION SCHEMA not supported yet
+LINE 1: ALTER PUBLICATION p DROP TABLES IN SCHEMA CURRENT_SCHEMA;
+                                 ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ALTER PUBLICATION p SET CURRENT_SCHEMA;
+ERROR:  CREATE/ALTER PUBLICATION SCHEMA not supported yet
+LINE 1: ALTER PUBLICATION p SET CURRENT_SCHEMA;
+                                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues

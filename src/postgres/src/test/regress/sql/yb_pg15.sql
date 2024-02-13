@@ -508,3 +508,11 @@ FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
 UPDATE min_updates_test SET f1 = f1;
 SELECT * FROM min_updates_test ORDER BY f1;
 -- YB_TODO: end
+
+-- suppress warning that depends on wal_level
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION p;
+RESET client_min_messages;
+ALTER PUBLICATION p ADD TABLES IN SCHEMA public;
+ALTER PUBLICATION p DROP TABLES IN SCHEMA CURRENT_SCHEMA;
+ALTER PUBLICATION p SET CURRENT_SCHEMA;
