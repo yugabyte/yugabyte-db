@@ -631,6 +631,9 @@ YBCanEnableDBCatalogVersionMode()
 	if (YBCIsSysTablePrefetchingStarted())
 		return false;
 
+	if (yb_test_stay_in_global_catalog_version_mode)
+		return false;
+
 	/*
 	 * We assume that the table pg_yb_catalog_version has either exactly
 	 * one row in global catalog version mode, or one row per database in
@@ -1312,6 +1315,8 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool yb_test_fail_table_rewrite_after_creation = false;
+
+bool yb_test_stay_in_global_catalog_version_mode = false;
 
 bool ddl_rollback_enabled = false;
 
