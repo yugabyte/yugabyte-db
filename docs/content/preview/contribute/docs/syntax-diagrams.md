@@ -32,7 +32,7 @@ Every syntax rule is defined textually in the single [_diagram definition file_]
 
 A syntax rule is specified using [EBNF notation](https://en.wikipedia.org/wiki/Extended_Backus–Naur_form).
 
-The following is an example of the syntax for the [`PREPARE`](../../../api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
+The following is an example of the syntax rule for the [`PREPARE`](../../../api/ysql/the-sql-language/statements/perf_prepare/#syntax) statement:
 
 ```output.ebnf
 prepare_statement ::= 'PREPARE' name [ '(' data_type { ',' data_type } ')' ] 'AS' statement ;
