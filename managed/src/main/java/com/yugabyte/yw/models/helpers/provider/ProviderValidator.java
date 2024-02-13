@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.validators.AWSProviderValidator;
+import com.yugabyte.yw.models.configs.validators.KubernetesProviderValidator;
 import com.yugabyte.yw.models.configs.validators.OnPremValidator;
 import com.yugabyte.yw.models.configs.validators.ProviderFieldsValidator;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
@@ -32,6 +33,9 @@ public class ProviderValidator extends BaseBeanValidator {
         new AWSProviderValidator(beanValidator, awsCloudImpl, runtimeConfGetter));
     this.providerValidatorMap.put(
         CloudType.onprem.toString(), new OnPremValidator(beanValidator, runtimeConfGetter));
+    this.providerValidatorMap.put(
+        CloudType.kubernetes.toString(),
+        new KubernetesProviderValidator(beanValidator, runtimeConfGetter));
   }
 
   public void validate(Provider provider) {

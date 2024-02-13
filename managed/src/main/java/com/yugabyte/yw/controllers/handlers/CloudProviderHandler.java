@@ -149,16 +149,7 @@ public class CloudProviderHandler {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
     if (!providerConfig.isEmpty()) {
       // Perform for all cloud providers as it does validation.
-      if (provider.getCloudCode().equals(kubernetes)) {
-        cloudProviderHelper.updateKubeConfig(provider, providerConfig, false);
-        try {
-          cloudProviderHelper.createKubernetesInstanceTypes(customer, provider);
-        } catch (PersistenceException ex) {
-          // TODO: make instance types more multi-tenant friendly...
-        }
-      } else {
-        cloudProviderHelper.maybeUpdateCloudProviderConfig(provider, providerConfig);
-      }
+      cloudProviderHelper.maybeUpdateCloudProviderConfig(provider, providerConfig);
     }
     if (!providerCode.isRequiresBootstrap()) {
       provider.setUsabilityState(Provider.UsabilityState.READY);

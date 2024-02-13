@@ -1211,4 +1211,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable user creation on OIDC login",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  // TODO(bhavin192): this could be removed or moved to customer keys
+  // later.
+  public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.kubernetes_provider_validation",
+          ScopeType.GLOBAL,
+          "Kubernetes provider validation",
+          "Hidden as the feature is work in progress"
+              + " and returns a mock response with validation errors.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
