@@ -132,7 +132,7 @@ You can customize your network, including the virtual network, as follows:
 To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
 - Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user. This information must be the same across all the regions you provision.
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
 
