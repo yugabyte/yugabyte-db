@@ -27,6 +27,7 @@ org.yb.pgsql.TestPgRegressHashInQueries
 org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 org.yb.pgsql.TestPgRegressNonTxnCopy
 org.yb.pgsql.TestPgRegressPlanner#testPgRegressDml
+org.yb.pgsql.TestPgRegressPublication
 org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 org.yb.pgsql.TestPgRegressReplicationSlot
 org.yb.pgsql.TestPgRegressSecondaryIndexScan
