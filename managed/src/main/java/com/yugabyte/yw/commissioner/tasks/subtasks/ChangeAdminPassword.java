@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
@@ -72,7 +73,16 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
           testDBCreds.ycqlAdminPassword = dbData.ycqlCurrAdminPassword;
           testDBCreds.ycqlAdminUsername = dbData.ycqlAdminUsername;
-          ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+          try {
+            ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+          } catch (PlatformServiceException e) {
+            if (e.getHttpStatus() == Http.Status.UNAUTHORIZED) {
+              testDBCreds.ycqlAdminPassword = Util.DEFAULT_YCQL_PASSWORD;
+              ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+            } else {
+              throw e;
+            }
+          }
         }
 
         try {
@@ -101,7 +111,16 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           testDBCreds.ysqlAdminPassword = dbData.ysqlCurrAdminPassword;
           testDBCreds.dbName = dbData.dbName;
           testDBCreds.ysqlAdminUsername = dbData.ysqlAdminUsername;
-          ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+          try {
+            ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+          } catch (PlatformServiceException e) {
+            if (e.getHttpStatus() == Http.Status.UNAUTHORIZED) {
+              testDBCreds.ysqlAdminPassword = Util.DEFAULT_YSQL_PASSWORD;
+              ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+            } else {
+              throw e;
+            }
+          }
         }
 
         try {
