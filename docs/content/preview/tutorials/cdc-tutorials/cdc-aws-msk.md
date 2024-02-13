@@ -241,5 +241,3 @@ For this example, create an Amazon MSK cluster in the same VPC as that of the Yu
     ![Amazon S3 logging](/images/explore/cdc/aws_msk_images/amazon-s3-logging.png)
 
 The cluster is now configured successfully.
-
-![Amazon MSK Create Cluster](/images/explore/cdc/aws_msk_images/amazon-msk-create-cluster.png)
