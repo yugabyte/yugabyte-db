@@ -604,6 +604,9 @@ extern char *yb_test_fail_index_state_change;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
+extern bool yb_test_stay_in_global_catalog_version_mode;
+
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.

@@ -2213,6 +2213,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_stay_in_global_catalog_version_mode", PGC_SUSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, this PG backend will stay in global "
+						 "catalog version mode. Used in testing to simulate "
+						 "a lagging PG backend during the finalization phase "
+						 "of cluster upgrade to a new release that has the "
+						 "per-database catalog version mode on by default."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_stay_in_global_catalog_version_mode,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
