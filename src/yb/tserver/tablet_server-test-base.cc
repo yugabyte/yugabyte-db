@@ -77,6 +77,8 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
       table_type_(table_type),
       ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
                                  &ts_test_metric_registry_, "ts_server-test")) {
+  const_cast<Schema&>(schema_).InitColumnIdsByDefault();
+
   // Disable the maintenance ops manager since we want to trigger our own
   // maintenance operations at predetermined times.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
@@ -116,6 +118,14 @@ void TabletServerTestBase::TearDown() {
   }
 }
 
+Result<std::unique_ptr<MiniTabletServer>> TabletServerTestBase::CreateMiniTabletServer() {
+  vector<string> drive_dirs;
+  for (int i = 0; i < NumDrives(); ++i) {
+    drive_dirs.push_back(GetTestPath("TabletServerTest-fsroot") + std::to_string(i));
+  }
+  return MiniTabletServer::CreateMiniTabletServer(drive_dirs, 0);
+}
+
 void TabletServerTestBase::StartTabletServer() {
   // Start server with an invalid master address, so it never successfully
   // heartbeats, even if there happens to be a master running on this machine.
@@ -127,8 +137,7 @@ void TabletServerTestBase::StartTabletServer() {
   // Disallow encryption at rest as there is no master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
-  auto mini_ts =
-      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  auto mini_ts = CreateMiniTabletServer();
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
   auto addr = std::make_shared<server::MasterAddresses>();
@@ -192,7 +201,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
 void TabletServerTestBase::ResetClientProxies() {
   CreateTsClientProxies(HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr()),
                         proxy_cache_.get(),
-                        &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_);
+                        &proxy_, &admin_proxy_, &consensus_proxy_, &generic_proxy_, &backup_proxy_);
 }
 
 // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
@@ -331,8 +340,7 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   ShutdownTablet();
 
   // Start server.
-  auto mini_ts =
-      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  auto mini_ts = CreateMiniTabletServer();
   CHECK_OK(mini_ts);
   mini_server_ = std::move(*mini_ts);
   auto addr = std::make_shared<server::MasterAddresses>();
@@ -350,10 +358,14 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   return Status::OK();
 }
 
-// Verifies that a set of expected rows (key, value) is present in the tablet.
-void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
+void TabletServerTestBase::VerifyRows(
+    const Schema& schema, const vector<KeyValue>& expected,
+    std::optional<tablet::TabletPeerPtr> tablet_peer) {
   dockv::ReaderProjection projection(schema);
-  auto iter = tablet_peer_->tablet()->NewRowIterator(projection);
+  if (!tablet_peer) {
+    tablet_peer = tablet_peer_;
+  }
+  auto iter = (*tablet_peer)->tablet()->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   int count = 0;

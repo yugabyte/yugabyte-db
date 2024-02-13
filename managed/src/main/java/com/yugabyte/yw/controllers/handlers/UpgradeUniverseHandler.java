@@ -19,9 +19,9 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -132,12 +132,12 @@ public class UpgradeUniverseHandler {
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)
           && Util.compareYbVersions(
                   requestParams.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0
-          && !universe.isYbcEnabled()
-          && requestParams.isEnableYbc()) {
+          && !universe.isYbcEnabled()) {
+        requestParams.setEnableYbc(true);
         requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         requestParams.installYbc = true;
       } else if (universe.isYbcEnabled()) {
@@ -154,7 +154,8 @@ public class UpgradeUniverseHandler {
                 true)
             > 0
         && !universe.isYbcEnabled()
-        && requestParams.isEnableYbc()) {
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)) {
+      requestParams.setEnableYbc(true);
       requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       requestParams.installYbc = true;
     } else {

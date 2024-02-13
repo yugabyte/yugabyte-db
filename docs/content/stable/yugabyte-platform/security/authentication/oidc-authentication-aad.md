@@ -1,9 +1,9 @@
 ---
 title: OIDC authentication using Azure AD in YugabyteDB Anywhere
-headerTitle: OIDC authentication with Microsoft Entra
+headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
-headcontent: Use Microsoft Entra accounts for database access
+headcontent: Use Azure AD to authenticate accounts for database access
 earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:
@@ -13,15 +13,18 @@ menu:
 type: docs
 ---
 
-This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP).
-
-(For information on using OIDC to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/).)
+This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as the Identity Provider (IdP).
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.
 
-## Group claims and roles in AAD
+**Learn more**
+
+- [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
+- [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
+
+## Group claims and roles in Azure AD
 
 By default, the Subject claim is used as the value to determine the role to assign to users for database access. In addition to the standard claims for token expiration, subject, and issuer, you have the option to use a non-standard claim (other than Subject) to determine role assignment. That is, the values of this claim will map the user to the database roles. This claim is denoted as `jwt_matching_claim_key`.
 
@@ -35,13 +38,13 @@ The claims included in the token and chosen for user authorization will vary dep
 
 For example, to use group memberships as the determining factor for access and role assignment, you would include the groups claim in the initial token sent to the database. Note that the Subject claim can also be used to map the user to the PostgreSQL role.
 
-These token claims are configured in the AAD application registration.
+These token claims are configured in the Azure AD application registration.
 
-The following illustration shows an example of Azure token configuration to ensure the right groups or roles claims are included in the token. Note that these options are available in higher AAD tiers.
+The following illustration shows an example of Azure token configuration to ensure the right groups or roles claims are included in the token. Note that these options are available in higher Azure AD tiers.
 
-![Configuring the groups claims in AAD Application registrations](/images/yp/security/oidc-azure-editgroup.png)
+![Configuring the groups claims in Azure AD Application registrations](/images/yp/security/oidc-azure-editgroup.png)
 
-The following is an example of a decoded JWT with groups claims (the Group GUID is used in AAD OIDC tokens):
+The following is an example of a decoded JWT with groups claims (the Group GUID is used in Azure AD OIDC tokens):
 
 ```json.output
 "awd": "e12c03b1-7463-8e23-94d2-8d71f17ab99b",
@@ -65,7 +68,7 @@ Note that GUIDs are not supported for YSQL usernames. Use regex rules in user na
 
 The following illustration shows an example of Azure app roles configuration.
 
-![Configuring App Roles in AAD Application registrations](/images/yp/security/oidc-azure-approles.png)
+![Configuring App Roles in Azure AD Application registrations](/images/yp/security/oidc-azure-approles.png)
 
 The following shows an example of a decoded JWT with app roles claims:
 
@@ -91,13 +94,13 @@ The following shows an example of a decoded JWT with app roles claims:
 
 For more information on configuring group claims and app roles, refer to [Configuring group claims and app roles in tokens](https://learn.microsoft.com/en-us/security/zero-trust/develop/configure-tokens-group-claims-app-roles) in the Azure documentation.
 
-## Set up OIDC with AAD on YugabyteDB Anywhere
+## Set up OIDC with Azure AD on YugabyteDB Anywhere
 
-To enable OIDC authentication with AAD, you need to do the following:
+To enable OIDC authentication with Azure AD, you need to do the following:
 
-- Create an app registration in AAD - The AAD IdP configuration includes application registration (registering YugabyteDB Anywhere in the AAD tenant) and configuring AAD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
+- Create an app registration in Azure AD - The Azure AD IdP configuration includes application registration (registering YugabyteDB Anywhere in the Azure AD tenant) and configuring Azure AD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 - Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the login screen.
-- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping AAD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
+- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping Azure AD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
 
 ### Register an application in Azure
 

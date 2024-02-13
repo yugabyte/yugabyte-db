@@ -455,14 +455,14 @@ TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
-DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
+DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 1,
     "The per-node tablet leader count until which a table is splitting at the phase 1 threshold, "
     "as defined by tablet_split_low_phase_size_threshold_bytes.");
 DEFINE_RUNTIME_int64(tablet_split_high_phase_shard_count_per_node, 24,
     "The per-node tablet leader count until which a table is splitting at the phase 2 threshold, "
     "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
-DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
+DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 128_MB,
     "The tablet size threshold at which to split tablets in phase 1. "
     "See tablet_split_low_phase_shard_count_per_node.");
 DEFINE_RUNTIME_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
@@ -900,19 +900,6 @@ GetMoreEligibleSysCatalogLeaders(
   return {scored_masters, my_score == 0 || my_score < affinitized_zones.size()};
 }
 
-template <typename IterableTables>
-void AbortAndWaitForAllTasksImplementation(const IterableTables& tables) {
-  for (const auto& t : tables) {
-    VLOG(1) << "Aborting tasks for table " << t->ToString();
-    t->AbortTasksAndClose();
-  }
-  for (const auto& t : tables) {
-    VLOG(1) << "Waiting on Aborting tasks for table " << t->ToString();
-    t->WaitTasksCompletion();
-  }
-  VLOG(1) << "Waiting on Aborting tasks done";
-}
-
 // Sets basic fields in the TabletLocationsPB proto that are always filled regardless of the
 // PartitionsOnly parameter.
 void InitializeTabletLocationsPB(
@@ -1007,6 +994,19 @@ void CatalogManager::NamespaceNameMapper::clear() {
   for (auto& m : typed_maps_) {
     m.clear();
   }
+}
+
+std::vector<scoped_refptr<NamespaceInfo>> CatalogManager::NamespaceNameMapper::GetAll() const {
+  std::vector<scoped_refptr<NamespaceInfo>> result;
+  for (const auto& map : typed_maps_) {
+    for (const auto& [_, ns_info] : map) {
+      if (ns_info) {
+        result.emplace_back(ns_info);
+      }
+    }
+  }
+
+  return result;
 }
 
 CatalogManager::CatalogManager(Master* master)
@@ -1383,9 +1383,8 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     LockGuard lock(mutex_);
     VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
-    // Abort any outstanding tasks. All TableInfos are orphaned below, so
-    // it's important to end their tasks now; otherwise Shutdown() will
-    // destroy master state used by these tasks.
+    // Abort any outstanding tasks. All CatalogEntities are orphaned below, so
+    // it's important to end their tasks now.
     AbortAndWaitForAllTasksUnlocked();
 
     // Clear internal maps and run data loaders.
@@ -2093,7 +2092,7 @@ Status CatalogManager::PrepareNamespace(
   ns_entry.set_state(SysNamespaceEntryPB::RUNNING);
 
   // Create in memory object.
-  ns = new NamespaceInfo(id);
+  ns = new NamespaceInfo(id, tasks_tracker_);
 
   // Prepare write.
   auto l = ns->LockForWrite();
@@ -2224,6 +2223,12 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   return Status::OK();
 }
 
+Status CatalogManager::IsEpochValid(const LeaderEpoch& epoch) const {
+  SCHECK_EQ(epoch, GetLeaderEpochInternal(), IllegalState, "Master leader epoch has changed");
+  RETURN_NOT_OK(CheckIsLeaderAndReady());
+  return Status::OK();
+}
+
 std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
   DCHECK(sys_catalog_);
   return sys_catalog_->tablet_peer();
@@ -2288,19 +2293,9 @@ void CatalogManager::CompleteShutdown() {
     async_task_pool_->Shutdown();
   }
 
-  // Mark all outstanding table tasks as aborted and wait for them to fail.
-  //
-  // There may be an outstanding table visitor thread modifying the table map,
-  // so we must make a copy of it before we iterate. It's OK if the visitor
-  // adds more entries to the map even after we finish; it won't start any new
-  // tasks for those entries.
-  vector<scoped_refptr<TableInfo>> copy;
-  {
-    SharedLock lock(mutex_);
-    auto tables_it = tables_->GetAllTables();
-    copy = std::vector(std::begin(tables_it), std::end(tables_it));
-  }
-  AbortAndWaitForAllTasks(copy);
+  // It's OK if the visitor adds more entries even after we finish; it won't start any new tasks for
+  // those entries.
+  AbortAndWaitForAllTasks();
 
   cdc_state_table_.reset();
 
@@ -2339,8 +2334,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   // Since this is a failed creation attempt, it's safe to just abort
   // all tasks, as (by definition) no tasks may be pending against a
   // table that has failed to successfully create.
-  table->AbortTasksAndClose();
-  table->WaitTasksCompletion();
+  table->CloseAndWaitForAllTasksToAbort();
   {
     LockGuard lock(mutex_);
 
@@ -4248,10 +4242,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Inserted new table and tablet info into CatalogManager maps");
   VLOG_WITH_PREFIX(1) << "Inserted new table and tablet info into CatalogManager maps";
 
-  // Write tablets to sys-tablets.
-  // If new tablets are created, they will be in PREPARING state.
   if (!joining_colocation_group) {
+    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
+    if (opt_wal_retention) {
+      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
+    }
+
     for (const auto& tablet : tablets) {
+      // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
     }
   }
@@ -8937,7 +8935,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Create unique id for this new namespace.
     NamespaceId new_id = !req->namespace_id().empty()
         ? req->namespace_id() : GenerateIdUnlocked(SysRowEntryType::NAMESPACE);
-    ns = new NamespaceInfo(new_id);
+    ns = new NamespaceInfo(new_id, tasks_tracker_);
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name(req->name());
@@ -10357,7 +10355,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (use_cache) {
+  if (use_cache && catalog_version_table_in_perdb_mode_) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
     // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the
@@ -10382,6 +10380,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   if (fingerprint) {
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+  }
+  if (versions->size() > 1) {
+    catalog_version_table_in_perdb_mode_ = true;
   }
   return Status::OK();
 }
@@ -12879,12 +12880,22 @@ void CatalogManager::ResetTasksTrackers() {
   VLOG_WITH_FUNC(1) << "End";
 }
 
-void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInfo>>& tables) {
-  AbortAndWaitForAllTasksImplementation(tables);
+void CatalogManager::AbortAndWaitForAllTasks() {
+  std::vector<scoped_refptr<TableInfo>> tables;
+  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  {
+    SharedLock lock(mutex_);
+    auto tables_it = tables_->GetAllTables();
+    tables = std::vector(std::begin(tables_it), std::end(tables_it));
+    namespaces = namespace_names_mapper_.GetAll();
+  }
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables);
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespaces);
 }
 
 void CatalogManager::AbortAndWaitForAllTasksUnlocked() {
-  AbortAndWaitForAllTasksImplementation(tables_->GetAllTables());
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(tables_->GetAllTables());
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(namespace_names_mapper_.GetAll());
 }
 
 void CatalogManager::HandleNewTableId(const TableId& table_id) {

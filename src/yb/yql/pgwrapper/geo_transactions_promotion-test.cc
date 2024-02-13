@@ -622,6 +622,9 @@ TEST_F_EX(GeoTransactionsPromotionTest,
 }
 
 TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHeartbeat) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_heartbeat_usec) =
+      3000000 * yb::kTimeMultiplier;
+
   auto conn0 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn0.ExecuteFormat(
       "CREATE UNIQUE INDEX $0$1_1_key ON $0$1_1(value) TABLESPACE tablespace$1",
@@ -629,7 +632,7 @@ TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHear
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms) =
-      400 * kTimeMultiplier;
+      2000 * kTimeMultiplier;
 
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -653,7 +656,7 @@ TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHear
 
   thread_holder.AddThreadFunctor([&conn2] {
     // Give time for promotion to start, but not for initial heartbeat to be sent.
-    std::this_thread::sleep_for(200ms * kTimeMultiplier);
+    std::this_thread::sleep_for(1000ms * kTimeMultiplier);
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 200;
     ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -662,7 +665,7 @@ TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHear
         "INSERT INTO $0$1_1(value, other_value) VALUES (1, 2)", kTablePrefix, kLocalRegion));
     ASSERT_OK(conn2.CommitTransaction());
   });
-  thread_holder.WaitAndStop(1000ms * kTimeMultiplier);
+  thread_holder.WaitAndStop(4000ms * kTimeMultiplier);
 }
 
 TEST_F(GeoTransactionsPromotionRF1Test,

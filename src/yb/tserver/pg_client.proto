@@ -198,10 +198,22 @@ message PgCreateDatabaseResponsePB {
 message PgCreateSequencesDataTableRequestPB {
 }
 
+// proto2 version of the CDCSDKSnapshotOption enum from yb/common/common_types.proto
+enum PgReplicationSlotSnapshotActionPB {
+  // Invalid, should not be used. This is only present here to keep the same enum tags between the
+  // proto2 (this) and the proto3 versions.
+  REPLICATION_SLOT_UNKNOWN_SNAPSHOT = 0;
+  // Client does not wish to consume snapshot.
+  REPLICATION_SLOT_NOEXPORT_SNAPSHOT = 1;
+  // Client wishes to consume snapshot from the source universe.
+  REPLICATION_SLOT_USE_SNAPSHOT = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   string replication_slot_name = 3;
+  PgReplicationSlotSnapshotActionPB snapshot_action = 4;
 }
 
 message PgCreateReplicationSlotResponsePB {

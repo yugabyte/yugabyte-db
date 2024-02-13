@@ -475,6 +475,24 @@ message GetXClusterSafeTimeResponsePB {
   repeated NamespaceSafeTimePB namespace_safe_times = 2;
 }
 
+enum XClusterSafeTimeFilter {
+  NONE = 1;
+  DDL_QUEUE = 2;
+}
+
+message GetXClusterSafeTimeForNamespaceRequestPB {
+  optional string namespace_id = 1;
+
+  // Ignore safe times from these types of tables.
+  // If this filters out all tables, then will return master leader safe time.
+  optional XClusterSafeTimeFilter filter = 2;
+}
+
+message GetXClusterSafeTimeForNamespaceResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 safe_time_ht = 2;
+}
+
 message GetTableSchemaFromSysCatalogRequestPB {
   required TableIdentifierPB table = 1;
   optional  int64 read_time = 2;
@@ -670,6 +688,8 @@ service MasterReplication {
 
   rpc GetXClusterSafeTime(GetXClusterSafeTimeRequestPB)
       returns (GetXClusterSafeTimeResponsePB);
+  rpc GetXClusterSafeTimeForNamespace(GetXClusterSafeTimeForNamespaceRequestPB)
+      returns (GetXClusterSafeTimeForNamespaceResponsePB);
 
   rpc BootstrapProducer(BootstrapProducerRequestPB)
       returns (BootstrapProducerResponsePB);

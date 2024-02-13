@@ -68,6 +68,9 @@ class MiniTabletServer {
       uint16_t rpc_port,
       int index = 0);
 
+  static Result<std::unique_ptr<MiniTabletServer>> CreateMiniTabletServer(
+    const std::vector<std::string>& fs_roots, uint16_t rpc_port, int index = 0);
+
   MiniTabletServer(const std::vector<std::string>& wal_paths,
                    const std::vector<std::string>& data_paths,
                    uint16_t rpc_port,

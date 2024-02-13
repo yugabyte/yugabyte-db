@@ -4,8 +4,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.apiModels.CreateRelease;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.Transaction;
 import io.ebean.annotation.EnumValue;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -79,7 +81,7 @@ public class Release extends Model {
   public static Release createFromRequest(CreateRelease reqRelease) {
     Release release = new Release();
     // Generate UUID if one was not provided.
-    if (reqRelease.release_uuid == null) {
+    if (reqRelease.release_uuid != null) {
       release.releaseUUID = reqRelease.release_uuid;
     } else {
       release.releaseUUID = UUID.randomUUID();
@@ -130,5 +132,42 @@ public class Release extends Model {
 
   public List<ReleaseArtifact> getArtifacts() {
     return ReleaseArtifact.getForRelease(releaseUUID);
+  }
+
+  public void setReleaseTag(String tag) {
+    this.releaseTag = tag;
+    save();
+  }
+
+  public void setReleaseDate(Date date) {
+    this.releaseDate = date;
+    save();
+  }
+
+  public void setReleaseNotes(String notes) {
+    this.releaseNotes = notes;
+    save();
+  }
+
+  public void setState(ReleaseState state) {
+    this.state = state;
+    save();
+  }
+
+  @Override
+  public boolean delete() {
+    try (Transaction transaction = DB.beginTransaction()) {
+      for (ReleaseArtifact artifact : getArtifacts()) {
+        log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
+        if (!artifact.delete()) {
+          return false;
+        }
+      }
+      if (!super.delete()) {
+        return false;
+      }
+      transaction.commit();
+    }
+    return true;
   }
 }

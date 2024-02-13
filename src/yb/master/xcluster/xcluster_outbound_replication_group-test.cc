@@ -36,18 +36,18 @@ class XClusterRemoteClientMocked : public client::XClusterRemoteClient {
     return Status::OK();
   }
 
-  Result<UniverseUuid> SetupUniverseReplication(
+  Result<UniverseUuid> SetupDbScopedUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<HostPort>& source_master_addresses,
       const std::vector<NamespaceName>& namespace_names,
-      const std::vector<TableId>& source_table_ids,
-      const std::vector<xrepl::StreamId>& bootstrap_ids, Transactional transactional) override {
+      const std::vector<NamespaceId>& namespace_ids, const std::vector<TableId>& source_table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids) override {
     replication_group_id_ = replication_group_id;
     source_master_addresses_ = source_master_addresses;
     namespace_names_ = namespace_names;
+    namespace_ids_ = namespace_ids;
     source_table_ids_ = source_table_ids;
     bootstrap_ids_ = bootstrap_ids;
-    transactional_ = transactional;
 
     return kTargetUniverseUuid;
   }
@@ -60,9 +60,9 @@ class XClusterRemoteClientMocked : public client::XClusterRemoteClient {
   xcluster::ReplicationGroupId replication_group_id_;
   std::vector<HostPort> source_master_addresses_;
   std::vector<NamespaceName> namespace_names_;
+  std::vector<NamespaceId> namespace_ids_;
   std::vector<TableId> source_table_ids_;
   std::vector<xrepl::StreamId> bootstrap_ids_;
-  bool transactional_;
 
   Result<IsOperationDoneResult> is_setup_universe_replication_done_ =
       IsOperationDoneResult(true, Status::OK());
@@ -72,7 +72,8 @@ class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicatio
  public:
   explicit XClusterOutboundReplicationGroupMocked(
       const xcluster::ReplicationGroupId& replication_group_id, HelperFunctions helper_functions)
-      : XClusterOutboundReplicationGroup(replication_group_id, {}, std::move(helper_functions)) {
+      : XClusterOutboundReplicationGroup(
+            replication_group_id, {}, std::move(helper_functions), /*tasks_tracker=*/nullptr) {
     remote_client_ = std::make_shared<XClusterRemoteClientMocked>();
   }
 

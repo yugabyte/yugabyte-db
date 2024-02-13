@@ -9,7 +9,7 @@ import { useSelector } from 'react-redux';
 import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import {
   ReactSelectStorageConfigField,
   StorageConfigOption
@@ -161,7 +161,7 @@ export const EditConfigModal = ({ drConfig, modalProps, redirectUrl }: EditConfi
             </Typography>
           }
         >
-          <InfoIcon className={classes.infoIcon} />
+          <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
         </YBTooltip>
       </div>
       <ReactSelectStorageConfigField

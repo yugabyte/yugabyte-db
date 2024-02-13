@@ -28,6 +28,7 @@
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 
@@ -54,7 +55,7 @@ DeleteScheduler::~DeleteScheduler() {
   {
     MutexLock l(&mu_);
     closing_ = true;
-    cv_.SignalAll();
+    YB_PROFILE(cv_.SignalAll());
   }
   if (bg_thread_) {
     bg_thread_->Join();
@@ -92,7 +93,7 @@ Status DeleteScheduler::DeleteFile(const std::string& file_path) {
     queue_.push(path_in_trash);
     pending_files_++;
     if (pending_files_ == 1) {
-      cv_.SignalAll();
+      YB_PROFILE(cv_.SignalAll());
     }
   }
   return s;
@@ -186,7 +187,7 @@ void DeleteScheduler::BackgroundEmptyTrash() {
       if (pending_files_ == 0) {
         // Unblock WaitForEmptyTrash since there are no more files waiting
         // to be deleted
-        cv_.SignalAll();
+        YB_PROFILE(cv_.SignalAll());
       }
     }
   }

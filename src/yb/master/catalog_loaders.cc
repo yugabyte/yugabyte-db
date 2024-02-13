@@ -416,7 +416,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     << "Namespace already exists: " << ns_id;
 
   // Setup the namespace info.
-  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(ns_id);
+  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(ns_id, catalog_manager_->GetTasksTracker());
   auto l = ns->LockForWrite();
   const auto& pb_data = l->pb;
 

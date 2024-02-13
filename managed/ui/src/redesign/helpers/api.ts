@@ -424,9 +424,11 @@ class ApiService {
     return axios.post<YBPTask>(requestUrl, editDrConfigRequest).then((response) => response.data);
   };
 
-  deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {
+  deleteDrConfig = (drConfigUuid: string, isForceDelete: boolean): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-    return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+    return axios
+      .delete<YBPTask>(requestUrl, { params: { isForceDelete } })
+      .then((response) => response.data);
   };
 
   initiateSwitchover = (

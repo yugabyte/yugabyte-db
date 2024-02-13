@@ -978,6 +978,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       }
     }
 
+    last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
+
     if (!superblock.active_restorations().empty()) {
       active_restorations_.reserve(superblock.active_restorations().size());
       for (const auto& id : superblock.active_restorations()) {
@@ -1156,6 +1158,8 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
       *split_child_table_ids.Add() = split_child_tablet_id;
     }
   }
+
+  pb.set_last_attempted_clone_seq_no(last_attempted_clone_seq_no_);
 
   if (!active_restorations_.empty()) {
     auto& active_restorations = *pb.mutable_active_restorations();
@@ -1622,6 +1626,22 @@ void RaftGroupMetadata::SetSplitDone(
   split_op_id_ = op_id;
   split_child_tablet_ids_[0] = child1;
   split_child_tablet_ids_[1] = child2;
+}
+
+void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  DCHECK(last_attempted_clone_seq_no_ < clone_request_seq_no);
+  last_attempted_clone_seq_no_ = clone_request_seq_no;
+}
+
+bool RaftGroupMetadata::HasAttemptedClone(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_ >= clone_request_seq_no;
+}
+
+uint32_t RaftGroupMetadata::LastAttemptedCloneSeqNo() {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_;
 }
 
 bool RaftGroupMetadata::has_active_restoration() const {
