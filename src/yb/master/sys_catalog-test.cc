@@ -377,7 +377,8 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 2. CHECK ADD_NAMESPACE
   // Create new namespace.
-  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  scoped_refptr<NamespaceInfo> ns(
+      new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf", /*tasks_tracker=*/nullptr));
   {
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.set_name("test_ns");
@@ -806,7 +807,8 @@ TEST_F(SysCatalogTest, TestNamespaceNameMigration) {
   ASSERT_EQ(kNumSystemNamespaces, ns_loader->namespaces.size());
 
   auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
-  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  scoped_refptr<NamespaceInfo> ns(
+      new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf", /*tasks_tracker=*/nullptr));
   {
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.set_name("test_ns");

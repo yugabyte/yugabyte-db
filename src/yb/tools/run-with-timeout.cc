@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "yb/gutil/stringprintf.h"
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
@@ -201,7 +203,7 @@ int main(int argc, char** argv) {
   {
     unique_lock<mutex> l(lock);
     finished = true;
-    finished_cond.notify_one();
+    YB_PROFILE(finished_cond.notify_one());
   }
 
   LOG(INFO) << "Waiting for reaper thread to join";

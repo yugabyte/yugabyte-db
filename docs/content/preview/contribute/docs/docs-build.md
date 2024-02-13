@@ -107,6 +107,16 @@ The live-reload server runs at <http://localhost:1313/> unless port 1313 is alre
 
 When you're done, type Ctrl-C stop the server.
 
+### Optional: Run builds more quickly
+
+If you are only working in `preview` or `stable`, you can start the live-reload server more quickly using the following:
+
+```sh
+npm run fast
+```
+
+This builds only the `preview` and `stable` directories, and does not generate syntax diagrams.
+
 ### Optional: Run a full build {#full-build}
 
 The live-reload server is the quickest way to get the docs running locally. If you want to run the build exactly the same way the CI pipeline does for a deployment, do the following:

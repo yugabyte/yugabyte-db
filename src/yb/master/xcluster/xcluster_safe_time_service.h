@@ -68,6 +68,10 @@ class XClusterSafeTimeService {
   Status GetXClusterSafeTimeInfoFromMap(
       const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp);
 
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const int64_t leader_term, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter);
+
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
       const LeaderEpoch& epoch);
 
@@ -76,7 +80,7 @@ class XClusterSafeTimeService {
 
  private:
   friend class XClusterSafeTimeServiceMocked;
-  FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
+  friend class XClusterSafeTimeServiceTest;
 
   struct ProducerTabletInfo {
     xcluster::ReplicationGroupId replication_group_id;
@@ -125,11 +129,16 @@ class XClusterSafeTimeService {
 
   Result<int64_t> GetLeaderTermFromCatalogManager();
 
+  virtual Result<HybridTime> GetLeaderSafeTimeFromCatalogManager();
+
   void UpdateMetrics(
       const ProducerTabletToSafeTimeMap& tablet_to_safe_time_map,
       const XClusterNamespaceToSafeTimeMap& current_safe_time_map) REQUIRES(mutex_);
 
   void EnterIdleMode(const std::string& reason);
+
+  Result<XClusterNamespaceToSafeTimeMap> GetFilteredXClusterSafeTimeMap(
+      const XClusterSafeTimeFilter& filter) REQUIRES_SHARED(mutex_);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -143,13 +152,19 @@ class XClusterSafeTimeService {
   std::unique_ptr<ThreadPool> thread_pool_;
   std::unique_ptr<ThreadPoolToken> thread_pool_token_;
 
-  std::mutex mutex_;
+  std::shared_mutex mutex_;
   bool safe_time_table_ready_ GUARDED_BY(mutex_);
 
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
+  int64_t leader_term_ GUARDED_BY(mutex_);
   int32_t cluster_config_version_ GUARDED_BY(mutex_);
   std::map<ProducerTabletInfo, NamespaceId> producer_tablet_namespace_map_ GUARDED_BY(mutex_);
+
+  // List of tablet ids for ddl_queue tables, used to find safe times without this stream.
+  std::unordered_set<TabletId> ddl_queue_tablet_ids_ GUARDED_BY(mutex_);
+
+  XClusterNamespaceToSafeTimeMap safe_time_map_without_ddl_queue_ GUARDED_BY(mutex_);
 
   MetricRegistry* metric_registry_ GUARDED_BY(mutex_);
   std::unordered_map<NamespaceId, std::unique_ptr<xcluster::XClusterConsumerClusterMetrics>>

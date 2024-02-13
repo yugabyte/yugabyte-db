@@ -28,6 +28,7 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/random.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/sync_point.h"
 
 namespace rocksdb {
@@ -197,7 +198,7 @@ void WriteThread::SetState(Writer* w, uint8_t new_state) {
     std::lock_guard guard(w->StateMutex());
     assert(w->state.load(std::memory_order_relaxed) != new_state);
     w->state.store(new_state, std::memory_order_relaxed);
-    w->StateCV().notify_one();
+    YB_PROFILE(w->StateCV().notify_one());
   }
 }
 

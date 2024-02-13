@@ -154,10 +154,13 @@ func Uninstall(serviceNames []string, removeData bool) {
 				log.Info(fmt.Sprintf("Failed to delete yba installer data dir %s", GetYBAInstallerDataDir()))
 			}
 		}
+		// Remove yba-ctl only when data is removed so state is preserved
+		err = RemoveAll(YbactlInstallDir())
+		if err != nil {
+			log.Warn(fmt.Sprintf("Failed to delete yba-ctl dir %s", YbactlInstallDir()))
+		}
 	}
 
-	// Remove yba-ctl
-	RemoveAll(YbactlInstallDir())
 	os.Remove("/usr/bin/" + GoBinaryName)
 }
 

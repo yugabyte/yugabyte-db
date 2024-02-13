@@ -38,6 +38,9 @@
       "endDate": "End Date",
       "dot": "."
     },
+    "imgAltText": {
+      "infoIcon": "Information Icon"
+    },
     "task": {
       "viewDetails": "View Details"
     },
@@ -45,7 +48,7 @@
       "failedToFetchUniverselist": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
-      "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
@@ -659,7 +662,7 @@
           "switchoverInProgress": "<bold>Switchover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
           "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. ",
-          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary. -- TODO: Text update."
+          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary."
         },
         "switchover": {
           "initiateModal": {
@@ -762,7 +765,8 @@
             "Halted": {
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
-            }
+            },
+            "Error": "Error"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",
@@ -785,7 +789,7 @@
           "property": {
             "drStatus": {
               "label": "DR status",
-              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe. An unhealthy stream means there is significant replication lag. **TODO: Needs to be updated."
+              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe."
             },
             "estimatedDataLoss": {
               "label": "Potential data loss on failover",
@@ -915,7 +919,7 @@
                 "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a fully copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config"
                 },

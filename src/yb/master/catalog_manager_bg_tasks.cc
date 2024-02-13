@@ -41,6 +41,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
@@ -102,7 +103,7 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);
   pending_updates_ = true;
-  cond_.Broadcast();
+  YB_PROFILE(cond_.Broadcast());
 }
 
 void CatalogManagerBgTasks::Wait(int msec) {
@@ -117,7 +118,7 @@ void CatalogManagerBgTasks::Wait(int msec) {
 void CatalogManagerBgTasks::WakeIfHasPendingUpdates() {
   MutexLock lock(lock_);
   if (pending_updates_) {
-    cond_.Broadcast();
+    YB_PROFILE(cond_.Broadcast());
   }
 }
 

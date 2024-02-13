@@ -79,6 +79,13 @@ using client::YBTableName;
 
 namespace cdc {
 
+std::string GenerateRandomReplicationSlotName() {
+  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
+  // contain dash. Hence, we remove them from here.
+  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
+  return Format("test_replication_slot_$0", uuid_without_dash);
+}
+
 void CDCSDKTestBase::TearDown() {
   YBTest::TearDown();
 
@@ -400,17 +407,13 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
-  CDCSDKSnapshotOption snapshot_option, CDCRecordType record_type) {
-  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
-  // contain dash. Hence, we remove them from here.
-  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
-  auto slot_name = Format("test_replication_slot_$0", uuid_without_dash);
-  return CreateDBStreamWithReplicationSlot(slot_name, snapshot_option, record_type);
+    CDCRecordType record_type) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateDBStreamWithReplicationSlot(slot_name, record_type);
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
     const std::string& replication_slot_name,
-    CDCSDKSnapshotOption snapshot_option,
     CDCRecordType record_type) {
   auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   RETURN_NOT_OK(conn.FetchFormat(
@@ -421,6 +424,34 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
   auto stream_id = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
       replication_slot_name)));
+  return xrepl::StreamId::FromString(stream_id);
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option) {
+  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+
+  std::string snapshot_action;
+  switch (snapshot_option) {
+    case NOEXPORT_SNAPSHOT:
+      snapshot_action = "NOEXPORT_SNAPSHOT";
+      break;
+    case USE_SNAPSHOT:
+      snapshot_action = "USE_SNAPSHOT";
+      break;
+  }
+
+  auto slot_name = GenerateRandomReplicationSlotName();
+  RETURN_NOT_OK(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL yboutput $1", slot_name, snapshot_action));
+
+  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream.
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  // Fetch the stream_id of the replication slot.
+  auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
+      "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
+      slot_name)));
   return xrepl::StreamId::FromString(stream_id);
 }
 
@@ -443,7 +474,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     return StatusFromPB(resp.error().status());
   }
 
-  // Sleep for 1 second - temporary till synchronous implementation of CreateCDCStream
+  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream
   SleepFor(MonoDelta::FromSeconds(1));
 
   return xrepl::StreamId::FromString(resp.db_stream_id());

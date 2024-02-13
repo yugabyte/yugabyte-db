@@ -48,6 +48,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -63,10 +64,12 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/util/callsite_profiling.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
 
+#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/thread_pool.h"
 
@@ -74,7 +77,9 @@
 
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations.pb.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
@@ -92,8 +97,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
-
+#include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/crc.h"
@@ -101,6 +107,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -284,6 +291,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
+using tablet::CloneTabletRequestPB;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
@@ -324,6 +332,33 @@ bool GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
     return false;
   }
   return (*consensus = result.get()) != nullptr;
+}
+
+template <class Req, class Resp, class Action>
+void PerformAtLeader(
+    const Req& req, Resp* resp, rpc::RpcContext* context, TabletServerIf* server,
+    const char* op_name, const Action& action) {
+  TRACE_EVENT1("tserver", op_name, "tablet_id", req->tablet_id());
+
+  UpdateClock(*req, server->Clock());
+
+  auto tablet_peer = LookupLeaderTabletOrRespond(
+      server->tablet_peer_lookup(), req->tablet_id(), resp, context);
+
+  if (!tablet_peer) {
+    return;
+  }
+
+  auto status = action(tablet_peer);
+
+  if (*context) {
+    resp->set_propagated_hybrid_time(server->Clock()->Now().ToUint64());
+    if (status.ok()) {
+      context->RespondSuccess();
+    } else {
+      SetupErrorAndRespond(resp->mutable_error(), status, context);
+    }
+  }
 }
 
 } // namespace
@@ -653,7 +688,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   auto se = ScopeExit([this] {
     std::unique_lock<std::mutex> l(this->backfill_lock_);
     this->num_tablets_backfilling_--;
-    this->backfill_cond_.notify_all();
+    YB_PROFILE(this->backfill_cond_.notify_all());
   });
 
   // Wait for SafeTime to get past read_at;
@@ -1197,36 +1232,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   }
 }
 
-template <class Req, class Resp, class Action>
-void TabletServiceImpl::PerformAtLeader(
-    const Req& req, Resp* resp, rpc::RpcContext* context, const Action& action) {
-  UpdateClock(*req, server_->Clock());
-
-  auto tablet_peer = LookupLeaderTabletOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
-
-  if (!tablet_peer) {
-    return;
-  }
-
-  auto status = action(tablet_peer);
-
-  if (*context) {
-    resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-    if (status.ok()) {
-      context->RespondSuccess();
-    } else {
-      SetupErrorAndRespond(resp->mutable_error(), status, context);
-    }
-  }
-}
-
 void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB* req,
                                              GetTransactionStatusResponsePB* resp,
                                              rpc::RpcContext context) {
-  TRACE("GetTransactionStatus");
-
-  PerformAtLeader(req, resp, &context,
+  PerformAtLeader(req, resp, &context, server_, "GetTransactionStatus",
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
     auto* transaction_coordinator = tablet_peer.tablet->transaction_coordinator();
     if (!transaction_coordinator) {
@@ -1242,9 +1251,7 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 void TabletServiceImpl::GetOldTransactions(const GetOldTransactionsRequestPB* req,
                                            GetOldTransactionsResponsePB* resp,
                                            rpc::RpcContext context) {
-  TRACE("GetOldTransactions");
-
-  PerformAtLeader(req, resp, &context,
+  PerformAtLeader(req, resp, &context, server_, "GetOldTransactions",
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) {
     auto* transaction_coordinator = tablet_peer.tablet->transaction_coordinator();
     if (!transaction_coordinator) {
@@ -1280,9 +1287,7 @@ void TabletServiceImpl::GetTransactionStatusAtParticipant(
     const GetTransactionStatusAtParticipantRequestPB* req,
     GetTransactionStatusAtParticipantResponsePB* resp,
     rpc::RpcContext context) {
-  TRACE("GetTransactionStatusAtParticipant");
-
-  PerformAtLeader(req, resp, &context,
+  PerformAtLeader(req, resp, &context, server_, "GetTransactionStatusAtParticipant",
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) -> Status {
     auto* transaction_participant = tablet_peer.tablet->transaction_participant();
     if (!transaction_participant) {
@@ -1843,51 +1848,67 @@ void TabletServiceAdminImpl::SplitTablet(
         TabletServerErrorPB::UNKNOWN_ERROR,
         &context);
   }
-  TRACE_EVENT1("tserver", "SplitTablet", "tablet_id", req->tablet_id());
+  PerformAtLeader(req, resp, &context, server_, "SplitTablet",
+      [req, resp, &context, this](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+    const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
+    if (!consensus_result) {
+      return consensus_result.status().CloneAndAddErrorCode(
+          TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+    }
 
-  server::UpdateClock(*req, server_->Clock());
-  auto leader_tablet_peer =
-      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  if (!leader_tablet_peer) {
-    return;
-  }
-
-  {
     auto tablet_data_state = leader_tablet_peer.peer->data_state();
     if (tablet_data_state != tablet::TABLET_DATA_READY) {
-      auto s = tablet_data_state == tablet::TABLET_DATA_SPLIT_COMPLETED
-                  ? STATUS_FORMAT(AlreadyPresent, "Tablet $0 is already split.", req->tablet_id())
-                  : STATUS_FORMAT(
-                        InvalidArgument, "Invalid tablet $0 data state: $1", req->tablet_id(),
-                        tablet_data_state);
-      SetupErrorAndRespond(
-          resp->mutable_error(), s, TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
-      return;
+      auto status = tablet_data_state == tablet::TABLET_DATA_SPLIT_COMPLETED
+          ? STATUS_FORMAT(AlreadyPresent, "Tablet $0 is already split.", req->tablet_id())
+          : STATUS_FORMAT(InvalidArgument, "Invalid tablet $0 data state: $1", req->tablet_id(),
+                          tablet_data_state);
+      return status.CloneAndAddErrorCode(
+          TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
     }
-  }
 
-  const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
-  if (!consensus_result) {
-    SetupErrorAndRespond(
-        resp->mutable_error(), consensus_result.status(), TabletServerErrorPB::TABLET_NOT_RUNNING,
-        &context);
+    auto operation = std::make_unique<tablet::SplitOperation>(
+        leader_tablet_peer.tablet, server_->tablet_manager());
+    *operation->AllocateRequest() = *req;
+    operation->mutable_request()->dup_split_parent_leader_uuid(
+        leader_tablet_peer.peer->permanent_uuid());
+
+    operation->set_completion_callback(
+        MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+    leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
+    ts_split_op_added_->Increment();
+    LOG(INFO) << leader_tablet_peer.peer->LogPrefix() << "RPC for split tablet successful. "
+        << "Submitting request to " << leader_tablet_peer.peer->tablet_id()
+        << " term " << leader_tablet_peer.leader_term;
+    return Status::OK();
+  });
+}
+
+void TabletServiceAdminImpl::CloneTablet(
+    const CloneTabletRequestPB* req, CloneTabletResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "CloneTablet", req, resp, &context)) {
     return;
   }
+  PerformAtLeader(req, resp, &context, server_, "CloneTablet",
+      [req, resp, &context, this](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+    const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
+    if (!consensus_result) {
+      return consensus_result.status().CloneAndAddErrorCode(
+          TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+    }
 
-  auto operation = std::make_unique<tablet::SplitOperation>(
+    auto operation = std::make_unique<tablet::CloneOperation>(
       leader_tablet_peer.tablet, server_->tablet_manager());
-  *operation->AllocateRequest() = *req;
-  operation->mutable_request()->dup_split_parent_leader_uuid(
-      leader_tablet_peer.peer->permanent_uuid());
-
-  operation->set_completion_callback(
+    operation->AllocateRequest()->CopyFrom(*req);
+    operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
-  leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
-  ts_split_op_added_->Increment();
-  LOG(INFO) << leader_tablet_peer.peer->LogPrefix() << "RPC for split tablet successful. "
-      << "Submitting request to " << leader_tablet_peer.peer->tablet_id()
-      << " term " << leader_tablet_peer.leader_term;
+    leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
+    LOG(INFO) << leader_tablet_peer.peer->LogPrefix() << "RPC for clone tablet successful. "
+        << "Submitted request to " << leader_tablet_peer.peer->tablet_id()
+        << " in term " << leader_tablet_peer.leader_term;
+    return Status::OK();
+  });
 }
 
 void TabletServiceAdminImpl::UpgradeYsql(
@@ -1956,7 +1977,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_ysql_enable_db_catalog_version_mode) {
+        if (FLAGS_ysql_enable_db_catalog_version_mode &&
+            server_->catalog_version_table_in_perdb_mode()) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {
@@ -2631,6 +2653,30 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     }
   }
 
+  if (req->has_clone_source_seq_no() != req->has_clone_source_tablet_id()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(InvalidArgument, "Expected both or neither clone source field to be set."),
+        TabletServerErrorPB::UNKNOWN_ERROR,
+        &context);
+    return;
+  }
+  if (req->has_clone_source_seq_no() && req->has_clone_source_tablet_id()) {
+    auto tablet_peer = tablet_manager_->GetServingTablet(req->clone_source_tablet_id());
+    if (tablet_peer.ok()) {
+      auto tablet = (**tablet_peer).shared_tablet();
+      if (tablet && !tablet->metadata()->HasAttemptedClone(req->clone_source_seq_no())) {
+        SetupErrorAndRespond(
+            resp->mutable_error(),
+            STATUS(Incomplete, "Rejecting bootstrap request while clone source has not applied "
+                "CLONE_OP."),
+            TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE, // TODO(anubhav): use a new error
+            &context);
+        return;
+      }
+    }
+  }
+
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
   if (!s.ok()) {
     // Using Status::AlreadyPresent for a remote bootstrap operation that is already in progress.
@@ -2707,6 +2753,9 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     auto consensus_result = peer->GetConsensus();
     data_entry->set_is_leader(
         consensus_result && consensus_result.get()->role() == PeerRole::LEADER);
+    data_entry->set_has_leader_lease(
+        consensus_result &&
+        consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
     data_entry->set_state(status.state());
 
     auto tablet = peer->shared_tablet();
@@ -2812,7 +2861,7 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
 void TabletServiceImpl::GetSplitKey(
     const GetSplitKeyRequestPB* req, GetSplitKeyResponsePB* resp, RpcContext context) {
   TEST_PAUSE_IF_FLAG(TEST_pause_tserver_get_split_key);
-  PerformAtLeader(req, resp, &context,
+  PerformAtLeader(req, resp, &context, server_, "GetSplitKey",
       [req, resp](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
         if (!req->is_manual_split() &&
@@ -3120,7 +3169,7 @@ void TabletServiceImpl::GetTabletKeyRanges(
     const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
     rpc::RpcContext context) {
   PerformAtLeader(
-      req, resp, &context,
+      req, resp, &context, server_, "GetTabletKeyRanges",
       [req, &context](const LeaderTabletPeer& leader_tablet_peer) -> Status {
         const auto& tablet = leader_tablet_peer.tablet;
         RETURN_NOT_OK(tablet->GetTabletKeyRanges(

@@ -218,4 +218,4 @@ add_dependencies(postgres configure_postgres)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process yb_pggate_webserver hdr_histogram)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram)

@@ -3,7 +3,7 @@ import { Variant } from '@material-ui/core/styles/createTypography';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import { ReactComponent as InfoIcon } from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 
@@ -29,6 +29,9 @@ const useStyles = makeStyles((theme) => ({
   },
   warning: {
     color: theme.palette.ybacolors.warning
+  },
+  error: {
+    color: theme.palette.ybacolors.error
   },
   infoIcon: {
     '&:hover': {
@@ -76,8 +79,19 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
           <YBTooltip
             title={<Typography variant="body2">{t(`${drConfig.state}.tooltip`)}</Typography>}
           >
-            <InfoIcon className={classes.infoIcon} />
+            <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
           </YBTooltip>
+        </Typography>
+      );
+    case DrConfigState.ERROR:
+      return (
+        <Typography
+          variant={variant}
+          component="span"
+          className={clsx(classes.label, classes.error)}
+        >
+          <i className="fa fa-exclamation-triangle" />
+          {t(drConfig.state)}
         </Typography>
       );
     default:

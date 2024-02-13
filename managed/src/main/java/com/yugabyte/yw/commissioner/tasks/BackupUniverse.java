@@ -113,7 +113,8 @@ public class BackupUniverse extends UniverseTaskBase {
 
         // If this is a retry and keyspace to restore to already exists, drop it.
         if (!isFirstTry() && taskParams().actionType == ActionType.RESTORE) {
-          createDeleteKeySpaceTask(taskParams().getKeyspace(), taskParams().backupType)
+          createDeleteKeySpaceTask(
+                  taskParams().getKeyspace(), taskParams().backupType, false /*ysqlForce*/)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
 

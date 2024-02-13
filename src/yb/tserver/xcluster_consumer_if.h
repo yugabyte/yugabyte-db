@@ -28,6 +28,10 @@ namespace cdc {
 class ConsumerRegistryPB;
 }  // namespace cdc
 
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+
 namespace master {
 class TSHeartbeatRequestPB;
 }  // namespace master
@@ -63,9 +67,14 @@ class XClusterConsumerIf {
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;
 };
 
+typedef std::function<Result<pgwrapper::PGConn>(const std::string&, const CoarseTimePoint&)>
+    ConnectToPostgresFunc;
+typedef std::function<Result<std::pair<NamespaceId, NamespaceName>>(const TabletId&)>
+    GetNamespaceInfoFunc;
+
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
-    std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-    TabletServer* tserver);
+    std::function<int64_t(const TabletId&)> get_leader_term, ConnectToPostgresFunc connect_to_pg,
+    GetNamespaceInfoFunc get_namespace_info, rpc::ProxyCache* proxy_cache, TabletServer* tserver);
 
 }  // namespace tserver
 }  // namespace yb

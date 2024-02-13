@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -249,6 +250,8 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
+
     DrConfigEditForm editForm = parseEditForm(request);
     validateEditForm(editForm, customer.getUuid(), drConfig);
 
@@ -288,6 +291,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigSetTablesForm setTablesForm = parseSetTablesForm(customerUUID, request);
     if (setTablesForm.bootstrapParams == null) {
@@ -366,6 +370,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
 
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigRestartForm restartForm = parseRestartForm(customerUUID, request);
@@ -390,6 +395,7 @@ public class DrConfigController extends AuthenticatedController {
             : XClusterConfigTaskBase.getTableIds(
                 getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
 
+    log.info("DR state is {}", drConfig.getState());
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getRestartTaskParams(
             ybService,
@@ -399,7 +405,8 @@ public class DrConfigController extends AuthenticatedController {
             tableIds,
             restartForm.bootstrapParams,
             false /* dryRun */,
-            isForceDelete);
+            isForceDelete,
+            drConfig.isHalted() /*isForceBootstrap*/);
 
     UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
     CustomerTask.create(
@@ -449,6 +456,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -569,6 +577,7 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigSwitchoverForm switchoverForm = parseSwitchoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -730,6 +739,7 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigFailoverForm failoverForm = parseFailoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -1225,6 +1235,15 @@ public class DrConfigController extends AuthenticatedController {
                   }
                 }
               });
+    }
+  }
+
+  private void disallowActionOnErrorState(DrConfig drConfig) {
+    if (drConfig.getState().equals(State.Error)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "DR config: %s is in error state and cannot run current action", drConfig.getName()));
     }
   }
 

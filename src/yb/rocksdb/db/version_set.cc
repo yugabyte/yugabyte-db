@@ -43,6 +43,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
@@ -2305,7 +2306,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_writers_.pop_front();
     // Notify new head of write queue
     if (!manifest_writers_.empty()) {
-      manifest_writers_.front()->cv.Signal();
+      YB_PROFILE(manifest_writers_.front()->cv.Signal());
     }
     // we steal this code to also inform about cf-drop
     return STATUS(ShutdownInProgress, "");
@@ -2550,13 +2551,13 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     if (ready != &w) {
       ready->status = s;
       ready->done = true;
-      ready->cv.Signal();
+      YB_PROFILE(ready->cv.Signal());
     }
     if (ready == last_writer) break;
   }
   // Notify new head of write queue
   if (!manifest_writers_.empty()) {
-    manifest_writers_.front()->cv.Signal();
+    YB_PROFILE(manifest_writers_.front()->cv.Signal());
   }
   return s;
 }

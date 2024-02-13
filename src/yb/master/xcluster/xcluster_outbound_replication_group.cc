@@ -37,8 +37,9 @@ struct TableSchemaNamePairHash {
 XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-    HelperFunctions helper_functions)
-    : helper_functions_(std::move(helper_functions)) {
+    HelperFunctions helper_functions, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)),
+      helper_functions_(std::move(helper_functions)) {
   outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
   outbound_rg_info_->Load(outbound_replication_group_pb);
 }
@@ -335,6 +336,7 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
   }
 
   std::vector<NamespaceName> namespace_names;
+  std::vector<NamespaceId> namespace_ids;
   std::vector<TableId> source_table_ids;
   std::vector<xrepl::StreamId> bootstrap_ids;
   for (const auto& [ns_id, ns_info] : outbound_group.namespace_infos()) {
@@ -342,6 +344,7 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
         ns_info.state(), SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::READY,
         TryAgain, Format("Namespace $0 is not yet ready to start replicating", ns_id));
 
+    namespace_ids.push_back(ns_id);
     namespace_names.push_back(VERIFY_RESULT(helper_functions_.get_namespace_name_func(ns_id)));
 
     auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(ns_id));
@@ -363,9 +366,9 @@ Status XClusterOutboundReplicationGroup::CreateXClusterReplication(
 
   auto remote_client = VERIFY_RESULT(GetRemoteClient(target_master_addresses));
 
-  auto target_uuid = VERIFY_RESULT(remote_client->SetupUniverseReplication(
-      Id(), source_master_addresses, namespace_names, source_table_ids, bootstrap_ids,
-      client::XClusterRemoteClient::Transactional::kTrue));
+  auto target_uuid = VERIFY_RESULT(remote_client->SetupDbScopedUniverseReplication(
+      Id(), source_master_addresses, namespace_names, namespace_ids, source_table_ids,
+      bootstrap_ids));
 
   auto* target_universe_info = l.mutable_data()->pb.mutable_target_universe_info();
 
