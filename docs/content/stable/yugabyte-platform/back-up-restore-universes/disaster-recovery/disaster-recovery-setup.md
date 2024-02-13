@@ -18,6 +18,7 @@ Create two universes, the DR primary universe which will serve reads and writes,
 
 Ensure the universes have the following characteristics:
 
+- Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
 - Both universes have the same encryption in transit settings.
 - They can be backed up and restored using the same backup configuration.
 - They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
@@ -41,6 +42,12 @@ After DR is configured, the DR replica will only be available for reads.
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
+
+### Upgrading universes in DR
+
+When upgrading universes in DR replication, you should upgrade and finalize the DR replica before upgrading and finalizing the DR primary.
+
+Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
 ## Set up disaster recovery
 
@@ -163,7 +170,7 @@ To add a database to DR, do the following:
 
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
+    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 1. Click **Validate Selection**.
 
