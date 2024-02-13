@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/thread.h"
@@ -59,7 +60,7 @@ void TerminationMonitor::Terminate() {
     std::lock_guard lock(mutex_);
     stopped_ = true;
   }
-  stop_signal_.notify_all();
+  YB_PROFILE(stop_signal_.notify_all());
 }
 
 void TerminationMonitor::WaitForTermination() {

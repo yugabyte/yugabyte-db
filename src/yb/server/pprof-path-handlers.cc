@@ -65,6 +65,7 @@
 #include "yb/server/pprof-path-handlers_util.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
@@ -73,6 +74,9 @@
 #include "yb/util/status.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/url-coding.h"
+
+#include "yb/common/path-handler-util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);
@@ -336,6 +340,53 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
       pieces.size(), invalid_addrs, missing_symbols);
 }
 
+static void PprofCallsiteProfileHandler(
+    const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+
+  bool reset = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "reset", ""), false);
+  if (req.request_method == "GET") {
+    if (reset) {
+      ResetCallsiteProfile();
+    }
+    auto profile = GetCallsiteProfile();
+
+    // Sort by reverse count. The user can sort by other fields by clicking header columns.
+    sort(profile.begin(), profile.end(),
+         [](const auto& a, const auto& b) {
+           return a.count > b.count;
+         });
+    HTML_PRINT_TABLE_WITH_HEADER_ROW(
+        timing_stats,
+        "File",
+        "Line number",
+        "Function",
+        "Code",
+        "Count",
+        "Cycles",
+        "Average Cycles",
+        "Microseconds",
+        "Avg Microseconds");
+
+    for (const auto& entry : profile) {
+      HTML_PRINT_TABLE_ROW(
+          EscapeForHtmlToString(entry.file_path),
+          entry.line_number,
+          EscapeForHtmlToString(entry.function_name),
+          EscapeForHtmlToString(entry.code_line),
+          entry.count,
+          entry.total_cycles,
+          StringPrintf("%.3f", entry.avg_cycles),
+          entry.total_usec,
+          StringPrintf("%.3f", entry.avg_usec));
+    }
+
+    HTML_END_TABLE;
+    HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+  }
+}
+
 void AddPprofPathHandlers(Webserver* webserver) {
   // Path handlers for remote pprof profiling. For information see:
   // https://gperftools.googlecode.com/svn/trunk/doc/pprof_remote_servers.html
@@ -359,6 +410,8 @@ void AddPprofPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler,
       false /* is_styled */, false /* is_on_nav_bar */);
   webserver->RegisterPathHandler("/pprof/heap_snapshot", "", PprofHeapSnapshotHandler,
+      true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/callsite_profile", "", PprofCallsiteProfileHandler,
       true /* is_styled */, false /* is_on_nav_bar */);
 }
 

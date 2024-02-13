@@ -12,10 +12,9 @@
 //
 
 #include "yb/util/background_task.h"
-
-#include "yb/util/status.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/status_log.h"
-
+#include "yb/util/status.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -52,7 +51,7 @@ void BackgroundTask::Shutdown() {
     }
     closing_ = true;
   }
-  cond_.notify_one();
+  YB_PROFILE(cond_.notify_one());
   CHECK_OK(ThreadJoiner(thread_.get()).Join());
 }
 
@@ -64,7 +63,7 @@ Status BackgroundTask::Wake() {
     }
     have_job_ = true;
   }
-  cond_.notify_one();
+  YB_PROFILE(cond_.notify_one());
   return Status::OK();
 }
 

@@ -243,6 +243,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
+  bool catalog_version_table_in_perdb_mode() const override {
+    std::lock_guard l(lock_);
+    return catalog_version_table_in_perdb_mode_;
+  }
+
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
@@ -403,6 +408,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+  // See same variable comments in CatalogManager.
+  bool catalog_version_table_in_perdb_mode_ = false;
 
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;

@@ -42,6 +42,7 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -190,6 +191,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   const TabletId& tablet_id() const override;
 
   const TabletId& split_parent_tablet_id() const override;
+
+  const std::optional<CloneSourceInfo>& clone_source_info() const override;
 
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
@@ -759,6 +762,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
   const TabletId split_parent_tablet_id_;
+
+  const std::optional<CloneSourceInfo> clone_source_info_;
 
   std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
 

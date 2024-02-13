@@ -736,7 +736,10 @@ public class PlacementInfoUtil {
         universe == null
             ? taskParams.getPrimaryCluster().userIntent.universeName
             : universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
-    taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
+    taskParams.nodePrefix =
+        universe == null
+            ? Util.getNodePrefix(customerId, universeName)
+            : universe.getUniverseDetails().nodePrefix;
   }
 
   private static boolean isDedicatedModeChanged(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {

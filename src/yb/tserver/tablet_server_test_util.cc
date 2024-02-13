@@ -33,6 +33,7 @@
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -46,11 +47,13 @@ void CreateTsClientProxies(const HostPort& addr,
                            std::unique_ptr<TabletServerServiceProxy>* proxy,
                            std::unique_ptr<TabletServerAdminServiceProxy>* admin_proxy,
                            std::unique_ptr<ConsensusServiceProxy>* consensus_proxy,
-                           std::unique_ptr<server::GenericServiceProxy>* generic_proxy) {
+                           std::unique_ptr<server::GenericServiceProxy>* generic_proxy,
+                           std::unique_ptr<TabletServerBackupServiceProxy>* backup_proxy) {
   proxy->reset(new TabletServerServiceProxy(proxy_cache, addr));
   admin_proxy->reset(new TabletServerAdminServiceProxy(proxy_cache, addr));
   consensus_proxy->reset(new ConsensusServiceProxy(proxy_cache, addr));
   generic_proxy->reset(new server::GenericServiceProxy(proxy_cache, addr));
+  backup_proxy->reset(new TabletServerBackupServiceProxy(proxy_cache, addr));
 }
 
 } // namespace tserver

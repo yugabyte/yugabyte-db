@@ -740,7 +740,8 @@ public class XClusterConfigController extends AuthenticatedController {
             restartForm.tables,
             restartForm.bootstrapParams,
             restartForm.dryRun,
-            isForceDelete);
+            isForceDelete,
+            false /*forceBootstrap*/);
 
     if (restartForm.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -774,7 +775,8 @@ public class XClusterConfigController extends AuthenticatedController {
       Set<String> tableIds,
       RestartBootstrapParams restartBootstrapParams,
       boolean dryRun,
-      boolean isForceDelete) {
+      boolean isForceDelete,
+      boolean isForceBootstrap) {
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, tableIds);
@@ -822,7 +824,8 @@ public class XClusterConfigController extends AuthenticatedController {
         requestedTableInfoList,
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
-        isForceDelete);
+        isForceDelete,
+        isForceBootstrap);
   }
 
   /**

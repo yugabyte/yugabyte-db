@@ -333,6 +333,11 @@ message UpdateTransactionTablesVersionResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message CloneTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -377,6 +382,8 @@ service TabletServerAdminService {
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);
+
+  rpc CloneTablet(tablet.CloneTabletRequestPB) returns (CloneTabletResponsePB);
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);

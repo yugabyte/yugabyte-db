@@ -1906,6 +1906,10 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   return info.num_entries();
 }
 
+Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
+  return tserver_shared_object_->catalog_version_table_in_perdb_mode();
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
@@ -2189,8 +2193,10 @@ void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
 
 Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
                                            const PgOid database_oid,
+                                           YBCPgReplicationSlotSnapshotAction snapshot_action,
                                            PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(
+      pg_session_, slot_name, database_oid, snapshot_action);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }

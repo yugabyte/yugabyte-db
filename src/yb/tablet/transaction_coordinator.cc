@@ -57,6 +57,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -1427,7 +1428,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       actions.Swap(&postponed_leader_actions_);
     }
     if (last_transaction) {
-      last_transaction_finished_.notify_one();
+      YB_PROFILE(last_transaction_finished_.notify_one());
     }
     ExecutePostponedLeaderActions(&actions);
 
@@ -1462,7 +1463,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       actions.Swap(&postponed_leader_actions_);
     }
     if (last_transaction) {
-      last_transaction_finished_.notify_one();
+      YB_PROFILE(last_transaction_finished_.notify_one());
     }
     ExecutePostponedLeaderActions(&actions);
 

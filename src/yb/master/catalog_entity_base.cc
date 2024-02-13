@@ -21,6 +21,11 @@ namespace yb::master {
 CatalogEntityWithTasks::CatalogEntityWithTasks(scoped_refptr<TasksTracker> tasks_tracker)
     : tasks_tracker_(tasks_tracker) {}
 
+CatalogEntityWithTasks::~CatalogEntityWithTasks() {
+  CloseAndWaitForAllTasksToAbort();
+  DCHECK(!HasTasks());
+}
+
 std::size_t CatalogEntityWithTasks::NumTasks() const {
   SharedLock l(mutex_);
   return pending_tasks_.size();
@@ -142,6 +147,14 @@ void CatalogEntityWithTasks::WaitTasksCompletion() {
 std::unordered_set<server::MonitoredTaskPtr> CatalogEntityWithTasks::GetTasks() const {
   SharedLock l(mutex_);
   return pending_tasks_;
+}
+
+void CatalogEntityWithTasks::CloseAndWaitForAllTasksToAbort() {
+  VLOG(1) << "Aborting tasks";
+  AbortTasksAndClose();
+  VLOG(1) << "Waiting on Aborting tasks";
+  WaitTasksCompletion();
+  VLOG(1) << "Waiting on Aborting tasks done";
 }
 
 }  // namespace yb::master

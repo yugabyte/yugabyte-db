@@ -499,20 +499,31 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected void checkBootstrapRequiredForReplicationSetup(Set<String> tableIds) {
+  protected void checkBootstrapRequiredForReplicationSetup(
+      Set<String> tableIds, boolean isForceBootstrap) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     log.info(
-        "Running checkBootstrapRequired with (sourceUniverse={},xClusterUuid={},tableIds={})",
+        "Running checkBootstrapRequired with "
+            + "(sourceUniverse={},xClusterUuid={},tableIds={},isForceBootstrap={})",
         xClusterConfig.getSourceUniverseUUID(),
         xClusterConfig,
-        tableIds);
+        tableIds,
+        isForceBootstrap);
 
     try {
       // Check whether bootstrap is required.
-      Map<String, Boolean> isBootstrapRequiredMap =
-          isBootstrapRequired(tableIds, xClusterConfig.getSourceUniverseUUID());
-      log.debug("IsBootstrapRequired result is {}", isBootstrapRequiredMap);
+      Map<String, Boolean> isBootstrapRequiredMap;
 
+      if (isForceBootstrap) {
+        // Uncommon case, only happens during DR repair.
+        log.info("Forcing all tables to be bootstrapped");
+        isBootstrapRequiredMap =
+            tableIds.stream().collect(Collectors.toMap(tid -> tid, tid -> true));
+      } else {
+        isBootstrapRequiredMap =
+            isBootstrapRequired(tableIds, xClusterConfig.getSourceUniverseUUID());
+      }
+      log.debug("IsBootstrapRequired result is {}", isBootstrapRequiredMap);
       // Persist whether bootstrap is required.
       Map<Boolean, List<String>> tableIdsPartitionedByNeedBootstrap =
           isBootstrapRequiredMap.keySet().stream()
@@ -527,6 +538,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     log.info("Completed checkBootstrapRequired");
+  }
+
+  protected void checkBootstrapRequiredForReplicationSetup(Set<String> tableIds) {
+    checkBootstrapRequiredForReplicationSetup(tableIds, false /*isForceBootstrap */);
   }
 
   /**

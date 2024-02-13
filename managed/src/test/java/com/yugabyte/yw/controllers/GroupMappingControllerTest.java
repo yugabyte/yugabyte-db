@@ -179,7 +179,7 @@ public class GroupMappingControllerTest extends FakeDBApplication {
     assertOk(r);
 
     OidcGroupToYbaRoles entity =
-        OidcGroupToYbaRoles.find.query().where().eq("group_name", "Admins").findOne();
+        OidcGroupToYbaRoles.find.query().where().eq("group_name", "admins").findOne();
     assertNotNull(entity);
     assertEquals(entity.getYbaRoles().get(0), role.getRoleUUID());
 
@@ -195,7 +195,7 @@ public class GroupMappingControllerTest extends FakeDBApplication {
     Result res = updateOidcGroupToYbaRoles(bodyJson);
     assertOk(res);
 
-    entity = OidcGroupToYbaRoles.find.query().where().eq("group_name", "Admins").findOne();
+    entity = OidcGroupToYbaRoles.find.query().where().eq("group_name", "admins").findOne();
     assertNotNull(entity);
     assertEquals(entity.getYbaRoles().get(0), role.getRoleUUID());
 

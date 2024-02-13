@@ -318,6 +318,7 @@ public class CloudProviderHandler {
               .append("provider")
               .toString();
       String cloudProviderCode = cloudProviderHelper.getCloudProvider();
+      String yugawareImageRepository = config.getString("yb.kubernetes.yugawareImageRepository");
 
       if (pullSecret != null) {
         formData.config =
@@ -331,7 +332,8 @@ public class CloudProviderHandler {
                 "KUBECONFIG_PULL_SECRET_CONTENT",
                 Serialization.asYaml(pullSecret), // Yaml formatted
                 "KUBECONFIG_IMAGE_REGISTRY",
-                cloudProviderHelper.getKubernetesImageRepository()); // Location of the registry
+                cloudProviderHelper.getKubernetesImageRepository(
+                    yugawareImageRepository)); // Location of the registry
       }
 
       for (String region : regionToAZ.keySet()) {
@@ -353,7 +355,6 @@ public class CloudProviderHandler {
         }
         formData.regionList.add(regionData);
       }
-
       return formData;
     } catch (RuntimeException e) {
       LOG.error(e.getClass() + ": " + e.getMessage(), e);

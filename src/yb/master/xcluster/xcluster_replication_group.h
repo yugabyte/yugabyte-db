@@ -20,7 +20,13 @@
 namespace yb {
 class SysCatalogTable;
 
+namespace client {
+class XClusterRemoteClient;
+}  // namespace client
+
 namespace master {
+
+struct IsOperationDoneResult;
 
 // TODO: #19714 Create XClusterReplicationGroup, a wrapper over UniverseReplicationInfo, that will
 // manage the ReplicationGroup and its ProducerEntryPB in ClusterConfigInfo.
@@ -53,6 +59,27 @@ Status HandleLocalAutoFlagsConfigChange(
     SysCatalogTable& sys_catalog, UniverseReplicationInfo& replication_info,
     ClusterConfigInfo& cluster_config, const AutoFlagsConfigPB& local_auto_flags_config,
     const LeaderEpoch& epoch);
+
+// Check if the table should be added to the replication group. Returns false if the table is
+// already part of the group.
+bool ShouldAddTableToReplicationGroup(
+    UniverseReplicationInfo& universe, const TableInfo& table_info,
+    CatalogManager& catalog_manager);
+
+Result<NamespaceId> GetProducerNamespaceId(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
+bool IncludesConsumerNamespace(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
+Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+    UniverseReplicationInfo& universe);
+
+// Returns (false, Status::OK()) if the universe setup is still in progress.
+// Returns (true, status) if the setup completed. status is set to OK if it completed successfully,
+// or the error that caused it to fail.
+Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager);
 
 }  // namespace master
 }  // namespace yb
