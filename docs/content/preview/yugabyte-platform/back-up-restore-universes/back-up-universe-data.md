@@ -109,7 +109,7 @@ The copied location provides the full path to the backup.
 YugabyteDB Anywhere universe backups are stored using the following folder structure:
 
 ```output
-<storage-config>
+<storage-address>
   /sub-directories
     /<universe-uuid>
       /<backup-series-name>-<backup-series-uuid>
@@ -148,7 +148,7 @@ When YBA writes a backup, the last step after all parallel tasks complete is to 
 
 ### Moving backups between buckets
 
-When moving a backup (for example, for long term storage), be sure to include all the subdirectories below the storage address.
+When moving a backup (for example, for long term storage), be sure to include all the sub-directories below the storage address.
 
 For a successful restore at a later date, none of the sub-components and folder names can be modified (from the sub-directories on down) in the address - only the storage address.
 
@@ -164,7 +164,7 @@ You can move the backup to a location similar to the following:
 s3://user_bucket/test/univ-xyz
 ```
 
-However, you can't move it to a different subdirectory inside the bucket such as the following:
+However, you can't move it to a different sub-directory inside the bucket such as the following:
 
 ```output
 s3://user_bucket/new-test/univ-xyz

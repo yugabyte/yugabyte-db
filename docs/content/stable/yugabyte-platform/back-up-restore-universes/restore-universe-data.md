@@ -143,7 +143,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. Choose the type of API.
 
-1. In the **Backup location** field, paste the storage address of the backup you are restoring. For example:
+1. In the **Backup location** field, paste the location of the backup you are restoring. For example:
 
     ```output
     s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
