@@ -92,7 +92,10 @@ public class SwitchoverDrConfig extends EditDrConfig {
 
         // Delete old primary -> new primary (this will set new primary's role to be ACTIVE)
         createDeleteXClusterConfigSubtasks(
-            currentXClusterConfig, false /* keepEntry */, false /*forceDelete*/);
+            currentXClusterConfig,
+            false /* keepEntry */,
+            false /*forceDelete*/,
+            false /*deletePitrConfigs*/);
 
         createXClusterConfigSetStatusTask(
                 switchoverXClusterConfig, XClusterConfigStatusType.Running)
