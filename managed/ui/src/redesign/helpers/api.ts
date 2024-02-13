@@ -145,14 +145,25 @@ export const metricQueryKey = {
     ...metricQueryKey.ALL,
     metricRequestParams
   ],
-  latest: (metricRequestParams: { [property: string]: any }, range: string, unit: string) => {
-    const { start, end, ...remainingRequestParams } = metricRequestParams;
+  /**
+   * Usage:
+   * Calling live() with no parameters returns a query key which can be used for invalidating all
+   * live queries.
+   * Invalidated queries will be refetched if the query still has observers.
+   */
+  live: (metricRequestParams?: { [property: string]: any }, range?: string, unit?: string) => {
+    const { start, end, ...remainingRequestParams } = metricRequestParams ?? {};
     // For metric queries where we are interested in the last x units of data, we should
     // use the range and unit as part of the key instead of the concrete start and end time.
     // This helps us refetch in the background while serving the most recent data from
     // the cache. This is a better experience than hitting a loading spinner constantly on a
     // metric graph which updates every x seconds.
-    return [...metricQueryKey.detail(remainingRequestParams), 'live', { range, unit }];
+    return [
+      ...metricQueryKey.ALL,
+      'live',
+      ...(metricRequestParams ? [remainingRequestParams] : []),
+      ...(range || unit ? [{ range, unit }] : [])
+    ];
   }
 };
 
@@ -171,7 +182,7 @@ export const alertTemplateQueryKey = {
 // --------------------------------------------------------------------------------------
 
 export const ApiTimeout = {
-  FETCH_TABLE_INFO: 20_000,
+  FETCH_TABLE_INFO: 90_000,
   FETCH_XCLUSTER_CONFIG: 120_000
 } as const;
 

@@ -605,7 +605,7 @@
             "switchover": "Switchover",
             "failover": "Failover",
             "advancedSubmenu": "Advanced",
-            "restartReplication": "Full Copy DR Primary",
+            "restartReplication": "Resync DR Replica",
             "dbSync": "Reconcile Config with Database"
           }
         },
@@ -946,7 +946,7 @@
           "warning": {
             "insufficientDiskSpace": {
               "title": "Warning: You may need additional disk space.",
-              "body": "Some selected tables require full copying. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
+              "body": "Some selected tables require a full copy. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
         },
@@ -1008,7 +1008,7 @@
         "restartReplicationModal": {
           "title": {
             "xCluster": "Restart Replication",
-            "dr": "Create a New Full Copy of the DR Primary"
+            "dr": "Resync DR Replica with a Full Copy of DR Primary"
           },
           "step": {
             "selectTables": {

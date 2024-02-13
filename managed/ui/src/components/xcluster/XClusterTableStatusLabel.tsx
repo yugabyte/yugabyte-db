@@ -4,28 +4,22 @@ import { Typography } from '@material-ui/core';
 
 import { AlertName, XClusterTableStatus } from './constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
-import { fetchReplicationLag } from '../../actions/xClusterReplication';
 import { getAlertConfigurations } from '../../actions/universe';
-import { getLatestMaxNodeLag } from './ReplicationUtils';
 import { YBLoadingCircleIcon } from '../common/indicators';
-import { alertConfigQueryKey, metricQueryKey } from '../../redesign/helpers/api';
+import { alertConfigQueryKey } from '../../redesign/helpers/api';
 
 import { usePillStyles } from '../../redesign/styles/styles';
 
 interface XClusterTableStatusProps {
-  status: XClusterTableStatus;
-  streamId: string;
-  sourceUniverseTableUuid: string;
-  sourceUniverseNodePrefix: string;
+  replicationLag: number | undefined;
   sourceUniverseUuid: string;
+  status: XClusterTableStatus;
 }
 
 export const XClusterTableStatusLabel = ({
-  status,
-  streamId,
-  sourceUniverseTableUuid,
-  sourceUniverseNodePrefix,
-  sourceUniverseUuid
+  replicationLag,
+  sourceUniverseUuid,
+  status
 }: XClusterTableStatusProps) => {
   const classes = usePillStyles();
   const alertConfigFilter = {
@@ -36,28 +30,10 @@ export const XClusterTableStatusLabel = ({
     getAlertConfigurations(alertConfigFilter)
   );
 
-  const replciationLagMetricRequestParams = {
-    nodePrefix: sourceUniverseNodePrefix,
-    streamId,
-    tableId: sourceUniverseTableUuid
-  };
-  const tableReplicationLagQuery = useQuery(
-    metricQueryKey.detail(replciationLagMetricRequestParams),
-    () => fetchReplicationLag(replciationLagMetricRequestParams)
-  );
-
   switch (status) {
     case XClusterTableStatus.RUNNING: {
-      if (
-        tableReplicationLagQuery.isLoading ||
-        tableReplicationLagQuery.isIdle ||
-        maxAcceptableLagQuery.isLoading ||
-        maxAcceptableLagQuery.isIdle
-      ) {
+      if (maxAcceptableLagQuery.isLoading || maxAcceptableLagQuery.isIdle) {
         return <YBLoadingCircleIcon />;
-      }
-      if (tableReplicationLagQuery.isError || maxAcceptableLagQuery.isError) {
-        return <span>-</span>;
       }
 
       const maxAcceptableLag = Math.min(
@@ -65,8 +41,7 @@ export const XClusterTableStatusLabel = ({
           (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
         )
       );
-      const maxNodeLag = getLatestMaxNodeLag(tableReplicationLagQuery.data);
-      return maxNodeLag === undefined || maxNodeLag > maxAcceptableLag ? (
+      return replicationLag === undefined || replicationLag > maxAcceptableLag ? (
         <Typography variant="body2" className={clsx(classes.pill, classes.warning)}>
           Warning
           <i className="fa fa-exclamation-triangle" />
