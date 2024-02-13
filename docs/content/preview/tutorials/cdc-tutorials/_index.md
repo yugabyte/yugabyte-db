@@ -32,7 +32,7 @@ type: indexpage
     title="Confluent Cloud"
     body="Use YugabyteDB connector to publish changes to Confluent Cloud."
     href="cdc-confluent-cloud/"
-    icon="/images/section_icons/develop/ecosystem/confluent-cloud.png">}}
+    icon="/images/section_icons/develop/ecosystem/confluent-cloud.jpg">}}
 
   {{<index/item
     title="Redpanda"

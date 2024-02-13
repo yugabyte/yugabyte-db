@@ -324,4 +324,4 @@ We can test this real-time functionality by running a sample application to inse
 
 YugabyteDB CDC combined with Azure Event Hubs enables real-time application development using a familiar Kafka interface.
 
-If you're interested in real-time data processing on Azure, check out [Azure Synapse Analytics integration using Azure Event Hubs](../../../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/).
+If you're interested in real-time data processing on Azure, check out [Azure Synapse Analytics integration using Azure Event Hubs](../../cdc-tutorials/cdc-azure-event-hub/).

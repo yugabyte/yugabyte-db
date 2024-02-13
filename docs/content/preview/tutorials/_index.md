@@ -12,67 +12,44 @@ cascade:
 
 ### First applications
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="build-apps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">Hello world</div>
-      </div>
-      <div class="body">
-        Build a hello world application using your favorite programming language.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Hello world"
+    body="Build a hello world application using your favorite programming language."
+    href="build-apps/"
+    icon="/images/section_icons/quick_start/sample_apps.png">}}
 
-</div>
+{{</index/block>}}
 
 ### Cloud
 
 Develop cloud-native applications using YugabyteDB and your preferred cloud environment.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="azure/">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/azure/azure-logo.png" aria-hidden="true" />
-        <div class="title">Azure</div>
-      </div>
-      <div class="body">
-        Build with YugabyteDB on Microsoft Azure.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="google/">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/google/google-cloud-logo.svg" aria-hidden="true" />
-        <div class="title">Google</div>
-      </div>
-      <div class="body">
-        Build with YugabyteDB on Google Cloud.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Azure"
+    body="Build with YugabyteDB on Microsoft Azure."
+    href="azure/"
+    icon="/images/tutorials/azure/azure-logo.png">}}
 
-</div>
+  {{<index/item
+    title="Google"
+    body="Build with YugabyteDB on Google Cloud."
+    href="google/"
+    icon="/images/tutorials/google/google-cloud-logo.svg">}}
+
+{{</index/block>}}
 
 ### CDC
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc-tutorials/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png" aria-hidden="true" />
-        <div class="title">Kafka</div>
-      </div>
-      <div class="body">
-        Stream data with different Kafka environments.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Kafka"
+    body="Stream data with different Kafka environments."
+    href="cdc-tutorials/"
+    icon="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">}}
 
-</div>
+{{</index/block>}}
