@@ -41,12 +41,12 @@ If the DR primary is terminated for some reason, do the following:
 
 At this point, the DR configuration is halted and needs to be repaired.
 
-## Repair DR
+## Repair DR after failover
 
-There are two options to repair a failed DR:
+There are two options to repair a DR that has failed over:
 
 - If the original DR primary has recovered and is fully functional with no active alerts, you can configure DR to use this universe as a DR replica.
-- If the original DR primary cannot be recovered, create a new universe to be configured to act as the DR replica.
+- If the original DR primary cannot be recovered, create a new universe to be configured to act as the DR replica (see [Prerequisites](../disaster-recovery-setup/#prerequisites)).
 
 In both cases, repairing DR involves making a full copy of the databases through the backup-restore process.
 

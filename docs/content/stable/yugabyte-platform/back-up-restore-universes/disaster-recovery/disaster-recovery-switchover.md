@@ -18,7 +18,7 @@ Switchover can be used by enterprises when performing regular business continuit
 
 ## Perform switchover
 
-First, confirm there is no excessive lag between the DR primary and replica. You can monitor lag on the **Disaster Recovery** tab.
+First, confirm there is no excessive lag between the DR primary and replica. You can [monitor lag](../disaster-recovery-setup/#monitor-replication) on the **Disaster Recovery** tab.
 
 If the DR config has any tables that don't have a replication status of Operational, switchover will be unsuccessful. In that case, you can do one of the following:
 

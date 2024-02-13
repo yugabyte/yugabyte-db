@@ -23,7 +23,7 @@ A DR configuration consists of the following:
 
 Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data left behind on the original DR primary _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the universes. By contrast, during a switchover RPO is zero, and data is not lost, because the switchover waits for all to-be-replicated data to drain from the DR primary to the DR replica before switching over.
 
-The recovery time objective (RTO) is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
+The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
@@ -86,8 +86,8 @@ xCluster DR targets one specific and common xCluster deployment model: [active-a
 
 xCluster DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of the DR primary to DR replica simple and turnkey. This orchestration includes the following:
 
-- During setup, xCluster DR ensures that both clusters have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
-- During switchover, xCluster DR waits for the DR primary to drain before switching over.
+- During setup, xCluster DR ensures that both universes have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
+- During switchover, xCluster DR waits for all remaining changes on the DR primary to be replicated to the DR replica before switching over.
 - During both switchover and failover, xCluster DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR primary from read and write to read only.
 
 For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
