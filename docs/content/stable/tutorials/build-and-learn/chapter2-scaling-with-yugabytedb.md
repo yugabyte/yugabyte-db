@@ -172,7 +172,8 @@ Finally, open the **Nodes** dashboard that provides detailed information about t
 
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
-TBD You'll see that:
+TBD You'll see that (appeal to the scalability story here, you can scale data as well as read-write workloads):
+Check here: https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts
 
 * Tablets
 * Leaders
