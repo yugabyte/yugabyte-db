@@ -89,6 +89,7 @@ char *ExtensionObjectPrefix = "helio";
 char *FullBsonTypeName = "helio_core.bson";
 char *ApiExtensionName = "pg_helio_api";
 char *ApiCatalogSchemaName = "helio_api_catalog";
+char *ApiGucPrefix = "helio_api";
 
 typedef struct HelioApiOidCacheData
 {

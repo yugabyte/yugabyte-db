@@ -19,11 +19,13 @@
 #include "utils/list_utils.h"
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
+#include "utils/guc_utils.h"
 
 extern bool LogTTLProgressActivity;
 extern int TTLPurgerStatementTimeout;
 extern int MaxTTLDeleteBatchSize;
 extern int TTLPurgerLockTimeout;
+extern char *ApiGucPrefix;
 
 
 PG_FUNCTION_INFO_V1(delete_expired_rows_for_index);
@@ -143,6 +145,7 @@ delete_expired_rows_for_index(PG_FUNCTION_ARGS)
 		argValues[1] = PointerGetDatum(CastPgbsonToBytea(partialFilterDocument));
 	}
 
+	SetGUCLocally(psprintf("%s.forceUseIndexIfAvailable", ApiGucPrefix), "true");
 	uint64 rowsCount = ExtensionExecuteCappedStatementWithArgsViaSPI(
 		cmdStrDelteRows->data,
 		argCount,
