@@ -13,11 +13,18 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/scope_exit.h"
+
+DECLARE_uint32(cdc_wal_retention_time_secs);
 
 using namespace std::placeholders;
 
@@ -56,8 +63,12 @@ XClusterSourceManager::XClusterSourceManager(
 XClusterSourceManager::~XClusterSourceManager() {}
 
 void XClusterSourceManager::Clear() {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
-  outbound_replication_group_map_.clear();
+  CatalogEntityWithTasks::CloseAbortAndWaitForAllTasks(GetAllOutboundGroups());
+
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_.clear();
+  }
 }
 
 Status XClusterSourceManager::RunLoaders() {
@@ -76,16 +87,33 @@ void XClusterSourceManager::DumpState(std::ostream& out, bool on_disk_dump) cons
     return;
   }
 
-  std::lock_guard l(outbound_replication_group_map_mutex_);
-  if (outbound_replication_group_map_.empty()) {
+  auto all_outbound_groups = GetAllOutboundGroups();
+  if (all_outbound_groups.empty()) {
     return;
   }
   out << "XClusterOutboundReplicationGroups:\n";
 
-  for (const auto& [replication_group_id, outbound_rg] : outbound_replication_group_map_) {
-    out << "  ReplicationGroupId: " << replication_group_id
-        << "\n  metadata: " << outbound_rg.GetMetadata().ShortDebugString() << "\n";
+  for (const auto& outbound_rg : all_outbound_groups) {
+    auto metadata = outbound_rg->GetMetadata();
+    if (metadata.ok()) {
+      out << "  ReplicationGroupId: " << outbound_rg->Id()
+          << "\n  metadata: " << metadata->ShortDebugString() << "\n";
+    }
+    // else deleted.
   }
+}
+
+std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>>
+XClusterSourceManager::GetAllOutboundGroups() const {
+  std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>> result;
+  SharedLock l(outbound_replication_group_map_mutex_);
+  for (auto& [_, outbound_rg] : outbound_replication_group_map_) {
+    if (outbound_rg) {
+      result.emplace_back(outbound_rg);
+    }
+  }
+
+  return result;
 }
 
 Status XClusterSourceManager::InsertOutboundReplicationGroup(
@@ -106,7 +134,8 @@ Status XClusterSourceManager::InsertOutboundReplicationGroup(
   return Status::OK();
 }
 
-XClusterOutboundReplicationGroup XClusterSourceManager::InitOutboundReplicationGroup(
+std::shared_ptr<XClusterOutboundReplicationGroup>
+XClusterSourceManager::InitOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
   XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
@@ -115,12 +144,18 @@ XClusterOutboundReplicationGroup XClusterSourceManager::InitOutboundReplicationG
               YQLDatabase db_type, const NamespaceName& namespace_name) {
             return catalog_manager.GetNamespaceId(db_type, namespace_name);
           },
+      .get_namespace_name_func =
+          [&catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
+            return catalog_manager.GetNamespaceName(namespace_id);
+          },
       .get_tables_func =
           [this](const NamespaceId& namespace_id) { return GetTablesToReplicate(namespace_id); },
       .bootstrap_tables_func =
-          [this](const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline)
-          -> Result<std::vector<xrepl::StreamId>> {
-        return BootstrapTables(table_infos, deadline);
+          [this](
+              const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+              StreamCheckpointLocation checkpoint_location,
+              const LeaderEpoch& epoch) -> Result<std::vector<xrepl::StreamId>> {
+        return BootstrapTables(table_infos, deadline, checkpoint_location, epoch);
       },
       .delete_cdc_stream_func = [&catalog_manager = catalog_manager_](
                                     const DeleteCDCStreamRequestPB& req,
@@ -141,25 +176,23 @@ XClusterOutboundReplicationGroup XClusterSourceManager::InitOutboundReplicationG
           },
   };
 
-  return XClusterOutboundReplicationGroup(
-      replication_group_id, metadata, std::move(helper_functions));
+  return std::make_shared<XClusterOutboundReplicationGroup>(
+      replication_group_id, metadata, std::move(helper_functions),
+      catalog_manager_.GetTasksTracker());
 }
 
-Result<XClusterOutboundReplicationGroup*> XClusterSourceManager::GetOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
-  return const_cast<XClusterOutboundReplicationGroup*>(
-      VERIFY_RESULT(const_cast<const XClusterSourceManager*>(this)->GetOutboundReplicationGroup(
-          replication_group_id)));
-}
-
-Result<const XClusterOutboundReplicationGroup*> XClusterSourceManager::GetOutboundReplicationGroup(
+Result<std::shared_ptr<XClusterOutboundReplicationGroup>>
+XClusterSourceManager::GetOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id) const {
+  SharedLock l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       FindOrNull(outbound_replication_group_map_, replication_group_id);
+  // Value can be nullptr during create, before writing to sys_catalog. These should also be treated
+  // as NotFound.
   SCHECK(
-      outbound_replication_group, NotFound,
+      outbound_replication_group && *outbound_replication_group, NotFound,
       Format("xClusterOutboundReplicationGroup $0 not found", replication_group_id));
-  return outbound_replication_group;
+  return *outbound_replication_group;
 }
 
 Result<std::vector<TableInfoPtr>> XClusterSourceManager::GetTablesToReplicate(
@@ -170,7 +203,41 @@ Result<std::vector<TableInfoPtr>> XClusterSourceManager::GetTablesToReplicate(
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
-    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline) {
+    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
+    StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch) {
+  if (checkpoint_location == StreamCheckpointLocation::kOpId0) {
+    std::vector<xrepl::StreamId> stream_ids;
+    for (const auto& table_info : table_infos) {
+      const auto& table_id = table_info->id();
+      master::CreateCDCStreamRequestPB create_stream_req;
+      master::CreateCDCStreamResponsePB create_stream_resp;
+      create_stream_req.set_table_id(table_info->id());
+
+      std::unordered_map<std::string, std::string> options;
+      auto record_type_option = create_stream_req.add_options();
+      record_type_option->set_key(cdc::kRecordType);
+      record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+      auto record_format_option = create_stream_req.add_options();
+      record_format_option->set_key(cdc::kRecordFormat);
+      record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+
+      RETURN_NOT_OK(catalog_manager_.CreateNewXReplStream(
+          create_stream_req, CreateNewCDCStreamMode::kXClusterTableIds, {table_id},
+          /*namespace_id=*/std::nullopt, &create_stream_resp, epoch, /*rpc=*/nullptr));
+
+      if (create_stream_resp.has_error()) {
+        return StatusFromPB(create_stream_resp.error().status());
+      }
+      stream_ids.emplace_back(
+          VERIFY_RESULT(xrepl::StreamId::FromString(create_stream_resp.stream_id())));
+    }
+
+    return stream_ids;
+  }
+
+  LOG_IF(DFATAL, checkpoint_location != StreamCheckpointLocation::kCurrentEndOfWAL)
+      << "Not implemented yet. Checkpoint location: " << checkpoint_location;
+
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptor* ts = nullptr;
   for (const auto& table_info : table_infos) {
@@ -209,27 +276,67 @@ Result<std::vector<xrepl::StreamId>> XClusterSourceManager::BootstrapTables(
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>>
 XClusterSourceManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
-  return {};
+  if (!ShouldReplicateTable(table_info)) {
+    return {};
+  }
+
+  // Create a AddTableToXClusterSourceTask for each outbound replication group that has the
+  // tables namespace.
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
+  const auto namespace_id = table_info->namespace_id();
+  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
+    if (outbound_replication_group->HasNamespace(namespace_id)) {
+      tasks.emplace_back(std::make_shared<AddTableToXClusterSourceTask>(
+          outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));
+    }
+  }
+
+  return tasks;
+}
+
+std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
+    const NamespaceId& namespace_id) const {
+  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
+    if (outbound_replication_group->HasNamespace(namespace_id)) {
+      return FLAGS_cdc_wal_retention_time_secs;
+    }
+  }
+
+  return std::nullopt;
 }
 
 Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::vector<NamespaceName>& namespace_names, const LeaderEpoch& epoch,
     CoarseTimePoint deadline) {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
-  SCHECK(
-      !outbound_replication_group_map_.contains(replication_group_id), IllegalState,
-      "xClusterOutboundReplicationGroup $0 already exists", replication_group_id);
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    SCHECK(
+        !outbound_replication_group_map_.contains(replication_group_id), IllegalState,
+        "xClusterOutboundReplicationGroup $0 already exists", replication_group_id);
+
+    // Insert a temporary nullptr in order to reserve the Id.
+    outbound_replication_group_map_.emplace(replication_group_id, nullptr);
+  }
+
+  // If we fail anywhere after this we need to return the Id we have reserved.
+  auto se = ScopeExit([this, &replication_group_id]() {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_.erase(replication_group_id);
+  });
 
   SysXClusterOutboundReplicationGroupEntryPB metadata;  // Empty metadata.
   auto outbound_replication_group = InitOutboundReplicationGroup(replication_group_id, metadata);
 
   // This will persist the group to SysCatalog.
   auto namespace_ids =
-      VERIFY_RESULT(outbound_replication_group.AddNamespaces(epoch, namespace_names, deadline));
+      VERIFY_RESULT(outbound_replication_group->AddNamespaces(epoch, namespace_names, deadline));
 
-  outbound_replication_group_map_.emplace(
-      replication_group_id, std::move(outbound_replication_group));
+  se.Cancel();
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_[replication_group_id] = std::move(outbound_replication_group);
+  }
 
   return namespace_ids;
 }
@@ -237,7 +344,6 @@ Result<std::vector<NamespaceId>> XClusterSourceManager::CreateOutboundReplicatio
 Result<NamespaceId> XClusterSourceManager::AddNamespaceToOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name,
     const LeaderEpoch& epoch, CoarseTimePoint deadline) {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
@@ -247,7 +353,6 @@ Result<NamespaceId> XClusterSourceManager::AddNamespaceToOutboundReplicationGrou
 Status XClusterSourceManager::RemoveNamespaceFromOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const LeaderEpoch& epoch) {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
@@ -256,14 +361,16 @@ Status XClusterSourceManager::RemoveNamespaceFromOutboundReplicationGroup(
 
 Status XClusterSourceManager::DeleteOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const LeaderEpoch& epoch) {
-  std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   // This will remove the group from SysCatalog.
   RETURN_NOT_OK(outbound_replication_group->Delete(epoch));
 
-  outbound_replication_group_map_.erase(replication_group_id);
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_.erase(replication_group_id);
+  }
 
   return Status::OK();
 }
@@ -271,10 +378,8 @@ Status XClusterSourceManager::DeleteOutboundReplicationGroup(
 Result<std::optional<bool>> XClusterSourceManager::IsBootstrapRequired(
     const xcluster::ReplicationGroupId& replication_group_id,
     const NamespaceId& namespace_id) const {
-  SharedLock l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
-      VERIFY_RESULT(const_cast<const XClusterSourceManager*>(this)->GetOutboundReplicationGroup(
-          replication_group_id));
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   return outbound_replication_group->IsBootstrapRequired(namespace_id);
 }
@@ -282,11 +387,29 @@ Result<std::optional<bool>> XClusterSourceManager::IsBootstrapRequired(
 Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreams(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const {
-  SharedLock l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   return outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id, opt_table_names);
+}
+
+Status XClusterSourceManager::CreateXClusterReplication(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
+  auto source_master_addresses = VERIFY_RESULT(catalog_manager_.GetMasterAddressHostPorts());
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->CreateXClusterReplication(
+      source_master_addresses, target_master_addresses, epoch);
+}
+
+Result<IsOperationDoneResult> XClusterSourceManager::IsCreateXClusterReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch) {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+  return outbound_replication_group->IsCreateXClusterReplicationDone(
+      target_master_addresses, epoch);
 }
 
 }  // namespace yb::master

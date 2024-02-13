@@ -79,6 +79,13 @@ using client::YBTableName;
 
 namespace cdc {
 
+std::string GenerateRandomReplicationSlotName() {
+  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
+  // contain dash. Hence, we remove them from here.
+  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
+  return Format("test_replication_slot_$0", uuid_without_dash);
+}
+
 void CDCSDKTestBase::TearDown() {
   YBTest::TearDown();
 
@@ -104,16 +111,14 @@ std::unique_ptr<CDCServiceProxy> CDCSDKTestBase::GetCdcProxy() {
 
 // Create a test database to work on.
 Status CDCSDKTestBase::CreateDatabase(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    bool colocated) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, bool colocated) {
   auto conn = VERIFY_RESULT(cluster->Connect());
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE DATABASE $0$1", namespace_name, colocated ? " with colocation = true" : ""));
   return Status::OK();
 }
 
-Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
+Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
   auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
   auto port = cluster->mini_cluster_->AllocateFreePort();
   pgwrapper::PgProcessConf pg_process_conf =
@@ -187,11 +192,8 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
 }
 
 Result<YBTableName> CDCSDKTestBase::GetTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    bool verify_table_name,
-    bool exclude_system_tables) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    bool verify_table_name, bool exclude_system_tables) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 
@@ -230,18 +232,10 @@ Result<YBTableName> CDCSDKTestBase::GetTable(
 }
 
 Result<YBTableName> CDCSDKTestBase::CreateTable(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const uint32_t num_tablets,
-    const bool add_primary_key,
-    bool colocated,
-    const int table_oid,
-    const bool enum_value,
-    const std::string& enum_suffix,
-    const std::string& schema_name,
-    uint32_t num_cols,
-    const std::vector<string>& optional_cols_name) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const uint32_t num_tablets, const bool add_primary_key, bool colocated, const int table_oid,
+    const bool enum_value, const std::string& enum_suffix, const std::string& schema_name,
+    uint32_t num_cols, const std::vector<string>& optional_cols_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
 
   if (enum_value) {
@@ -302,11 +296,8 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 }
 
 Status CDCSDKTestBase::AddColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& add_column_name,
-    const std::string& enum_suffix,
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& add_column_name, const std::string& enum_suffix,
     const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
@@ -316,11 +307,8 @@ Status CDCSDKTestBase::AddColumn(
 }
 
 Status CDCSDKTestBase::DropColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& column_name,
-    const std::string& enum_suffix,
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& column_name, const std::string& enum_suffix,
     const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
@@ -329,13 +317,9 @@ Status CDCSDKTestBase::DropColumn(
 }
 
 Status CDCSDKTestBase::RenameColumn(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    const std::string& old_column_name,
-    const std::string& new_column_name,
-    const std::string& enum_suffix,
-    const std::string& schema_name) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    const std::string& old_column_name, const std::string& new_column_name,
+    const std::string& enum_suffix, const std::string& schema_name) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 RENAME COLUMN $2 TO $3", schema_name, table_name + enum_suffix,
@@ -354,11 +338,8 @@ Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_
 }
 
 Result<std::string> CDCSDKTestBase::GetTableId(
-    Cluster* cluster,
-    const std::string& namespace_name,
-    const std::string& table_name,
-    bool verify_table_name,
-    bool exclude_system_tables) {
+    PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
+    bool verify_table_name, bool exclude_system_tables) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
 
@@ -426,17 +407,13 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
-  CDCSDKSnapshotOption snapshot_option, CDCRecordType record_type) {
-  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
-  // contain dash. Hence, we remove them from here.
-  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
-  auto slot_name = Format("test_replication_slot_$0", uuid_without_dash);
-  return CreateDBStreamWithReplicationSlot(slot_name, snapshot_option, record_type);
+    CDCRecordType record_type) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateDBStreamWithReplicationSlot(slot_name, record_type);
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
     const std::string& replication_slot_name,
-    CDCSDKSnapshotOption snapshot_option,
     CDCRecordType record_type) {
   auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   RETURN_NOT_OK(conn.FetchFormat(
@@ -447,6 +424,34 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
   auto stream_id = VERIFY_RESULT(conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
       replication_slot_name)));
+  return xrepl::StreamId::FromString(stream_id);
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option) {
+  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+
+  std::string snapshot_action;
+  switch (snapshot_option) {
+    case NOEXPORT_SNAPSHOT:
+      snapshot_action = "NOEXPORT_SNAPSHOT";
+      break;
+    case USE_SNAPSHOT:
+      snapshot_action = "USE_SNAPSHOT";
+      break;
+  }
+
+  auto slot_name = GenerateRandomReplicationSlotName();
+  RETURN_NOT_OK(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL yboutput $1", slot_name, snapshot_action));
+
+  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream.
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  // Fetch the stream_id of the replication slot.
+  auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
+      "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
+      slot_name)));
   return xrepl::StreamId::FromString(stream_id);
 }
 
@@ -469,7 +474,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     return StatusFromPB(resp.error().status());
   }
 
-  // Sleep for 1 second - temporary till synchronous implementation of CreateCDCStream
+  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream
   SleepFor(MonoDelta::FromSeconds(1));
 
   return xrepl::StreamId::FromString(resp.db_stream_id());

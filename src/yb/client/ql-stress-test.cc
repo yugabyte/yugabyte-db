@@ -145,11 +145,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WaitForTabletLeaders() {
-    const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
-    for (const auto& tablet_id : ListTabletIdsForTable(cluster_.get(), table_->id())) {
-      RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster_.get(), tablet_id, deadline));
-    }
-    return Status::OK();
+    return WaitForTableLeaders(cluster_.get(), table_->id(), 10s * kTimeMultiplier);
   }
 
   YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,
@@ -648,7 +644,7 @@ void QLStressTest::VerifyFlushedFrontiers() {
       rocksdb::Options options;
       auto tablet_options = TabletOptions();
       tablet_options.rocksdb_env = db->GetEnv();
-      InitRocksDBOptions(&options, "", nullptr, tablet_options);
+      InitRocksDBOptions(&options, "", "", nullptr, tablet_options);
       std::unique_ptr<rocksdb::DB> checkpoint_db;
       rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
 

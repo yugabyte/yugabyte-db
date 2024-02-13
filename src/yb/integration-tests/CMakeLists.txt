@@ -66,6 +66,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
@@ -154,6 +155,7 @@ ADD_YB_TEST(master_heartbeat-itest)
 ADD_YB_TEST(tserver_metrics_heartbeat_data_provider-itest)
 ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(clone-tablet-itest)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(tablet_health_manager-itest)
@@ -217,6 +219,7 @@ ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
+ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
 ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
@@ -249,6 +252,9 @@ function(ADD_YB_CQL_TEST TEST_NAME)
   YB_TEST_TARGET_INCLUDE_DIRECTORIES(${TEST_NAME} PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
   YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} yb-cql)
 endfunction()
+
+ADD_YB_TEST(wait_states-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

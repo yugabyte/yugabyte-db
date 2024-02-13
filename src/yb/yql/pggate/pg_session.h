@@ -369,6 +369,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
+  Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);

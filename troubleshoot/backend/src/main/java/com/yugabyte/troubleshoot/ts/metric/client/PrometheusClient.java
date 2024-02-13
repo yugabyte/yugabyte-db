@@ -8,10 +8,14 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
@@ -27,16 +31,22 @@ public class PrometheusClient {
   }
 
   public MetricResponse query(String metricsUrl, MetricQuery request) {
-    return prometheusClientTemplate.getForObject(
-        buildPrometheusUri(metricsUrl, request), MetricResponse.class);
+    UriComponents uriComponents = buildPrometheusUri(metricsUrl, request);
+    ResponseEntity<MetricResponse> responseEntity =
+        prometheusClientTemplate.exchange(
+            uriComponents.toUri(), HttpMethod.GET, HttpEntity.EMPTY, MetricResponse.class);
+    return responseEntity.getBody();
   }
 
   public MetricResponse queryRange(String metricsUrl, MetricRangeQuery request) {
-    return prometheusClientTemplate.getForObject(
-        buildPrometheusUri(metricsUrl, request), MetricResponse.class);
+    UriComponents uriComponents = buildPrometheusUri(metricsUrl, request);
+    ResponseEntity<MetricResponse> responseEntity =
+        prometheusClientTemplate.exchange(
+            uriComponents.toUri(), HttpMethod.GET, HttpEntity.EMPTY, MetricResponse.class);
+    return responseEntity.getBody();
   }
 
-  private String buildPrometheusUri(String metricsUrl, MetricQuery query) {
+  private UriComponents buildPrometheusUri(String metricsUrl, MetricQuery query) {
     MultiValueMap<String, String> params = baseParams(query);
     if (query.getTime() != null) {
       params.add("time", timeParam(query.getTime()));
@@ -44,7 +54,7 @@ public class PrometheusClient {
     return buildPrometheusUri(metricsUrl, "/query", params);
   }
 
-  private String buildPrometheusUri(String metricsUrl, MetricRangeQuery query) {
+  private UriComponents buildPrometheusUri(String metricsUrl, MetricRangeQuery query) {
     MultiValueMap<String, String> params = baseParams(query);
     if (query.getStart() != null) {
       params.add("start", timeParam(query.getStart()));
@@ -58,14 +68,14 @@ public class PrometheusClient {
     return buildPrometheusUri(metricsUrl, "/query_range", params);
   }
 
-  private String buildPrometheusUri(
+  private UriComponents buildPrometheusUri(
       String metricsUrl, String path, MultiValueMap<String, String> params) {
     UriComponentsBuilder uriComponentsBuilder =
         UriComponentsBuilder.fromUriString(metricsUrl).path("/api/v1").path(path);
     if (params != null) {
       uriComponentsBuilder.queryParams(params);
     }
-    return uriComponentsBuilder.build().toString();
+    return uriComponentsBuilder.build().encode();
   }
 
   private MultiValueMap<String, String> baseParams(MetricQueryBase queryBase) {

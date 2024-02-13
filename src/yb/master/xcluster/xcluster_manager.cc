@@ -166,6 +166,13 @@ Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& names
   return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
 }
 
+Status XClusterManager::GetXClusterSafeTimeForNamespace(
+    const GetXClusterSafeTimeForNamespaceRequestPB* req,
+    GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(req, resp, epoch);
+}
+
 Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
     const LeaderEpoch& epoch) {
   return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
@@ -240,6 +247,8 @@ Status XClusterManager::IsXClusterBootstrapRequired(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
 
+  LOG_FUNC_AND_RPC;
+
   auto bootstrap_required = VERIFY_RESULT(IsBootstrapRequired(
       xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id()));
 
@@ -257,6 +266,8 @@ Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  LOG_FUNC_AND_RPC;
 
   std::vector<std::pair<TableName, PgSchemaName>> table_names;
   for (const auto& table_name : req->table_infos()) {
@@ -280,6 +291,37 @@ Status XClusterManager::GetXClusterStreams(
     table_info->set_pg_schema_name(ns_table_info.pg_schema_name);
   }
 
+  return Status::OK();
+}
+
+Status XClusterManager::CreateXClusterReplication(
+    const CreateXClusterReplicationRequestPB* req, CreateXClusterReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  return XClusterSourceManager::CreateXClusterReplication(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch);
+}
+
+Status XClusterManager::IsCreateXClusterReplicationDone(
+    const IsCreateXClusterReplicationDoneRequestPB* req,
+    IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  std::vector<HostPort> target_master_addresses;
+  HostPortsFromPBs(req->target_master_addresses(), &target_master_addresses);
+
+  auto create_result = VERIFY_RESULT(XClusterSourceManager::IsCreateXClusterReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
+
+  resp->set_done(create_result.done);
+  if (create_result.done) {
+    StatusToPB(create_result.status, resp->mutable_replication_error());
+  }
   return Status::OK();
 }
 

@@ -720,23 +720,27 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
   auto table_lock = tablet->table()->LockForRead();
-  const SysTabletsEntryPB& tablet_pb = tablet->metadata().dirty().pb;
+  const auto& table_pb = table_lock->pb;
+  const auto& tablet_pb = tablet->metadata().dirty().pb;
 
   req_.set_dest_uuid(permanent_uuid);
   req_.set_table_id(tablet->table()->id());
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_table_type(tablet->table()->metadata().state().pb.table_type());
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
-  req_.set_namespace_id(table_lock->pb.namespace_id());
-  req_.set_namespace_name(table_lock->pb.namespace_name());
-  req_.set_pg_table_id(table_lock->pb.pg_table_id());
-  req_.set_table_name(table_lock->pb.name());
-  req_.mutable_schema()->CopyFrom(table_lock->pb.schema());
-  req_.mutable_partition_schema()->CopyFrom(table_lock->pb.partition_schema());
+  req_.set_namespace_id(table_pb.namespace_id());
+  req_.set_namespace_name(table_pb.namespace_name());
+  req_.set_pg_table_id(table_pb.pg_table_id());
+  req_.set_table_name(table_pb.name());
+  req_.mutable_schema()->CopyFrom(table_pb.schema());
+  req_.mutable_partition_schema()->CopyFrom(table_pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   req_.set_colocated(tablet_pb.colocated());
-  if (table_lock->pb.has_index_info()) {
-    req_.mutable_index_info()->CopyFrom(table_lock->pb.index_info());
+  if (table_pb.has_index_info()) {
+    req_.mutable_index_info()->CopyFrom(table_pb.index_info());
+  }
+  if (table_pb.has_wal_retention_secs()) {
+    req_.set_wal_retention_secs(table_pb.wal_retention_secs());
   }
   auto& req_schedules = *req_.mutable_snapshot_schedules();
   req_schedules.Reserve(narrow_cast<int>(snapshot_schedules.size()));
@@ -744,7 +748,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
 
-  req_.mutable_hosted_stateful_services()->CopyFrom(table_lock->pb.hosted_stateful_services());
+  req_.mutable_hosted_stateful_services()->CopyFrom(table_pb.hosted_stateful_services());
 }
 
 std::string AsyncCreateReplica::description() const {

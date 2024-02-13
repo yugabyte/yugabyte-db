@@ -36,6 +36,9 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /*
  * The hash table in which prepared queries are stored. This is
@@ -180,6 +183,18 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	StorePreparedStatement(stmt->name,
 						   plansource,
 						   true);
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		/*
+		 * PREPARE statements (do not consider protocol-level prepared statements)
+		 * are not tracked by ysql connection manager.
+		 * EXECUTE statement should be forwarded on the same connection on
+		 * which PREPARE statement is executed, therefore the connection should be
+		 * made sticky.
+		 */
+		increment_sticky_object_count();
+	}
 }
 
 /*

@@ -47,6 +47,7 @@ Where
 - **Note**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
    them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
    very confusing results.
+- `DELETE` is always done at `QUORUM` consistency level irrespective of setting.
 
 ### WHERE Clause
 

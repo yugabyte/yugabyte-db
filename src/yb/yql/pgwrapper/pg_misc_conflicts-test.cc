@@ -47,8 +47,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 class PgMiscConflictsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
+    EnableFailOnConflict();
     PgMiniTestBase::SetUp();
   }
 

@@ -67,15 +67,17 @@
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/util/string_util.h"
+
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xxhash.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
 #ifdef OS_WIN
@@ -1048,7 +1050,7 @@ class ReporterAgent {
     {
       std::unique_lock<std::mutex> lk(mutex_);
       stop_ = true;
-      stop_cv_.notify_all();
+      YB_PROFILE(stop_cv_.notify_all());
     }
     if (reporting_thread_) {
       reporting_thread_->Join();
@@ -1982,7 +1984,7 @@ class Benchmark {
       MutexLock l(&shared->mu);
       shared->num_initialized++;
       if (shared->num_initialized >= shared->total) {
-        shared->cv.SignalAll();
+        YB_PROFILE(shared->cv.SignalAll());
       }
       while (!shared->start) {
         shared->cv.Wait();
@@ -1998,7 +2000,7 @@ class Benchmark {
       MutexLock l(&shared->mu);
       shared->num_done++;
       if (shared->num_done >= shared->total) {
-        shared->cv.SignalAll();
+        YB_PROFILE(shared->cv.SignalAll());
       }
     }
   }
@@ -2056,7 +2058,7 @@ class Benchmark {
     }
 
     shared.start = true;
-    shared.cv.SignalAll();
+    YB_PROFILE(shared.cv.SignalAll());
     while (shared.num_done < n) {
       shared.cv.Wait();
     }

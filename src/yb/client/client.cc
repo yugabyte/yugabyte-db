@@ -332,6 +332,19 @@ void FillFromRepeatedTabletLocations(
             BOOST_PP_CAT(method, Async))); \
   } while(0);
 
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
+  Result<master::BOOST_PP_CAT(method, ResponsePB)> YBClient::method( \
+      const master::BOOST_PP_CAT(method, RequestPB) & req) { \
+    master::BOOST_PP_CAT(method, ResponsePB) resp; \
+    CALL_SYNC_LEADER_MASTER_RPC_EX(service, req, resp, method); \
+    return resp; \
+  }
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPC(i, data, set) IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP set
+
+#define IMPLEMENT_SYNC_LEADER_MASTER_RPCS(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(IMPLEMENT_SYNC_LEADER_MASTER_RPC, ~, rpcs)
+
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -1893,8 +1906,61 @@ Status YBClient::XClusterReportNewAutoFlagConfigVersion(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
   return Status::OK();
+}
+
+Status YBClient::AddTablesToUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
+  SCHECK(!tables.empty(), InvalidArgument, "Tables are required.");
+
+  master::AlterUniverseReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& table : tables) {
+    req.add_producer_table_ids_to_add(table);
+  }
+
+  master::AlterUniverseReplicationResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, AlterUniverseReplication);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::RemoveTablesFromUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
+  SCHECK(!tables.empty(), InvalidArgument, "Tables are required.");
+
+  master::AlterUniverseReplicationRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& table : tables) {
+    req.add_producer_table_ids_to_remove(table);
+  }
+
+  master::AlterUniverseReplicationResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, AlterUniverseReplication);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<HybridTime> YBClient::GetXClusterSafeTimeForNamespace(
+    const NamespaceId& namespace_id, const master::XClusterSafeTimeFilter& filter) {
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Namespace id is required.");
+
+  master::GetXClusterSafeTimeForNamespaceRequestPB req;
+  req.set_namespace_id(namespace_id);
+  req.set_filter(filter);
+
+  master::GetXClusterSafeTimeForNamespaceResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetXClusterSafeTimeForNamespace);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return HybridTime::FromPB(resp.safe_time_ht());
 }
 
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
@@ -2889,6 +2955,8 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
   return std::move(resp.service_info());
 }
+
+IMPLEMENT_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
 
 }  // namespace client
 }  // namespace yb

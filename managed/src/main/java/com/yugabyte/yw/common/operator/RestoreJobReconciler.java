@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Customer;
@@ -32,6 +33,7 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
   // Need it to list Backups
   private final SharedIndexInformer<Backup> backupInformer;
   private final String namespace;
+  private final OperatorUtils operatorUtils;
 
   public RestoreJobReconciler(
       SharedIndexInformer<RestoreJob> restoreJobInformer,
@@ -40,7 +42,8 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
           resourceClient,
       BackupHelper backupHelper,
       ValidatingFormFactory formFactory,
-      String namespace) {
+      String namespace,
+      OperatorUtils operatorUtils) {
     this.resourceClient = resourceClient;
     this.informer = restoreJobInformer;
     this.lister = new Lister<>(informer.getIndexer());
@@ -48,6 +51,7 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     this.formFactory = formFactory;
     this.namespace = namespace;
     this.backupInformer = backupInformer;
+    this.operatorUtils = operatorUtils;
   }
 
   public UUID getBackupUUIDFromName(String backupName) {
@@ -83,12 +87,11 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     resourceClient.inNamespace(namespace).resource(restoreJob).replaceStatus();
   }
 
-  public RestoreBackupParams getRestoreBackupParamsFromCr(RestoreJob restoreJob) {
+  public RestoreBackupParams getRestoreBackupParamsFromCr(RestoreJob restoreJob) throws Exception {
 
     ObjectMapper objectMapper = new ObjectMapper();
     JsonNode crJsonNode = objectMapper.valueToTree(restoreJob.getSpec());
-    List<Customer> custList = Customer.getAll();
-    Customer cust = custList.get(0);
+    Customer cust = operatorUtils.getOperatorCustomer();
 
     log.info("CRSPECJSON {}", crJsonNode);
 
@@ -123,14 +126,16 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     }
 
     RestoreBackupParams restoreBackupParams = null;
+    Customer cust;
     try {
       restoreBackupParams = getRestoreBackupParamsFromCr(restoreJob);
+      cust = operatorUtils.getOperatorCustomer();
     } catch (Exception e) {
       log.error("Got Exception in converting to restore params {}", e);
+      updateStatus(restoreJob, "", "Failed in scheduling restore Job" + e.getMessage());
+      return;
     }
 
-    List<Customer> custList = Customer.getAll();
-    Customer cust = custList.get(0);
     UUID customerUUID = cust.getUuid();
     UUID taskUUID = null;
     try {

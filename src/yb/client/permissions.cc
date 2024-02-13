@@ -21,6 +21,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/result.h"
 
 DECLARE_int32(update_permissions_cache_msecs);
@@ -159,7 +160,7 @@ void PermissionsCache::UpdateRolesPermissions(const GetPermissionsResponsePB& re
     std::lock_guard l(mtx_);
     ready_.store(true, std::memory_order_release);
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 void PermissionsCache::GetPermissionsFromMaster() {

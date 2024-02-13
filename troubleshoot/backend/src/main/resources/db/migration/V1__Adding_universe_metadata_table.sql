@@ -6,5 +6,8 @@ CREATE
             api_token VARCHAR(255) NOT NULL,
             platform_url TEXT NOT NULL,
             metrics_url TEXT NOT NULL,
+            metrics_scrape_period_sec BIGINT NOT NULL,
+            data_mount_points JSONB NOT NULL,
+            other_mount_points JSONB NOT NULL,
             CONSTRAINT pk_universe_metadata PRIMARY KEY(id)
         );

@@ -205,6 +205,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size='md'
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBLoading />
@@ -219,6 +222,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size='md'
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBErrorIndicator
@@ -321,14 +327,14 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   };
 
-  const setSelectedNamespaces = (namespaces: string[]) => {
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
     // Clear any existing errors.
     // The new table/namespace selection will need to be (re)validated.
     setTableSelectionError(undefined);
     formMethods.clearErrors('namespaceUuids');
 
     // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the validation my selection button.
+    // user clicks on the 'Validate Selection' button.
     formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
   };
   const setSelectedTableUuids = (tableUuids: string[]) => {
@@ -338,7 +344,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     formMethods.clearErrors('tableUuids');
 
     // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the validation my selection button.
+    // user clicks on the 'Validate Selection' button.
     formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
@@ -386,7 +392,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             selectedTableUUIDs: selectedTableUuids,
             selectionError: tableSelectionError,
             selectionWarning: undefined,
-            setSelectedNamespaceUuids: setSelectedNamespaces,
+            setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUUIDs: setSelectedTableUuids,
             setTableType: () => {}, // DR is only available for YSQL
             sourceUniverseUUID: sourceUniverseUuid,

@@ -97,7 +97,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
     // As stated by Microsoft, if you're using MSI, DefaultAzureCredential should "just work".
     // Otherwise, DefaultAzureCredential expects the following three environment variables:
     // - AZURE_TENANT_ID: The tenant ID in Azure Active Directory
-    // - AZURE_CLIENT_ID: The application (client) ID registered in the AAD tenant
+    // - AZURE_CLIENT_ID: The application (client) ID registered in the Azure AD tenant
     // - AZURE_CLIENT_SECRET: The client secret for the registered application
     const credential = new DefaultAzureCredential();
 

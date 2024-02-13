@@ -22,6 +22,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
@@ -123,7 +124,7 @@ class Dumper {
       std::unique_lock<std::mutex> lock(mutex_);
       stop_.store(true, std::memory_order_release);
     }
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
     if (writer_thread_) {
       writer_thread_->Join();
     }
@@ -139,7 +140,7 @@ class Dumper {
     entry->size = size;
     parts.CopyAllTo(entry->data);
     queue_.Push(entry);
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
 
  private:

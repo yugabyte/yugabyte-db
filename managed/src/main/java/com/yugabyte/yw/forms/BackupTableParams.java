@@ -290,6 +290,7 @@ public class BackupTableParams extends TableManagerParams {
     this.setTableName(tableParams.getTableName());
     this.tableUUID = tableParams.tableUUID;
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
+    this.tableByTableBackup = tableParams.tableByTableBackup;
   }
 
   @JsonIgnore

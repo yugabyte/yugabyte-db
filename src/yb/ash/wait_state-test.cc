@@ -40,19 +40,29 @@ AshMetadata GenerateRandomMetadata() {
       .client_host_port = RandomHostPort()};
 }
 
-TEST(WaitStateTest, TestToAndFromPB) {
+void testToAndFromPB(bool use_hex) {
+  // If using Hex, we need to use 2 hex characters to represent 1 byte of uuid.
+  const size_t kInflationFactor = (use_hex ? 2 : 1);
   AshMetadata meta1 = GenerateRandomMetadata();
   AshMetadataPB pb;
-  meta1.ToPB(&pb);
-  ASSERT_EQ(pb.root_request_id().size(), kUuidSize);
-  ASSERT_EQ(pb.yql_endpoint_tserver_uuid().size(), kUuidSize);
-  AshMetadata meta2 = AshMetadata::FromPB(pb);
+  meta1.ToPB(&pb, use_hex);
+  ASSERT_EQ(pb.root_request_id().size(), kInflationFactor * kUuidSize);
+  ASSERT_EQ(pb.yql_endpoint_tserver_uuid().size(), kInflationFactor * kUuidSize);
+  AshMetadata meta2 = AshMetadata::FromPB(pb, use_hex);
   ASSERT_EQ(meta1.root_request_id, meta2.root_request_id);
   ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, meta2.yql_endpoint_tserver_uuid);
   ASSERT_EQ(meta1.query_id, meta2.query_id);
   ASSERT_EQ(meta1.session_id, meta2.session_id);
   ASSERT_EQ(meta1.rpc_request_id, meta2.rpc_request_id);
   ASSERT_EQ(meta1.client_host_port, meta2.client_host_port);
+}
+
+TEST(WaitStateTest, TestToAndFromPB) {
+  testToAndFromPB(/* use_hex */ false);
+}
+
+TEST(WaitStateTest, TestToAndFromPBHex) {
+  testToAndFromPB(/* use_hex */ true);
 }
 
 TEST(WaitStateTest, TestUpdate) {
@@ -65,7 +75,7 @@ TEST(WaitStateTest, TestUpdate) {
   pb1.set_query_id(RandomUniformInt<uint64_t>());
   pb1.set_session_id(RandomUniformInt<uint64_t>());
   HostPortToPB(RandomHostPort(), pb1.mutable_client_host_port());
-  meta1.UpdateFrom(AshMetadata::FromPB(pb1));
+  meta1.UpdateFrom(AshMetadata::FromPB(pb1, /* use_hex */ false));
   ASSERT_EQ(meta1.root_request_id, pb1_root_request_id);
   ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, meta1_copy.yql_endpoint_tserver_uuid);
   ASSERT_EQ(meta1.query_id, pb1.query_id());
@@ -79,7 +89,7 @@ TEST(WaitStateTest, TestUpdate) {
   auto pb2_yql_endpoint_tserver_uuid = Uuid::Generate();
   pb2_yql_endpoint_tserver_uuid.ToBytes(pb2.mutable_yql_endpoint_tserver_uuid());
   pb2.set_rpc_request_id(RandomUniformInt<int64_t>());
-  meta1.UpdateFrom(AshMetadata::FromPB(pb2));
+  meta1.UpdateFrom(AshMetadata::FromPB(pb2, /* use_hex */ false));
   ASSERT_EQ(meta1.root_request_id, meta1_copy.root_request_id);
   ASSERT_EQ(meta1.yql_endpoint_tserver_uuid, pb2_yql_endpoint_tserver_uuid);
   ASSERT_EQ(meta1.query_id, meta1_copy.query_id);

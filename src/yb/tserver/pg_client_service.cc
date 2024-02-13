@@ -45,12 +45,16 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rocksdb/db/db_impl.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
@@ -1217,7 +1221,14 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  void GetRpcsWaitStates(yb::rpc::Messenger* messenger, tserver::WaitStatesPB* resp) {
+  void GetRpcsWaitStates(
+      const PgActiveSessionHistoryRequestPB& req, ServerType type, tserver::WaitStatesPB* resp) {
+    auto* messenger = tablet_server_.GetMessenger(type);
+    if (!messenger) {
+      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(type);
+      return;
+    }
+
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
 
@@ -1233,7 +1244,11 @@ class PgClientServiceImpl::Impl {
     for (const auto& conns : dump_resp.inbound_connections()) {
       for (const auto& call : conns.calls_in_flight()) {
         if (!call.has_wait_state() ||
-            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+            // Ignore log-appenders which are just Idle
+            call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+            // Ignore ActiveSessionHistory calls, if desired.
+            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
+             call.wait_state().aux_info().has_method() &&
              call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
           ignored_calls++;
           if (!call.has_wait_state()) {
@@ -1247,7 +1262,8 @@ class PgClientServiceImpl::Impl {
     if (dump_resp.has_local_calls()) {
       for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
         if (!call.has_wait_state() ||
-            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
+             call.wait_state().aux_info().has_method() &&
              call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
           ignored_calls++;
           if (!call.has_wait_state()) {
@@ -1265,18 +1281,37 @@ class PgClientServiceImpl::Impl {
             << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void GetTServerWaitStates(tserver::WaitStatesPB* resp) {
-    if (auto* messenger = tablet_server_.GetMessenger()) {
-      GetRpcsWaitStates(messenger, resp);
-    } else {
-      LOG(DFATAL) << __func__ << " got no messenger.";
+  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
+      if (wait_state_ptr) {
+        wait_state_ptr->ToPB(resp->add_wait_states());
+      }
+    }
+  }
+
+  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
+    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
+      if (wait_state_ptr) {
+        wait_state_ptr->ToPB(resp->add_wait_states());
+      }
     }
   }
 
   Status ActiveSessionHistory(
       const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
       rpc::RpcContext* context) {
-    GetTServerWaitStates(resp->mutable_tserver_wait_states());
+    if (req.fetch_tserver_states()) {
+      GetRpcsWaitStates(req, ServerType::TServer, resp->mutable_tserver_wait_states());
+    }
+    if (req.fetch_flush_and_compaction_states()) {
+      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+    }
+    if (req.fetch_raft_log_appender_states()) {
+      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+    }
+    if (req.fetch_cql_states()) {
+      GetRpcsWaitStates(req, ServerType::CQLServer, resp->mutable_cql_wait_states());
+    }
     return Status::OK();
   }
 

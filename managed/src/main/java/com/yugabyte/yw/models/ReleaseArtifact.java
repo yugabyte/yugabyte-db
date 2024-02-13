@@ -1,6 +1,9 @@
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -94,8 +97,9 @@ public class ReleaseArtifact extends Model {
       UUID packageFileID,
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
-      throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -122,8 +126,9 @@ public class ReleaseArtifact extends Model {
       String packageURL,
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
-      throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -150,8 +155,9 @@ public class ReleaseArtifact extends Model {
       GCSFile gcsFile,
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
-      throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -179,8 +185,9 @@ public class ReleaseArtifact extends Model {
       S3File s3File,
       String signature) {
     if (!validatePlatformArchitecture(platform, architecture)) {
-      throw new RuntimeException(
-          String.format("invalid platform/architecture pair {}-{}", platform, architecture));
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("invalid platform/architecture pair %s-%s", platform, architecture));
     }
     ReleaseArtifact artifact = new ReleaseArtifact();
     artifact.sha256 = sha256;
@@ -195,6 +202,9 @@ public class ReleaseArtifact extends Model {
 
   public static ReleaseArtifact get(UUID artifactUuid) {
     ReleaseArtifact artifact = find.byId(artifactUuid);
+    if (artifact == null) {
+      return artifact;
+    }
     if (artifact.gcsFileJson != null) {
       artifact.gcsFile = Json.fromJson(Json.parse(artifact.gcsFileJson), GCSFile.class);
     }
@@ -210,6 +220,11 @@ public class ReleaseArtifact extends Model {
 
   public void setReleaseUUID(UUID releaseUuid) {
     this.releaseUUID = releaseUuid;
+    save();
+  }
+
+  public void setSha256(String sha256) {
+    this.sha256 = sha256;
     save();
   }
 

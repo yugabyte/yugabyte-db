@@ -234,7 +234,7 @@ struct WaiterLockStatusInfo {
   TransactionId id;
   SubTransactionId subtxn_id;
   HybridTime wait_start;
-  LockBatchEntries locks;
+  IntentTypesContainer intents;
   std::vector<BlockerDataPtr> blockers;
 };
 
@@ -250,6 +250,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              HybridTime wq_entry_time_,
              const TabletId& status_tablet_,
              const std::vector<BlockerDataAndConflictInfo> blockers_,
+             IntentProviderFunc&& intent_provider_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
              scoped_refptr<EventStats>* finished_waiting_latency,
@@ -265,6 +266,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
         wait_state(ash::WaitStateInfo::CurrentWaitState()),
+        intent_provider(intent_provider_),
         callback(std::move(callback_)),
         waiter_registration(std::move(waiter_registration_)),
         finished_waiting_latency_(*finished_waiting_latency),
@@ -295,6 +297,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   const TabletId status_tablet;
   const std::vector<BlockerDataAndConflictInfo> blockers;
   const ash::WaitStateInfoPtr wait_state;
+  const IntentProviderFunc intent_provider;
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
 
@@ -312,6 +315,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       Status waiter_status, HybridTime resume_ht = HybridTime::kInvalid,
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
+    TRACE_FUNC();
     SET_WAIT_STATUS(OnCpu_Passive);
     SCOPED_WAIT_STATUS(OnCpu_Active);
     auto& status = waiter_status;
@@ -438,23 +442,24 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return false;
   }
 
-  LockBatchEntries GetLockBatchEntries() const EXCLUDES(mutex_) {
-    SharedLock lock(mutex_);
-    return unlocked_ ? unlocked_->Get() : LockBatchEntries{};
-  }
-
-  WaiterLockStatusInfo GetWaiterLockStatusInfo() const EXCLUDES(mutex_) {
+  Result<WaiterLockStatusInfo> GetWaiterLockStatusInfo() const EXCLUDES(mutex_) {
     SharedLock lock(mutex_);
     auto info = WaiterLockStatusInfo {
       .id = id,
       .subtxn_id = subtxn_id,
       .wait_start = HybridTime::FromMicros(request_start_us),
-      .locks = unlocked_ ? unlocked_->Get() : LockBatchEntries{},
+      .intents = {},
       .blockers = {},
     };
-    info.blockers.reserve(blockers.size());
-    for (const auto& blocker : blockers) {
-      info.blockers.push_back(blocker.first);
+    // 'intent_provider' should not be accessed when the waiter was resumed or is in the process
+    // of resumption. The underlying function accesses fields of WriteQuery object, which could be
+    // destructed sometime post waiter resumption.
+    if (unlocked_) {
+      info.blockers.reserve(blockers.size());
+      for (const auto& blocker : blockers) {
+        info.blockers.push_back(blocker.first);
+      }
+      info.intents = VERIFY_RESULT(intent_provider());
     }
     return info;
   }
@@ -1034,6 +1039,7 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
       int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider,
       WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
@@ -1064,7 +1070,7 @@ class WaitQueue::Impl {
 
         RETURN_NOT_OK(SetupWaiterUnlocked(
             waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no,
-            txn_start_us, request_start_us,
+            txn_start_us, request_start_us, std::move(intent_provider),
             std::move(callback), std::move(blocker_datas), std::move(blockers), deadline));
         TRACE("pre-wait will block");
         return true;
@@ -1086,6 +1092,7 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider,
       WaitDoneCallback callback) {
     TRACE_FUNC();
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
@@ -1152,7 +1159,7 @@ class WaitQueue::Impl {
 
       return SetupWaiterUnlocked(
           waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
-          request_start_us, std::move(callback),
+          request_start_us, std::move(intent_provider), std::move(callback),
           std::move(blocker_datas), std::move(blockers), deadline);
     }
   }
@@ -1160,7 +1167,7 @@ class WaitQueue::Impl {
   Status SetupWaiterUnlocked(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t request_start_us,
+      int64_t txn_start_us, uint64_t request_start_us, IntentProviderFunc intent_provider,
       WaitDoneCallback callback, std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers, CoarseTimePoint deadline) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
@@ -1192,8 +1199,9 @@ class WaitQueue::Impl {
 
     auto waiter_data = std::make_shared<WaiterData>(
         waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, request_start_us, clock_->Now(),
-        status_tablet_id, std::move(blocker_datas), std::move(callback), std::move(scoped_reporter),
-        &rpcs_, &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_, deadline);
+        status_tablet_id, std::move(blocker_datas), std::move(intent_provider), std::move(callback),
+        std::move(scoped_reporter), &rpcs_, &finished_waiting_latency_,
+        &in_progress_rpc_status_req_callbacks_, deadline);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
              waiter_data->wq_entry_time >= single_shard_waiters_.front()->wq_entry_time);
@@ -1515,7 +1523,7 @@ class WaitQueue::Impl {
                        uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
                        TransactionLockInfoManager* lock_info_manager) const {
-    std::vector<WaiterLockStatusInfo> waiter_lock_entries;
+    std::vector<WaiterDataPtr> waiters_copy;
     {
       SharedLock l(mutex_);
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
@@ -1524,28 +1532,34 @@ class WaitQueue::Impl {
         // When transactions is empty and the max start time of single shard waiters isn't set,
         // return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
-          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
+          waiters_copy.push_back(waiter_data);
         }
         for (const auto& waiter_data : single_shard_waiters_) {
-          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
+          waiters_copy.push_back(waiter_data);
         }
       } else {
         for (const auto& [txn_id, _] : transactions) {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
-            waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
+            waiters_copy.push_back(it->second);
           }
         }
         for (const auto& waiter_data : single_shard_waiters_) {
           if (waiter_data->request_start_us <= max_single_shard_waiter_start_time_us) {
-            waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
+            waiters_copy.push_back(waiter_data);
           }
         }
       }
     }
 
-    for (const auto& lock_status_info : waiter_lock_entries) {
-      const auto& txn_id = lock_status_info.id;
+    for (const auto& waiter : waiters_copy) {
+      auto lock_info = VERIFY_RESULT(waiter->GetWaiterLockStatusInfo());
+      if (lock_info.intents.empty()) {
+        // If the waiter has been resumed or is in the process of resumption, skip populating
+        // its locks as part of 'pg_locks'.
+        continue;
+      }
+      const auto& txn_id = lock_info.id;
       TabletLockInfoPB::WaiterInfoPB* waiter_info = nullptr;
       if (txn_id.IsNil()) {
         waiter_info = lock_info_manager->GetSingleShardLockInfo();
@@ -1555,29 +1569,15 @@ class WaitQueue::Impl {
         waiter_info = lock_entry->mutable_waiting_locks();
       }
 
-      waiter_info->set_wait_start_ht(lock_status_info.wait_start.ToUint64());
-      for (const auto& blocker : lock_status_info.blockers) {
+      waiter_info->set_wait_start_ht(lock_info.wait_start.ToUint64());
+      for (const auto& blocker : lock_info.blockers) {
         auto& id = blocker->id();
         waiter_info->add_blocking_txn_ids(id.data(), id.size());
       }
-
-      for (const auto& lock_batch_entry : lock_status_info.locks) {
-        const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
-        std::string doc_key_str;
-        doc_key_str.reserve(partial_doc_key_slice.size() + 1);
-        partial_doc_key_slice.AppendTo(&doc_key_str);
-        // We shouldn't append kGroupEnd when the sub dockey ends with a column id.
-        if (!DocKey::EncodedSize(partial_doc_key_slice, DocKeyPart::kWholeDocKey).ok()) {
-          DCHECK(partial_doc_key_slice.empty() ||
-                 !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
-          // kGroupEnd suffix is stripped from the DocKey as part of DetermineKeysToLock.
-          // Append kGroupEnd for the decoder to work as expected and not error out.
-          doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd, 1);
-        }
-
-        auto parsed_intent = ParsedIntent {
-          .doc_path = Slice(doc_key_str.c_str(), doc_key_str.size()),
-          .types = lock_batch_entry.intent_types,
+      for (auto& [intent_key, intent_data] : lock_info.intents) {
+        ParsedIntent parsed_intent {
+          .doc_path = intent_key.AsSlice(),
+          .types = intent_data.types,
           .doc_ht = Slice(),
         };
         // TODO(pglocks): Populate 'is_explicit' info of waiter txn(s) in the LockInfoPB response.
@@ -1586,7 +1586,7 @@ class WaitQueue::Impl {
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
             parsed_intent, DecodedIntentValue{}, table_info_provider, lock,
             /* intent_has_ht */ false));
-        lock->set_subtransaction_id(lock_status_info.subtxn_id);
+        lock->set_subtransaction_id(lock_info.subtxn_id);
       }
     }
     return Status::OK();
@@ -1864,10 +1864,11 @@ Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
     uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
+    IntentProviderFunc intent_provider,
     WaitDoneCallback callback) {
   return impl_->WaitOn(
       waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no,
-      txn_start_us, request_start_us, deadline, callback);
+      txn_start_us, request_start_us, deadline, intent_provider, callback);
 }
 
 
@@ -1875,10 +1876,11 @@ Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     const TabletId& status_tablet_id, uint64_t serial_no,
     int64_t txn_start_us, uint64_t request_start_us, CoarseTimePoint deadline,
+    IntentProviderFunc intent_provider,
     WaitDoneCallback callback) {
   return impl_->MaybeWaitOnLocks(
       waiter, subtxn_id, locks, status_tablet_id, serial_no,
-      txn_start_us, request_start_us, deadline, callback);
+      txn_start_us, request_start_us, deadline, intent_provider, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {

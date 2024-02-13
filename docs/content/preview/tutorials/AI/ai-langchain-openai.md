@@ -76,26 +76,26 @@ docker network create custom-network
 docker run -d --name yugabytedb-node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.20.1.0-b97 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster with the preceding command.
+The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster using the preceding command.
 
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 

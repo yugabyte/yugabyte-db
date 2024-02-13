@@ -125,6 +125,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -154,38 +155,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   void ValidateSimpleReplicationWithPackedRowsUpgrade(
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
-
-  Status SetUpWithParams(
-      const std::vector<uint32_t>& num_consumer_tablets,
-      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
-      uint32_t num_masters = 1, const bool ranged_partitioned = false) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
-
-    SCHECK_EQ(
-        num_consumer_tablets.size(), num_producer_tablets.size(), IllegalState,
-        Format(
-            "Num consumer tables: $0 num producer tables: $1 must be equal.",
-            num_consumer_tablets.size(), num_producer_tablets.size()));
-
-    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-      const auto* num_tablets = &num_producer_tablets;
-      if (cluster == &consumer_cluster_) {
-        num_tablets = &num_consumer_tablets;
-      }
-
-      for (uint32_t i = 0; i < num_tablets->size(); i++) {
-        auto table_name = VERIFY_RESULT(CreateYsqlTable(
-            i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
-            ranged_partitioned));
-        std::shared_ptr<client::YBTable> table;
-        RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
-        cluster->tables_.push_back(table);
-      }
-      return Status::OK();
-    }));
-
-    return PostSetUp();
-  }
 
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
@@ -475,6 +444,15 @@ TEST_F(
       ListActiveTabletIdsForTable(producer_cluster(), producer_table_->id()).size();
   auto consumer_tablets_size =
       ListActiveTabletIdsForTable(consumer_cluster(), consumer_table_->id()).size();
+
+  // Setting low phase shards count per node explicitly to guarantee a table can split at least
+  // up to max(producer_tablets_size, consumer_tablets_size) tablets within the low phase.
+  const auto low_phase_shard_count_per_node = std::ceil(
+      static_cast<double>(std::max(producer_tablets_size, consumer_tablets_size)) /
+      std::min(producer_cluster_.mini_cluster_->num_tablet_servers(),
+               consumer_cluster_.mini_cluster_->num_tablet_servers()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node)
+      = low_phase_shard_count_per_node;
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
       100, 50, producer_table_, consumer_table_, true /* commit_all_transactions */,

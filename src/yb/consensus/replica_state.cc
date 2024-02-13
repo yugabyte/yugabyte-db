@@ -45,6 +45,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
@@ -52,9 +53,9 @@
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -1187,7 +1188,7 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
     LOG_WITH_PREFIX(INFO) << "Reset our ht lease: " << HybridTime::FromMicros(existing_ht_lease);
     majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
                                                    std::memory_order_release);
-    cond_.notify_all();
+    YB_PROFILE(cond_.notify_all());
   }
 }
 
@@ -1393,7 +1394,6 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
-    SCOPED_WAIT_STATUS(ReplicaState_WaitForMajorityReplicatedHtLeaseExpiration);
     if (deadline == CoarseTimePoint::max()) {
       cond_.wait(l, predicate);
     } else if (!cond_.wait_until(l, deadline, predicate)) {
@@ -1445,7 +1445,7 @@ Status ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
 
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
   return Status::OK();
 }
 

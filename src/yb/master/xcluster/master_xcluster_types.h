@@ -34,11 +34,16 @@ struct NamespaceCheckpointInfo {
     }
   };
   std::vector<TableInfo> table_infos;
-
-  bool operator==(const NamespaceCheckpointInfo& rhs) const {
-    return initial_bootstrap_required == rhs.initial_bootstrap_required &&
-           table_infos == rhs.table_infos;
-  }
 };
+
+struct IsOperationDoneResult {
+  IsOperationDoneResult() : done(false) {}
+  IsOperationDoneResult(bool done, Status status) : done(done), status(std::move(status)) {}
+
+  bool done;      // Indicates of the operation completed.
+  Status status;  // If the operation completed and it failed, this will contain the error.
+};
+
+YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
 
 }  // namespace yb::master

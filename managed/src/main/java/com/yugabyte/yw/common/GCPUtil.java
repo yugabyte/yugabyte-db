@@ -105,6 +105,14 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!(backupLocation.startsWith(GS_PROTOCOL_PREFIX)
+        || backupLocation.startsWith(HTTPS_PROTOCOL_PREFIX))) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not a GCS location");
+    }
+  }
+
+  @Override
   public CloudLocationInfo getCloudLocationInfo(
       String region, CustomerConfigData configData, @Nullable String backupLocation) {
     CustomerConfigStorageGCSData s3Data = (CustomerConfigStorageGCSData) configData;

@@ -40,4 +40,15 @@ public class ThreadPoolConfig {
     taskExecutor.initialize();
     return taskExecutor;
   }
+
+  @Bean
+  public ThreadPoolTaskExecutor metricQueryExecutor(
+      @Value("${task.metric_query.threads}") int threads) {
+    ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+    taskExecutor.setCorePoolSize(threads);
+    taskExecutor.setMaxPoolSize(threads);
+    taskExecutor.setThreadNamePrefix("metric_query");
+    taskExecutor.initialize();
+    return taskExecutor;
+  }
 }

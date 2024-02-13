@@ -594,12 +594,14 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
+    const TabletId& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
+  options->tablet_id = tablet_id;
   options->create_if_missing = true;
   // We should always sync data to ensure we can recover rocksdb from crash.
   options->disableDataSync = false;

@@ -4965,7 +4965,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		NULL, NULL, NULL
+		check_yb_default_xact_isolation, NULL, NULL
 	},
 
 	{

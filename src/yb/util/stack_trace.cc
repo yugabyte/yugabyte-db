@@ -27,6 +27,7 @@
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/linux_syscall_support.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/libbacktrace_util.h"
 #include "yb/util/lockfree.h"
@@ -201,7 +202,7 @@ struct ThreadStackHelper {
     }
 
     if (left_to_collect.fetch_sub(1, std::memory_order_acq_rel) - 1 <= 0) {
-      completion_flag.Signal();
+      YB_PROFILE(completion_flag.Signal());
     }
   }
 };

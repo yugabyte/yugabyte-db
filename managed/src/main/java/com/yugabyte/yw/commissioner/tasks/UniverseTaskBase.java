@@ -66,7 +66,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
@@ -110,6 +109,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
@@ -1375,6 +1375,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /** Creates a task to check locale on the universe nodes */
+  public SubTaskGroup createLocaleCheckTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLocale");
+    CheckLocale task = createTask(CheckLocale.class);
+    CheckLocale.Params params = new CheckLocale.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Create a task to preform pre-check for software upgrade. */
   public SubTaskGroup createCheckUpgradeTask(String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUpgrade");
@@ -2266,13 +2278,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param keyspaceName : name of the database/keyspace to delete.
    * @param tableType : Type of the Table YSQL/ YCQL
    */
-  public SubTaskGroup createDeleteKeySpaceTask(String keyspaceName, TableType tableType) {
+  public SubTaskGroup createDeleteKeySpaceTask(
+      String keyspaceName, TableType tableType, boolean ysqlForce) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteKeyspace");
     // Create required params for this subtask.
     DeleteKeyspace.Params params = new DeleteKeyspace.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.setKeyspace(keyspaceName);
     params.backupType = tableType;
+    params.ysqlForce = ysqlForce;
     // Create the task.
     DeleteKeyspace task = createTask(DeleteKeyspace.class);
     // Initialize the task.
@@ -2926,6 +2940,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               while (tableUUIDIter.hasNext()) {
                 BackupTableParams perTableParam =
                     new BackupTableParams(bP, tableUUIDIter.next(), tableNameIter.next());
+                perTableParam.tableByTableBackup = true;
                 flatParamsList.add(perTableParam);
               }
             });
@@ -3237,11 +3252,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
+  protected SubTaskGroup createDeletePitrConfigTask(
+      UUID pitrConfigUuid, UUID universeUUID, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeletePitrConfig");
     DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
-    deletePitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    deletePitrConfigParams.setUniverseUUID(universeUUID);
     deletePitrConfigParams.pitrConfigUuid = pitrConfigUuid;
+    deletePitrConfigParams.ignoreErrors = ignoreErrors;
 
     DeletePitrConfig task = createTask(DeletePitrConfig.class);
     task.initialize(deletePitrConfigParams);
@@ -4167,33 +4184,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  // Perform preflight checks on the given node.
-  public void performPreflightCheck(
-      Cluster cluster,
-      NodeDetails currentNode,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA) {
-    if (cluster.userIntent.providerType == com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
-      PreflightNodeCheck.Params preflightTaskParams = new PreflightNodeCheck.Params();
-      UserIntent userIntent = cluster.userIntent;
-      preflightTaskParams.nodeName = currentNode.nodeName;
-      preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-      preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
-      preflightTaskParams.azUuid = currentNode.azUuid;
-      preflightTaskParams.setUniverseUUID(taskParams().getUniverseUUID());
-      preflightTaskParams.rootCA = rootCA;
-      preflightTaskParams.setClientRootCA(clientRootCA);
-      UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
-          preflightTaskParams.communicationPorts, currentNode);
-      preflightTaskParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
-      log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
-      PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
-      task.initialize(preflightTaskParams);
-      task.run();
-    }
-  }
-
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
@@ -4804,7 +4794,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createDeleteXClusterConfigSubtasks(
-      XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
+      XClusterConfig xClusterConfig,
+      boolean keepEntry,
+      boolean forceDelete,
+      boolean deletePitrConfigs) {
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
         && xClusterConfig.getType().equals(ConfigType.Txn)) {
@@ -4821,6 +4814,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Delete bootstrap IDs created by bootstrap universe subtask.
     createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+
+    if (deletePitrConfigs
+        && xClusterConfig.getType().equals(ConfigType.Txn)
+        && xClusterConfig.getTargetUniverseUUID() != null) {
+      List<PitrConfig> pitrConfigs = xClusterConfig.getPitrConfigs();
+      for (PitrConfig pitrConfig : pitrConfigs) {
+        createDeletePitrConfigTask(
+            pitrConfig.getUuid(),
+            xClusterConfig.getTargetUniverseUUID(),
+            forceDelete /* ignoreErrors */);
+      }
+    }
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null

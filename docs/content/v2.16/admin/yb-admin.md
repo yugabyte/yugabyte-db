@@ -1853,7 +1853,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 

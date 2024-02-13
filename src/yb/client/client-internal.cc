@@ -294,6 +294,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, DeleteRole);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GetPermissions);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokePermission);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Dcl, GrantRevokeRole);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, AlterUniverseReplication);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTimeForNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, CreateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, DeleteCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
@@ -313,6 +315,13 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGro
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterAddNamespaceToOutboundReplicationGroup);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterRemoveNamespaceFromOutboundReplicationGroup);
+
+#define YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH(i, data, set) YB_CLIENT_SPECIALIZE_SIMPLE_EX set
+
+#define YB_CLIENT_SPECIALIZE_SIMPLE_FOR(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH, ~, rpcs)
+
+YB_CLIENT_SPECIALIZE_SIMPLE_FOR(CLIENT_SYNC_LEADER_MASTER_RPC_LIST)
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

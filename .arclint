@@ -42,8 +42,10 @@
      "(^troubleshoot/backend/build.gradle.kts)",
      "(^troubleshoot/backend/.*/application[.]properties)",
      "(^troubleshoot/backend/src/main/resources/mocks/.*)",
+     "(^troubleshoot/backend/src/test/resources/query/.*)",
      "(^managed/src/main/resources/openapi/)",
-     "(^managed/src/main/resources/openapi_templates/)"
+     "(^managed/src/main/resources/openapi_templates/)",
+     "(^yb_release_manifest.json$)"
   ],
   "linters": {
     "script-and-regex.script": {

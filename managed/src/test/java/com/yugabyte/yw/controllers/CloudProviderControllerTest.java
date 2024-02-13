@@ -561,7 +561,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     } else {
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      String registryPath = "quay.io/yugabyte/yugabyte-itest";
+      // Empty Registry Path in Unit tests now since we we get it from reference.conf
+      String registryPath = "";
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_REGISTRY", registryPath);
     }
 

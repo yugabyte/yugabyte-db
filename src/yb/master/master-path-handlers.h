@@ -199,6 +199,38 @@ class MasterPathHandlers {
 
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, Webserver::WebResponse* resp,
                                    const Webserver::PathHandlerCallback& callback);
+
+  template <class F>
+  void RegisterPathHandler(
+      Webserver* server, const std::string& path, const std::string& alias, const F& f,
+      bool is_styled = false, bool is_on_nav_bar = false, const std::string icon = "") {
+    server->RegisterPathHandler(
+        path, alias, std::bind(f, this, std::placeholders::_1, std::placeholders::_2), is_styled,
+        is_on_nav_bar);
+  }
+
+  template <class F>
+  void RegisterLeaderOrRedirect(
+      Webserver* server, const std::string& path, const std::string& alias, const F& f,
+      bool is_styled = false, bool is_on_nav_bar = false, const std::string& icon = "") {
+    RegisterLeaderOrRedirectWithArgs(server, path, alias, is_styled, is_on_nav_bar, icon, f);
+  }
+
+  template <class F, class... Args>
+  void RegisterLeaderOrRedirectWithArgs(
+      Webserver* server, const std::string& path, const std::string& alias, bool is_styled,
+      bool is_on_nav_bar, const std::string& icon, const F& f, Args&&... args) {
+    auto cb = std::bind(
+        f, this, std::placeholders::_1, std::placeholders::_2, std::forward<Args>(args)...);
+    server->RegisterPathHandler(
+        path, alias,
+        [this, cb = std::move(cb)](
+            const WebCallbackRegistry::WebRequest& args, WebCallbackRegistry::WebResponse* resp) {
+          CallIfLeaderOrPrintRedirect(args, resp, cb);
+        },
+        is_styled, is_on_nav_bar, icon);
+  }
+
   void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   Result<std::string> GetLeaderAddress(const Webserver::WebRequest& req);
   void RootHandler(const Webserver::WebRequest& req,
@@ -206,11 +238,10 @@ class MasterPathHandlers {
   void HandleTabletServers(const Webserver::WebRequest& req,
                            Webserver::WebResponse* resp,
                            TServersViewType viewType);
-  void HandleCatalogManager(const Webserver::WebRequest& req,
-                            Webserver::WebResponse* resp,
-                            bool only_user_tables = false);
-  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
-                                Webserver::WebResponse* resp);
+  void HandleAllTables(
+      const Webserver::WebRequest& req, Webserver::WebResponse* resp,
+      bool only_user_tables = false);
+  void HandleAllTablesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleNamespacesHTML(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_namespaces = false);

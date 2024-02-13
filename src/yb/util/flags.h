@@ -45,6 +45,8 @@
 #undef DEFINE_validator
 #endif
 #define DEFINE_validator(name, validator) \
+  static_assert( \
+      sizeof(_DEFINE_FLAG_IN_FILE(name)), "validator must be DEFINED in the same file as the flag"); \
   static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
       google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
 

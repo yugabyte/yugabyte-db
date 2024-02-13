@@ -858,24 +858,24 @@ If you need to reconfigure a node agent, you can use the following procedure:
     ```
 
     ```output
-    * The current value of Node Name is set to node1; Enter new value or enter to skip: 
-    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip: 
+    * The current value of Node Name is set to node1; Enter new value or enter to skip:
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip:
     * Select your Onprem Provider.
     1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
     * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Instance Type.
     1. Instance Code: c5.large
     * The current value is Instance Code: c5.large.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Region.
     1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
     * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Zone.
     1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
     * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     • Completed Node Agent Configuration
     • Node Agent Registration Successful
     ```

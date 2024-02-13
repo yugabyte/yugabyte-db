@@ -64,6 +64,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -441,7 +442,8 @@ RaftConsensus::RaftConsensus(
       update_raft_config_dns_latency_(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)),
       split_parent_tablet_id_(
-          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : "") {
+          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : ""),
+      clone_source_info_(cmeta->clone_source_info()) {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
@@ -1388,7 +1390,7 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
   if (s.ok()) {
-    leader_lease_wait_cond_.notify_all();
+    YB_PROFILE(leader_lease_wait_cond_.notify_all());
   } else {
     LOG(WARNING) << "Leader lease expiration was not set: " << s;
   }
@@ -1520,6 +1522,10 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  if (const auto& wait_state = yb::ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_query_id(
+        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForRaftUpdateConsensus));
+  }
   follower_last_update_received_time_ms_.store(
       clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
@@ -3210,6 +3216,10 @@ const TabletId& RaftConsensus::tablet_id() const {
 
 const TabletId& RaftConsensus::split_parent_tablet_id() const {
   return split_parent_tablet_id_;
+}
+
+const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
+  return clone_source_info_;
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {

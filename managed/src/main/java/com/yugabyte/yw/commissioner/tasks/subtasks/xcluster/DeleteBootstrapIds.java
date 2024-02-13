@@ -50,11 +50,8 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(xClusterConfig=%s,tableIds=%s,forceDelete=%s)",
-        super.getName(),
-        taskParams().getXClusterConfig(),
-        taskParams().tableIds,
-        taskParams().forceDelete);
+        "%s(xClusterConfig=%s,forceDelete=%s)",
+        super.getName(), taskParams().getXClusterConfig(), taskParams().forceDelete);
   }
 
   @Override

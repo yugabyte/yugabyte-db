@@ -9,7 +9,8 @@ import lombok.Data;
 public class GraphQuery {
   private Instant start;
   private Instant end;
+  private Long stepSeconds;
   private String name;
-  private Map<String, List<String>> filters;
+  private Map<GraphFilter, List<String>> filters;
   private GraphSettings settings;
 }

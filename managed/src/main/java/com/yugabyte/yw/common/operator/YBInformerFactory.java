@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class YBInformerFactory {
@@ -48,7 +49,7 @@ public class YBInformerFactory {
     }
 
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
-    if (namespace == null || namespace.isEmpty()) {
+    if (StringUtils.isBlank(namespace)) {
       SharedInformerFactory factory = client.informers();
       informer = factory.sharedIndexInformerFor(type, resync);
       informer.run();

@@ -112,6 +112,9 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
+DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
+    " of the method tserver is running");
+
 namespace {
 
 bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
@@ -298,6 +301,59 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
   }
   LOG(DFATAL) << "Unexpected PgSysTablePrefetcherCacheMode value " << mode;
   return PrefetchingCacheMode::RENEW_CACHE_HARD;
+}
+
+// Sets the client address in the ASH circular buffer and returns the address family.
+// The host comes from the class HostPort and that only accepts IPv4/IPv6 as of today,
+// that's why there is no check for a unix domain socket here.
+uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* client_addr) {
+  if (host.find(':') == std::string::npos) { // IPv4 address
+    inet_pton(AF_INET, host.c_str(), client_addr);
+    return AF_INET;
+  }
+  // IPv6 address
+  inet_pton(AF_INET6, host.c_str(), client_addr);
+  return AF_INET6;
+}
+
+void AshCopyTServerSample(
+    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t& sample_time) {
+  auto* cb_metadata = &cb_sample->metadata;
+  const auto& tserver_metadata = tserver_sample.metadata();
+
+  cb_metadata->query_id = tserver_metadata.query_id();
+  cb_metadata->session_id = tserver_metadata.session_id();
+  cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
+  cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
+  cb_sample->wait_event_code = tserver_sample.wait_status_code();
+  cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
+  cb_sample->sample_time = sample_time;
+
+  std::memcpy(cb_metadata->root_request_id,
+              tserver_metadata.root_request_id().data(),
+              sizeof(cb_metadata->root_request_id));
+
+  std::memcpy(cb_sample->yql_endpoint_tserver_uuid,
+              tserver_metadata.yql_endpoint_tserver_uuid().data(),
+              sizeof(cb_sample->yql_endpoint_tserver_uuid));
+
+  // Copy the entire aux info, or the first 15 bytes, whichever is smaller.
+  // This expects compilation with -Wno-format-truncation.
+  const auto& tserver_aux_info = tserver_sample.aux_info();
+  snprintf(cb_sample->aux_info, sizeof(cb_sample->aux_info), "%s",
+      FLAGS_TEST_ash_debug_aux ? tserver_aux_info.method().c_str()
+                               : tserver_aux_info.tablet_id().c_str());
+
+  cb_metadata->addr_family = AshGetTServerClientAddress(
+      tserver_metadata.client_host_port().host(), cb_metadata->client_addr);
+}
+
+void AshCopyTServerSamples(
+    YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
+    uint64_t& sample_time) {
+  for (const auto& sample : samples.wait_states()) {
+    AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
+  }
 }
 
 } // namespace
@@ -1577,6 +1633,10 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
 
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1838,9 +1898,11 @@ YBCStatus YBCGetTableKeyRanges(
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
+                                        YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      database_oid,
+                                                     snapshot_action,
                                                      handle));
 }
 
@@ -1895,6 +1957,23 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
 
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
+}
+
+void YBCStoreTServerAshSamples(
+    YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
+    uint64_t sample_time) {
+  const auto result = pgapi->ActiveSessionHistory();
+  // This lock is released inside YbAshMain after copying PG samples
+  acquire_cb_lock_fn(true /* exclusive */);
+  if (!result.ok()) {
+    // We don't return error status to avoid a restart loop of the ASH collector
+    LOG(ERROR) << result.status();
+  } else {
+    AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->flush_and_compaction_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->raft_log_appender_wait_states(), sample_time);
+    AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
+  }
 }
 
 } // extern "C"

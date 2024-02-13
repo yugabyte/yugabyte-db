@@ -67,6 +67,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -219,14 +220,20 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   void FillTable(int begin, int end, const TableHandle& table) {
+    ASSERT_OK(WaitForTableLeaders(cluster_.get(), table->id(), 10s * kTimeMultiplier));
+    ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 10s * kTimeMultiplier));
+    LOG(INFO) << "Start filling table";
     {
       auto session = CreateSession();
       for (int i = begin; i != end; ++i) {
         SetValue(session, i, ValueForKey(i), table);
       }
     }
+    LOG(INFO) << "Filled table";
     VerifyTable(begin, end, table);
+    LOG(INFO) << "Verified table";
     ASSERT_OK(WaitSync(begin, end, table));
+    LOG(INFO) << "All replicas are in-sync";
   }
 
   Status BatchedFillTable(
@@ -326,7 +333,11 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
 
           tserver::ReadResponsePB resp;
           RETURN_NOT_OK(proxy->Read(req, &resp, &controller));
-
+          if (resp.has_error()) {
+            RETURN_NOT_OK(
+                StatusFromPB(resp.error().status())
+                    .CloneAndAddErrorCode(tserver::TabletServerError(resp.error().code())));
+          }
           const auto& ql_batch = resp.ql_batch(0);
           if (ql_batch.status() != QLResponsePB_QLStatus_YQL_STATUS_OK) {
             return STATUS_FORMAT(RemoteError,
@@ -334,7 +345,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
                                  QLResponsePB_QLStatus_Name(ql_batch.status()));
           }
           Schema projection;
-          vector<ColumnId> column_refs;
+          std::vector<ColumnId> column_refs;
           column_refs.emplace_back(table.ColumnId(kValueColumn));
           Schema total_schema = client::internal::GetSchema(table->schema());
           RETURN_NOT_OK(total_schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
