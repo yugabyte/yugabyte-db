@@ -139,6 +139,7 @@ typedef struct cypher_node
     char *parsed_name;
     char *label;
     char *parsed_label;
+    bool use_equals;
     Node *props; // map or parameter
     int location;
 } cypher_node;
@@ -158,6 +159,7 @@ typedef struct cypher_relationship
     char *parsed_name;
     char *label;
     char *parsed_label;
+    bool use_equals;
     Node *props; // map or parameter
     Node *varlen; // variable length relationships (A_Indices)
     cypher_rel_dir dir;

@@ -53,3 +53,37 @@ CREATE OPERATOR <@ (
   RESTRICT = contsel,
   JOIN = contjoinsel
 );
+
+CREATE FUNCTION ag_catalog.agtype_contains_top_level(agtype, agtype)
+    RETURNS boolean
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR @>> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contains_top_level,
+  COMMUTATOR = '<<@',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_contained_by_top_level(agtype, agtype)
+    RETURNS boolean
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR <<@ (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_contained_by_top_level,
+  COMMUTATOR = '@>>',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);

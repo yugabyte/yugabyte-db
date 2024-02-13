@@ -70,6 +70,8 @@ DEFAULT FOR TYPE agtype USING gin AS
   OPERATOR 9 ?(agtype, agtype),
   OPERATOR 10 ?|(agtype, agtype),
   OPERATOR 11 ?&(agtype, agtype),
+  OPERATOR 12 @>>(agtype, agtype),
+  OPERATOR 13 <<@(agtype, agtype),
   FUNCTION 1 ag_catalog.gin_compare_agtype(text,text),
   FUNCTION 2 ag_catalog.gin_extract_agtype(agtype, internal),
   FUNCTION 3 ag_catalog.gin_extract_agtype_query(agtype, internal, int2,

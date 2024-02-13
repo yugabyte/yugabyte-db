@@ -3294,6 +3294,248 @@ $$) AS (n1 agtype, n2 agtype, n3 agtype, e1 agtype);
 (1 row)
 
 --
+-- Issue 1461
+--
+-- Using the test_enable_containment graph for these tests
+SELECT * FROM cypher('test_enable_containment', $$ CREATE p=(:Customer)-[:bought {store:'Amazon', addr:{city: 'Vancouver', street: 30}}]->(y:Product) RETURN p $$) as (a agtype);
+                                                                                                                                                                         a                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131970, "label": "Customer", "properties": {}}::vertex, {"id": 1125899906842625, "label": "bought", "end_id": 1407374883553281, "start_id": 844424930131970, "properties": {"addr": {"city": "Vancouver", "street": 30}, "store": "Amazon"}}::edge, {"id": 1407374883553281, "label": "Product", "properties": {}}::vertex]::path
+(1 row)
+
+-- With enable_containment on
+SET age.enable_containment = on;
+-- Should return 0
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={addr:[{city:'Toronto'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school:{program:{major:'Psyc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={name:'Bob',school:{program:{degree:'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school:{program:{major:'Cs'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={name:'Bob',school:{program:{degree:'PHd'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone:[987654321]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone:[654765876]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver'}}]->() RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+-- Should return 1
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={addr: [{city: 'Vancouver', street: 30},{city: 'Toronto', street: 40}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone: [ 123456789, 987654321, 456987123 ]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'} },phone: [ 123456789, 987654321, 456987123 ]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought ={store: 'Amazon'}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver', street: 30}}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought {store: 'Amazon', addr:{city: 'Vancouver'}}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (costs off) MATCH (x:Customer)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver', street: 30}}]->(y:Product) RETURN 0 $$) as (a agtype);
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (y.id = _age_default_alias_0.end_id)
+   ->  Seq Scan on "Product" y
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (x.id = _age_default_alias_0.start_id)
+               ->  Seq Scan on "Customer" x
+               ->  Hash
+                     ->  Seq Scan on bought _age_default_alias_0
+                           Filter: (properties @>> '{"addr": {"city": "Vancouver", "street": 30}, "store": "Amazon"}'::agtype)
+(10 rows)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (costs off) MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'} },phone: [ 123456789, 987654321, 456987123 ]}) RETURN 0 $$) as (a agtype);
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on "Customer" x
+   Filter: (properties @>> '{"phone": [123456789, 987654321, 456987123], "school": {"name": "XYZ College", "program": {"major": "Psyc", "degree": "BSc"}}}'::agtype)
+(2 rows)
+
+-- With enable_containment off
+SET age.enable_containment = off;
+-- Should return 0
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={addr:[{city:'Toronto'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school:{program:{major:'Psyc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={name:'Bob',school:{program:{degree:'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school:{program:{major:'Cs'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={name:'Bob',school:{program:{degree:'PHd'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone:[987654321]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone:[654765876]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver'}}]->() RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+-- Should return 1
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={addr: [{city: 'Vancouver', street: 30},{city: 'Toronto', street: 40}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={phone: [ 123456789, 987654321, 456987123 ]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'} },phone: [ 123456789, 987654321, 456987123 ]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought ={store: 'Amazon'}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver', street: 30}}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH p=(x:Customer)-[:bought {store: 'Amazon', addr:{city: 'Vancouver'}}]->() RETURN p $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (costs off) MATCH (x:Customer)-[:bought ={store: 'Amazon', addr:{city: 'Vancouver', street: 30}}]->(y:Product) RETURN 0 $$) as (a agtype);
+                                                                                                                         QUERY PLAN                                                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (y.id = _age_default_alias_0.end_id)
+   ->  Seq Scan on "Product" y
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (x.id = _age_default_alias_0.start_id)
+               ->  Seq Scan on "Customer" x
+               ->  Hash
+                     ->  Seq Scan on bought _age_default_alias_0
+                           Filter: ((agtype_access_operator(VARIADIC ARRAY[properties, '"store"'::agtype]) = '"Amazon"'::agtype) AND (agtype_access_operator(VARIADIC ARRAY[properties, '"addr"'::agtype]) = '{"city": "Vancouver", "street": 30}'::agtype))
+(10 rows)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (costs off) MATCH (x:Customer ={school: { name: 'XYZ College',program: { major: 'Psyc', degree: 'BSc'} },phone: [ 123456789, 987654321, 456987123 ]}) RETURN 0 $$) as (a agtype);
+                                                                                                                                            QUERY PLAN                                                                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on "Customer" x
+   Filter: ((agtype_access_operator(VARIADIC ARRAY[properties, '"school"'::agtype]) = '{"name": "XYZ College", "program": {"major": "Psyc", "degree": "BSc"}}'::agtype) AND (agtype_access_operator(VARIADIC ARRAY[properties, '"phone"'::agtype]) = '[123456789, 987654321, 456987123]'::agtype))
+(2 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
@@ -3335,10 +3577,12 @@ NOTICE:  graph "test_retrieve_var" has been dropped
 (1 row)
 
 SELECT drop_graph('test_enable_containment', true);
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table test_enable_containment._ag_label_vertex
 drop cascades to table test_enable_containment._ag_label_edge
 drop cascades to table test_enable_containment."Customer"
+drop cascades to table test_enable_containment.bought
+drop cascades to table test_enable_containment."Product"
 NOTICE:  graph "test_enable_containment" has been dropped
  drop_graph 
 ------------

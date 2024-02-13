@@ -194,7 +194,8 @@ Datum gin_extract_agtype_query(PG_FUNCTION_ARGS)
     strategy = PG_GETARG_UINT16(2);
     searchMode = (int32 *) PG_GETARG_POINTER(6);
 
-    if (strategy == AGTYPE_CONTAINS_STRATEGY_NUMBER)
+    if (strategy == AGTYPE_CONTAINS_STRATEGY_NUMBER ||
+        strategy == AGTYPE_CONTAINS_TOP_LEVEL_STRATEGY_NUMBER)
     {
         /* Query is a agtype, so just apply gin_extract_agtype... */
         entries = (Datum *)
@@ -324,7 +325,8 @@ Datum gin_consistent_agtype(PG_FUNCTION_ARGS)
     nkeys = PG_GETARG_INT32(3);
     recheck = (bool *) PG_GETARG_POINTER(5);
 
-    if (strategy == AGTYPE_CONTAINS_STRATEGY_NUMBER)
+    if (strategy == AGTYPE_CONTAINS_STRATEGY_NUMBER ||
+        strategy == AGTYPE_CONTAINS_TOP_LEVEL_STRATEGY_NUMBER)
     {
         /*
          * We must always recheck, since we can't tell from the index whether
@@ -425,6 +427,7 @@ Datum gin_triconsistent_agtype(PG_FUNCTION_ARGS)
      * function, for the reasons listed there.
      */
     if (strategy == AGTYPE_CONTAINS_STRATEGY_NUMBER ||
+        strategy == AGTYPE_CONTAINS_TOP_LEVEL_STRATEGY_NUMBER ||
         strategy == AGTYPE_EXISTS_ALL_STRATEGY_NUMBER)
     {
         /* All extracted keys must be present */

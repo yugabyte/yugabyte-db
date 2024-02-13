@@ -326,11 +326,11 @@ static agtype *delete_from_array(agtype *agt, agtype *indexes)
             it_neg_idx = agtype_iterator_init(&neg_idx_agt->root);
 
             it_indexes = agtype_iterator_init(&indexes->root);
-            contains_idx = agtype_deep_contains(&it_indexes, &it_cur_idx);
+            contains_idx = agtype_deep_contains(&it_indexes, &it_cur_idx, false);
 
             // re-initialize indexes array iterator
             it_indexes = agtype_iterator_init(&indexes->root);
-            contains_neg_idx = agtype_deep_contains(&it_indexes, &it_neg_idx);
+            contains_neg_idx = agtype_deep_contains(&it_indexes, &it_neg_idx, false);
 
             if (contains_idx || contains_neg_idx)
             {
@@ -1444,7 +1444,49 @@ Datum agtype_contains(PG_FUNCTION_ARGS)
     property_it = agtype_iterator_init(&properties->root);
     constraint_it = agtype_iterator_init(&constraints->root);
 
-    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it));
+    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it, false));
+}
+
+PG_FUNCTION_INFO_V1(agtype_contained_by_top_level);
+/*
+ * Function for operator <<@
+ * Works similar to <@, but unlike <@, this function does not recurse
+ * into object values, instead checks if the value of top-level key in
+ * right agtype is equal to the one on the left.
+ */
+Datum agtype_contained_by_top_level(PG_FUNCTION_ARGS)
+{
+    agtype_iterator *constraint_it, *property_it;
+    agtype *properties, *constraints;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    properties = AG_GET_ARG_AGTYPE_P(0);
+    constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(properties)
+            && AGTE_IS_AGTYPE(properties->root.children[0]))
+    {
+        properties =
+            agtype_value_to_agtype(extract_entity_properties(properties,
+                                                             false));
+    }
+
+    if (AGT_ROOT_IS_SCALAR(constraints)
+            && AGTE_IS_AGTYPE(constraints->root.children[0]))
+    {
+        constraints =
+            agtype_value_to_agtype(extract_entity_properties(constraints,
+                                                             false));
+    }
+
+    constraint_it = agtype_iterator_init(&constraints->root);
+    property_it = agtype_iterator_init(&properties->root);
+
+    PG_RETURN_BOOL(agtype_deep_contains(&constraint_it, &property_it, true));
 }
 
 
@@ -1485,7 +1527,56 @@ Datum agtype_contained_by(PG_FUNCTION_ARGS)
     constraint_it = agtype_iterator_init(&constraints->root);
     property_it = agtype_iterator_init(&properties->root);
 
-    PG_RETURN_BOOL(agtype_deep_contains(&constraint_it, &property_it));
+    PG_RETURN_BOOL(agtype_deep_contains(&constraint_it, &property_it, false));
+}
+
+PG_FUNCTION_INFO_V1(agtype_contains_top_level);
+/*
+ * Function for operator @>>.
+ * Works similar to @>, but unlike @>, this function does not recurse
+ * into object values, instead checks if the value of top-level key in
+ * left agtype is equal to the one on the right.
+ */
+Datum agtype_contains_top_level(PG_FUNCTION_ARGS)
+{
+    agtype_iterator *constraint_it = NULL;
+    agtype_iterator *property_it = NULL;
+    agtype *properties = NULL;
+    agtype *constraints = NULL;
+
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    properties = AG_GET_ARG_AGTYPE_P(0);
+    constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(properties)
+            && AGTE_IS_AGTYPE(properties->root.children[0]))
+    {
+        properties =
+            agtype_value_to_agtype(extract_entity_properties(properties,
+                                                             false));
+    }
+
+    if (AGT_ROOT_IS_SCALAR(constraints)
+            && AGTE_IS_AGTYPE(constraints->root.children[0]))
+    {
+        constraints =
+            agtype_value_to_agtype(extract_entity_properties(constraints,
+                                                             false));
+    }
+
+    if (AGT_ROOT_IS_OBJECT(properties) != AGT_ROOT_IS_OBJECT(constraints))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
+    property_it = agtype_iterator_init(&properties->root);
+    constraint_it = agtype_iterator_init(&constraints->root);
+
+    PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it, true));
 }
 
 PG_FUNCTION_INFO_V1(agtype_exists);

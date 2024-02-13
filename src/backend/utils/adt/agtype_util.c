@@ -1121,7 +1121,9 @@ static agtype_iterator *free_and_get_parent(agtype_iterator *it)
  * "val" is lhs agtype, and m_contained is rhs agtype when called from top
  * level. We determine if m_contained is contained within val.
  */
-bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
+bool agtype_deep_contains(agtype_iterator **val,
+                          agtype_iterator **m_contained,
+                          bool skip_nested)
 {
     agtype_value vval;
     agtype_value vcontained;
@@ -1211,6 +1213,19 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                 if (!equals_agtype_scalar_value(lhs_val, &vcontained))
                     return false;
             }
+            else if (skip_nested)
+            {
+                Assert(lhs_val->type == AGTV_BINARY);
+                Assert(vcontained.type == AGTV_BINARY);
+
+                // We will just check if the rhs value is equal to lhs
+                if (compare_agtype_containers_orderability(
+                                             lhs_val->val.binary.data,
+                                             vcontained.val.binary.data) != 0)
+                {
+                    return false;
+                }
+            }
             else
             {
                 /* Nested container value (object or array) */
@@ -1244,8 +1259,10 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                  * of containment (plus of course the mapped nodes must be
                  * equal).
                  */
-                if (!agtype_deep_contains(&nestval, &nest_contained))
+                if (!agtype_deep_contains(&nestval, &nest_contained, false))
+                {
                     return false;
+                }
             }
         }
     }
@@ -1337,7 +1354,7 @@ bool agtype_deep_contains(agtype_iterator **val, agtype_iterator **m_contained)
                     nest_contained =
                         agtype_iterator_init(vcontained.val.binary.data);
 
-                    contains = agtype_deep_contains(&nestval, &nest_contained);
+                    contains = agtype_deep_contains(&nestval, &nest_contained, false);
 
                     if (nestval)
                         pfree(nestval);

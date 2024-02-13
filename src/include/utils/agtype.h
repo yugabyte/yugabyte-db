@@ -58,6 +58,7 @@ typedef enum
 #define AGTYPE_EXISTS_STRATEGY_NUMBER 9
 #define AGTYPE_EXISTS_ANY_STRATEGY_NUMBER 10
 #define AGTYPE_EXISTS_ALL_STRATEGY_NUMBER 11
+#define AGTYPE_CONTAINS_TOP_LEVEL_STRATEGY_NUMBER 12
 
 /*
  * In the standard agtype_ops GIN opclass for agtype, we choose to index both
@@ -475,7 +476,7 @@ agtype_iterator_token agtype_iterator_next(agtype_iterator **it,
                                            bool skip_nested);
 agtype *agtype_value_to_agtype(agtype_value *val);
 bool agtype_deep_contains(agtype_iterator **val,
-                          agtype_iterator **m_contained);
+                          agtype_iterator **m_contained, bool skip_nested);
 void agtype_hash_scalar_value(const agtype_value *scalar_val, uint32 *hash);
 void agtype_hash_scalar_value_extended(const agtype_value *scalar_val,
                                        uint64 *hash, uint64 seed);

@@ -379,7 +379,7 @@ static bool is_an_edge_match(VLE_local_context *vlelctx, edge_entry *ee)
     property_it = agtype_iterator_init(agtc_edge_property);
 
     /* return the value of deep contains */
-    return agtype_deep_contains(&property_it, &constraint_it);
+    return agtype_deep_contains(&property_it, &constraint_it, false);
 }
 
 /*

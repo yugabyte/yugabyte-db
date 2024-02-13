@@ -163,6 +163,9 @@ static List *transform_map_to_ind_recursive(cypher_parsestate *cpstate,
                                             transform_entity *entity,
                                             cypher_map *map,
                                             List *parent_fields);
+static List *transform_map_to_ind_top_level(cypher_parsestate *cpstate,
+                                            transform_entity *entity,
+                                            cypher_map *map);
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
                                          Node *property_constraints,
@@ -3552,11 +3555,9 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 /*
  * Makes property constraint using indirection(s). This is an
  * alternative to using the containment operator (@>).
- *
- * In case of array and empty map, containment is used instead of equality.
- *
- * For example, the following query
- *
+ * 
+ * Consider the following query
+ * 
  *      MATCH (x:Label{
  *        name: 'xyz',
  *        address: {
@@ -3570,7 +3571,16 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
  *        parents: {}
  *      })
  *
- * is transformed to-
+ * There are two cases:
+ * 
+ * 1- When use_equals flag is set, the above query is tranformed to-
+ * 
+ *     x.name = 'xyz' AND
+ *     x.address = {"city": "abc", "street": {"name": "pqr", "number": 123}} AND
+ *     x.phone = [9, 8, 7] AND
+ *     x.parents = {}
+ * 
+ * 2- When use_equals flag is not set, the above query is tranformed to-
  *
  *      x.name = 'xyz' AND
  *      x.address.city = 'abc' AND
@@ -3578,13 +3588,25 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
  *      x.address.street.number = 123 AND
  *      x.phone @> [6, 4, 3] AND
  *      x.parents @> {}
+ * 
+ * NOTE: In case of array and empty map, containment is used instead of equality.
  */
 static Node *transform_map_to_ind(cypher_parsestate *cpstate,
                                   transform_entity *entity, cypher_map *map)
 {
     List *quals; // list of equality and/or containment qual node
 
-    quals = transform_map_to_ind_recursive(cpstate, entity, map, NIL);
+    if (entity->entity.node->use_equals)
+    {
+        // Case 1
+        quals = transform_map_to_ind_top_level(cpstate, entity, map);
+    }
+    else
+    {
+        // Case 2
+        quals = transform_map_to_ind_recursive(cpstate, entity, map, NIL);
+    }
+
     Assert(quals != NIL);
 
     if (list_length(quals) > 1)
@@ -3699,6 +3721,69 @@ static List *transform_map_to_ind_recursive(cypher_parsestate *cpstate,
 }
 
 /*
+ * Helper function of `transform_map_to_ind`.
+ *
+ * Transforms the map to a list of equality irrespective of
+ * value type. For example,
+ * 
+ * x.name = 'xyz'
+ * x.map = {"city": "abc", "street": {"name": "pqr", "number": 123}}
+ * x.list = [9, 8, 7]
+ */
+static List *transform_map_to_ind_top_level(cypher_parsestate *cpstate,
+                                            transform_entity *entity,
+                                            cypher_map *map)
+{
+    int i;
+    ParseState *pstate;
+    Node *last_srf;
+    List *quals;
+
+    pstate = (ParseState *)cpstate;
+    last_srf = pstate->p_last_srf;
+    quals = NIL;
+
+    Assert(list_length(map->keyvals) != 0);
+
+    for (i = 0; i < map->keyvals->length; i += 2)
+    {
+        Node *key;
+        Node *val;
+        Node *qual;
+        Node *lhs;
+        Node *rhs;
+        List *op;
+        A_Indirection *indir;
+        ColumnRef *variable;
+        char *keystr;
+
+        key = (Node *)map->keyvals->elements[i].ptr_value;
+        val = (Node *)map->keyvals->elements[i + 1].ptr_value;
+        Assert(IsA(key, String));
+        keystr = ((String *)key)->sval;
+
+        op = list_make1(makeString("="));
+        variable = makeNode(ColumnRef);
+        variable->fields =
+            list_make1(makeString(entity->entity.node->name));
+        variable->location = -1;
+
+        indir = makeNode(A_Indirection);
+        indir->arg = (Node *)variable;
+        indir->indirection = list_make1(makeString(keystr));
+
+        lhs = transform_cypher_expr(cpstate, (Node *)indir,
+                                    EXPR_KIND_WHERE);
+        rhs = transform_cypher_expr(cpstate, val, EXPR_KIND_WHERE);
+
+        qual = (Node *)make_op(pstate, op, lhs, rhs, last_srf, -1);
+        quals = lappend(quals, qual);
+    }
+    
+    return quals;
+}
+
+/*
  * Creates the property constraints for a vertex/edge in a MATCH clause.
  */
 static Node *create_property_constraints(cypher_parsestate *cpstate,
@@ -3711,6 +3796,8 @@ static Node *create_property_constraints(cypher_parsestate *cpstate,
     Node *const_expr;
     Node *last_srf = pstate->p_last_srf;
     ParseNamespaceItem *pnsi;
+
+    Assert(entity->type != ENT_PATH);
 
     /*
      * If the prop_expr node wasn't passed in, create it. Otherwise, skip
@@ -3744,8 +3831,18 @@ static Node *create_property_constraints(cypher_parsestate *cpstate,
 
     if (age_enable_containment)
     {
-        return (Node *)make_op(pstate, list_make1(makeString("@>")), prop_expr,
-                               const_expr, last_srf, -1);
+        if ((entity->type == ENT_VERTEX && entity->entity.node->use_equals) ||
+            ((entity->type == ENT_EDGE || entity->type == ENT_VLE_EDGE) &&
+             entity->entity.rel->use_equals))
+        {
+            return (Node *)make_op(pstate, list_make1(makeString("@>>")),
+                                   prop_expr, const_expr, last_srf, -1);
+        }
+        else
+        {
+            return (Node *)make_op(pstate, list_make1(makeString("@>")),
+                                   prop_expr, const_expr, last_srf, -1);
+        }
     }
     else
     {
