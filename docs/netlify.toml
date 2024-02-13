@@ -1250,7 +1250,7 @@
             https://raw.githubusercontent.com/
             https://www.google-analytics.com/
             https://www.yugabyte.com
-            https://www.gstatic.com/
+            https://www.gstatic.com
         ;
 
         child-src 'self' 'unsafe-inline'
