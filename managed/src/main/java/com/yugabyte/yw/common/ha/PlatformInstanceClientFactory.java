@@ -14,9 +14,11 @@ import static com.yugabyte.yw.common.ha.PlatformInstanceClient.YB_HA_WS_KEY;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.ConfigValue;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.WSClientRefresher;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Singleton
@@ -37,6 +39,15 @@ public class PlatformInstanceClientFactory {
   public PlatformInstanceClient getClient(String clusterKey, String remoteAddress) {
     return new PlatformInstanceClient(
         new ApiHelper(wsClientRefresher.getClient(YB_HA_WS_KEY)),
+        clusterKey,
+        remoteAddress,
+        configHelper);
+  }
+
+  public PlatformInstanceClient getClient(
+      String clusterKey, String remoteAddress, Map<String, ConfigValue> wsOverrides) {
+    return new PlatformInstanceClient(
+        new ApiHelper(wsClientRefresher.getClient(YB_HA_WS_KEY, wsOverrides)),
         clusterKey,
         remoteAddress,
         configHelper);
