@@ -577,7 +577,7 @@ const getFormSubmitLabel = (
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Full Copy and Enable Replication';
+      return 'Create Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }
