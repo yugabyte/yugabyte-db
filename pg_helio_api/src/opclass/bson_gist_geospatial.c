@@ -31,6 +31,13 @@ extern int32 MaxSegmentVertices;
 /* Index strategy that Postgis uses for && bounding box overlap operator */
 #define POSTGIS_BOUNDING_BOX_OVERLAP_INDEX_STRATEGY 3
 
+
+/*
+ * Defines the area of 2d cartesian plane that roughly corresponds to the hemisphere of earth
+ * i.e. [0 to 180] and [90 to 90] => 180 * 180
+ */
+#define PLANE_2D_MAX_AREA_HEMISPHERE 32400
+
 /* The base query to segmentize bigger query regions into smaller regions */
 #define BaseGeoSubdivideQuery(shape) \
 	"SELECT postgis_public.ST_SUBDIVIDE(" \
@@ -669,10 +676,23 @@ SegmentizeQuery(IndexBsonGeospatialState *state)
 		 * Note: for large distance the ratios might not give accurate result and frankly we don't
 		 * need this to be precise an approximate conversion is good enough
 		 *
-		 * So the ratio is about ~=111.27
+		 * So the ratio of 2d cartesian plane to earth distance is about ~=111.27
+		 *
+		 * Now this ratio only works if the 2d plane bounds are similar to earth which is [180, -180] to [90, -90] since there is no
+		 * limit on the bounds and is customizable, we will need to model larger areas of 2d considering this ratio.
+		 *
+		 * If area of shape is greater than roughly the area of hemisphere in 2d we scale up the length so that segments increase linearly with
+		 * larger boxes.
+		 * Note: This is just an approximation to avoid doing segmentation at lower values for larger circle it may not be accurate because of sphere and 2d distance differences.
 		 */
-		segmentLength = MaxSegmentLengthInKms / 111.27;
+		double ratioOf2Dplane = MaxSegmentLengthInKms / 111.27;
+		double areaOf2dShape = DatumGetFloat8(OidFunctionCall1(
+												  PostgisGeometryAreaFunctionId(),
+												  state->state.geoSpatialDatum));
+		segmentLength = Max(round(areaOf2dShape / PLANE_2D_MAX_AREA_HEMISPHERE), 1) *
+						ratioOf2Dplane;
 	}
+
 	Datum argValues[3] = {
 		state->state.geoSpatialDatum,
 		Float8GetDatum(segmentLength),
