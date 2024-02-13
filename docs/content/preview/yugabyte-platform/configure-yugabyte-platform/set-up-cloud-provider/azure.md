@@ -136,8 +136,8 @@ You can specify a region as follows:
 
 To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
-- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs and stores the relevant private key part of these locally key so that you will be able to SSH into future instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user.
+- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user.
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given cloud account.
 
