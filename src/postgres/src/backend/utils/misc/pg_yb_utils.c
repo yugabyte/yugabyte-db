@@ -1348,8 +1348,15 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	Node *parsetree = GetActualStmtNode(pstmt);
 	NodeTag node_tag = nodeTag(parsetree);
 
+	/*
+	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
+	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
+	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
+	 * not update the original node tag.
+	 */
 	if (context == PROCESS_UTILITY_TOPLEVEL ||
-		context == PROCESS_UTILITY_QUERY)
+		(context == PROCESS_UTILITY_QUERY &&
+		 ddl_transaction_state.original_node_tag != T_RefreshMatViewStmt))
 	{
 		/* Assume the worst. */
 		*is_catalog_version_increment = true;
@@ -1366,7 +1373,10 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
-			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
+			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
+			   (context == PROCESS_UTILITY_QUERY &&
+				ddl_transaction_state.original_node_tag ==
+				T_RefreshMatViewStmt));
 
 		*is_catalog_version_increment = false;
 		*is_breaking_catalog_change = false;
@@ -1537,6 +1547,18 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			break;
 
 		case T_DropStmt:
+		{
+			/*
+			 * If this is a DROP statement that is being executed as part of
+			 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
+			 * tables, and do not need to increment catalog version.
+			 */
+			if (ddl_transaction_state.original_node_tag ==
+				T_RefreshMatViewStmt)
+				*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+		}
 		case T_YbDropProfileStmt:
 			*is_breaking_catalog_change = false;
 			break;
@@ -1649,8 +1671,29 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			break;
 
 		case T_RefreshMatViewStmt:
+		{
+			RefreshMatViewStmt *stmt = castNode(RefreshMatViewStmt, parsetree);
+			*is_breaking_catalog_change = false;
+			if (stmt->concurrent)
+				/*
+				 * REFRESH MATERIALIZED VIEW CONCURRENTLY does not need
+				 * a catalog version increment as it does not alter any
+				 * metadata. The command only performs data changes.
+				 */
+				*is_catalog_version_increment = false;
+			else
+				/*
+				 * REFRESH MATERIALIZED VIEW NONCONCURRENTLY needs a catalog
+				 * version increment as it alters the metadata of the
+				 * materialized view (pg_class.relfilenode). It does not need
+				 * to be a breaking change as materialized views are read-only,
+				 * so there is no risk of lost writes. Concurrent SELECTs may
+				 * read stale data from the old matview, or fail if the old
+				 * matview is dropped.
+				 */
+				*is_catalog_version_increment = true;
 			break;
-
+		}
 		case T_ReindexStmt:
 			/*
 			 * Does not need catalog version increment since only data changes,
