@@ -53,27 +53,26 @@ public class RestoreBackup extends UniverseTaskBase {
 
         if (isFirstTry()) {
           backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
-        }
+          if (universe.isYbcEnabled()
+              && !universe
+                  .getUniverseDetails()
+                  .getYbcSoftwareVersion()
+                  .equals(ybcManager.getStableYbcVersion())) {
 
-        if (universe.isYbcEnabled()
-            && !universe
+            if (universe
                 .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
-
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            createUpgradeYbcTaskOnK8s(
-                    taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-          } else {
-            createUpgradeYbcTask(
-                    taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(Common.CloudType.kubernetes)) {
+              createUpgradeYbcTaskOnK8s(
+                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            } else {
+              createUpgradeYbcTask(
+                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            }
           }
         }
 
