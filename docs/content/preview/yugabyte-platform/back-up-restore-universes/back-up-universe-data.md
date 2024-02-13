@@ -133,7 +133,7 @@ s3://user_bucket
 | Component | Description |
 | :-------- | :---------- |
 | Storage address | The name of the bucket as specified in the [backup configuration](../configure-backup-storage/) that was used for the backup. |
-| sub-directories | The path of the sub-folders (if any) in a bucket. |
+| Sub-directories | The path of the sub-folders (if any) in a bucket. |
 | Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder or any of its contents. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
@@ -142,13 +142,32 @@ s3://user_bucket
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
-Although you can move a backup from its location, for a successful restore, only the bucket can be changed, and none of the sub-components and folder names can be modified (from the sub-directories on down).
-
-
-
-
-
-
 When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 
 ![Success file metadata](/images/yp/success-file-backup.png)
+
+### Moving backups between buckets
+
+When moving a backup (for example, for long term storage), be sure to include all the subdirectories below the storage address.
+
+For a successful restore at a later date, none of the sub-components and folder names can be modified (from the sub-directories on down) in the address - only the storage address.
+
+For example, if you have a backup as follows:
+
+```output
+s3://test_bucket/test/univ-xyz
+```
+
+You can move the backup to a location similar to the following:
+
+```output
+s3://user_bucket/test/univ-xyz
+```
+
+However, you can't move it to a different subdirectory inside the bucket such as the following:
+
+```output
+s3://user_bucket/new-test/univ-xyz
+```
+
+To restore from a backup that has been moved, you need to use the [Advanced restore procedure](../restore-universe-data/#advanced-restore-procedure).
