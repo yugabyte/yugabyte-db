@@ -635,7 +635,7 @@ public class LocalNodeManager {
       NodeInfo nodeInfo)
       throws IOException {
     Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
-    if (additionalGFlags != null) {
+    if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
     log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
