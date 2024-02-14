@@ -16,10 +16,10 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ## v1.6.5 - February 13, 2024
 
 ### New features
-- Support for live migration from Postgres databases with the option of fall-forward, wherein you can switch to a source-replica postgres database if an issue arises during migration.
+- Support for [live migration](../migrate/live-migrate/) from Postgres databases with the option of [fall-forward](../migrate/live-fall-forward/), wherein you can switch to a source-replica postgres database if an issue arises during migration.
 
 ### Enhancements
-- The live migration workflow has been optimized with respect to the step of index creation on target DB. Instead of creating indexes on target after cutover, they can now be created concurrently with the cdc-phase of `import-data-to-target`. This ensures that the time-taking task of creating indexes on target DB is completed before the cutover process.
+- The live migration workflow has been optimized with respect to the step of [Importing indexes and triggers](../migrate/live-migrate/#import-indexes-and-triggers) on target DB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time-taking task of creating indexes on target DB is completed before the cutover process.
 - The `--post-import-data` flag of import schema has been renamed to `--post-snapshot-import` in order to incorporate live migration workflows.
 - Enhanced analyze-schema to report the unsupported extensions on YugabyteDB.
 - Improved UX of `yb-voyager get data-migration-report` for large set of tables by adding pagination.
