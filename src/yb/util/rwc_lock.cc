@@ -32,16 +32,15 @@
 
 #include "yb/util/rwc_lock.h"
 
-#include "yb/util/logging.h"
-
-#ifndef NDEBUG
 #include <utility>
 
 #include "yb/gutil/walltime.h"
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
+#include "yb/util/logging.h"
 #include "yb/util/thread.h"
-#endif // NDEBUG
 
 #include "yb/util/thread_restrictions.h"
 
@@ -104,7 +103,7 @@ void RWCLock::ReadUnlock() {
   }
 #endif // NDEBUG
   if (reader_count_ == 0) {
-    no_readers_.Signal();
+    YB_PROFILE(no_readers_.Signal());
   }
 }
 
@@ -174,7 +173,7 @@ void RWCLock::WriteUnlock() {
 #ifndef NDEBUG
   last_writer_stacktrace_.Reset();
 #endif // NDEBUG
-  no_mutators_.Signal();
+  YB_PROFILE(no_mutators_.Signal());
 }
 
 void RWCLock::UpgradeToCommitLock() {
@@ -217,7 +216,7 @@ void RWCLock::CommitUnlock() {
 #ifndef NDEBUG
   last_writer_stacktrace_.Reset();
 #endif // NDEBUG
-  no_mutators_.Broadcast();
+  YB_PROFILE(no_mutators_.Broadcast());
   lock_.unlock();
 }
 

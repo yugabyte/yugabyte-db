@@ -23,7 +23,8 @@ class CatalogEntityInfoTest : public YBTest {};
 
 // Verify that data mutations are not available from metadata() until commit.
 TEST_F(CatalogEntityInfoTest, TestNamespaceInfoCommit) {
-  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  scoped_refptr<NamespaceInfo> ns(
+      new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf", /*tasks_tracker=*/nullptr));
 
   // Mutate the namespace, under the write lock.
   auto writer_lock = ns->LockForWrite();

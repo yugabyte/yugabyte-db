@@ -34,6 +34,7 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
 import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
@@ -66,6 +67,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
+  localStorage.removeItem(testFeatureFlagsLocalStorageKey);
   clearRbacCreds();
 
   /*

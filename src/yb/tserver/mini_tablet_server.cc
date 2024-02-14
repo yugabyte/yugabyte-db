@@ -128,6 +128,13 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);
 }
 
+Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServer(
+    const std::vector<string>& fs_roots, uint16_t rpc_port, int index) {
+  auto options_result = TabletServerOptions::CreateTabletServerOptions();
+  RETURN_NOT_OK(options_result);
+  return std::make_unique<MiniTabletServer>(fs_roots, fs_roots, rpc_port, *options_result, index);
+}
+
 Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
   TEST_SetThreadPrefixScoped prefix_se(ToString());

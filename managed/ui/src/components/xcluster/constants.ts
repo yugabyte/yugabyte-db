@@ -151,6 +151,11 @@ export const METRIC_TIME_RANGE_OPTIONS = [
   CUSTOM_METRIC_TIME_RANGE_OPTION
 ] as const;
 
+// We're only interested in the latest lag value to update the UI. Thus, we'll just request the
+// last 1 hour of data.
+export const liveMetricTimeRangeValue = '1';
+export const liveMetricTimeRangeUnit = 'hours';
+
 /**
  * Empty metric data to render an empty plotly graph when we are unable to provide real data.
  */

@@ -166,6 +166,13 @@ Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& names
   return XClusterTargetManager::GetXClusterSafeTime(namespace_id);
 }
 
+Status XClusterManager::GetXClusterSafeTimeForNamespace(
+    const GetXClusterSafeTimeForNamespaceRequestPB* req,
+    GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(req, resp, epoch);
+}
+
 Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
     const LeaderEpoch& epoch) {
   return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);

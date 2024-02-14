@@ -250,6 +250,7 @@ set(TSERVER_SRCS
   xcluster_consumer.cc
   xcluster_consumer_auto_flags_info.cc
   xcluster_consumer_replication_error.cc
+  xcluster_ddl_queue_handler.cc
   xcluster_poller.cc
   xcluster_poller_id.cc
   xcluster_poller_stats.cc
@@ -365,6 +366,7 @@ ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
+ADD_YB_TEST(clone_operation-test)
 
 ADD_YB_TEST(encrypted_sstable-test)
 YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserver_test_util tserver)
@@ -375,3 +377,4 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
 ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
+ADD_YB_TEST(xcluster_ddl_queue_handler-test)

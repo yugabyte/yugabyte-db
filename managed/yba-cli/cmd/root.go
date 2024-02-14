@@ -109,7 +109,7 @@ func setDefaults() {
 	viper.SetDefault("no-color", false)
 	viper.SetDefault("wait", true)
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
-	viper.SetDefault("lastVersionAvailable", "v0.0.0")
+	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
 }
 

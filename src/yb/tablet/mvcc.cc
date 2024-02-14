@@ -40,6 +40,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
@@ -278,7 +279,7 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
     queue_.pop_front();
     last_replicated_ = ht;
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
@@ -295,7 +296,7 @@ void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
         << InvariantViolationLogPrefix() << "It is allowed to abort only last operation";
     queue_.pop_back();
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 bool BadNextOpId(const OpId& prev, const OpId& next) {
@@ -421,7 +422,7 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
     }
     last_replicated_ = ht;
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
@@ -441,7 +442,7 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
           << "is elected.";
     }
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
@@ -480,7 +481,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
       });
     }
   }
-  cond_.notify_all();
+  YB_PROFILE(cond_.notify_all());
 }
 
 void MvccManager::SetLeaderOnlyMode(bool leader_only) {

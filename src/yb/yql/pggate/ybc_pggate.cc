@@ -1633,6 +1633,10 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
 
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1894,9 +1898,11 @@ YBCStatus YBCGetTableKeyRanges(
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
+                                        YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle) {
   return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
                                                      database_oid,
+                                                     snapshot_action,
                                                      handle));
 }
 

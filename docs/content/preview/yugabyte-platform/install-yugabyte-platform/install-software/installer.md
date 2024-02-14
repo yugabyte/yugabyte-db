@@ -54,6 +54,8 @@ You can also use YBA Installer to migrate an existing YBA software installed via
 
 -> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
 
+-> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
+
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
 ## Prerequisites

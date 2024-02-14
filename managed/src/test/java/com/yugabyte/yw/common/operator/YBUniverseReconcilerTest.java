@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -75,6 +76,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
   @Mock Resource<YBUniverse> ybUniverseResource;
   @Mock RuntimeConfGetter confGetter;
+  @Mock RuntimeConfGetter confGetterForOperatorUtils;
   @Mock YBInformerFactory informerFactory;
   @Mock SharedIndexInformer<YBUniverse> ybUniverseInformer;
   @Mock Indexer<YBUniverse> indexer;
@@ -108,8 +110,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
+    OperatorUtils operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
     Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
-    OperatorUtils operatorUtils = new OperatorUtils(confGetter);
+    Mockito.when(
+            confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
+        .thenReturn("");
     ybUniverseReconciler =
         new YBUniverseReconciler(
             client,

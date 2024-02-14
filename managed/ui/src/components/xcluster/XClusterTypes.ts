@@ -17,7 +17,8 @@ import { XClusterTableDetails } from './dtos';
  */
 export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
-export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
+export type XClusterTable = YBTable &
+  Omit<XClusterTableDetails, 'tableId'> & { replicationLag?: number };
 
 //------------------------------------------------------------------------------------
 // Table Selection Types

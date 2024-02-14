@@ -199,6 +199,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       tablet::SplitOperation* operation, log::Log* raft_log,
       boost::optional<consensus::RaftConfigPB> committed_raft_config) override;
 
+  Status ApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config) override;
+
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
   // or else returns Status::IllegalArgument.
@@ -515,6 +519,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status DoHandleNonReadyTabletOnStartup(
       const tablet::RaftGroupMetadataPtr& meta,
       const scoped_refptr<TransitionInProgressDeleter>& deleter);
+
+  Status CleanUpSubtabletIfExistsOnDisk(
+      const tablet::RaftGroupMetadata& source_tablet_meta, const TabletId& tablet_id, Env* env);
 
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);

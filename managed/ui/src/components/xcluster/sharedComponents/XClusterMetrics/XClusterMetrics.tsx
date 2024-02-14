@@ -170,7 +170,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const configReplicationLagMetricQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(replciationLagMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           replciationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
@@ -210,7 +210,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const consumerSafeTimeLagMetricsQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(consumerSafeTimeLagMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           consumerSafeTimeLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
@@ -250,7 +250,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const consumerSafeTimeSkewMetricsQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(consumerSafeTimeSkewMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           consumerSafeTimeSkewMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type

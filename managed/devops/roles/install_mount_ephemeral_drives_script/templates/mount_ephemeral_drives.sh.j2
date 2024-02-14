@@ -21,12 +21,19 @@ readonly CLOUD_TYPE="{{ cloud_type }}"
 readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
 readonly MOUNT_PATHS="{{ mount_paths }}"
 readonly LUN_INDEXES="{{ disk_lun_indexes }}"
+readonly IMDSv2Required="{{ imdsv2required }}"
 
 {% raw %}
 should_check_aws_meta() {
   [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
 }
 
+if [[ "$IMDSv2Required" == "True" ]]; then
+  TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 120")
+  CURL_COMMANND="curl -H \"X-aws-ec2-metadata-token: $TOKEN\""
+else 
+  CURL_COMMANND="curl"
+fi
 # Figure out how many ephemerals we have by querying the metadata API, and then:
 #  - convert the drive name returned from the API to the hosts DRIVE_SCHEME, if necessary
 #  - verify a matching device is available in /dev/
@@ -38,7 +45,7 @@ get_device_path() {
   local ephemeral_name=$1
   local output=
   if should_check_aws_meta; then
-    output=$(curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/$ephemeral_name)
+    output=$($CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/$ephemeral_name)
   else
     output=$ephemeral_name
   fi
@@ -74,7 +81,7 @@ get_ephemeral_drives() {
     local -i attempt=0
     local ephemerals=""
     while true; do
-      if curl --silent $METADATA_URL_BASE/meta-data/ | grep block-device-mapping >/dev/null; then
+      if $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/ | grep block-device-mapping >/dev/null; then
         break
       fi
       echo >&2 "$METADATA_URL_BASE/meta-data/block-device-mapping not yet available"
@@ -88,12 +95,12 @@ get_ephemeral_drives() {
     done
 
     # Verify that we can curl this URL successfully.
-    curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ >/dev/null
+    $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ >/dev/null
 
     # Turn off error checking and grep for ephemeral drives. We won't fail even if none are present.
     set +e
     get_ephemeral_drives_rv=$(
-        curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
+        $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
     set -e
   elif [[ $CLOUD_TYPE == "azu" ]]; then
     get_azu_scsi_drives
