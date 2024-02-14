@@ -43,8 +43,6 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterK8SNodeResourceSpec;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.TserverK8SNodeResourceSpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -374,8 +372,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setNumNodes(1L);
     spec.setZoneFilter(zones);
     spec.setReplicationFactor((long) 1);
-    spec.setAssignPublicIP(true);
-    spec.setUseTimeSync(true);
     spec.setEnableYSQL(true);
     spec.setEnableYCQL(false);
     spec.setEnableNodeToNodeEncrypt(false);
@@ -383,8 +379,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setYsqlPassword(null);
     spec.setYcqlPassword(null);
     spec.setProviderName(defaultProvider.getName());
-    spec.setMasterK8SNodeResourceSpec(new MasterK8SNodeResourceSpec());
-    spec.setTserverK8SNodeResourceSpec(new TserverK8SNodeResourceSpec());
     DeviceInfo deviceInfo = new DeviceInfo();
     spec.setDeviceInfo(deviceInfo);
 
