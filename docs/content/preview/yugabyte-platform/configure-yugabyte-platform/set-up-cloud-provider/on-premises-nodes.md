@@ -92,7 +92,7 @@ To add the instances, do the following:
 
     - Select the zone.
     - Select the instance type.
-    - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
+    - Enter the IP address of the instance. You can use DNS names or IP addresses when adding instances.
     - Optionally, enter an Instance ID; this is a user-defined identifier.
 
     Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.

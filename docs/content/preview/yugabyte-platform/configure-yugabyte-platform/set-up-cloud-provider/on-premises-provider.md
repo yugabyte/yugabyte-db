@@ -80,7 +80,7 @@ Use the **SSH Private Key Content** field to upload the private key PEM file ava
 
 ### Advanced
 
-Disable the **DB Nodes have public internet access** option if you want the installation to run in an air-gapped mode without expecting any internet access.
+Disable the **DB Nodes have public internet access** option if you want the installation to run in an airgapped mode without expecting any internet access.
 
 YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
 

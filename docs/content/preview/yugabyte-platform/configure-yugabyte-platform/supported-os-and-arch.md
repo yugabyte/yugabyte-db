@@ -24,7 +24,7 @@ YBA supports deploying YugabyteDB on a variety of [operating systems](../../../r
 
 Python v3.6 or later is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python v3.6 or later installed.
 
-If you are using Python v3.11 or later, install the selinux python package:
+If you are using Python v3.11 or later, install the selinux python package as follows:
 
 ```sh
 python3.11 -m pip install selinux
