@@ -15,12 +15,11 @@ aliases:
 type: docs
 ---
 
-The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/#using-a-unique-index) applied to the table columns.
 
 ## Syntax and examples
 
 {{% explore-setup-single %}}
-
 
 ### Primary key for a single column
 
@@ -154,7 +153,7 @@ HINT:  Use OVERRIDING SYSTEM VALUE to override.
 
 ## Learn more
 
-- [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
-- [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)

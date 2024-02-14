@@ -72,11 +72,11 @@ The following example uses the `employees` table from the Secondary indexes [exa
 
 ## Explore covering indexes
 
-- Learn how [covering indexes](../../indexes-constraints/covering-index-ysql/) can optimize query performance by covering all the columns needed by a query.
+- Learn how [covering indexes](../covering-index-ysql/) can optimize query performance by covering all the columns needed by a query.
 - [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 
 ## Learn more
 
-- [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
+- [Partial and expression indexes](../../jsonb-ysql/#partial-and-expression-indexes)
 - [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)
-- [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/#expression-indexes)
+- [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#expression-indexes)

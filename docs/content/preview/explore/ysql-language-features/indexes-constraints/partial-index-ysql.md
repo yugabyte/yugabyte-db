@@ -30,7 +30,7 @@ The `WHERE` clause specifies which rows need to be added to the index.
 
 {{% explore-setup-single %}}
 
-This example uses the `customers` table from the [Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 
@@ -87,4 +87,4 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 
 - [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)
 - [The Benefit of Partial Indexes in Distributed SQL Databases](https://www.yugabyte.com/blog/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
-- [Indexes on JSON attributes](../../json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+- [Indexes on JSON attributes](../../jsonb-ysql/#6-indexes-on-json-attributes)

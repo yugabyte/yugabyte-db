@@ -27,19 +27,19 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index (multi-column index).
 
-For more information, see [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/).
+For more information, see [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/).
 
 [Multi-column indexes](#multi-column-index) can be beneficial in situations where queries are searching in more than a single column.
 
-You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/ysql-language-features/indexes-constraints/expression-index-ysql/).
+You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../expression-index-ysql/).
 
 YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen.
 
-For more information on `ybgin`, see [Generalized inverted index](../../../explore/ysql-language-features/indexes-constraints/gin/).
+For more information on `ybgin`, see [Generalized inverted index](../gin/).
 
 You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`.
 
-For examples, see [Unique index with HASH column ordering](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering) and [ASC ordered index](../../../api/ysql/the-sql-language/statements/ddl_create_index/#asc-ordered-index).
+For examples, see [Unique index with HASH column ordering](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering) and [ASC ordered index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#asc-ordered-index).
 
 ## List indexes and verify the query plan
 
@@ -53,7 +53,7 @@ For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
-For more information, see [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain/).
+For more information, see [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/).
 
 ## Remove indexes
 
@@ -63,7 +63,7 @@ You can remove one or more existing indexes using the `DROP INDEX` statement in 
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 
-For more information, see [DROP INDEX](../../../api/ysql/the-sql-language/statements/ddl_drop_index/).
+For more information, see [DROP INDEX](../../../../api/ysql/the-sql-language/statements/ddl_drop_index/).
 
 ## Example
 
@@ -156,7 +156,7 @@ A column combination like (col2,col4) cannot be used to search or query a table.
 
 {{% explore-setup-single %}}
 
-This example uses the `employees` table from the [Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `employees` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `employees` table:
 
