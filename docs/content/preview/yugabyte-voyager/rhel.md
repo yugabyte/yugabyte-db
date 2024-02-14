@@ -80,7 +80,7 @@ Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two 
     ```
     {{< note >}}
 
-Install `yb-voyager` with specific version on your machine using the following command:
+Install a specific version of `yb-voyager` on your machine using the following command:
 
     sudo yum install yb-voyager-<VERSION>
 
