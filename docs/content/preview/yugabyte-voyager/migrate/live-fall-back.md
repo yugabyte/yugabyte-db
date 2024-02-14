@@ -443,7 +443,25 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-snapshot-import true
 ```
 
-If the preceding command with `--post-snapshot-import true` fails, retry the command with the argument `--ignore exist` to ignore already created indexes and create new ones instead.
+If the preceding command with `--post-snapshot-import true` fails, you should drop the INVALID indexes first using the following query - 
+
+```sql
+DO $$ 
+DECLARE
+  index_name text;
+BEGIN
+  FOR index_name IN (
+    SELECT indexrelid::regclass 
+    FROM pg_index 
+    WHERE indisvalid = false
+  ) 
+  LOOP
+    EXECUTE 'DROP INDEX ' || index_name;
+  END LOOP;
+END $$;
+```
+
+retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
