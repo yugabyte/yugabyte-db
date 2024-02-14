@@ -34,7 +34,7 @@ To create a connection, do the following:
 
 1. In TablePlus, from the **Connection** menu, choose **New**.
 
-1. Select **PostgreSQL** for YSQL, or **Cassandra** for YCQL, and click **Create**.
+1. Select **PostgreSQL** for YSQL, or **Cassandra** for YCQL, and click **Create**. Note that JSONB data type is unsupported for YCQL.
 
     ![Choose DB](/images/develop/tools/tableplus/choose-db.png)
 
