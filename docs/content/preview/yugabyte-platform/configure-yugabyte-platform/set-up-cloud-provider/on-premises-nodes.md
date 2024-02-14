@@ -89,12 +89,7 @@ Before you add instances, you need the following:
 
 - The IP addresses of your VMs.
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
-
-{{<tip title="Manual provisioning">}}
-
-If the **Manually Provision Nodes** option is enabled in the on-prem provider configuration, you must manually provision instances with the necessary software before you can add them to the on-premises provider. See [Manually provision on-premises nodes](../on-premises-script/).
-
-{{</tip>}}
+- If you are doing [assisted or manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool), you must have provisioned the nodes. See [Manually provision on-premises nodes](../on-premises-script/).
 
 ### Add instances to the on-prem provider
 

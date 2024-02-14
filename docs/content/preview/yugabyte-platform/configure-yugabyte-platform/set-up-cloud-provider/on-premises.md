@@ -64,7 +64,7 @@ In YBA, navigate to the provider you created in Stage 2 and do the following:
 
 Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
 
-## Prepare VMs
+## Stage 1: Prepare VMs
 
 You can prepare VMs for use as nodes in an on-premises deployment, as follows:
 
