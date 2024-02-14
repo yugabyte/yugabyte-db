@@ -19,9 +19,24 @@ After creating the on-premises provider, you can add instances to its free pool 
 
 This displays the configured instance types and instances for the selected provider.
 
-{{< tabpane text=true >}}
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#automatic" class="nav-link active" id="automatic-tab" data-toggle="tab"
+      role="tab" aria-controls="automatic" aria-selected="true">
+      Automatic Provisioning
+    </a>
+  </li>
+  <li>
+    <a href="#manual" class="nav-link" id="manual-tab" data-toggle="tab"
+      role="tab" aria-controls="manual" aria-selected="false">
+      Manual Provisioning
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="automatic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="automatic-tab">
 
-  {{% tab header="Automatic Provisioning" lang="automatic" %}}
+For automatic provisioning, the **Instances** page is displayed as follows:
 
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
@@ -31,9 +46,11 @@ To add nodes, do the following:
 1. [Add the compute instances](#add-instances).
 1. [Run preflight checks](#run-preflight-checks).
 
-  {{% /tab %}}
+  </div>
 
-  {{% tab header="Manual Provisioning" lang="manual" %}}
+  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
+
+For manual provisioning, the **Instances** page includes the command for running the provisioning script, as follows:
 
 ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
@@ -44,9 +61,9 @@ To add nodes, do the following:
 1. [Add the compute instances](#add-instances).
 1. [Run preflight checks](#run-preflight-checks).
 
-  {{% /tab %}}
+  </div>
 
-{{< /tabpane >}}
+</div>
 
 ## Add instance types
 
@@ -73,12 +90,11 @@ Before you add instances, you need the following:
 - The IP addresses of your VMs.
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
 
-### Manually provision nodes
+{{<tip title="Manual provisioning">}}
 
-In addition, if either of the following conditions is true (and the **Manually Provision Nodes** option is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
+If the **Manually Provision Nodes** option is enabled in the on-prem provider configuration, you must manually provision instances with the necessary software before you can add them to the on-premises provider. See [Manually provision on-premises nodes](../on-premises-script/).
 
-- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Assisted manual](../on-premises-script/).
-- Your SSH user does not have sudo privileges. See [Fully manual](../on-premises-manual/).
+{{</tip>}}
 
 ### Add instances to the on-prem provider
 
