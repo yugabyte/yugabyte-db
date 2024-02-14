@@ -1,0 +1,1 @@
+*Note, if you stopped the frontend container at any point in time, then go back to this section of [chapter 1](../chapter1-debuting-with-postgres/#deploy-yugaplus-movie-recommendations-service) to get it running again.*

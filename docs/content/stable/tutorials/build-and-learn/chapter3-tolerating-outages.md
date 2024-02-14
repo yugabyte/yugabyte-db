@@ -302,7 +302,7 @@ Once the data loading is finished, connect to the [YugaPlus frontend](http://loc
   </div>
 </div>
 
-*Note, if you stopped the frontend container at any point in time, then go back to this section of [chapter 1](../chapter1-debuting-with-postgres/#deploy-yugaplus-movie-recommendations-service) to get it running again.*
+{{% includeMarkdown "includes/restart-frontend.md" %}}
 
 {{< header Level="2" >}}Simulate a Region-Level Outage{{< /header >}}
 
@@ -407,4 +407,5 @@ Finally, assuming that the US East region is restored after the outage:
 TBD:
 
 * HINT: Watch the complete solution - apps across multiple regions. Watch the Super Bowl video.
-* The congratulations section!
+* The flyway advisory locks note.
+* The congratulations paragraph!

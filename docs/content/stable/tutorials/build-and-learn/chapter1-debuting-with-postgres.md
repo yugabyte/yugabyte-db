@@ -150,7 +150,7 @@ Use the credentials below to log into YugaPlus!
 * Username: `user1@gmail.com`
 * Password: `MyYugaPlusPassword`
 
-![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/chapter1-login-screen.png)
+![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
 {{< header Level="2" >}}Search For Your Favorite Movies{{< /header >}}
 
