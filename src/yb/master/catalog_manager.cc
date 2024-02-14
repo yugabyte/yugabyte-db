@@ -1726,7 +1726,7 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
     // for more details). The template1 database always has OID 1.
     for (const auto& [ns_id, ns_info] : namespace_ids_map_) {
-      if (!IsPgsqlId(ns_id)) {
+      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
       uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_id));
