@@ -80,11 +80,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const getOverrides = (editDetails: ImageBundle) => {
+const getOverrides = (editDetails: ImageBundle & ImageBundleExtendedProps) => {
   if (!isNonEmptyObject(editDetails)) return {};
   return {
-    sshUserOverride: values(editDetails?.details.regions)[0]?.sshUserOverride,
-    sshPortOverride: values(editDetails?.details.regions)[0]?.sshPortOverride
+    sshUserOverride: values(editDetails?.details.regions)[0]?.sshUserOverride ?? editDetails?.sshUserOverride,
+    sshPortOverride: values(editDetails?.details.regions)[0]?.sshPortOverride ?? editDetails?.sshPortOverride
   };
 };
 
@@ -153,6 +153,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       onSubmit={() => {
         handleSubmit((values) => {
           onSubmit(values);
+          reset();
         })();
       }}
     >
