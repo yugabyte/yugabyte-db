@@ -39,15 +39,15 @@ type: docs
 
 </ul>
 
-Before you can deploy universes to OpenShift using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes to OpenShift using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
 ## Prerequisites
 
-To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider.
+To create a YugabyteDB universe using the deployed YBA, you start by creating the required role-based access control (RBAC) and adding the provider.
 
 ### Create RBAC
 
-Set the `YBA_NAMESPACE` environment variable to the project where your YugabyteDB Anywhere is installed, as follows:
+Set the `YBA_NAMESPACE` environment variable to the project where your YBA is installed, as follows:
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
@@ -94,7 +94,7 @@ rolebinding.rbac.authorization.k8s.io/yugabyte-management created
 
 ### Create kubeconfig file
 
-The next step is to create a `kubeconfig` file for this service account. The `kubeconfig` file is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
+The next step is to create a `kubeconfig` file for this service account. The `kubeconfig` file is used by YBA to create universes in the OpenShift Container Platform (OCP) cluster.
 
 You download a helper script for generating a `kubeconfig` file by executing the following command:
 
@@ -142,7 +142,7 @@ Click **Create Provider Configuration** to save the configuration. If your confi
 
 You can create a universe using the provider as follows:
 
-- Use YugabyteDB Anywhere UI to navigate to **Universes**, and then click **Create Universe**.
+- Use YBA UI to navigate to **Universes**, and then click **Create Universe**.
 
 - Complete the **Create Universe** page shown in the following illustration by entering the following information:
 

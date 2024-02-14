@@ -40,11 +40,11 @@ type: docs
 
 </ul>
 
-Before you can deploy universes to VMware Tanzu using YugabyteDB Anywhere, you must create a provider configuration.
+Before you can deploy universes to VMware Tanzu using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
 ## Prerequisites
 
-Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YBA can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
 ## Configure TKG
 
@@ -110,7 +110,7 @@ VMware Tanzu Application Service is no longer actively supported and the followi
 If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment.
+- The cloud provider is configured in the YBA instance in your PCF environment.
 
 ### Create a YugabyteDB service instance
 
@@ -159,7 +159,7 @@ You can specify override options when you create a service instance using the Yu
 
 #### Override cloud providers
 
-Depending on the cloud providers configured for your YugabyteDB Anywhere, you can create Yugabyte service instances by providing overrides.
+Depending on the cloud providers configured for your YBA, you can create Yugabyte service instances by providing overrides.
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
@@ -220,7 +220,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 
 #### Override the YugabyteDB software version
 
-To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
+To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YBA, as follows:
 
 ```yaml
 {

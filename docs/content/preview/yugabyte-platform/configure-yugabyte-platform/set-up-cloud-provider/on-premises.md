@@ -16,7 +16,7 @@ type: docs
 
 Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
+With on-premises providers, VMs are _not_ auto-created by YBA; you must manually create your VMs, provision them with YugabyteDB software, and then add them to the provider's free pool of nodes.
 
 ## Overview
 
@@ -112,7 +112,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 */1 * * * * /home/yugabyte/bin/yb-server-ctl.sh tserver cron-check || /home/yugabyte/bin/yb-server-ctl.sh tserver start
 ```
 
-Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
+Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YBA to function as expected.
   {{< /tip >}}
 
 - Verify that Python 3 is installed.
@@ -132,16 +132,16 @@ Disabling Crontab creates alerts after the universe is created, but they can be 
 - Set `mount` path permissions to 0755.
 
 {{< note title="Note" >}}
-By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
+By default, YBA uses OpenSSH for SSH to remote nodes. YBA also supports the use of Tectia SSH that is based on the latest SSH G3 protocol. For more information, see [Enable Tectia SSH](#enable-tectia-ssh).
 {{< /note >}}
 
 ### Enable Tectia SSH
 
-[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YugabyteDB Anywhere is shipped with a trial version of Tectia SSH client that requires a license in order to notify YugabyteDB Anywhere to permanently use Tectia instead of OpenSSH.
+[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YBA is shipped with a trial version of Tectia SSH client that requires a license in order to notify YBA to permanently use Tectia instead of OpenSSH.
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during the Replicated installation.
 
-After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, YBA exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 
 ```shell
 curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'
@@ -154,4 +154,4 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 
 ## Next step
 
-- [Create on-premises provider configuration](../on-premises-provider/)
+- Stage 2: [Create the provider configuration](../on-premises-provider/)

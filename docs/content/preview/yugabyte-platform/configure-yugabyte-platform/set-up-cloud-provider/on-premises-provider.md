@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must create an on-premises provider configuration.
+Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA), you must create an on-premises provider configuration.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
+With on-premises providers, VMs are _not_ auto-created by YBA; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
 
 Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
 
@@ -64,12 +64,12 @@ To add regions for the provider, do the following:
 
 ### SSH Key Pairs
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because YugabyteDB Anywhere needs SSH access to the nodes to provision them with YugabyteDB. Unless you plan to provision the database nodes manually, the SSH user needs to have password-free sudo permissions to complete a few tasks.
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because YBA needs SSH access to the nodes to provision them with YugabyteDB. Unless you plan to provision the database nodes manually, the SSH user needs to have password-free sudo permissions to complete a few tasks.
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 
 {{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+After you have provisioned and added the instances to the provider (including installing the [node agent](../../../../faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
 {{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.
@@ -82,7 +82,7 @@ Use the **SSH Private Key Content** field to upload the private key PEM file ava
 
 Disable the **DB Nodes have public internet access** option if you want the installation to run in an airgapped mode without expecting any internet access.
 
-YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
+YBA uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
 
 - Pre-provisioned `yugabyte:yugabyte` user and group.
 - Sudo user requires a password.
@@ -101,8 +101,8 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Next step
 
-- [Add nodes to the provider free pool](../on-premises-nodes/)
+- Stage 3: [Add nodes to the provider free pool](../on-premises-nodes/)

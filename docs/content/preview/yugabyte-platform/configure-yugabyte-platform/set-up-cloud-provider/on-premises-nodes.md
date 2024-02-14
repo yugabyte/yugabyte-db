@@ -58,7 +58,7 @@ To add an instance type, do the following:
 
 1. Complete the **Add Instance Type** dialog fields, as follows:
 
-    - Use the **Machine Type** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
+    - Use the **Name** field to define a value to be used internally as an identifier in the **Instance Type** universe field.
     - Use the **Number of Cores** field to define the number of cores to be assigned to a node.
     - Use the **Memory Size (GB)** field to define the memory allocation of a node.
     - Use the **Volume Size (GB)** field to define the disk volume of a node.
