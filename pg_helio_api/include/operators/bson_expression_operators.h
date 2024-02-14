@@ -396,6 +396,8 @@ void HandleDollarStrCaseCmp(pgbson *doc, const bson_value_t *operatorValue,
  */
 void HandlePreParsedDollarBsonSize(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarBinarySize(pgbson *doc, void *arguments,
+									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarEq(pgbson *doc, void *arguments,
@@ -439,6 +441,7 @@ void HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
 void HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data);
