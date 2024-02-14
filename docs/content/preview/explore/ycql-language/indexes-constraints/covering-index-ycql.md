@@ -22,7 +22,7 @@ A covering index is an efficient way to perform `index-only` scans, where you do
 CREATE INDEX columnA_index_name ON table_name(columnA) INCLUDE (columnC);
 ```
 
-For additional information on creating indexes, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For additional information on creating indexes, see [CREATE INDEX](../../../../api/ycql/ddl_create_index/).
 
 ## Example
 

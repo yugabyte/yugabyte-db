@@ -31,11 +31,11 @@ For more information, see [CREATE INDEX](../../../api/ysql/the-sql-language/stat
 
 [Multi-column indexes](#multi-column-index) can be beneficial in situations where queries are searching in more than a single column.
 
-You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/indexes-constraints/expression-index-ysql/).
+You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/ysql-language-features/indexes-constraints/expression-index-ysql/).
 
 YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen.
 
-For more information on `ybgin`, see [Generalized inverted index](../../../explore/indexes-constraints/gin/).
+For more information on `ybgin`, see [Generalized inverted index](../../../explore/ysql-language-features/indexes-constraints/gin/).
 
 You can apply sort order on the indexed columns as `HASH` (default option for the first column), `ASC` (default option for the second and subsequent columns), as well as `DESC`.
 

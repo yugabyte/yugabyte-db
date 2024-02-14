@@ -75,7 +75,7 @@ You can use the `DESCRIBE INDEX` command to check the index as follows:
 DESCRIBE INDEX idx_users_jsonb;
 ```
 
-For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
+For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
@@ -83,7 +83,7 @@ You can also use the `EXPLAIN` statement to check if a query uses an index and d
 EXPLAIN SELECT * FROM users WHERE address->>'zip' = '327';
 ```
 
-For additional information, see the [EXPLAIN](../../../api/ycql/explain/) statement.
+For additional information, see the [EXPLAIN](../../../../api/ycql/explain/) statement.
 
 ## Covering index and Partial index with JSONB column
 
@@ -107,7 +107,7 @@ CREATE INDEX idx_users_jsonb_part ON users (address->>'zip')
        WHERE email = 'lskywalker@yb.com';
 ```
 
-For additional information on the CREATE INDEX statement, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For additional information on the CREATE INDEX statement, see [CREATE INDEX](../../../../api/ycql/ddl_create_index/).
 
 ## Remove indexes
 
@@ -117,4 +117,4 @@ You can remove an index created with the JSONB datatype column using the `DROP I
 DROP INDEX idx_users_jsonb;
 ```
 
-For additional information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
+For additional information, see [DROP INDEX](../../../../api/ycql/ddl_drop_index/).
