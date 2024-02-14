@@ -354,7 +354,6 @@ extern int	pgstat_fetch_stat_numbackends(void);
 extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
 extern LocalPgBackendStatus *pgstat_fetch_stat_local_beentry(int beid);
 extern char *pgstat_clip_activity(const char *raw_activity);
-extern PgBackendStatus **getBackendStatusArrayPointer(void);
 
 /* ----------
  * YB functions called from backends

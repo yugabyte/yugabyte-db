@@ -1183,12 +1183,6 @@ pgstat_clip_activity(const char *raw_activity)
 	return activity;
 }
 
-PgBackendStatus **
-getBackendStatusArrayPointer(void)
-{
-	return &BackendStatusArray;
-}
-
 /*
  * When backends die due to abnormal termination, cleanup is required.
  *
