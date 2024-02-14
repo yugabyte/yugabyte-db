@@ -7,29 +7,10 @@ headContent: Explore unique indexes in YugabyteDB using YCQL
 menu:
   preview:
     identifier: unique-index-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 231
-aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
 type: docs
 ---
-
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../unique-index-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../unique-index-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 

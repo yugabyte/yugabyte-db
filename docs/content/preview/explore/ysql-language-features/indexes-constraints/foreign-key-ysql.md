@@ -7,22 +7,13 @@ headContent: Explore foreign keys in YugabyteDB using YSQL
 menu:
   preview:
     identifier: foreign-key-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 210
 aliases:
   - /preview/explore/ysql-language-features/constraints/
   - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../foreign-key-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
 
 A foreign key represents one or more columns in a table referencing the following:
 

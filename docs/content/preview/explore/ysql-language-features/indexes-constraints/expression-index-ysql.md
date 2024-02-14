@@ -7,19 +7,10 @@ headContent: Explore expression indexes in YugabyteDB using YSQL
 menu:
   preview:
     identifier: expression-index-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 250
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../expression-index-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
 
 Indexes are typically created based solely on the columns, but using an expression index (also called a function-based index) you can create an index based on a generic expression (function or modification of data entered) computed from table columns.
 

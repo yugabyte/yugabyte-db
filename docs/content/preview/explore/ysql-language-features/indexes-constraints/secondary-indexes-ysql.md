@@ -7,27 +7,13 @@ headContent: Explore secondary indexes in YugabyteDB using YSQL
 menu:
   preview:
     identifier: secondary-indexes-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 210
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
   - /preview/explore/indexes-constraints/secondary-indexes/
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../secondary-indexes-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../secondary-indexes-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 

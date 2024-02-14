@@ -7,24 +7,10 @@ headContent: Explore covering indexes in YugabyteDB using YSQL
 menu:
   preview:
     identifier: covering-index-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 250
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../covering-index-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../covering-index-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include.
 

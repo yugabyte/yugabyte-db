@@ -7,29 +7,10 @@ headContent: Explore primary keys in YugabyteDB using YCQL
 menu:
   preview:
     identifier: primary-key-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 201
-aliases:
-  - /preview/explore/ysql-language-features/constraints/
-  - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../primary-key-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../primary-key-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. In YCQL, it should be defined either under the `column_constraint` or the `table_constraint`, but not under both:
 

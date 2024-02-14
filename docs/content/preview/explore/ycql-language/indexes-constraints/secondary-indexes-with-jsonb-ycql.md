@@ -7,12 +7,10 @@ headContent: Explore secondary indexes with JSONB in YugabyteDB using YCQL
 menu:
   preview:
     identifier: secondary-indexes-with-jsonb-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 260
 type: docs
 ---
-
-{{<api-tabs list="ycql">}}
 
 Secondary indexes can be created with a JSONB datatype column in YCQL. Secondary Indexes in YCQL are global and distributed and similar to tables.  So the use of indexes can enhance database performance by enabling the database server to find rows faster.  You can create covering indexes as well as partial indexes with JSONB columns.
 

@@ -114,6 +114,18 @@
   to = "/preview/explore/fault-tolerance/"
 
 [[redirects]]
+  from = "/explore/explore-indexes-constraints/*"
+  to = "/preview/explore/ysql-language-features/explore-indexes-constraints-ysql/:splat"
+
+[[redirects]]
+  from = "/explore/json-support/explore-json-support-1-ysql/"
+  to = "/preview/explore/ysql-language-features/explore-json-support-ysql/"
+
+[[redirects]]
+  from = "/explore/json-support/explore-json-support-2-ycql/*"
+  to = "/preview/explore/ycql-language/explore-json-support-ycql/"
+
+[[redirects]]
   from = "/explore/tunable-reads/"
   to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
 

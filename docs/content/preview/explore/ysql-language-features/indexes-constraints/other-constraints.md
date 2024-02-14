@@ -7,22 +7,13 @@ headContent: Explore other constraints in YugabyteDB using YSQL
 menu:
   preview:
     identifier: other-constraints
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 270
 aliases:
   - /preview/explore/ysql-language-features/constraints/
   - /preview/explore/indexes-constraints/constraints/
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../other-constraints/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
 
 {{% explore-setup-single %}}
 
