@@ -577,6 +577,10 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
                            "heartbeat in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
 
+METRIC_DEFINE_counter(cluster, create_table_too_many_tablets,
+    "How many CreateTable requests have failed due to too many tablets", yb::MetricUnit::kRequests,
+    "The number of CreateTable request errors due to attempting to create too many tablets.");
+
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
@@ -1057,6 +1061,9 @@ Status CatalogManager::Init() {
 
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
+
+  metric_create_table_too_many_tablets_ =
+      METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
 
@@ -3914,6 +3921,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   if (!s.ok()) {
     LOG(WARNING) << s;
+    IncrementCounter(metric_create_table_too_many_tablets_);
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
   }
   const auto [partition_schema, partitions] =
