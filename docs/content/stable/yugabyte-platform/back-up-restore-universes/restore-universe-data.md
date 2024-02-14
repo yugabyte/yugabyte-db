@@ -105,7 +105,7 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 
 ## Advanced restore procedure
 
-In addition to the basic restore, an advanced backup option is available for the following circumstances:
+In addition to the basic restore, an advanced restore option is available for the following circumstances:
 
 - you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
 - you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YBA; that is, is no longer listed in the **Backups** list.
