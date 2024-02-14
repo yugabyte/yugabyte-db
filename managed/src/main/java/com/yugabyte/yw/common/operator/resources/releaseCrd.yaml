@@ -13,6 +13,19 @@ spec:
     - name: v1alpha1
       subresources:
         status: {}
+      additionalPrinterColumns:
+        - name: Version
+          type: string
+          description: The state of the universe
+          jsonPath: .spec.config.version
+        - name: Status
+          type: string
+          description: The state of the universe
+          jsonPath: .status.message
+        - name: Downloaded
+          type: string
+          description: The Software version of the Universe
+          jsonPath: .status.success
       served: true
       storage: true
       schema:
