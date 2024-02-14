@@ -114,15 +114,40 @@
   to = "/preview/explore/fault-tolerance/"
 
 [[redirects]]
+  from = "/preview/explore/indexes-constraints/covering-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/covering-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/partial-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/partial-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/primary-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/primary-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/secondary-indexes-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/secondary-indexes-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/secondary-indexes-with-jsonb-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/secondary-indexes-with-jsonb-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/unique-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/unique-index-ycql"
+
+[[redirects]]
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
+
 [[redirects]]
-  from = "/preview/explore/json-support/explore-json-support-1-ysql/"
+  from = "/preview/explore/json-support/jsonb-ysql/"
   to = "/preview/explore/ysql-language-features/jsonb-ysql/"
 
 [[redirects]]
-  from = "/preview/explore/json-support/explore-json-support-2-ycql/*"
+  from = "/preview/explore/json-support/jsonb-ycql/"
   to = "/preview/explore/ycql-language/jsonb-ycql/"
 
 [[redirects]]
