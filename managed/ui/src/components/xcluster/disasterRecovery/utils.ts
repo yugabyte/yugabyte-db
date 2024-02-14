@@ -40,7 +40,7 @@ export const getEnabledDrConfigActions = (
         DrConfigActions.FAILOVER
       ];
     case DrConfigState.HALTED:
-      return [DrConfigActions.DELETE, DrConfigActions.EDIT_TARGET];
+      return [DrConfigActions.DELETE, DrConfigActions.EDIT, DrConfigActions.EDIT_TARGET];
     default:
       return assertUnreachableCase(drConfig.state);
   }
