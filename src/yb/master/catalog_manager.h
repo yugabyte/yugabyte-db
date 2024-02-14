@@ -75,7 +75,7 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
@@ -2374,6 +2374,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Number of dead tservers metric.
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
+
+  scoped_refptr<Counter> metric_create_table_too_many_tablets_;
 
   friend class ClusterLoadBalancer;
 

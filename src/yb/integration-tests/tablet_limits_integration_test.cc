@@ -14,7 +14,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 
 #include "yb/rpc/rpc_controller.h"
 
