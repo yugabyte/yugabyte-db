@@ -53,7 +53,7 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
     docker run --name postgres --net yugaplus-network \
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password \
         -p 5432:5432 \
-        -v ~/postgresql-volume/:/var/lib/postgresql/data \
+        -v ~/postgres-volume/:/var/lib/postgresql/data \
         -d ankane/pgvector:latest
     ```
 
@@ -66,7 +66,10 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
 5. Connect to the container and enable the pgvector extension:
 
     ```shell
-    docker exec -it postgres-pgvector psql -U postgres -c 'CREATE EXTENSION vector'
+    # Wait for Postgres to finish the initialization
+    ! while ! docker exec -it postgres pg_isready -U postgres; do sleep 1; done
+
+    docker exec -it postgres psql -U postgres -c 'CREATE EXTENSION vector'
     ```
 
 With the database operational, you're now ready to deploy the first version of YugaPlus on your machine!
