@@ -238,11 +238,12 @@ def _nodeToString(node, buf, extraFormatter=None):
         
     if node.properties != None:
         buf.write(", properties:{")
-        for k,v in node.properties.items():
-            buf.write(k)
-            buf.write(": ")
-            buf.write(str(v))
-            buf.write(", ")
+        prop_list = []
+        for k, v in node.properties.items():
+            prop_list.append(f"{k}: {str(v)}")
+
+        # Join properties with comma and write to buffer
+        buf.write(", ".join(prop_list))
         buf.write("}")
 
     if extraFormatter != None:
@@ -281,12 +282,13 @@ def _nodeToJson(node, buf, extraFormatter=None):
         
     if node.properties != None:
         buf.write(", \"properties\":{")
-        for k,v in node.properties.items():
-            buf.write("\"")
-            buf.write(k)
-            buf.write("\": \"")
-            buf.write(str(v))
-            buf.write("\", ")
+
+        prop_list = []
+        for k, v in node.properties.items():
+            prop_list.append(f"\"{k}\": \"{str(v)}\"")
+
+        # Join properties with comma and write to buffer
+        buf.write(", ".join(prop_list))
         buf.write("}")
     buf.write("}")
     

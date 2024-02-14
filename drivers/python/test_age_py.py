@@ -12,6 +12,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import json
 
 from age.models import Vertex
 import unittest
@@ -328,6 +329,52 @@ class TestAgeBasic(unittest.TestCase):
             self.assertEqual(3,len(collected))
         print("\nTest 6 Successful...")
 
+    def testSerialization(self):
+
+        print("\n---------------------------------------")
+        print("Test 6: Testing Vertex Serialization.....")
+        print("-----------------------------------------\n")
+
+        ag = self.ag
+
+        with ag.connection.cursor() as cursor:
+            try:
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Joe',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Jack',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Andy',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Smith',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Tom',))
+
+                # You must commit explicitly
+                ag.commit()
+            except Exception as ex:
+                print(ex)
+                ag.rollback()
+
+        print(" -------- TESTING Output #1 --------")
+        cursor = ag.execCypher("MATCH (n) RETURN n")
+
+        for row in cursor:
+            vertex = row[0]
+            try:
+                # json.loads will fail if the json str is not properly formatted
+                as_dict = json.loads(vertex.toJson())
+                print("Vertex.toJson() returns a correct json string.")
+                assert True
+            except:
+                assert False
+
+        print(" -------- TESTING Output #2 --------")
+        cursor = ag.execCypher("MATCH (n) RETURN n")
+
+        for row in cursor:
+            vertex = row[0]
+            as_str = vertex.toString()
+            # Checking if the trailing comma appears in .toString() output
+            self.assertFalse(as_str.endswith(", }}::VERTEX"))
+        print("Vertex.toString() 'properties' field is formatted properly.")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
@@ -364,5 +411,6 @@ if __name__ == '__main__':
     suite.addTest(TestAgeBasic('testCypher'))
     suite.addTest(TestAgeBasic('testMultipleEdges'))
     suite.addTest(TestAgeBasic('testCollect'))
+    suite.addTest(TestAgeBasic('testSerialization'))
     TestAgeBasic.args = args
     unittest.TextTestRunner().run(suite)
