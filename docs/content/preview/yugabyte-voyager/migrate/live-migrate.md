@@ -875,7 +875,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-snapshot-import true
 ```
 
-If the preceding command with `--post-snapshot-import true` fails, you should drop the INVALID indexes first using the following query - 
+If any of the CREATE INDEX DDLs fail in the preceding command, drop the INVALID indexes on the target database using:
 
 ```sql
 DO $$ 

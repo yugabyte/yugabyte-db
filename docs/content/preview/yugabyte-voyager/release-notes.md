@@ -13,6 +13,27 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.6.5 - February 13, 2024
+
+### New features
+- Support for live migration from Postgres databases with the option of fall-forward, wherein you can switch to a source-replica postgres database if an issue arises during migration.
+
+### Enhancements
+- The live migration workflow has been optimized with respect to the step of index creation on target DB. Instead of creating indexes on target after cutover, they can now be created concurrently with the cdc-phase of `import-data-to-target`. This ensures that the time-taking task of creating indexes on target DB is completed before the cutover process.
+- The `--post-import-data` flag of import schema has been renamed to `--post-snapshot-import` in order to incorporate live migration workflows.
+- Enhanced analyze-schema to report the unsupported extensions on YugabyteDB.
+- Improved UX of `yb-voyager get data-migration-report` for large set of tables by adding pagination.
+- The YugabyteDB debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1  and later.
+- Enhanced `export data status` command to report number of rows exported for each table in case of snapshot-only migration.
+- Reduced default value of `--parallel-jobs` for import data to target YugabyteDB to 0.25 of total cores (from 0.5) to improve stability of target Yugabyte DB.
+
+### Bug fixes
+- Fixed a bug in the cdc phase of import data where parallel ingestion of events with different primary keys but same unique keys was leading to unique constraint errors.
+- Fixed an issue in `yb-voyager initiate cutover to target` where fallback intent is stored even if user decides to abort the process in the confirmation prompt.
+- Fixed an issue in yb-voyager end migration where source DB is not cleaned up if `--save-migration-reports` flag is provided as false
+- yb-voyager now gracefully shuts down all child processes on exit, in order to prevent orphan processes.
+- Fixed a bug in snapshot data migration where "\r\n" in text data was silently converted to "\n". This was affecting snapshot phase of live migration as well as snapshot-only migration with BETA_FAST_DATA_EXPORT.
+
 ## v1.6.1 - December 14, 2023
 
 ### Bug fixes
