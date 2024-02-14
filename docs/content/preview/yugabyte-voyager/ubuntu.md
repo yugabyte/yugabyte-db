@@ -31,6 +31,14 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     ```sh
     sudo apt-get install yb-voyager
     ```
+        
+    {{< note >}}
+
+Install `yb-voyager` with specific version on your machine using the following command:
+
+    sudo yum install yb-voyager=<VERSION>
+
+    {{< /note >}}
 
 1. Check that yb-voyager is installed using the following command:
 

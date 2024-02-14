@@ -461,7 +461,7 @@ BEGIN
 END $$;
 ```
 
-retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
+and then retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
