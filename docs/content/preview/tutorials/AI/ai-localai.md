@@ -1,10 +1,10 @@
 ---
-title: How to Develop LLM Appls with LocalAI and YugabyteDB
+title: How to Develop LLM Apps with LocalAI and YugabyteDB
 headerTitle: Build LLM applications using LocalAI and YugabyteDB
 linkTitle: LocalAI
 description: Learn to build LLM applications using LocalAI.
 image: /images/tutorials/ai/icons/localai-icon.svg
-headcontent: Use YugabyteDB as the database backend for LLM Applications
+headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
   preview:
     identifier: tutorials-ai-localai
@@ -13,13 +13,17 @@ menu:
 type: docs
 ---
 
-This Python application uses Wikipedia texts of popular programming languages and LocalAI to create an interactive query interface. Text-embeddings are generated for each programming language and stored in a YugabyteDB database using the `pgvector` extension.
+This tutorial shows how you can use LocalAI to create an interactive query interface. It features a Python application that uses Wikipedia texts of popular programming languages to generate text-embeddings for each programming language and store them in a YugabyteDB database using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
 
 ## Prerequisites
-* Install Python3
-* Install Docker
+
+* YugabyteDB [v2.19.2 or later](https://download.yugabyte.com/)
+* [LocalAI](https://localai.io/basics/getting_started/)
+* Python 3
+* Docker
 
 ## Set up the application
+
 Download the application and provide settings specific to your deployment:
 
 1. Clone the repository.
@@ -32,7 +36,8 @@ Download the application and provide settings specific to your deployment:
 
     Dependencies can be installed in a virtual environment, or globally on your machine.
 
-    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment
+    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment.
+
         ```sh
         python3 -m venv yb-localai-env
         source yb-localai-env/bin/activate
@@ -41,7 +46,8 @@ Download the application and provide settings specific to your deployment:
         # pip install -r requirements-m1.txt
         ```
 
-    * Option 2: Install Dependencies Globally
+    * Option 2: Install Dependencies Globally.
+
         ```sh
         pip install transformers
         pip install requests
@@ -52,9 +58,9 @@ Download the application and provide settings specific to your deployment:
         pip install python-dotenv
         ```
 
-3. Configure the application environment variables in `{project_directory/.env}`.
+1. Configure the application environment variables in `{project_directory/.env}`.
 
-## Get Started with YugabyteDB
+## Set up YugabyteDB
 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
@@ -67,21 +73,21 @@ docker network create custom-network
 docker run -d --name yugabytedb-node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -90,17 +96,19 @@ The database connectivity settings are provided in the `{project_dir}/.env` file
 
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
-## Get Started with LocalAI
+## Get started with LocalAI
 
 Running [LocalAI](https://localai.io/basics/getting_started/) on your machine, or on a virtual machine, requires sufficient hardware. Be sure to check the specifications before installation. This application uses Docker to run a BERT text-embedding model.
 
 Execute the following command to run this model in Docker:
-```
+
+```sh
 docker run -ti -p 8080:8080 localai/localai:v2.8.0-ffmpeg-core bert-cpp
 ```
 
-The following output will be generated, exposing a REST endpoint to interact with the LLM.
-```
+The following output is generated, exposing a REST endpoint to interact with the LLM.
+
+```output
 ...
 You can test this model with curl like this:
 
@@ -108,25 +116,26 @@ curl http://localhost:8080/embeddings -X POST -H "Content-Type: application/json
   "input": "Your text string goes here",
   "model": "bert-cpp-minilm-v6"
 }'
-
 ```
 
-
-## Load the Schema and Seed Data
+## Load the schema and seed data
 
 This application requires a database table with information about popular programming languages. This schema includes a `programming_languages` table.
 
 1. Copy the schema to the first node's Docker container.
+
     ```sh
     docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
-    ```   
+    ```
 
 1. Copy the seed data file to the Docker container.
+
     ```sh
     docker cp {project_dir}/sql/data.sql yugabytedb-node1:/home
     ```
 
 1. Execute the SQL files against the database.
+
     ```sh
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/schema.sql
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -f /home/data.sql
@@ -138,23 +147,23 @@ This command-line application takes an input in natural language and returns a r
 
 1. Start the server.
 
-```sh
-python3 index.py
-```
+    ```sh
+    python3 index.py
+    ```
 
-```output
-Enter a search for programming languages
-```
+    ```output
+    Enter a search for programming languages
+    ```
 
 1. Provide a relevant search term. For instance:
 
-```
+```output
 Enter a search for programming languages: 
 
 derivations of javascript
 ```
 
-```output
+```output.js
 Executing post request
 [('JavaScript',
   'JavaScript (), often abbreviated as JS, is a programming language and core '
@@ -273,12 +282,11 @@ def main():
         pp.pprint(results)
         user_input = get_user_input()
 
-    
 if __name__ == "__main__":
     main()
 ```
 
-While the core application is quite simple, the script for generating embeddings for each programming language summary is a bit more interesting. The *fit_text* function ensures that the summary text sent to LocalAI will be within the token limits of the `bert-cpp-minilm-v6` model used to generate embeddings. Wikipedia pages are fetched in full, but embeddings are only generated on the first subset of characters. This is an imperfect approach, but serves as a reasonable example for working with a large language model.
+While the core application is quite straightforward, the script for generating embeddings for each programming language summary is a bit more interesting. The *fit_text* function ensures that the summary text sent to LocalAI will be within the token limits of the `bert-cpp-minilm-v6` model used to generate embeddings. Wikipedia pages are fetched in full, but embeddings are only generated on the first subset of characters. This is an imperfect approach, but serves as a reasonable example for working with a large language model.
 
 ```python
 # generate_embeddings.py
@@ -345,13 +353,12 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 ```
 
 ## Wrap-up
 
-LocalAI allows users to utilize LLMs locally or on-prem, with a wide array of models.  
+LocalAI allows you to use LLMs locally or on-premises, with a wide array of models.
 
 For more information about LocalAI, see the [LocalAI documentation](https://localai.io/basics/getting_started/).
 
-If you would like to learn more on integrating LLMs with YugabyteDB, check out the [LangChain and OpenAI](../../azure/ai-langchain-openai/) tutorial.
+If you would like to learn more on integrating LLMs with YugabyteDB, check out the [LangChain and OpenAI](../ai-langchain-openai/) tutorial.
