@@ -327,6 +327,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
         UpgradeResponse.newBuilder()
             .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
             .build();
+    ShellResponse response = new ShellResponse();
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(response);
+    when(mockNodeUniverseManager.uploadFileToNode(any(), any(), any(), any(), any(), any()))
+        .thenReturn(response);
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
         UpgradeResultResponse.newBuilder()
