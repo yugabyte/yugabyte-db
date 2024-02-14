@@ -1998,13 +1998,13 @@ SELECT * FROM cypher('cypher_match', $$
 (0 rows)
 
 SELECT * FROM cypher('cypher_match', $$
-	MATCH (a)-[r]-(b) RETURN r $$) as (r agtype);
+	MATCH (a)-[r]-(b) RETURN r ORDER BY r DESC $$) as (r agtype);
                                                                                 r                                                                                
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
- {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
- {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 1407374883553283, "label": "e1", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge
  {"id": 1407374883553283, "label": "e1", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge
 (6 rows)
@@ -2091,13 +2091,13 @@ SELECT * FROM cypher('cypher_match', $$
 
 -- check reuse of 'r' clause-to-clause - edges
 SELECT * FROM cypher('cypher_match', $$
-	MATCH ()-[r]-() RETURN r $$) as (r agtype);
+	MATCH ()-[r]-() RETURN r ORDER BY r DESC $$) as (r agtype);
                                                                                 r                                                                                
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
- {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
- {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
  {"id": 4785074604081154, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710659, "properties": {"years": 4, "relationship": "enemies"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
+ {"id": 4785074604081153, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710661, "properties": {"years": 3, "relationship": "friends"}}::edge
  {"id": 1407374883553283, "label": "e1", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge
  {"id": 1407374883553283, "label": "e1", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge
 (6 rows)

@@ -965,7 +965,7 @@ SELECT * FROM cypher('cypher_match', $$
 	MATCH (a),(b) WHERE a.age = 4 AND a.name = "orphan" AND b.age = 6 CREATE
 	(a)-[:knows {relationship: "enemies", years: 4}]->(b) $$) as (r agtype);
 SELECT * FROM cypher('cypher_match', $$
-	MATCH (a)-[r]-(b) RETURN r $$) as (r agtype);
+	MATCH (a)-[r]-(b) RETURN r ORDER BY r DESC $$) as (r agtype);
 
 -- check reuse of 'a' clause-to-clause - vertices
 SELECT * FROM cypher('cypher_match', $$
@@ -996,7 +996,7 @@ SELECT * FROM cypher('cypher_match', $$
 
 -- check reuse of 'r' clause-to-clause - edges
 SELECT * FROM cypher('cypher_match', $$
-	MATCH ()-[r]-() RETURN r $$) as (r agtype);
+	MATCH ()-[r]-() RETURN r ORDER BY r DESC $$) as (r agtype);
 SELECT * FROM cypher('cypher_match', $$
 	MATCH ()-[r]-() MATCH ()-[r {relationship: "friends"}]-() RETURN r $$) as (r agtype);
 SELECT * FROM cypher('cypher_match', $$
