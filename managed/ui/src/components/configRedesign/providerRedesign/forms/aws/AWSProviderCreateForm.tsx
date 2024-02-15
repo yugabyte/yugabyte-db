@@ -79,6 +79,7 @@ export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
   enableHostedZone: boolean;
+  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -175,6 +176,7 @@ export const AWSProviderCreateForm = ({
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
     enableHostedZone: false,
+    useIMDSv2: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
@@ -400,6 +402,15 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Use IMDSv2"
+                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
+                >
+                  Use IMDSv2
+                </FieldLabel>
+                <YBToggleField name="useIMDSv2" control={formMethods.control} />
+              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -656,7 +667,8 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          useIMDSv2: formValues.useIMDSv2
         }
       },
       ntpServers: formValues.ntpServers,
