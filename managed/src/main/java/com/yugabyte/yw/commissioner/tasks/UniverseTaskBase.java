@@ -847,9 +847,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universeDetails.updatingTaskUUID = null;
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               universeDetails.placementModificationTaskUuid = null;
+              // Do not save the transient state in the universe.
+              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
             }
-            // Do not save the transient state in the universe.
-            universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
           }
           universeDetails.updatingTask = null;
           universe.setUniverseDetails(universeDetails);
