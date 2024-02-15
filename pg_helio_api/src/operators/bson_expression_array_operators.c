@@ -125,6 +125,8 @@ static void FillResultForDollarFirstAndLastN(bson_value_t *input,
 static int32_t GetStartValueForDollarRange(bson_value_t *startValue);
 static int32_t GetEndValueForDollarRange(bson_value_t *endValue);
 static int32_t GetStepValueForDollarRange(bson_value_t *stepValue);
+static void HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
+									AggregationExpressionData *data);
 static void SetResultArrayForDollarRange(int32_t startValue, int32_t endValue,
 										 int32_t stepValue, bson_value_t *result);
 static void ValidateArraySizeLimit(int32_t startValue, int32_t endValue,
@@ -133,6 +135,8 @@ static int32 GetIndexValueFromDollarIdxInput(bson_value_t *arg, bool isStartInde
 static int32 FindIndexInArrayForElement(bson_value_t *array, bson_value_t *element,
 										int32 startIndex, int32 endIndex);
 static void SetResultArrayForDollarReverse(bson_value_t *array, bson_value_t *result);
+static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
+										  bson_value_t *result, bool isFindMax);
 
 /*
  * validate second and third argument of dollar slice operator
@@ -2364,4 +2368,176 @@ FindIndexInArrayForElement(bson_value_t *array, bson_value_t *element, int32 sta
 	}
 
 	return -1;
+}
+
+
+/*
+ * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarMax(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isFindMax = true;
+	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $max.
+ * The input is specified of type {$max: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the maximum element in array otherwise returns the resolved expression as it is.
+ */
+void
+ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	bool isMax = true;
+	HandlerForParsingMinMax(isMax, argument, data);
+}
+
+
+/*
+ * This function handles the pre-parsed dollarMax input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarMin(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isFindMax = false;
+	SetResultValueForDollarMaxMin(&childResult.value, &result, isFindMax);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function parses the input for operator $max.
+ * The input is specified of type {$min: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
+ */
+void
+ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	bool isMax = false;
+	HandlerForParsingMinMax(isMax, argument, data);
+}
+
+
+/*
+ * This function is a common function to parse min and max operator.
+ * This takes in bool isMax as extra argument to confirm whether to process for min or max operator.
+ */
+static void
+HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
+						AggregationExpressionData *data)
+{
+	char *opName = isMax ? "$max" : "$min";
+	AggregationExpressionData *argumentData = palloc0(
+		sizeof(AggregationExpressionData));
+
+	/*
+	 * When operator expects a single argument and input is an array of single element,
+	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
+	 */
+	if (argument->value_type == BSON_TYPE_ARRAY &&
+		BsonDocumentValueCountKeys(argument) == 1)
+	{
+		argumentData = ParseFixedArgumentsForExpression(argument,
+														1,
+														opName,
+														&argumentData->operator.
+														argumentsKind);
+	}
+	else
+	{
+		ParseAggregationExpressionData(argumentData, argument);
+	}
+
+	if (IsAggregationExpressionConstant(argumentData))
+	{
+		SetResultValueForDollarMaxMin(&argumentData->value, &data->value, isMax);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(argumentData);
+		return;
+	}
+
+	data->operator.arguments = argumentData;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * This function takes care of taking in the inputArgument and computing the final max/min element and storing in result.
+ * This function expects the result argument should be passed with value_type BSON_TYPE_NULL.
+ */
+static void
+SetResultValueForDollarMaxMin(const bson_value_t *inputArgument, bson_value_t *result,
+							  bool isFindMax)
+{
+	result->value_type = BSON_TYPE_NULL;
+
+	/* In case the element is null return as default result value is null. */
+	if (IsExpressionResultNullOrUndefined(inputArgument))
+	{
+		return;
+	}
+
+	/* For any other case set the inputArgument as it is */
+	if (inputArgument->value_type != BSON_TYPE_ARRAY)
+	{
+		result->value_type = inputArgument->value_type;
+		result->value = inputArgument->value;
+		return;
+	}
+
+	bson_iter_t arrayIterator;
+	BsonValueInitIterator(inputArgument, &arrayIterator);
+	bson_value_t *arrayElem;
+	bool isResultInitialized = false;
+
+	while (bson_iter_next(&arrayIterator))
+	{
+		arrayElem = (bson_value_t *) bson_iter_value(&arrayIterator);
+
+		/* As per the the expected behaviour operator only considers the non-null and the non-missing values for the comparison. */
+		if (IsExpressionResultNullOrUndefined(arrayElem))
+		{
+			continue;
+		}
+
+		/* Initialize result with the first non-null element of the array for comparison. */
+		if (!isResultInitialized)
+		{
+			result->value = arrayElem->value;
+			result->value_type = arrayElem->value_type;
+			isResultInitialized = true;
+			continue;
+		}
+
+		bool isComparisonValid = true;
+		int cmp = CompareBsonValueAndType(result, arrayElem, &isComparisonValid);
+
+		/* This part sets the value for result based on $max and $min */
+		if ((cmp < 0 && isFindMax) || (cmp > 0 && !isFindMax))
+		{
+			result->value = arrayElem->value;
+			result->value_type = arrayElem->value_type;
+		}
+	}
 }
