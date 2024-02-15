@@ -12,7 +12,7 @@ type: docs
 
 Commvault is a data protection and data management platform that provides an agent-based solution to support the following operations in [YugabyteDB Anywhere (YBA)](../../yugabyte-platform/):
 
-- Data protection for YugabyteDB universes in AWS and Azure for xCluster deployment.
+- Data protection for YugabyteDB universes in AWS and Azure.
 - Backup and restore of YSQL and YCQL databases.
 - Job monitoring and manageability from the Commvault [Command Center](https://www.commvault.com/platform/command-center).
 
