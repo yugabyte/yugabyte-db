@@ -514,7 +514,7 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 /* ``` */
 /* Will be **effectively** rewritten to */
 /* ``` */
-/* SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "val": { "$in": [1, 3]} } }'); */
+/* SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "$or": [{ "accid":1, "vid": 1, "val": 1}, { "accid":1, "vid": 1, "val": 3}] } }'); */
 /* ``` */
 /* However, we don't intercept the mongo query and rewrite it. As the `$in` can be used in different query path. Instead, we do the rewrite after the query plan generation, and specifically, when `$in` is shows up a condition in the Index Path. While `$in` today is pushed down to the index, it's not performant.  However, if we rewrite the `$in` to be a `OR` of a set of `$eq` clause, that becomes peformant, as `RUM fast scan` is enabled for `$eq` but not yet for `$in`. */
 
