@@ -411,7 +411,7 @@ WorkerGetBaseActivities()
 					 ApiDataSchemaName, ApiDataSchemaName);
 
 	appendStringInfoString(queryInfo,
-						   " ) e2 ON true WHERE (NOT query LIKE '%mongo_api_v1.current_op%') AND (application_name = 'MongoGateway-Data' OR application_name = 'PgmongoBackend')");
+						   " ) e2 ON true WHERE (NOT query LIKE '%mongo_api_v1.current_op%') AND (application_name = 'MongoGateway-Data' OR application_name = 'HelioDBInternal')");
 
 	List *workerActivities = NIL;
 	SPIParseOpenOptions parseOptions =

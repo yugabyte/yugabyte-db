@@ -3,7 +3,7 @@
  *
  * include/commands/lock_tags.h
  *
- * Constants defined under PgmongoAdvisoryLockField4 are meant to be used for
+ * Constants defined under HelioAdvisoryLockField4 are meant to be used for
  * "locktag_field4" field of "LOCKTAG" struct when acquiring an advisory lock
  * that is specific to pg_helio_api.
  *
@@ -31,6 +31,6 @@ typedef enum
 
 	/* AcquireAdvisoryExclusiveSessionLockForCreateIndexBackground */
 	LT_FIELD4_EXCL_CREATE_INDEX_BACKGROUND
-} PgmongoAdvisoryLockField4;
+} HelioAdvisoryLockField4;
 
 #endif

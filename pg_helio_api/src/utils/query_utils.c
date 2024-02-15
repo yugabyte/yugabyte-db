@@ -700,7 +700,7 @@ GetLocalhostConnStr(void)
 
 	StringInfo localhostConnStr = makeStringInfo();
 	appendStringInfo(localhostConnStr,
-					 "%s port=%d user=%s dbname=%s application_name='PgmongoBackend'",
+					 "%s port=%d user=%s dbname=%s application_name='HelioDBInternal'",
 					 LocalhostConnectionString, PostPortNumber,
 					 user_name,
 					 get_database_name(MyDatabaseId));

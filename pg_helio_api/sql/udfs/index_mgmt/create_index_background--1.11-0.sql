@@ -43,8 +43,8 @@ AS 'MODULE_PATHNAME', $$command_check_build_index_status_internal$$;
 COMMENT ON FUNCTION __API_SCHEMA_INTERNAL__.check_build_index_status_internal(__CORE_SCHEMA__.bson)
     IS 'Checks for build index(es) requests to finish.';
 
-CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL__.schedule_background_index_build_workers(p_max_num_active_user_index_builds int default current_setting('pgmongo.maxNumActiveUsersIndexBuilds')::int,
-p_user_index_build_schedule int default current_setting('pgmongo.indexBuildScheduleInSec')::int)
+CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL__.schedule_background_index_build_workers(p_max_num_active_user_index_builds int default current_setting('helio_api.maxNumActiveUsersIndexBuilds')::int,
+p_user_index_build_schedule int default current_setting('helio_api.indexBuildScheduleInSec')::int)
 RETURNS void
 AS $fn$
 DECLARE
@@ -56,10 +56,10 @@ BEGIN
             SELECT p_user_index_build_schedule || ' seconds' INTO v_indexBuildScheduleInterval;
         END IF;
         
-        PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname LIKE 'pgmongo_index_build_task%'; 
+        PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname LIKE 'helio_index_build_task_%'; 
     
         FOR i IN 1..p_max_num_active_user_index_builds LOOP
-            PERFORM cron.schedule('pgmongo_index_build_task_' || i, v_indexBuildScheduleInterval, format($$ CALL __API_SCHEMA_INTERNAL__.build_index_concurrently(%s) $$, i));
+            PERFORM cron.schedule('helio_index_build_task_' || i, v_indexBuildScheduleInterval, format($$ CALL __API_SCHEMA_INTERNAL__.build_index_concurrently(%s) $$, i));
         END LOOP;
     ELSE
         RAISE EXCEPTION 'schedule_background_index_build_workers() to be run on coordinator only';

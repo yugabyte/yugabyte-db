@@ -127,14 +127,12 @@ AS 'MODULE_PATHNAME', $function$bson_object_agg_final$function$;
 
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_out_transition(bytea, __CORE_SCHEMA__.bson, text, text, text, text)
  RETURNS bytea
- SET pgmongo.allow_nested_distributed_execution TO 'true'
  LANGUAGE c
  VOLATILE
 AS 'MODULE_PATHNAME', $function$bson_out_transition$function$;
 
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_out_final(bytea)
  RETURNS __CORE_SCHEMA__.bson
- SET pgmongo.allow_nested_distributed_execution TO 'true'
  LANGUAGE c
  VOLATILE
 AS 'MODULE_PATHNAME', $function$bson_out_final$function$;
