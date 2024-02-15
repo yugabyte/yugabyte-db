@@ -171,29 +171,34 @@ Internally, the service uses the following database schema:
 
 Next, go ahead and ask YugaPlus to suggest a few movies for your upcoming evening watch by typing in the following prompt:
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#similarity" class="nav-link active" id="similarity-tab" data-toggle="tab"
+      role="tab" aria-controls="similarity" aria-selected="true">
+      <img src="/icons/openai-logomark.svg" alt="vector similarity search">
+      Vector Similarity Search
     </a>
   </li>
   <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
+    <a href="#fulltext" class="nav-link" id="fulltext-tab" data-toggle="tab"
+      role="tab" aria-controls="fulltext" aria-selected="false">
+      <img src="/icons/search.svg" alt="full-text search">
+      Full-Text Search
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter1-similarity-search.md" %}}
+  <div id="similarity" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-tab">
+
+{{% includeMarkdown "includes/chapter1-similarity-search.md" %}}
+
   </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
-  {{% includeMarkdown "includes/chapter1-full-text-search.md" %}}
+
+  <div id="fulltext" class="tab-pane fade" role="tabpanel" aria-labelledby="fulltext-tab">
+
+{{% includeMarkdown "includes/chapter1-full-text-search.md" %}}
+
   </div>
 </div>
 
