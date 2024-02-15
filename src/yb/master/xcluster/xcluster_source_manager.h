@@ -88,6 +88,10 @@ class XClusterSourceManager {
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch);
 
  private:
+  // Get all the outbound replication groups. Shared pointer are guaranteed not to be null.
+  std::vector<std::shared_ptr<XClusterOutboundReplicationGroup>> GetAllOutboundGroups() const
+      EXCLUDES(outbound_replication_group_map_mutex_);
+
   Status InsertOutboundReplicationGroup(
       const std::string& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& metadata)

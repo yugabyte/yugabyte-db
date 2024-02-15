@@ -15,6 +15,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/unique_lock.h"
@@ -67,7 +68,7 @@ void Poller::Poll(const Status& status) {
     if (!status.ok() || closing_) {
       LOG_WITH_PREFIX(INFO) << "Poll stopped: " << status;
       poll_task_id_ = rpc::kUninitializedScheduledTaskId;
-      cond_.notify_one();
+      YB_PROFILE(cond_.notify_one());
       return;
     }
   }
@@ -82,7 +83,7 @@ void Poller::Poll(const Status& status) {
       poll_task_id_ = rpc::kUninitializedScheduledTaskId;
     }
     if (poll_task_id_ == rpc::kUninitializedScheduledTaskId) {
-      cond_.notify_one();
+      YB_PROFILE(cond_.notify_one());
     }
   }
 }

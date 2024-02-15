@@ -77,6 +77,13 @@ public class PlatformInstanceController extends AuthenticatedController {
       // Cannot create multiple leader platform instances.
     } else if (formData.get().is_leader && config.get().isLocalLeader()) {
       throw new PlatformServiceException(BAD_REQUEST, "Leader platform instance already exists");
+    } else if (!formData.get().is_local
+        && !replicationManager.testConnection(
+            config.get(),
+            formData.get().getCleanAddress(),
+            config.get().getAcceptAnyCertificate())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Standby YBA instance is unreachable or hasn't been configured yet");
     }
 
     PlatformInstance instance =

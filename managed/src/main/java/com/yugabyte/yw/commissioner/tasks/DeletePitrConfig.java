@@ -26,6 +26,8 @@ public class DeletePitrConfig extends UniverseTaskBase {
 
     // The UUID of the PITR config to delete.
     public UUID pitrConfigUuid;
+
+    public boolean ignoreErrors;
   }
 
   @Override
@@ -57,12 +59,21 @@ public class DeletePitrConfig extends UniverseTaskBase {
             log.error(errorMsg);
             throw new RuntimeException(errorMsg);
           }
+          break;
         }
       }
 
       pitrConfig.delete();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
+      if (taskParams().ignoreErrors) {
+        log.debug(
+            "Ignoring error deleting pitrConfig with uuid: {} as ignoreErrors is set to true."
+                + " Error: {}",
+            taskParams().pitrConfigUuid,
+            e.getMessage());
+        return;
+      }
       throw new RuntimeException(e);
     }
   }

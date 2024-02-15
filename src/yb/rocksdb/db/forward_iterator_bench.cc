@@ -33,6 +33,8 @@
 #include <queue>
 #include <random>
 #include <thread>
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 
 #include "yb/rocksdb/cache.h"
@@ -310,7 +312,7 @@ struct StatsThread {
       std::lock_guard guard(cvm_);
       done_.store(true);
     }
-    cv_.notify_all();
+    YB_PROFILE(cv_.notify_all());
     thread_.join();
   }
 

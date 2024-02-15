@@ -23,6 +23,9 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "useIMDSv2" : {
+          "type" : "boolean"
+        },
         "vpcType" : {
           "description" : "New/Existing VPC for provider creation",
           "enum" : [ "EXISTING", "NEW", "HOSTVPC" ],
@@ -4761,7 +4764,7 @@
         },
         "state" : {
           "description" : "The state of the DR config",
-          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted" ],
+          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted", "Error" ],
           "type" : "string"
         },
         "uuid" : {

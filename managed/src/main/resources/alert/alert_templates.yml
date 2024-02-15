@@ -891,9 +891,8 @@ templates:
         Affected nodes: {{ $labels.affected_node_names }}
 
   NEW_YSQL_TABLES_ADDED:
-    name: New Ysql Tables Added
-    description: New ysql tables added to source universe in db associated with existing
-      xcluster replication config but not added to replication
+    name: YSQL Tables in DR/Xcluster Config Inconsistent With Primary/Source
+    description: YSQL tables were added or dropped from the primary/source universe database but were not updated on the DR/Xcluster config in YBA.
     queryTemplate: ((count by (namespace_name, universe_uuid)(count by(namespace_name,
       table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"})))
       - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid,

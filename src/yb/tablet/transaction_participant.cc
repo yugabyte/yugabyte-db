@@ -48,6 +48,7 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -491,7 +492,7 @@ class TransactionParticipant::Impl
     }
 
     if (notify_completed) {
-      requests_completed_cond_.notify_all();
+      YB_PROFILE(requests_completed_cond_.notify_all());
     }
   }
 
