@@ -48,7 +48,8 @@ AddTableToXClusterTargetTask::AddTableToXClusterTargetTask(
     : PostTabletCreateTaskBase(
           catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table_info),
           std::move(epoch)),
-      universe_(universe) {
+      universe_(universe),
+      xcluster_manager_(*catalog_manager.GetXClusterManager()) {
   is_db_scoped_ = universe_->LockForRead()->pb.has_db_scoped_info();
 }
 
@@ -182,25 +183,40 @@ Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
   return Status::OK();
 }
 
+Result<std::optional<HybridTime>> AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue(
+    const LeaderEpoch& epoch) {
+  const auto namespace_id = table_info_->namespace_id();
+
+  auto safe_time_res = xcluster_manager_.GetXClusterSafeTimeForNamespace(
+      epoch, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+  if (!safe_time_res) {
+    if (!safe_time_res.status().IsNotFound()) {
+      return safe_time_res.status();
+    }
+    VLOG_WITH_PREFIX(2) << "Namespace " << namespace_id
+                        << " is no longer part of any xCluster replication";
+    return std::nullopt;
+  }
+
+  SCHECK(
+      !safe_time_res->is_special(), IllegalState, "Invalid safe time $0 for namespace $1",
+      *safe_time_res, namespace_id);
+  return *safe_time_res;
+}
+
 Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
   // Force a refresh of the xCluster safe time map so that it accounts for all tables under
   // replication.
-  auto namespace_id = table_info_->namespace_id();
-  auto initial_safe_time = VERIFY_RESULT(
-      catalog_manager_.GetXClusterManager()->RefreshAndGetXClusterNamespaceToSafeTimeMap(
-          catalog_manager_.GetLeaderEpochInternal()));
-  if (!initial_safe_time.contains(namespace_id)) {
-    VLOG_WITH_PREFIX(2) << "Namespace " << namespace_id
-                        << " is no longer part of any xCluster replication";
+  const auto epoch = catalog_manager_.GetLeaderEpochInternal();
+  RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch));
+  auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue(epoch));
+  if (!initial_safe_time) {
     Complete();
     return Status::OK();
   }
 
-  initial_xcluster_safe_time_ = initial_safe_time[namespace_id];
+  initial_xcluster_safe_time_ = *initial_safe_time;
   initial_xcluster_safe_time_.MakeAtLeast(bootstrap_time_);
-  SCHECK(
-      !initial_xcluster_safe_time_.is_special(), IllegalState, "Invalid initial safe time $0",
-      initial_xcluster_safe_time_);
 
   // Wait for the xCluster safe time to advance beyond the initial value. This ensures all tables
   // under replication are part of the safe time computation.
@@ -209,12 +225,15 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
 }
 
 Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
-  // TODO: Handle the case when replication was dropped.
-  auto ht = VERIFY_RESULT(
-      catalog_manager_.GetXClusterManager()->GetXClusterSafeTime(table_info_->namespace_id()));
+  auto ht =
+      VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue(catalog_manager_.GetLeaderEpochInternal()));
+  if (!ht) {
+    Complete();
+    return Status::OK();
+  }
 
-  if (ht <= initial_xcluster_safe_time_) {
-    YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Waiting for xCluster safe time " << ht
+  if (*ht <= initial_xcluster_safe_time_) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Waiting for xCluster safe time " << *ht
                                      << " to advance beyond " << initial_xcluster_safe_time_;
     // If this takes too long the table creation will timeout and abort the task.
     SCHEDULE_WITH_DELAY(WaitForXClusterSafeTimeCaughtUp);
