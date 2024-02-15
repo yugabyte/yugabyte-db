@@ -86,6 +86,8 @@ You can use YBA {{< yb-version version="stable" format="short">}} to deploy the 
 - v2.18 series: 2.18.0 to 2.18.5
 - v2.20 series: 2.20.0 to 2.20.1.3
 
+For information on managing YugabyteDB releases and upgrading universes, refer to [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
+
 ## Prepare the host
 
 YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).

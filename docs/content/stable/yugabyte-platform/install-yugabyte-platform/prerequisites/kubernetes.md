@@ -62,6 +62,8 @@ This version of YBA supports the following YugabyteDB versions:
 - v2.18 series: 2.18.0 to 2.18.5
 - v2.20 series: 2.20.0 to 2.20.1.3
 
+For information on managing YugabyteDB releases and upgrading universes, refer to [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
+
 ## Prepare the cluster
 
 The minimum version for a Kubernetes cluster and Helm chart are as follows:
