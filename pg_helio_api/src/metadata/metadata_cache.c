@@ -117,6 +117,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the <bson> OPERATOR(ApiCatalogSchemaName.@=) <bson> operator */
 	Oid BsonEqualMatchOperatorId;
 
+	/* OID of the <bson> OPERATOR(ApiCatalogSchemaName.@*=) <bson> operator */
+	Oid BsonInOperatorId;
+
 	/* OID of the ApiSchemaName.bson_query_match() function */
 	Oid BsonQueryMatchFunctionId;
 
@@ -1421,6 +1424,14 @@ BsonEqualMatchOperatorId(void)
 {
 	return GetBinaryOperatorId(&Cache.BsonEqualMatchOperatorId,
 							   BsonTypeId(), "@=", BsonTypeId());
+}
+
+
+Oid
+BsonInOperatorId(void)
+{
+	return GetBinaryOperatorId(&Cache.BsonInOperatorId,
+							   BsonTypeId(), "@*=", BsonTypeId());
 }
 
 

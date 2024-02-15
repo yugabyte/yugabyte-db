@@ -116,6 +116,9 @@ bool EnableExtendedIndexFilters = DEFAULT_ENABLE_EXTENDED_INDEX_FILTERS;
 #define DEFAULT_ENABLE_DEVELOPER_EXPLAIN false
 bool EnableDeveloperExplain = DEFAULT_ENABLE_DEVELOPER_EXPLAIN;
 
+#define DEFAULT_ENABLE_IN_QUERY_OPTIMIZATION false
+bool EnableInQueryOptimization = DEFAULT_ENABLE_IN_QUERY_OPTIMIZATION;
+
 /* Setting this to true until we have statistics. When dealing with large number of records sequential
  * scan can win even if there is an index to be used, because index cost being not reflected properly.
  * Avoiding that case is our priority. Using index when dealing with small number of records might be worse
@@ -294,6 +297,14 @@ InitApiConfigurations(char *prefix)
 		NULL,
 		&EnableDeveloperExplain,
 		DEFAULT_ENABLE_DEVELOPER_EXPLAIN,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.mongoEnableInQueryOptimization",
+		gettext_noop("Determines whether in queries are rewritten to equality"),
+		NULL,
+		&EnableInQueryOptimization,
+		DEFAULT_ENABLE_IN_QUERY_OPTIMIZATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

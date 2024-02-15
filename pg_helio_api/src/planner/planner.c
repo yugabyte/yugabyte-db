@@ -334,7 +334,9 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	 * Replace all function operators that haven't been transformed in indexed
 	 * paths into OpExpr clauses.
 	 */
-	ReplaceExtensionFunctionOperatorsInPaths(rel->pathlist, &indexContext);
+	bool hasValidParent = true;
+	ReplaceExtensionFunctionOperatorsInPaths(root, rel, rel->pathlist, hasValidParent,
+											 &indexContext);
 
 	/* If the query is operating on the shard of a distributed table
 	 * (or a normal non mongo-table), then we swap this out with the operators

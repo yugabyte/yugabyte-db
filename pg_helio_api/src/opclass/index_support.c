@@ -20,6 +20,7 @@
 #include <nodes/makefuncs.h>
 #include <catalog/pg_am.h>
 #include <optimizer/pathnode.h>
+#include "nodes/pg_list.h"
 
 #include "query/query_operator.h"
 #include "planner/mongo_query_operator.h"
@@ -36,7 +37,8 @@
 /* Forward declaration */
 /* --------------------------------------------------------- */
 static Expr * HandleSupportRequestCondition(SupportRequestIndexCondition *req);
-static Path * ReplaceFunctionOperatorsInPlanPath(Path *path,
+static Path * ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel,
+												 Path *path, bool hasValidParent,
 												 ReplaceExtensionFunctionContext *context);
 static Expr * ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 													   ReplaceExtensionFunctionContext *
@@ -200,7 +202,8 @@ ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
  * consistent.
  */
 void
-ReplaceExtensionFunctionOperatorsInPaths(List *pathsList,
+ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
+										 List *pathsList, bool hasValidParent,
 										 ReplaceExtensionFunctionContext *context)
 {
 	if (list_length(pathsList) < 1)
@@ -212,7 +215,8 @@ ReplaceExtensionFunctionOperatorsInPaths(List *pathsList,
 	foreach(cell, pathsList)
 	{
 		Path *path = (Path *) lfirst(cell);
-		path = ReplaceFunctionOperatorsInPlanPath(path, context);
+		lfirst(cell) = ReplaceFunctionOperatorsInPlanPath(root, rel, path, hasValidParent,
+														  context);
 	}
 }
 
@@ -504,6 +508,188 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 }
 
 
+/* Queries of the form */
+/* ``` */
+/* SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "val": { "$in": [1, 3]} } }'); */
+/* ``` */
+/* Will be **effectively** rewritten to */
+/* ``` */
+/* SELECT document FROM bson_aggregation_find('db', '{ "find": "in_opt_tests", "filter": { "accid":1, "vid": 1, "val": { "$in": [1, 3]} } }'); */
+/* ``` */
+/* However, we don't intercept the mongo query and rewrite it. As the `$in` can be used in different query path. Instead, we do the rewrite after the query plan generation, and specifically, when `$in` is shows up a condition in the Index Path. While `$in` today is pushed down to the index, it's not performant.  However, if we rewrite the `$in` to be a `OR` of a set of `$eq` clause, that becomes peformant, as `RUM fast scan` is enabled for `$eq` but not yet for `$in`. */
+
+/* **_Explain before rewrite:_** */
+/* ``` */
+/*                ->  Bitmap Index Scan on val_accid_vid  (cost=0.00..0.00 rows=1 width=0) (actual time=23.937..23.937 rows=7 loops=1) */
+/*                       Index Cond: Index Cond: ((document OPERATOR(mongo_catalog.@*=) '[{ "val" : { "$numberInt" : "1" } }, { "val" : { "$numberInt" : "3" } }]'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson))* / */
+
+/* ``` */
+/* **_Explain after rewrite:_** */
+/* ``` */
+
+/* Custom Scan (Citus Adaptive) */
+/*    Task Count: 1 */
+/*    Tasks Shown: All */
+/*    ->  Task */
+/*          Node: host=localhost port=58080 dbname=regression */
+/*          ->  Bitmap Heap Scan on documents_33000_330023 collection */
+/*                Recheck Cond: (((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) OR ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson))) */
+/*                Filter: ((document OPERATOR(mongo_catalog.@*=) '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::mongo_catalog.bson) AND (shard_key_value = '4322365043291501017'::bigint)) */
+/*                ->  BitmapOr */
+/*                      ->  Bitmap Index Scan on val_accid_vid */
+/*                            Index Cond: ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) */
+/*                      ->  Bitmap Index Scan on val_accid_vid */
+/*                            Index Cond: ((document OPERATOR(mongo_catalog.@=) '{ "val" : { "$numberInt" : "3" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "accid" : { "$numberInt" : "1" } }'::mongo_catalog.bson) AND (document OPERATOR(mongo_catalog.@=) '{ "vid" : { "$numberInt" : "1" } }'::mongo_catalog.bson)) */
+/* (13 rows) */
+/* ``` */
+static Path *
+OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *path,
+									bool hasValidParent)
+{
+	IndexPath *indexPath = (IndexPath *) path;
+
+	/* 1. Only do the rewrite for RUM Index
+	 * 2. Not supporting nested BitmapOr*/
+	if (indexPath->indexinfo->relam != RumIndexAmId() || !hasValidParent)
+	{
+		return path;
+	}
+
+	List *indexClauses = indexPath->indexclauses;
+	ListCell *indexPathCell;
+	IndexClause *inIndexClause = NULL;
+	int inCount = 0;
+	foreach(indexPathCell, indexClauses)
+	{
+		IndexClause *iclause = (IndexClause *) lfirst(indexPathCell);
+		RestrictInfo *rinfo = iclause->rinfo;
+
+		if (!IsA(rinfo->clause, OpExpr))
+		{
+			continue;
+		}
+
+		OpExpr *opExpr = (OpExpr *) rinfo->clause;
+		if (opExpr->opno == BsonInOperatorId())
+		{
+			inIndexClause = iclause;
+			inCount++;
+		}
+	}
+
+	if (inIndexClause == NULL || inCount > 1)
+	{
+		return path;
+	}
+
+	/* Example $in Query Index Condition:
+	 *  mongo_catalog.@*=(document, '{ "val" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }'::mongo_catalog.bson) */
+	OpExpr *inOpExpr = (OpExpr *) inIndexClause->rinfo->clause;
+	Node *inList = lsecond(inOpExpr->args);
+
+	if (!IsA(inList, Const))
+	{
+		return path;
+	}
+
+	Const *inListConst = (Const *) inList;
+	pgbson *inQueryConditionBson = (pgbson *) DatumGetPgBson(inListConst->constvalue);
+	pgbsonelement inQueryBson;
+	PgbsonToSinglePgbsonElement(inQueryConditionBson, &inQueryBson);
+
+	Assert(inQueryBson.bsonValue.value_type == BSON_TYPE_ARRAY);
+	bson_iter_t arrayIter;
+	BsonValueInitIterator(&inQueryBson.bsonValue, &arrayIter);
+	List *orPaths = NULL;
+	IndexPath *newIndexPath = NULL;
+
+	while (bson_iter_next(&arrayIter))
+	{
+		const bson_value_t *inItemValue = bson_iter_value(&arrayIter);
+
+		/* If the $in contains a Regex we skip the rewrite. There is an existing bug with the $regex code path
+		 * that makes the rewrite not possible. Also, as a temporary optimization $regex is not our primary concern. */
+		if (inItemValue->value_type == BSON_TYPE_REGEX)
+		{
+			return path;
+		}
+
+		pgbson_writer clauseWriter;
+		PgbsonWriterInit(&clauseWriter);
+		PgbsonWriterAppendValue(&clauseWriter, inQueryBson.path,
+								inQueryBson.pathLength, inItemValue);
+
+		Const *bsonConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
+										 PgbsonWriterGetPgbson(&clauseWriter)), false,
+									 false);
+
+		OpExpr *elementOpExpr = (OpExpr *) make_opclause(BsonEqualMatchOperatorId(),
+														 BOOLOID, false,
+														 linitial(inOpExpr->args),
+														 (Expr *) bsonConst, InvalidOid,
+														 InvalidOid);
+		elementOpExpr->opfuncid = BsonEqualMatchIndexFunctionId();
+
+
+		newIndexPath = makeNode(IndexPath);
+		newIndexPath->path = indexPath->path;
+
+		List *copyIndexClauses = NULL;
+		foreach(indexPathCell, indexClauses)
+		{
+			IndexClause *iclause = (IndexClause *) lfirst(indexPathCell);
+			RestrictInfo *rinfo = iclause->rinfo;
+			OpExpr *opExpr = (OpExpr *) rinfo->clause;
+
+			if (opExpr->opno == BsonInOperatorId())
+			{
+				IndexClause *newClause = makeNode(IndexClause);
+				newClause->rinfo = copyObject(rinfo);
+				newClause->rinfo->clause = (Expr *) elementOpExpr;
+				newClause->indexquals = list_make1(newClause->rinfo);
+				newClause->lossy = iclause->lossy;
+				newClause->indexcol = iclause->indexcol;
+				newClause->indexcols = iclause->indexcols;
+
+				iclause = newClause;
+			}
+
+
+			copyIndexClauses = (copyIndexClauses == NIL) ? list_make1(iclause) : lappend(
+				copyIndexClauses, iclause);
+		}
+
+		newIndexPath->indexclauses = copyIndexClauses;
+		newIndexPath->indexorderbys = indexPath->indexorderbys;
+		newIndexPath->indexorderbycols = indexPath->indexorderbycols;
+		newIndexPath->indexinfo = indexPath->indexinfo;
+		newIndexPath->indexscandir = indexPath->indexscandir;
+		newIndexPath->indextotalcost = indexPath->indextotalcost;
+		newIndexPath->indexselectivity = indexPath->indexselectivity;
+
+		/* Copy cost and size fields */
+
+		orPaths = lappend(orPaths, newIndexPath);
+	}
+
+	Path *reWrittenPath = NULL;
+	if (list_length(orPaths) == 1)
+	{
+		reWrittenPath = (Path *) newIndexPath;
+	}
+	else
+	{
+		reWrittenPath = (Path *) create_bitmap_or_path(root, rel, orPaths);
+	}
+
+	BitmapHeapPath *bitmapHeapPath = create_bitmap_heap_path(root, rel, reWrittenPath,
+															 rel->lateral_relids, 1.0,
+															 0);
+
+	return (Path *) bitmapHeapPath;
+}
+
+
 /*
  * This function walks all the necessary qualifiers in a query Plan "Path"
  * Note that this currently replaces all the bson_dollar_<op> function calls
@@ -513,7 +699,9 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
  * to the main index clauses. For more details see create_bitmap_scan_plan()
  */
 static Path *
-ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *context)
+ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *path,
+								   bool hasValidParent,
+								   ReplaceExtensionFunctionContext *context)
 {
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
@@ -521,18 +709,26 @@ ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *
 	if (IsA(path, BitmapOrPath))
 	{
 		BitmapOrPath *orPath = (BitmapOrPath *) path;
-		ReplaceExtensionFunctionOperatorsInPaths(orPath->bitmapquals, context);
+		hasValidParent = false;
+		ReplaceExtensionFunctionOperatorsInPaths(root, rel, orPath->bitmapquals,
+												 hasValidParent, context);
 	}
 	else if (IsA(path, BitmapAndPath))
 	{
 		BitmapAndPath *andPath = (BitmapAndPath *) path;
-		ReplaceExtensionFunctionOperatorsInPaths(andPath->bitmapquals, context);
+		hasValidParent = false;
+		ReplaceExtensionFunctionOperatorsInPaths(root, rel, andPath->bitmapquals,
+												 hasValidParent,
+												 context);
 		path = OptimizeBitmapQualsForBitmapAnd(andPath, context);
 	}
 	else if (IsA(path, BitmapHeapPath))
 	{
 		BitmapHeapPath *heapPath = (BitmapHeapPath *) path;
-		heapPath->bitmapqual = ReplaceFunctionOperatorsInPlanPath(heapPath->bitmapqual,
+		hasValidParent = true;
+		heapPath->bitmapqual = ReplaceFunctionOperatorsInPlanPath(root, rel,
+																  heapPath->bitmapqual,
+																  hasValidParent,
 																  context);
 	}
 	else if (IsA(path, IndexPath))
@@ -641,6 +837,11 @@ ReplaceFunctionOperatorsInPlanPath(Path *path, ReplaceExtensionFunctionContext *
 		{
 			indexPath->indexclauses = OptimizeIndexExpressionsForRange(
 				indexPath->indexclauses);
+		}
+
+		if (EnableInQueryOptimization)
+		{
+			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, hasValidParent);
 		}
 	}
 

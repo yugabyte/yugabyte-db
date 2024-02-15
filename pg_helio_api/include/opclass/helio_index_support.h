@@ -13,7 +13,7 @@
 
 #include <opclass/helio_bson_text_gin.h>
 #include <vector/vector_utilities.h>
-
+#include <optimizer/planner.h>
 struct IndexOptInfo;
 
 /*
@@ -56,10 +56,13 @@ typedef struct ReplaceExtensionFunctionContext
 	ReplaceFunctionContextInput inputData;
 } ReplaceExtensionFunctionContext;
 
+extern bool EnableInQueryOptimization;
+
 List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 														   ReplaceExtensionFunctionContext
 														   *context);
-void ReplaceExtensionFunctionOperatorsInPaths(List *pathsList,
+void ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
+											  List *pathsList, bool hasValidParent,
 											  ReplaceExtensionFunctionContext *context);
 
 

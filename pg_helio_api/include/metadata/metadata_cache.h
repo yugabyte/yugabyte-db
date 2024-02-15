@@ -101,6 +101,7 @@ Oid TextEqualOperatorId(void);
 Oid BsonArrowOperatorId(void);
 Oid BsonEqualOperatorId(void);
 Oid BsonEqualMatchOperatorId(void);
+Oid BsonInOperatorId(void);
 Oid BsonQueryOperatorId(void);
 Oid BsonTrueFunctionId(void);
 Oid BsonQueryMatchFunctionId(void);
