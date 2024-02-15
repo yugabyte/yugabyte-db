@@ -1192,7 +1192,9 @@ PgClientSession::SetupSession(
   const auto read_time_serial_no = options.read_time_serial_no();
   UsedReadTimePtr used_read_time;
   if (options.restart_transaction()) {
-    RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Restarting a DDL transaction not supported");
+    if (options.ddl_mode()) {
+      return STATUS(NotSupported, "Restarting a DDL transaction not supported");
+    }
     Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
     transaction = Transaction(kind).get();
   } else {
