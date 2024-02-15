@@ -301,14 +301,15 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   auto result = std::make_shared<MemTracker>(
       byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
           create_metrics, metric_name);
-  auto p = child_trackers_.emplace(id, result);
-  if (!p.second) {
-    auto existing = p.first->second.lock();
+  auto [iter, inserted] = child_trackers_.emplace(id, result);
+  if (!inserted) {
+    auto& tracker_weak_ptr = iter->second;
+    auto existing = tracker_weak_ptr.lock();
     if (existing) {
       LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
       return existing;
     }
-    p.first->second = result;
+    tracker_weak_ptr = result;
   }
 
   return result;
