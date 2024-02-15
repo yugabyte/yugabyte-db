@@ -58,10 +58,15 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
   Status RefreshAndGetXClusterSafeTime();
   Status WaitForXClusterSafeTimeCaughtUp();
 
+  // Returns nullopt if the namespace is no longer part of xCluster replication, otherwise returns a
+  // valid safe time.
+  Result<std::optional<HybridTime>> GetXClusterSafeTimeWithoutDdlQueue(const LeaderEpoch& epoch);
+
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
   scoped_refptr<UniverseReplicationInfo> universe_;
   std::shared_ptr<client::XClusterRemoteClient> remote_client_;
+  XClusterManagerIf& xcluster_manager_;
   bool is_db_scoped_ = false;
 };
 

@@ -175,9 +175,14 @@ Status XClusterManager::GetXClusterSafeTimeForNamespace(
   return XClusterTargetManager::GetXClusterSafeTimeForNamespace(req, resp, epoch);
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
-    const LeaderEpoch& epoch) {
-  return XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    const XClusterSafeTimeFilter& filter) {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(epoch, namespace_id, filter);
+}
+
+Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
+  return XClusterTargetManager::RefreshXClusterSafeTimeMap(epoch);
 }
 
 Status XClusterManager::XClusterCreateOutboundReplicationGroup(
