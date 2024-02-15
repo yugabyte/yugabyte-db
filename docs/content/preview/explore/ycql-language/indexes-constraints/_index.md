@@ -13,24 +13,24 @@ menu:
 type: indexpage
 ---
 
-As with tables, indexes in YugabyteDB are stored in a distributed manner - that is, they are split into tablets and replicated. Updates to indexes are transactional, which means that row updates and the corresponding index updates occur as a single transaction. Similar to tables, they are stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
+As with tables, indexes in YugabyteDB are stored in a distributed manner - that is, they are split into tablets and replicated. Updates to indexes are transactional, which means that row updates and the corresponding index updates occur as a single transaction. Similar to tables, they are stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format.
 
 The [YCQL API](../../../api/ycql/) supports most of the Cassandra index semantics while incorporating other improvements.
 
 The following table lists different types of indexes and their support in YCQL.
 
-| Type | YCQL | Description  |
-| :--- | :--- | :--- |
-| [Primary key](primary-key-ycql/) | Yes | Unique key that identifies the row |
-| Foreign key | No | Link to a column in another table |
-| [Secondary index](secondary-indexes-ycql/) | Yes | Index on columns other than the primary key |
-| [Unique index](unique-index-ycql/) | Yes | Set one or many columns to be unique |
-| [Multi-column index](secondary-indexes-ycql/#multi-column-index) | Yes | Index on multiple columns for faster scan with lesser rows |
-| [Partial index](partial-index-ycql/) | Yes | Indexes that apply to only some rows of the table |
-| [Covering index](covering-index-ycql/) | Yes | Store other columns in the index for faster retrieval |
-| Expression index | No | Index based on a functional operation on columns |
-| GIN index | No | Generalized inverted index for fast text search |
-| GIST Index | No | For spatial search. Tracked - {{<issue 1337>}} |
+|                | Type | Description  |
+| :------------- | :--- | :--- |
+| {{<icon/yes>}} | [Primary key](primary-key-ycql/) | Unique key that identifies the row |
+| {{<icon/no>}}  | Foreign key  | Link to a column in another table |
+| {{<icon/yes>}} | [Secondary index](secondary-indexes-ycql/) | Index on columns other than the primary key |
+| {{<icon/yes>}} | [Unique index](unique-index-ycql/) | Set one or many columns to be unique |
+| {{<icon/yes>}} | [Multi-column index](secondary-indexes-ycql/#multi-column-index) | Index on multiple columns for faster scan with lesser rows |
+| {{<icon/yes>}} | [Partial index](partial-index-ycql/) | Indexes that apply to only some rows of the table |
+| {{<icon/yes>}} | [Covering index](covering-index-ycql/) | Store other columns in the index for faster retrieval |
+| {{<icon/no>}}  | Expression index | Index based on a functional operation on columns |
+| {{<icon/no>}}  | GIN index | Generalized inverted index for fast text search |
+| {{<icon/no>}}  | GIST Index | For spatial search. Tracked - {{<issue 1337>}} |
 
 ## Learn more
 

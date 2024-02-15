@@ -17,20 +17,20 @@ As with tables, indexes in YugabyteDB are stored in a distributed manner - that 
 
 YugabyteDB supports most of the PostgreSQL index semantics in the [YSQL API](../../../api/ysql/).
 
-The following table lists different types of indexes and their support YSQL.
+The following table lists different types of indexes and their support in YSQL.
 
-| Type | YSQL | Description  |
-| :--- | :--- | :--- |
-| [Primary key](primary-key-ysql/) | Yes | Unique key that identifies the row |
-| [Foreign key](foreign-key-ysql/) | Yes | Link to a column in another table |
-| [Secondary index](secondary-indexes-ysql/) | Yes | Index on columns other than the primary key |
-| [Unique index](unique-index-ysql/) | Yes | Set one or many columns to be unique |
-| [Multi-column index](secondary-indexes-ysql/#multi-column-index) | Yes | Index on multiple columns for faster scan with lesser rows |
-| [Partial index](partial-index-ysql/) | Yes | Indexes that apply to only some rows of the table |
-| [Covering index](covering-index-ysql/) | Yes | Store other columns in the index for faster retrieval |
-| [Expression index](expression-index-ysql/) | Yes | Index based on a functional operation on columns |
-| [GIN index](gin) | Partial | Generalized inverted index for fast text search |
-| GIST Index | No | For spatial search. Tracked - {{<issue 1337>}} |
+|                | Type | Description  |
+| :------------- | :--- | :--- |
+| {{<icon/yes>}} | [Primary key](primary-key-ysql/) | Unique key that identifies the row |
+| {{<icon/yes>}} | [Foreign key](foreign-key-ysql/) | Link to a column in another table |
+| {{<icon/yes>}} | [Secondary index](secondary-indexes-ysql/) | Index on columns other than the primary key |
+| {{<icon/yes>}} | [Unique index](unique-index-ysql/) | Set one or many columns to be unique |
+| {{<icon/yes>}} | [Multi-column index](secondary-indexes-ysql/#multi-column-index) | Index on multiple columns for faster scan with lesser rows |
+| {{<icon/yes>}} | [Partial index](partial-index-ysql/) | Indexes that apply to only some rows of the table |
+| {{<icon/yes>}} | [Covering index](covering-index-ysql/) | Store other columns in the index for faster retrieval |
+| {{<icon/yes>}} | [Expression index](expression-index-ysql/) | Index based on a functional operation on columns |
+| {{<icon/partial>}} | [GIN index](gin) | Generalized inverted index for fast text search |
+| {{<icon/no>}}  | GIST Index | For spatial search. Tracked - {{<issue 1337>}} |
 
 ## Learn more
 
