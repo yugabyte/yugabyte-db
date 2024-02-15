@@ -7,27 +7,10 @@ headContent: Explore unique indexes in YugabyteDB using YCQL
 menu:
   stable:
     identifier: unique-index-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 231
 type: docs
 ---
-
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../unique-index-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../unique-index-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
@@ -60,7 +43,7 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
     CREATE UNIQUE INDEX index_employee_name ON employees(name);
     ```
 
-1. Use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to verify the index creation.
+1. Use the [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe) command to verify the index creation.
 
     ```cql
     ycqlsh:yb_demo> DESCRIBE INDEX index_employee_name;
@@ -88,4 +71,4 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
 
 ## Learn more
 
-[CREATE INDEX](../../../api/ycql/ddl_create_index/)
+[CREATE INDEX](../../../../api/ycql/ddl_create_index/)

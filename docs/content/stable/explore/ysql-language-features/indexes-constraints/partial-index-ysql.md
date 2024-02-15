@@ -7,26 +7,10 @@ headContent: Explore partial indexes in YugabyteDB using YSQL
 menu:
   stable:
     identifier: partial-index-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 240
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../partial-index-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../partial-index-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage.
 
@@ -44,7 +28,7 @@ The `WHERE` clause specifies which rows need to be added to the index.
 
 {{% explore-setup-single %}}
 
-This example uses the `customers` table from the [Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 
@@ -101,4 +85,4 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 
 - [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)
 - [The Benefit of Partial Indexes in Distributed SQL Databases](https://www.yugabyte.com/blog/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
-- [Indexes on JSON attributes](../../json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+- [Indexes on JSON attributes](../../jsonb-ysql/#6-indexes-on-json-attributes)

@@ -7,19 +7,10 @@ headContent: Explore other constraints in YugabyteDB using YSQL
 menu:
   stable:
     identifier: other-constraints
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 270
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../other-constraints/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
 
 {{% explore-setup-single %}}
 
@@ -72,14 +63,14 @@ ALTER TABLE employees
 
 For additional examples, see:
 
-- [Table with CHECK constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint)
-- [Create indexes and check constraints on JSON columns](../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/#check-constraints-on-jsonb-columns)
+- [Table with CHECK constraint](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-check-constraint)
+- [Create indexes and check constraints on JSON columns](../../../../api/ysql/datatypes/type_json/create-indexes-check-constraints/#check-constraints-on-jsonb-columns)
 
 ## UNIQUE Constraint
 
 The `UNIQUE` constraint allows you to ensure that values stored in columns are unique across rows in a table. When inserting new rows or updating existing ones, the `UNIQUE` constraint checks if the value is already in the table, in which case the change is rejected and an error is displayed.
 
-When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../unique-index-ysql) on these columns.
+When you add a `UNIQUE` constraint to one or more columns, YSQL automatically creates a [unique index](../unique-index-ysql/) on these columns.
 
 The following example creates a table with a `UNIQUE` constraint for the `phone` column:
 
@@ -117,7 +108,7 @@ CREATE TABLE employees (
 );
 ```
 
-For additional examples, see [Table with UNIQUE constraint](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
+For additional examples, see [Table with UNIQUE constraint](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-unique-constraint).
 
 ## NOT NULL Constraint
 
@@ -125,5 +116,5 @@ YSQL provides a `NOT NULL` constraint as a means to control whether or not a col
 
 For additional information and examples, see the following:
 
-- [Define NOT NULL constraint](../../ysql-language-features/data-manipulation/#define-not-null-constraint)
+- [Define NOT NULL constraint](../../data-manipulation/#define-not-null-constraint)
 - [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)

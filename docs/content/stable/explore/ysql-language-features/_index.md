@@ -36,6 +36,7 @@ The following table lists the most important YSQL features which you would find 
 | [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
 | [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
+| [Indexes](indexes-constraints/) | Support for indexes and constraints |
 | [Stored Procedures](stored-procedures/) | Support for stored procedures |
 | [Triggers](triggers/) | Triggers (on data modification) and event triggers (on schema changes) |
 | [Extensions](pg-extensions/) | Support for PostgreSQL extensions |

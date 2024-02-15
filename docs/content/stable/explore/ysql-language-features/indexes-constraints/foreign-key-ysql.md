@@ -7,24 +7,15 @@ headContent: Explore foreign keys in YugabyteDB using YSQL
 menu:
   stable:
     identifier: foreign-key-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 210
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../foreign-key-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
 A foreign key represents one or more columns in a table referencing the following:
 
 - A primary key in another table.
-- A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
+- A [unique index](../unique-index-ysql/#using-a-unique-index) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 
@@ -126,7 +117,7 @@ ALTER TABLE child_table
 
 ## Learn more
 
-- [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
+- [Table with Foreign Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
 - [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)
 - [Other Constraints](../other-constraints/)

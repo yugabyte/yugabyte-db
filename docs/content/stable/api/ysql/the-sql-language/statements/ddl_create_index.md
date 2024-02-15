@@ -77,7 +77,7 @@ Indicates not to recurse creating indexes on partitions, if the table is partiti
 
 The name of the index access method. By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
 
-[GIN indexes](../../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
+[GIN indexes](../../../../../explore/ysql-language-features/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
 

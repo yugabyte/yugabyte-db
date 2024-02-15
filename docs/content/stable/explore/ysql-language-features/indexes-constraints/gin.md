@@ -7,21 +7,12 @@ headContent: Explore GIN indexes using YSQL
 menu:
   stable:
     identifier: indexes-constraints-gin
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 260
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../gin/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
-In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../architecture/docdb/persistence/). Loosely speaking:
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/persistence/). Loosely speaking:
 
 - A _table's_ internal key-value store maps primary keys to the remaining columns.
 - A _secondary index's_ internal key-value store maps index keys to primary keys.

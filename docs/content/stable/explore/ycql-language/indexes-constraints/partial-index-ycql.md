@@ -7,26 +7,10 @@ headContent: Explore partial indexes in YugabyteDB using YCQL
 menu:
   stable:
     identifier: partial-index-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 241
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../partial-index-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../partial-index-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 Partial indexes allow you to improve query performance by reducing the index size. A smaller index is faster to scan, easier to maintain, and requires less storage.
 
@@ -132,6 +116,6 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 ## Learn more
 
-- [PARTIAL INDEX](../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation
+- [PARTIAL INDEX](../../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation
 
 - [Partial index with JSONB column](../secondary-indexes-with-jsonb-ycql/#partial-index)

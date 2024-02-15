@@ -7,26 +7,10 @@ headContent: Explore primary keys in YugabyteDB using YCQL
 menu:
   stable:
     identifier: primary-key-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 201
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../primary-key-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../primary-key-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. In YCQL, it should be defined either under the `column_constraint` or the `table_constraint`, but not under both:
 
@@ -34,7 +18,7 @@ The Primary Key constraint is a means to uniquely identify a specific row in a t
 
 - **table_constraint**: PRIMARY KEY defined as the table_constraint takes columns to form one or more partition keys and zero or more clustering keys. Syntactically, the order is to have the `partition_key_column_list` first, followed by the `clustering_key_column_list`.
 
-Refer to the Grammar section for [CREATE TABLE](../../../api/ycql/ddl_create_table/#grammar) in YCQL. The [PRIMARY KEY](../../../api/ycql/ddl_create_table/#primary-key) section includes details about the [partition key](../../../api/ycql/ddl_create_table/#partition-key), [clustering key](../../../api/ycql/ddl_create_table/#clustering-key), and [STATIC COLUMNS](../../../api/ycql/ddl_create_table/#static-columns).
+Refer to the Grammar section for [CREATE TABLE](../../../../api/ycql/ddl_create_table/#grammar) in YCQL. The [PRIMARY KEY](../../../../api/ycql/ddl_create_table/#primary-key) section includes details about the [partition key](../../../../api/ycql/ddl_create_table/#partition-key), [clustering key](../../../../api/ycql/ddl_create_table/#clustering-key), and [STATIC COLUMNS](../../../../api/ycql/ddl_create_table/#static-columns).
 
 ## Examples
 
@@ -115,7 +99,7 @@ The row with `device_name` Pixel is replaced with MotoRazr.
 
 ## Explore more examples
 
-- [Use column constraint to define a static column](../../../api/ycql/ddl_create_table/#use-column-constraint-to-define-a-static-column)
-- [Example for clustering columns by ORDER](../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-order-ascending-or-descending-for-clustering-columns)
-- [Example to define the default expiration time for rows](../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows)
-- [Create a table specifying the number of tablets](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets)
+- [Use column constraint to define a static column](../../../../api/ycql/ddl_create_table/#use-column-constraint-to-define-a-static-column)
+- [Example for clustering columns by ORDER](../../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-order-ascending-or-descending-for-clustering-columns)
+- [Example to define the default expiration time for rows](../../../../api/ycql/ddl_create_table/#use-table-property-to-define-the-default-expiration-time-for-rows)
+- [Create a table specifying the number of tablets](../../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets)

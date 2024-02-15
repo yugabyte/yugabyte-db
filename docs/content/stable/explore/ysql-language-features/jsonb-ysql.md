@@ -7,29 +7,11 @@ headcontent: Explore YugabyteDB support for JSON data
 menu:
   stable:
     name: JSON support
-    identifier: explore-json-support-1-ysql
-    parent: explore
+    identifier: explore-json-support-ysql
+    parent: explore-ysql-language-features
     weight: 260
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../jsonb-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../jsonb-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
 
 JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types.
 

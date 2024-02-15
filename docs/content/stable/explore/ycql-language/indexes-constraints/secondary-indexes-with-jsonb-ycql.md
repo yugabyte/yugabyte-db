@@ -7,12 +7,10 @@ headContent: Explore secondary indexes with JSONB in YugabyteDB using YCQL
 menu:
   stable:
     identifier: secondary-indexes-with-jsonb-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 260
 type: docs
 ---
-
-{{<api-tabs list="ycql">}}
 
 Secondary indexes can be created with a JSONB datatype column in YCQL. Secondary Indexes in YCQL are global and distributed and similar to tables.  So the use of indexes can enhance database performance by enabling the database server to find rows faster.  You can create covering indexes as well as partial indexes with JSONB columns.
 
@@ -77,7 +75,7 @@ You can use the `DESCRIBE INDEX` command to check the index as follows:
 DESCRIBE INDEX idx_users_jsonb;
 ```
 
-For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
+For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
@@ -85,7 +83,7 @@ You can also use the `EXPLAIN` statement to check if a query uses an index and d
 EXPLAIN SELECT * FROM users WHERE address->>'zip' = '327';
 ```
 
-For additional information, see the [EXPLAIN](../../../api/ycql/explain/) statement.
+For additional information, see the [EXPLAIN](../../../../api/ycql/explain/) statement.
 
 ## Covering index and Partial index with JSONB column
 
@@ -109,7 +107,7 @@ CREATE INDEX idx_users_jsonb_part ON users (address->>'zip')
        WHERE email = 'lskywalker@yb.com';
 ```
 
-For additional information on the CREATE INDEX statement, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For additional information on the CREATE INDEX statement, see [CREATE INDEX](../../../../api/ycql/ddl_create_index/).
 
 ## Remove indexes
 
@@ -119,4 +117,4 @@ You can remove an index created with the JSONB datatype column using the `DROP I
 DROP INDEX idx_users_jsonb;
 ```
 
-For additional information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
+For additional information, see [DROP INDEX](../../../../api/ycql/ddl_drop_index/).

@@ -7,33 +7,16 @@ headContent: Explore primary keys in YugabyteDB using YSQL
 menu:
   stable:
     identifier: primary-key-ysql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ysql
     weight: 200
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../primary-key-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../primary-key-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
-
-The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/#using-a-unique-index) applied to the table columns.
 
 ## Syntax and examples
 
 {{% explore-setup-single %}}
-
 
 ### Primary key for a single column
 
@@ -167,7 +150,7 @@ HINT:  Use OVERRIDING SYSTEM VALUE to override.
 
 ## Learn more
 
-- [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
-- [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
+- [Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
+- [Table with Primary Key](../../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
 - [Natural versus Surrogate Primary Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/natural-versus-surrogate-primary-keys-in-a-distributed-sql-database/)
 - [Primary Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS)

@@ -7,24 +7,10 @@ headContent: Explore secondary indexes in YugabyteDB using YCQL
 menu:
   stable:
     identifier: secondary-indexes-ycql
-    parent: explore-indexes-constraints
+    parent: explore-indexes-constraints-ycql
     weight: 220
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../secondary-indexes-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../secondary-indexes-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
@@ -36,23 +22,23 @@ You can create indexes in YCQL using the `CREATE INDEX` statement using the foll
 CREATE INDEX index_name ON table_name(column_list);
 ```
 
-YCQL supports [Unique](../../../explore/indexes-constraints/unique-index-ycql/), [Partial](../../../explore/indexes-constraints/partial-index-ycql/), [Covering](../../../explore/indexes-constraints/covering-index-ycql/), and [Multi-column](#multi-column-index) secondary indexes.
+YCQL supports [Unique](../unique-index-ycql/), [Partial](../partial-index-ycql/), [Covering](../covering-index-ycql/), and [Multi-column](#multi-column-index) secondary indexes.
 
-For more information, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For more information, see [CREATE INDEX](../../../../api/ycql/ddl_create_index/).
 
 ## List indexes and verify the query plan
 
-You can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to check the indexes as follows:
+You can use the [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
 DESCRIBE INDEX <index_name>
 ```
 
-For more information, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
+For more information, see [DESCRIBE INDEX](../../../../admin/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
-For more information, see [EXPLAIN](../../../api/ycql/explain/).
+For more information, see [EXPLAIN](../../../../api/ycql/explain/).
 
 ## Remove indexes
 
@@ -62,7 +48,7 @@ You can remove an index using the `DROP INDEX` statement in YCQL using the follo
 DROP INDEX index_name;
 ```
 
-For more information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
+For more information, see [DROP INDEX](../../../../api/ycql/ddl_drop_index/).
 
 ## Example
 
