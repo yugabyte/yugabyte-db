@@ -4,7 +4,6 @@ headerTitle: Tutorials
 linkTitle: Tutorials
 description: How to develop applications with YugabyteDB using your preferred environment, software and programming language.
 headcontent: Step-by-step guides for building scalable and fault tolerant applications with YugabyteDB using your favorite programming language, software, and services
-image: /images/section_icons/index/develop.png
 type: indexpage
 cascade:
   unversioned: true
@@ -39,6 +38,18 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
     body="Build with YugabyteDB on Google Cloud."
     href="google/"
     icon="/images/tutorials/google/google-cloud-logo.svg">}}
+
+{{</index/block>}}
+
+### AI
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Kafka"
+    body="Stream data with different Kafka environments."
+    href="cdc-tutorials/"
+    icon="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">}}
 
 {{</index/block>}}
 
