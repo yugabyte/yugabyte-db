@@ -193,7 +193,6 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testSerializableReadDelayWrite() throws Exception {
-    runWithFailOnConflict();
     runReadDelayWriteTest(IsolationLevel.SERIALIZABLE);
   }
 
