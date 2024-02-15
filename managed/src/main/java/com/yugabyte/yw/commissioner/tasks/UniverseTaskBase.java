@@ -703,13 +703,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (universeDetails.updateSucceeded) {
               // Clear the task UUIDs only if the update succeeded.
               universeDetails.updatingTaskUUID = null;
-              // Do not save the transient state in the universe.
-              universeDetails.nodeDetailsSet.forEach(
-                  n -> {
-                    n.masterState = null;
-                  });
               if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
                 universeDetails.placementModificationTaskUuid = null;
+                // Do not save the transient state in the universe.
+                universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
               }
             }
             universeDetails.updatingTask = null;
