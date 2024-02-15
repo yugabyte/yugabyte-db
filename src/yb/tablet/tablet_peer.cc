@@ -213,6 +213,7 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
+    rpc::ThreadPool* raft_notifications_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequestsManager* retryable_requests_manager,
     std::unique_ptr<ConsensusMetadata> consensus_meta,
@@ -305,6 +306,7 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
+        raft_notifications_pool,
         retryable_requests_manager,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
