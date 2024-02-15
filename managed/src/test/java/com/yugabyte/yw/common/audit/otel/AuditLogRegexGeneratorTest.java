@@ -33,23 +33,24 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
     assertThat(
         result.getRegex(),
         equalTo(
-            "^([%][a][=](?P<application_name>[^ ]+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)"
-                + "[ ][|][ ][%][d][=](?P<database_name>[^ ]+)[ ][|][ ][%][r][=]"
-                + "(?P<remote_host_port>[^ ]+)[ ][|][ ][%][h][=](?P<remote_host>[^ ]+)"
-                + "[ ][|][ ][%][p][=](?P<process_id>\\d+)[ ][|][ ][%][t][=]"
-                + "(?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\w{3})"
-                + "[ ][|][ ][%][m][=](?P<timestamp_with_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}"
-                + ":\\d{2}[.]\\d{3} \\w{3})[ ][|][ ][%][n][=](?P<timestamp_with_ms_epoch>"
-                + "\\d{10}[.]\\d{3})[ ][|][ ][%][i][=](?P<command_tag>\\w+)[ ][|][ ]"
-                + "[%][e][=](?P<error_code>\\d+)[ ][|][ ][%][c][=](?P<session_id>[^ ]+)"
-                + "[ ][|][ ][%][l][=](?P<log_line_number>\\d+)[ ][|][ ][%][s][=]"
-                + "(?P<process_start_timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\w{3})"
-                + "[ ][|][ ][%][v][=](?P<virtual_transaction_id>[^ ]+)[ ][|][ ][%][x][=]"
-                + "(?P<transaction_id>[^ ]+)[ ][|][ ][%][C][=](?P<cloud_name>[^ ]+)[ ][|]"
-                + "[ ][%][R][=](?P<region>[^ ]+)[ ][|][ ][%][Z][=](?P<availability_zone>[^ ]+)"
-                + "[ ][|][ ][%][U][=](?P<cluster_uuid>[^ ]+)[ ][|][ ][%][N][=]"
-                + "(?P<node_cluster_name>[^ ]+)[ ][|][ ][%][H][=](?P<current_hostname>[^ ]+)"
-                + "[ ][:][ ]LOG:  AUDIT: (?P<audit_type>\\w+),(?P<statement_id>\\d+),"
+            "^([%][a][=](?P<application_name>[^ ]+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)[ ][|]["
+                + " ][%][d][=](?P<database_name>[^ ]+)[ ][|][ ][%][r][=](?P<remote_host_port>[^"
+                + " ]+)[ ][|][ ][%][h][=](?P<remote_host>[^ ]+)[ ][|]["
+                + " ][%][p][=](?P<process_id>\\d+)[ ][|]["
+                + " ][%][t][=](?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
+                + " \\w{3})[ ][|][ ][%][m][=](?P<timestamp_with_ms>\\d{4}-\\d{2}-\\d{2}"
+                + " \\d{2}:\\d{2}:\\d{2}[.]\\d{3} \\w{3})[ ][|]["
+                + " ][%][n][=](?P<timestamp_with_ms_epoch>\\d{10}[.]\\d{3})[ ][|]["
+                + " ][%][i][=](?P<command_tag>\\w+)[ ][|][ ][%][e][=](?P<error_code>\\d+)[ ][|]["
+                + " ][%][c][=](?P<session_id>[^ ]+)[ ][|][ ][%][l][=](?P<log_line_number>\\d+)["
+                + " ][|][ ][%][s][=](?P<process_start_timestamp>\\d{4}-\\d{2}-\\d{2}"
+                + " \\d{2}:\\d{2}:\\d{2} \\w{3})[ ][|][ ][%][v][=](?P<virtual_transaction_id>[^"
+                + " ]+)[ ][|][ ][%][x][=](?P<transaction_id>[^ ]+)[ ][|]["
+                + " ][%][C][=](?P<cloud_name>[^ ]+)[ ][|][ ][%][R][=](?P<region>[^ ]+)[ ][|]["
+                + " ][%][Z][=](?P<availability_zone>[^ ]+)[ ][|][ ][%][U][=](?P<cluster_uuid>[^"
+                + " ]+)[ ][|][ ][%][N][=](?P<node_cluster_name>[^ ]+)[ ][|]["
+                + " ][%][H][=](?P<current_hostname>[^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
+                + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),"
                 + "(?P<substatement_id>\\d+),(?P<class>\\w+),(?P<command>[^,]+),"
                 + "(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$"));
     assertThat(
@@ -88,10 +89,10 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
         result.getRegex(),
         equalTo(
             "^((?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
-                + " \\w{3})[ ][|][ ]([^ ]+)[ ][:][ ]LOG:  AUDIT: (?P<audit_type>\\w+),"
-                + "(?P<statement_id>\\d+),(?P<substatement_id>\\d+),(?P<class>\\w+),"
-                + "(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),"
-                + "(?P<statement>.*))|(.*)$"));
+                + " \\w{3})[ ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
+                + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
+                + "(?P<class>\\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),"
+                + "(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$"));
     assertThat(
         result.getTokens(), contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS));
   }
