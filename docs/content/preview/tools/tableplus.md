@@ -22,6 +22,8 @@ This tutorial shows how to connect TablePlus to a YugabyteDB cluster.
 
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
+Note that if you are connecting to a YCQL keyspace that has tables with columns of type JSONB, because the Cassandra driver used by TablePlus does not support JSONB, the connection to the database may fail.
+
 ## Install TablePlus
 
 To install TablePlus, go to the [Download page](https://tableplus.com/download/) and select the version for your operating system.
@@ -34,7 +36,7 @@ To create a connection, do the following:
 
 1. In TablePlus, from the **Connection** menu, choose **New**.
 
-1. Select **PostgreSQL** for YSQL, or **Cassandra** for YCQL, and click **Create**. Note that JSONB data type is unsupported for YCQL.
+1. Select **PostgreSQL** for YSQL, or **Cassandra** for YCQL, and click **Create**.
 
     ![Choose DB](/images/develop/tools/tableplus/choose-db.png)
 
