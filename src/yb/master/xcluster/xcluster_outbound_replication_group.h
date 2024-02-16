@@ -22,6 +22,8 @@
 
 namespace yb {
 
+class IsOperationDoneResult;
+
 namespace client {
 class XClusterRemoteClient;
 }  // namespace client

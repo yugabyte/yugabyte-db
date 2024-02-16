@@ -33,6 +33,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
@@ -5164,8 +5165,8 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   auto is_operation_done = VERIFY_RESULT(master::IsSetupUniverseReplicationDone(
       xcluster::ReplicationGroupId(req->replication_group_id()), *this));
 
-  resp->set_done(is_operation_done.done);
-  StatusToPB(is_operation_done.status, resp->mutable_replication_error());
+  resp->set_done(is_operation_done.done());
+  StatusToPB(is_operation_done.status(), resp->mutable_replication_error());
   return Status::OK();
 }
 

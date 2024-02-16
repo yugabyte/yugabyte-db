@@ -16,6 +16,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 #include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
@@ -590,20 +591,22 @@ Result<IsOperationDoneResult> XClusterOutboundReplicationGroup::IsCreateXCluster
 
   if (target_universe.state() ==
       SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING) {
-    return IsOperationDoneResult(true, Status::OK());
+    return IsOperationDoneResult::Done();
   }
 
-  IsOperationDoneResult setup_result;
+  auto setup_result = IsOperationDoneResult::NotDone();
   if (target_universe.state() ==
       SysXClusterOutboundReplicationGroupEntryPB_TargetUniverseInfo::FAILED) {
-    setup_result.done = true;
+    Status status;
     if (target_universe.has_error_status()) {
-      setup_result.status = StatusFromPB(target_universe.error_status());
+      status = StatusFromPB(target_universe.error_status());
     } else {
-      setup_result.status = STATUS(
+      status = STATUS(
           IllegalState, "Failed to create replication group on target cluster",
           target_universe.universe_uuid());
     }
+
+    setup_result = IsOperationDoneResult::Done(std::move(status));
   } else {
     // TODO(#20810): Remove this once async task that polls for IsCreateXClusterReplicationDone gets
     // added.
@@ -611,16 +614,16 @@ Result<IsOperationDoneResult> XClusterOutboundReplicationGroup::IsCreateXCluster
     setup_result = VERIFY_RESULT(remote_client->IsSetupUniverseReplicationDone(Id()));
   }
 
-  if (!setup_result.done) {
+  if (!setup_result.done()) {
     return setup_result;
   }
 
-  if (setup_result.status.ok()) {
+  if (setup_result.status().ok()) {
     target_universe.set_state(
         SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::REPLICATING);
   } else {
     LOG_WITH_PREFIX(WARNING) << "Failed to create replication group on target cluster: "
-                             << setup_result.status;
+                             << setup_result.status();
     // Clear the target info so that it can be retried later.
     outbound_group.clear_target_universe_info();
   }

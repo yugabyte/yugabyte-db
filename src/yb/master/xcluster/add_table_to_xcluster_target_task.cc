@@ -15,6 +15,7 @@
 
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -168,14 +169,14 @@ Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
   auto operation_result = VERIFY_RESULT(
       IsSetupUniverseReplicationDone(universe_->ReplicationGroupId(), catalog_manager_));
 
-  if (!operation_result.done) {
+  if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";
     // If this takes too long the table creation will timeout and abort the task.
     SCHEDULE_WITH_DELAY(WaitForSetupUniverseReplicationToFinish);
     return Status::OK();
   }
 
-  RETURN_NOT_OK(operation_result.status);
+  RETURN_NOT_OK(operation_result.status());
 
   SCHEDULE(RefreshAndGetXClusterSafeTime);
   return Status::OK();

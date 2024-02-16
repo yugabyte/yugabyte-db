@@ -26,6 +26,8 @@
 
 namespace yb {
 
+class IsOperationDoneResult;
+
 namespace cdc {
 class CDCStateTable;
 }  // namespace cdc
