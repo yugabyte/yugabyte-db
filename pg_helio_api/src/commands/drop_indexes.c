@@ -23,6 +23,7 @@
 #include "io/helio_bson_core.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
+#include "commands/diagnostic_commands_common.h"
 #include "commands/drop_indexes.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
@@ -96,7 +97,7 @@ static void HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool u
 										bool concurrently,
 										bool missingOk, DropIndexesResult *result,
 										MemoryContext oldMemContext);
-static void CleanUpIndexBuildRequest(int indexId);
+static void CancelIndexBuildRequest(int indexId);
 
 /*
  * command_drop_indexes is the implementation of the internal logic for
@@ -203,9 +204,15 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 				 * This is to avoid accidental pick up of request by the cron job while we are cleaning up index.
 				 * BugId 2858365
 				 */
-				pgbson *emptyComment = PgbsonInitEmpty();
+				pgbson_writer writer;
+				PgbsonWriterInit(&writer);
+				PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
+									   "DropIndexes is requested for the index");
+				PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
+										MongoInternalError);
+				pgbson *newComment = PgbsonWriterGetPgbson(&writer);
 				MarkIndexRequestStatus(indexDetails->indexId, CREATE_INDEX_COMMAND_TYPE,
-									   IndexCmdStatus_Skippable, emptyComment, NULL, 1);
+									   IndexCmdStatus_Skippable, newComment, NULL, 1);
 			}
 			indexesDetailsList = lappend(indexesDetailsList, indexDetails);
 		}
@@ -304,10 +311,17 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 			 * This is to avoid accidental pick up of request by the cron job while we are cleaning up index.
 			 * BugId 2858365
 			 */
-			pgbson *emptyComment = PgbsonInitEmpty();
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterAppendUtf8(&writer, ErrMsgKey, ErrMsgLength,
+								   "DropIndexes is requested for the index");
+			PgbsonWriterAppendInt32(&writer, ErrCodeKey, ErrCodeLength,
+									MongoInternalError);
+			pgbson *newComment = PgbsonWriterGetPgbson(&writer);
+
 			MarkIndexRequestStatus(matchingIndexDetails->indexId,
 								   CREATE_INDEX_COMMAND_TYPE,
-								   IndexCmdStatus_Skippable, emptyComment, NULL, 1);
+								   IndexCmdStatus_Skippable, newComment, NULL, 1);
 
 			/* save the memory context before committing the transaction */
 			MemoryContext oldMemContext = CurrentMemoryContext;
@@ -824,6 +838,8 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 							concurrently, bool missingOk, DropIndexesResult *result,
 							MemoryContext oldMemContext)
 {
+	CancelIndexBuildRequest(indexId);
+
 	/*
 	 * We commit the transaction to prevent concurrent index creation
 	 * getting blocked on that transaction due to any snapshots that
@@ -863,18 +879,17 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 	{
 		DeleteCollectionIndexRecord(collectionId, indexId);
 
-		/* Clean up existing running create index job. */
-		CleanUpIndexBuildRequest(indexId);
+		/* Clean up existing running create index job from the queue. */
+		RemoveRequestFromIndexQueue(indexId, CREATE_INDEX_COMMAND_TYPE);
 	}
 }
 
 
 /*
- * CleanUpIndexBuildRequest cleans up an existing (if there is any) running Index Build request for the indexId.
- * It also deletes the Index Build request from helio_api_catalog.helio_index_queue
+ * CancelIndexBuildRequest cancels an existing (if there is any) running Index Build request for the indexId.
  */
 static void
-CleanUpIndexBuildRequest(int indexId)
+CancelIndexBuildRequest(int indexId)
 {
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
@@ -896,7 +911,6 @@ CleanUpIndexBuildRequest(int indexId)
 		Datum pid = results[0];
 		int64 globalPid = DatumGetInt64(results[1]);
 		Datum startTime = results[2];
-
 		appendStringInfo(cmdStr, " SELECT pg_cancel_backend(%ld) FROM pg_stat_activity ",
 						 globalPid);
 		appendStringInfo(cmdStr, " WHERE pid = $1 AND query_start = $2");
@@ -913,8 +927,6 @@ CleanUpIndexBuildRequest(int indexId)
 											&isNull);
 	}
 
-	/* Remove the create index request from Index queue as well. */
-	RemoveRequestFromIndexQueue(indexId, CREATE_INDEX_COMMAND_TYPE);
-	elog(LOG, "Clean up of existing index build request for %d is completed.",
+	elog(LOG, "Cancel existing index build request for %d is completed.",
 		 indexId);
 }

@@ -1187,7 +1187,9 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 			comment = PgbsonInitFromDocumentBsonValue(&failedIndexComment);
 			ParseErrorCommentFromQueue(comment, result);
 		}
-		else if (result->errmsg == NULL)
+
+		/* Make sure that we always set errmsg and errcode because ok = false*/
+		if (result->errmsg == NULL)
 		{
 			/* index failed but empty comment in queue. */
 			result->errmsg = "Index Creation failed";
