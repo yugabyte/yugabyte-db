@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -92,6 +93,7 @@ public class DrConfigController extends AuthenticatedController {
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
+  private final AutoFlagUtil autoFlagUtil;
 
   @Inject
   public DrConfigController(
@@ -101,7 +103,8 @@ public class DrConfigController extends AuthenticatedController {
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      AutoFlagUtil autoFlagUtil) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -109,6 +112,7 @@ public class DrConfigController extends AuthenticatedController {
     this.ybService = ybService;
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   /**
@@ -147,6 +151,9 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.dr.enabled to true in the application.conf");
+    }
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, targetUniverse);
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
@@ -308,6 +315,10 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+
     BootstrapParams bootstrapParams =
         getBootstrapParamsFromRestartBootstrapParams(
             setTablesForm.bootstrapParams, setTablesForm.tables);
@@ -382,6 +393,10 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
@@ -470,6 +485,10 @@ public class DrConfigController extends AuthenticatedController {
     }
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);
+    }
 
     Set<String> tableIds = xClusterConfig.getTableIds();
 
@@ -583,6 +602,10 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(targetUniverse, sourceUniverse);
+    }
 
     // All the tables in DBs in replication on the source universe must be in the xCluster config.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =

@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -89,6 +90,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
   public NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
+  public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -158,6 +160,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(bind(GetTableSchemaResponse.class).toInstance(mockSchemaResponse))
+                .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
