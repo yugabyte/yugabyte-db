@@ -1,20 +1,17 @@
-```output
+```text
 I'd like to watch a movie about a space adventure
 ```
 
-The service will convert the prompt into an embedding using the OpenAI Embedding model and then carry out a vector similarity search over the movie overview embeddings. The results might look like this:
+The service turns your prompt into an embedding with OpenAI's model, then searches for similar movie descriptions. The results should look like this:
 
 ![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-similarity-search-result.png)
 
-PostgreSQL can also pre-filter movies based on rank and category before performing the vector search.
-
-For example, set the **rank** to `7` and select the `Science Fiction` **category**, then repeat the search. The suggestions should be similar to those shown below.
-
-*(Hint. Choose the movie you like and add it to your library by clicking the **Add to Library** button.)*
+PostgreSQL can filter movies by rank and category before doing the vector search. For instance, set rank to **7**, choose **Science Fiction** as the category, and repeat the search again:
 
 ![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-similarity-search-pre-filtering.png)
+*(Hint: Pick a movie you like and add it to your library with the **Add to Library** button.)*
 
-The actual SQL query used to generate movie recommendations is as follows:
+Here's the SQL query that YugaPlus uses to find the movie recommendations:
 
 ```sql
 SELECT id, title, overview, vote_average, release_date FROM movie 

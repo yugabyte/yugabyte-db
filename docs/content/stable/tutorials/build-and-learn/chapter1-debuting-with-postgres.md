@@ -12,27 +12,27 @@ type: docs
 ---
 
 {{< note title="YugaPlus - The Story Begins" >}}
-The first version of the YugaPlus streaming service was set for its prime time debut. The plan involved initially launching the service for users on the US West Coast, followed by a gradual rollout to users nationwide.
+The first version of the YugaPlus streaming platform was set for its prime-time debut. The plan involved initially launching the service for users on the US West Coast, followed by a gradual rollout to users nationwide.
 
-The launch was successful, with the first user signing up for YugaPlus to enjoy their favorite movies on demand. The service, powered by PostgreSQL, handled the incoming traffic with ease.
+The launch was successful, with the first users signing up for YugaPlus to enjoy their favorite movies, series, and sports events. The service, powered by PostgreSQL, handled the incoming traffic with ease.
 {{< /note >}}
 
-In this chapter, you'll learn to deploy one of the YugaPlus services - the movie recommendations service that takes user questions in plain English and uses an underlying generative AI stack (OpenAI, Spring AI and PostgreSQL pgvector) to provide the user with the most relevant movies recommendations.
+In this chapter, you'll deploy one of the YugaPlus services—the movie recommendations service. This service takes user questions in plain English and uses an underlying generative AI stack (OpenAI, Spring AI, and PostgreSQL pgvector) to provide users with the most relevant movie recommendations.
 
 You'll learn the following:
 
 * How to deploy PostgreSQL with pgvector in Docker.
-* How to perform vector similarity searches with pgvector and the OpenAI Embedding model.
+* How to perform vector similarity searches using pgvector and the OpenAI Embedding model.
 
 **Prerequisites**
 
 * [Docker](https://www.docker.com) 20 or later.
 * [Docker Compose](https://docs.docker.com/compose/install/) 1.29 or later.
-* An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the application will perform full-text searches over the movie catalog instead of vector similarity searches. Note that the full-text search version is much less advanced.
+* An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the application will revert to performing full-text searches over the movie catalog, instead of vector similarity searches. Note that the full-text search capability is significantly less advanced.
 
 {{< header Level="2" >}}Start PostgreSQL With pgvector{{< /header >}}
 
-The pgvector extension transforms PostgreSQL into a vector database capable of storing and accessing vectorized data. The movie recommendations service utilizes pgvector to provide users with highly relevant recommendations based on their input.
+The pgvector extension transforms PostgreSQL into a vector database, capable of storing and accessing vectorized data. The movie recommendations service utilizes pgvector to provide users with highly relevant recommendations based on their input.
 
 Follow these steps to start a PostgreSQL instance with pgvector and enable the extension:
 
@@ -61,7 +61,7 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
 4. Check the logs to ensure the container is up and running and PostgreSQL has initialized successfully:
 
     ```shell
-    docker container ls -f name=postgres
+    docker container logs postgres
     ```
 
 5. Connect to the container and enable the pgvector extension:
@@ -77,20 +77,20 @@ With the database operational, you're now ready to deploy the first version of Y
 
 {{< header Level="2" >}}Deploy YugaPlus Movie Recommendations Service{{< /header >}}
 
-The service consists of a React frontend and a Java backend. You don't need prior knowledge of React or Java, nor do you have to install any language-specific toolchains. Both the frontend and backend are deployed in Docker, which automatically pulls all required libraries and frameworks.
+The service is comprised of a React frontend and a Java backend. Prior knowledge of React or Java is not necessary, nor is the installation of any language-specific toolchains required. Both the frontend and backend are deployed using Docker, which automatically downloads all necessary libraries and frameworks.
 
 **Prepare for the deployment:**
 
 1. Clone the YugaPlus repository:
 
     ```shell
-    git clone https://github.com/YugabyteDB-Samples/YugaPlus.git .
+    git clone https://github.com/YugabyteDB-Samples/yugaplus-build-and-learn-tutorial.git
     ```
 
-2. [Create](<https://platform.openai.com>) an OpenAI API key. The application needs an OpenAI embedding model to perform vector similarity search. In case you decide not to use OpenAI, the application will use less advanced full-text search mode.
+2. [Create](<https://platform.openai.com>) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
 
 {{< tip title="OpenAI Free Tier">}}
-At the time of writing, OpenAI offered a generous free tier, which was sufficient to complete this tutorial. So, you're highly encouraged to complete the tutorial using the advanced vector similarity search mode.
+As of this writing, OpenAI provides a generous free tier, sufficient for completing this tutorial. Therefore, it's highly recommended to use the advanced vector similarity search mode.
 {{< /tip >}}
 
 3. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
@@ -113,16 +113,16 @@ At the time of writing, OpenAI offered a generous free tier, which was sufficien
     docker-compose up --build
     ```
 
-The `yugaplus-backend` container connects to the PostgreSQL container, initializes the movies catalog, and pre-loads a sample dataset with over 2,800 movies. This dataset includes embeddings pre-generated for movie overviews using an OpenAI Embedding model (`text-embedding-ada-002`). Upon successful startup, the backend will display the following messages in the terminal window:
+The `yugaplus-backend` container connects to the PostgreSQL container, initializes the movie catalog, and preloads a sample dataset comprising over 2,800 movies. This dataset includes embeddings pre-generated for movie overviews using the OpenAI Embedding model (`text-embedding-ada-002`). Upon successful startup, the backend will display the following messages in the terminal window:
 
 ```output
 INFO 1 --- [main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path ''
 INFO 1 --- [main] c.y.backend.YugaPlusBackendApplication   : Started YugaPlusBackendApplication in 18.681 seconds (process running for 19.173)
 ```
 
-The `yugaplus-frontend` container starts in a few seconds and is accessible at the following address: <http://localhost:3000/>
+The `yugaplus-frontend` container starts in a few seconds and can be accessed at: <http://localhost:3000/>
 
-Go ahead and log into YugaPlus! The app automatically pre-populates the sing-in form with the following user credentials:
+Proceed to log into YugaPlus! The app automatically pre-populates the sign-in form with the following user credentials:
 
 * Username: `user1@gmail.com`
 * Password: `MyYugaPlusPassword`
@@ -131,7 +131,7 @@ Go ahead and log into YugaPlus! The app automatically pre-populates the sing-in 
 
 {{< header Level="2" >}}Search For Your Favorite Movies{{< /header >}}
 
-Once logged in, you'll arrive at the YugaPlus home page, which is divided into two sections. The **Your Movies** section displays your user library, featuring movies you are currently watching or plan to watch soon. The **Search New Movies** section helps you discover new content by asking for recommendations in plain English.
+After you log in, you'll see the YugaPlus home page split into two parts. In **Your Movies**, you'll find movies you're watching or want to watch. The **Search New Movies** section lets you find new movies by typing what you're looking for in plain English.
 
 ![YugaPlus Home Screen](/images/tutorials/build-and-learn/chapter1-home-screen.png)
 
@@ -139,11 +139,11 @@ Internally, the service uses the following database schema:
 
 ![YugaPlus Home Screen](/images/tutorials/build-and-learn/yugaplus-schema.png)
 
-* `movie` - the table stores information about movies available on YugaPlus. The `overview_vector` column contains 1536-dimensional vectors generated using OpenAI's `text-embedding-ada-002` model, based on the movies' descriptions in the `overview` column.
-* `user_account` - the table with uses-specific details.
-* `user_library` - this table records the movies that users add to their libraries.
+* `movie` - this table keeps track of movies on YugaPlus. The `overview_vector` column has 1536-dimensional vectors made using OpenAI's `text-embedding-ada-002` model from movie descriptions in the `overview` column.
+* `user_account` - this table holds user-specific details.
+* `user_library` - this table lists the movies users have added to their libraries.
 
-Next, go ahead and ask YugaPlus to suggest a few movies for your upcoming evening watch by typing in the following prompt:
+Next, type in the following to find a movie for a space adventure:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -176,4 +176,6 @@ Next, go ahead and ask YugaPlus to suggest a few movies for your upcoming evenin
   </div>
 </div>
 
-Congratulations, you've completed Chapter 1! You have successfully deployed the first version of the YugaPlus movie recommendations service and got it operational on a PostgreSQL instance with the pgvector extension.
+Congratulations, you've finished Chapter 1! You've successfully deployed the first version of the YugaPlus movie recommendations service and made it work on a PostgreSQL instance with the pgvector extension.
+
+Moving on to [Chapter 2](../chapter2-scaling-with-yugabytedb), where you'll learn how to scale data and workloads using a multi-node YugabyteDB cluster.
