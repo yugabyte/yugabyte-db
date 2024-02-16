@@ -90,6 +90,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		instance->yb_stats[index].query_rate = avg->count_query;
 		instance->yb_stats[index].transaction_rate = avg->count_tx;
 		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;
+		instance->yb_stats[index].last_updated_time = machine_time_us();
 		od_route_unlock(route);
 	}
 
