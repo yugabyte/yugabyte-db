@@ -58,6 +58,7 @@ import { getYBAHost } from '../../utils';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
+import { useTranslation } from 'react-i18next';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -149,6 +150,7 @@ export const AZUProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const { t } = useTranslation();
   const formMethods = useForm<AZUProviderCreateFormFieldValues>({
     defaultValues: DEFAULT_FORM_VALUES,
     resolver: yupResolver(VALIDATION_SCHEMA)
@@ -159,7 +161,11 @@ export const AZUProviderCreateForm = ({
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);

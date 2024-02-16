@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
 import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
-import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
@@ -271,6 +271,7 @@ export const AddTableModal = ({
           sourceUniverseTables,
           isTableSelectionValidated,
           xClusterConfig,
+          xClusterConfigTableType,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -347,6 +348,7 @@ const validateForm = async (
   sourceUniverseTables: YBTable[],
   isTableSelectionValidated: boolean,
   xClusterConfig: XClusterConfig,
+  tableType: TableType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -364,9 +366,14 @@ const validateForm = async (
       }
       if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
         errors.tableUUIDs = {
-          title: 'No tables selected.',
-          body: 'Select at least 1 table to proceed'
+          title: `No ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+          } selected.`,
+          body: `Select at least 1 ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+          } to proceed`
         };
+        throw errors;
       }
       let bootstrapTableUUIDs: string[] | null = null;
       try {

@@ -4,6 +4,8 @@ import { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
+import { Link } from 'react-router';
+import { Box } from '@material-ui/core';
 
 import { GraphPanelHeaderContainer } from '../../metrics';
 import {
@@ -20,6 +22,7 @@ import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './CustomerMetricsPanel.scss';
 
@@ -85,6 +88,13 @@ const PanelBody = ({
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
   }
 
+  const isDrEnabled =
+    runtimeConfigs?.data?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
+    )?.value === 'true';
+  const drConfigUuid =
+    selectedUniverse?.drConfigUuidsAsSource[0] ?? selectedUniverse?.drConfigUuidsAsTarget[0];
+  const hasDrConfig = !!drConfigUuid;
   if (
     metricMeasure === MetricMeasure.OUTLIER ||
     metricMeasure === MetricMeasure.OVERALL ||
@@ -126,6 +136,21 @@ const PanelBody = ({
           }
           return prevTabs;
         }, [])}
+        {origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig && (
+          <Tab
+            eventKey={'xClusterDr'}
+            title={'xCluster DR'}
+            key={`xClusterDr-${metricMeasure}-tab`}
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <Box marginTop="16px" textAlign="center">
+              <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
+                <span className="dr-metrics-link">See xCluster DR Metrics</span>
+              </Link>
+            </Box>
+          </Tab>
+        )}
       </YBTabsPanel>
     );
   } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
