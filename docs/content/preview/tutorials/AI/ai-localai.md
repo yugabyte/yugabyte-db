@@ -143,7 +143,7 @@ This application requires a database table with information about popular progra
 
 ## Start the application
 
-This command-line application takes an input in natural language and returns a response from YugabyteDB. By converting text to embeddings, a similarity search is executed using `pgvector`.
+This command-line application uses a locally-running LLM to produce text-embeddings for a user prompt. It takes an input in natural language and returns a response from YugabyteDB. By converting text to embeddings, a similarity search is executed using `pgvector`.
 
 1. Start the server.
 
