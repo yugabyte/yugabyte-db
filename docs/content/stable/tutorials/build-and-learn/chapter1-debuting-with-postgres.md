@@ -27,6 +27,7 @@ You'll learn the following:
 **Prerequisites**
 
 * [Docker](https://www.docker.com) 20 or later.
+* [Docker Compose](https://docs.docker.com/compose/install/) 1.29 or later.
 * An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the application will perform full-text searches over the movie catalog instead of vector similarity searches. Note that the full-text search version is much less advanced.
 
 {{< header Level="2" >}}Start PostgreSQL With pgvector{{< /header >}}
