@@ -2159,21 +2159,21 @@ class GetXClusterStreamsRpc
         std::bind(&GetXClusterStreamsRpc::Finished, this, Status::OK()));
   }
 
-  void ProcessResponse(const Status& status) override {
-    auto status_copy = status;
-    if (status_copy.ok() && resp_.has_error()) {
-      status_copy = StatusFromPB(resp_.error().status());
-    }
-
-    if (!status_copy.ok()) {
-      LOG(WARNING) << ToString() << " failed: " << status_copy;
-      user_cb_(std::move(status_copy));
-      return;
-    }
-
+  Status ResponseStatus() override {
+    RETURN_NOT_OK(internal::StatusFromResp(resp_));
     if (resp_.not_ready()) {
       VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
-      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet");
+    }
+    return Status::OK();
+  }
+
+  bool ShouldRetry(const Status& status) override { return status.IsTryAgain(); }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(std::move(status));
       return;
     }
 
@@ -2214,21 +2214,21 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
         std::bind(&IsXClusterBootstrapRequiredRpc::Finished, this, Status::OK()));
   }
 
-  void ProcessResponse(const Status& status) override {
-    auto status_copy = status;
-    if (status_copy.ok() && resp_.has_error()) {
-      status_copy = StatusFromPB(resp_.error().status());
-    }
-
-    if (!status_copy.ok()) {
-      LOG(WARNING) << ToString() << " failed: " << status_copy;
-      user_cb_(std::move(status_copy));
-      return;
-    }
-
+  Status ResponseStatus() override {
+    RETURN_NOT_OK(internal::StatusFromResp(resp_));
     if (resp_.not_ready()) {
       VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
-      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet");
+    }
+    return Status::OK();
+  }
+
+  bool ShouldRetry(const Status& status) override { return status.IsTryAgain(); }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(std::move(status));
       return;
     }
 
