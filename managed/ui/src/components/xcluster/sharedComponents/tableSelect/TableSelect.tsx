@@ -280,13 +280,19 @@ export const TableSelect = (props: TableSelectProps) => {
     sourceUniverseTablesQuery.isError ||
     sourceUniverseQuery.isError
   ) {
-    return <YBErrorIndicator message="Error fetching source universe information." />;
+    const sourceUniverseLabel = isDrInterface ? 'DR primary universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${sourceUniverseLabel} information.`} />
+    );
   }
   if (targetUniverseTablesQuery.isError || targetUniverseQuery.isError) {
-    return <YBErrorIndicator message="Error fetching target universe information." />;
+    const targetUniverseLabel = isDrInterface ? 'DR replica universe' : 'source universe';
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${targetUniverseLabel} information.`} />
+    );
   }
   if (globalRuntimeConfigQuery.isError) {
-    return <YBErrorIndicator message="Error fetching runtime configurations." />;
+    return <YBErrorIndicator customErrorMessage="Error fetching runtime configurations." />;
   }
 
   const toggleTableGroup = (

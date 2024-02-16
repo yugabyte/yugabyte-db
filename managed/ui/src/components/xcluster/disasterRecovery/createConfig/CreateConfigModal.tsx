@@ -206,7 +206,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
-        size='md'
+        size="md"
         overrideWidth="960px"
         {...modalProps}
       >
@@ -223,7 +223,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
-        size='md'
+        size="md"
         overrideWidth="960px"
         {...modalProps}
       >
@@ -267,16 +267,18 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         if (formValues.namespaceUuids.length <= 0) {
           formMethods.setError('namespaceUuids', {
             type: 'min',
-            message: t('error.validationMinimumNamespaceUuids')
+            message: t('error.validationMinimumNamespaceUuids.title', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            })
           });
           // The TableSelect component expects error objects with title and body fields.
           // React-hook-form only allows string error messages.
           // Thus, we need an store these error objects separately.
           setTableSelectionError({
-            title: t('error.validationMinimumTableUuids.title', {
+            title: t('error.validationMinimumNamespaceUuids.title', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             }),
-            body: t('error.validationMinimumTableUuids.body', {
+            body: t('error.validationMinimumNamespaceUuids.body', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             })
           });
