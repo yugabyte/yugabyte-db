@@ -52,8 +52,7 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
 
  private:
   Status FirstStep() override;
-  Status BootstrapTableCallback(client::BootstrapProducerResult bootstrap_result);
-  Status AddTableToReplicationGroup(TableId producer_table_id, std::string bootstrap_id);
+  Status AddTableToReplicationGroup(client::BootstrapProducerResult bootstrap_result);
   Status WaitForSetupUniverseReplicationToFinish();
   Status RefreshAndGetXClusterSafeTime();
   Status WaitForXClusterSafeTimeCaughtUp();

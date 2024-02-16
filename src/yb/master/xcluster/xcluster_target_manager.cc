@@ -177,7 +177,14 @@ XClusterTargetManager::GetPostTabletCreateTasks(
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
 
   for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
-    if (ShouldAddTableToReplicationGroup(*universe, *table_info, catalog_manager_)) {
+    auto result = ShouldAddTableToReplicationGroup(*universe, *table_info, catalog_manager_);
+    if (!result.ok()) {
+      LOG(WARNING) << result.status();
+      table_info->SetCreateTableErrorStatus(result.status());
+      continue;
+    }
+
+    if (*result) {
       tasks.emplace_back(std::make_shared<AddTableToXClusterTargetTask>(
           universe, catalog_manager_, *master_.messenger(), table_info, epoch));
     }
