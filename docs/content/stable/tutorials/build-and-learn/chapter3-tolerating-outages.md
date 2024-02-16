@@ -12,25 +12,25 @@ type: docs
 ---
 
 {{< note title="YugaPlus - Weathering Storms in the Cloud" >}}
-It was one busy evening, when the YugaPlus team was alarmed about a service outage. The streaming platform was down and customers began complaining about the service disruption on social media. In a few minutes the team discovered that there was a major incident in a cloud region that hosted their YugabyteDB instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
+One busy evening, the YugaPlus team was caught off-guard by a service outage. The streaming platform had gone down, and customers started voicing their frustrations on social media. Within minutes, the team pinpointed that there was a major incident in a cloud region that hosted their database instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
 
-Eventually, **four hours later** the cloud provider recovered the failed region and the YugaPlus streaming platform was live again. After this incident the YugaPlus team decided to migrate to a multi-region architecture that would help them to tolerate all sorts of possible outages in the future...
+Eventually, **four hours later** the cloud provider restored the failed region and the YugaPlus streaming platform was live again. After this incident the YugaPlus team decided to migrate to a multi-region architecture that would help them to tolerate all sorts of possible outages in the future...
 {{< /note >}}
 
-In this chapter you'll learn:
+In this chapter, you'll learn:
 
-* How to configure and deploy a multi-region YugabyteDB cluster
-* How to use the YugabyteDB smart driver for automatic requests routing and in failover scenarios
+* How to set up and start a YugabyteDB cluster that spans multiple regions
+* How to work with the YugabyteDB smart driver for routing requests automatically and handling failovers
 
 **Prerequisites**
 
-You need to complete [chapter 2](../chapter2-scaling-with-yugabytedb) of the tutorial before proceeding with this one.
+You need to complete [chapter 2](../chapter2-scaling-with-yugabytedb) of the tutorial before proceeding to this one.
 
 {{< header Level="2" >}}Simulate an Outage{{< /header >}}
 
-As of now, your instance of YugaPlus movies recommendation service uses a 3-node YugabyteDB cluster. The cluster is configured with the [replication factor](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts) of 3 (RF=3) which allows you to loose one database node with no impact on data consistency and availability.
+Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
 
-Emulate an outage by killing the first database node (`yugabytedb-node1`):
+To see how this works, let's simulate an outage by stopping the first database node (`yugabytedb-node1`):
 
 1. Connect to `yugabytedb-node1` and get the total number of movies in the database:
 
@@ -38,8 +38,6 @@ Emulate an outage by killing the first database node (`yugabytedb-node1`):
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
         -c 'select count(*) from movie'
     ```
-
-    The output should be as follows:
 
     ```output
      count
@@ -55,7 +53,7 @@ Emulate an outage by killing the first database node (`yugabytedb-node1`):
     docker rm yugabytedb-node1
     ```
 
-3. Query the total number of movies one more time by sending the request to the second node (`yugabytedb-node2`)
+3. Query the total number of movies one more time by sending the same request but to the second node (`yugabytedb-node2`)
 
     ```shell
     docker exec -it yugabytedb-node2 bin/ysqlsh -h yugabytedb-node2 \
@@ -75,7 +73,7 @@ Emulate an outage by killing the first database node (`yugabytedb-node1`):
 
     ![First node is down](/images/tutorials/build-and-learn/chapter3-first-node-down.png)
 
-Even though the first node is no longer available, the cluster remains operational. The remaining two nodes has all the data needed to continue serving the application workload.
+Despite the first node being unavailable, the cluster is still running. The other two nodes have all the necessary data to keep the application running smoothly.
 
 {{< tip title="YugabyteDB RTO and RPO" >}}
 With YugabyteDB, your recovery time objective (RTO) is measured in seconds with recovery point objective (RPO) equal to 0 (no data loss).
@@ -83,14 +81,13 @@ With YugabyteDB, your recovery time objective (RTO) is measured in seconds with 
 Usually, the RTO is in the range from 3 to 15 seconds. Depends on the latency between availability zones, regions and data centers where you deploy YugabyteDB nodes.
 {{< /tip >}}
 
-However, the YugaPlus backend was not prepared for this outage. The backend container used the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
+However, the YugaPlus backend was not prepared for this outage. The backend relied on the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
 
 ```yaml
 DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
 ```
 
-If you open the [YugaPlus frontend UI](http://localhost:3000/) and try to search for movies recommendations or sing in into the service, then you'll see an error.
-The backend container will be failing with the following exception:
+To confirm that the application is no longer working, open the [YugaPlus frontend UI](http://localhost:3000/) and try searching for movie recommendations. You'll see the following error in the backend's container logs:
 
 ```output
 Caused by: org.postgresql.util.PSQLException: The connection attempt failed.
@@ -114,19 +111,21 @@ at org.postgresql.core.v3.ConnectionFactoryImpl.openConnectionImpl(ConnectionFac
 ... 14 common frames omitted
 ```
 
-The backend still tries to connect to the stopped node, it doesn't know how to fall back to the remaining nodes that can continue serving the application requests.
+The backend still tries to connect to the stopped node; it doesn't know how to fallback to the remaining nodes that can continue serving the application's requests.
 
-The PostgreSQL JDBC driver allows to specify multiple database connection endpoints that can be used for fault tolerance and load balancing needs. But the list of those connection endpoints is static meaning that you would need to restart the application whenever you add or remove nodes from the YugabyteDB cluster.
+The PostgreSQL JDBC driver allows the specification of multiple database connection endpoints that can be used for fault tolerance and load balancing. However, the list of these connection endpoints is static, meaning that you would need to restart the application whenever you add or remove nodes from the YugabyteDB cluster.
 
-Next, you'll learn how to tolerate major outages by deploying the database across multiple regions and using the YugabyteDB smart driver on the application end.
+Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the YugabyteDB smart driver on the application end.
 
 {{< header Level="2" >}}Deploy Multi-Region Cluster{{< /header >}}
 
-YugabyteDB provides high availability (HA) by replicating data across fault domains. An example of a fault domain can be a server rack, availability zone, data center, or cloud region. With the replication factor of 3 and the region as a fault domain, you need to choose three cloud regions and deploy at least one YugabyteDB node in every region. This configuration will let you tolerate region-level outages.
+YugabyteDB provides high availability (HA) by replicating data across various fault domains. A fault domain can be a server rack, an availability zone, a data center, or a cloud region.
 
-Before you deploy a multi-region YugabyteDB cluster, remove the existing containers:
+With a replication factor of 3 and considering the region as a fault domain, you should select three cloud regions and deploy at least one YugabyteDB node in each region. This configuration enables you to withstand region-level outages.
 
-1. Kill the remaining two YugabyteDB nodes:
+Before deploying a multi-region YugabyteDB cluster, ensure to remove any existing containers.
+
+1. Remove the remaining two YugabyteDB nodes:
 
     ```shell
     docker stop yugabytedb-node2
@@ -143,11 +142,11 @@ Before you deploy a multi-region YugabyteDB cluster, remove the existing contain
     mkdir ~/yugabyte-volume
     ```
 
-3. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
+3. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
 
-The yugabyted tool lets you deploy and configure multi-region YugabyteDB clusters on your local machine. This gives you an ability to emulate the multi-region deployment locally for prototyping and development.
+The **yugabyted** tool lets you deploy and configure multi-region YugabyteDB clusters on your local machine. This is useful for emulating a multi-region cluster configuration locally for development and testing.
 
-Use the tool to provision a YugabyteDB cluster across regions in the US East, Central and West locations in Google Cloud (GCP):
+Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and West locations in Google Cloud (GCP):
 
 1. Start the first node assigning it to the US East region in GCP:
 
@@ -161,8 +160,7 @@ Use the tool to provision a YugabyteDB cluster across regions in the US East, Ce
             --fault_tolerance=region
     ```
 
-    The format of the `--cloud_location` parameters is as follows `cloud_name.region_name.zone_name`.
-    Note, you can define any cloud/region/zone name to align with your real production deployment.
+    The format for the `--cloud_location` parameter is `cloud_name.region_name.zone_name`. You can specify any cloud, region, or zone name to align with your real production deployment.
 
 2. Start the second and third nodes in the US West and Central locations respectively:
 
@@ -211,8 +209,6 @@ Use the tool to provision a YugabyteDB cluster across regions in the US East, Ce
         -c 'select * from yb_servers()'
     ```
 
-    The output should be as follows:
-
     ```output
         host   | port | num_connections | node_type | cloud |   region    |     zone      | public_ip  |               uuid
 
@@ -223,9 +219,9 @@ Use the tool to provision a YugabyteDB cluster across regions in the US East, Ce
     (3 rows)
     ```
 
-In a real cloud environment, the distance between chosen cloud regions will have an impact on the overall application latency. With YugabyteDB, you can reduce the number of cross-region requests by defining a preferred region. All the database/Raft leaders will be located in the preferred region, delivering low-latency reads for the users near the region and predictable latency for those further away.
+In a real cloud environment, the distance between chosen cloud regions will have an impact on the overall application latency. With YugabyteDB, you can minimize cross-region requests by defining a [preferred region](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/#set-preferred-regions). This configuration ensures all tablet leaders reside in the preferred region, providing low-latency reads for users near the region and predictable latency for those further away.
 
-Finish the multi-region cluster configuration by defining the US East region as the preferred one:
+Complete the multi-region cluster configuration by setting the US East region as the preferred one.
 
 ```shell
 docker exec -it yugabytedb-node1 bin/yb-admin \
@@ -233,19 +229,19 @@ docker exec -it yugabytedb-node1 bin/yb-admin \
     set_preferred_zones gcp.us-east1.us-east1-a:1 gcp.us-central1.us-central1-a:2 gcp.us-west2.us-west2-a:3
 ```
 
-The `set_preferred_zones` allows to define a preferred region/zone using the priority-based approach. The US East region is the preferred one because its priority is set to `1`. If that region becomes unavailable, then the US Central becomes the next preferred one as long as its priority is `2`.
+The `set_preferred_zones` command allows defining a preferred region/zone using a priority-based approach. The US East region is the preferred one because its priority is set to `1`. If that region becomes unavailable, then the US Central region becomes the next preferred one, provided its priority is set to `2`.
 
 {{< tip title="Design Patterns for Global Applications" >}}
-While there is no one-size-fits-all solution for multi-region deployments (with YugabyteDB or any other distributed database), you can pick from several [design patterns for global applications](https://docs.yugabyte.com/preview/develop/build-global-apps/#design-patterns) and configure your database so that it works best for your multi-region application workloads.
+There is no one-size-fits-all solution for multi-region deployments, whether with YugabyteDB or any other distributed database. However, you can choose from several [design patterns for global applications](https://docs.yugabyte.com/preview/develop/build-global-apps/#design-patterns) and configure your database to best suit your multi-region application workloads.
 
-As of now, you deployed a multi-region cluster following the [global database with the preferred region pattern](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/).
+Up to this point, you have deployed a multi-region cluster following the [global database with the preferred region pattern](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/).
 {{< /tip >}}
 
 {{< header Level="2" >}}Switch to YugabyteDB Smart Driver{{< /header >}}
 
-The [YugabyteDB smart drivers](https://docs.yugabyte.com/preview/drivers-orms/smart-drivers/) extends the capabilities of the standard PostgreSQL drivers by simplifying the load balancing of application requests and automatically handling various failures on the application layer.
+The [YugabyteDB smart drivers](https://docs.yugabyte.com/preview/drivers-orms/smart-drivers/) extend the capabilities of standard PostgreSQL drivers by simplifying load balancing of application requests and automatically handling various failures at the application layer.
 
-The YugaPlus movies recommendation service is written in Java and already includes the JDBC smart driver as a dependcy in its `pom.xml` file:
+The YugaPlus movies recommendation service, written in Java, already includes the JDBC smart driver as a dependency in its `pom.xml` file.
 
 ```xml
 <dependency>
@@ -255,7 +251,7 @@ The YugaPlus movies recommendation service is written in Java and already includ
 </dependency>
 ```
 
-Launch the backend container using the smart driver:
+Bring back the application using the smart driver:
 
 1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
 
@@ -277,7 +273,7 @@ Launch the backend container using the smart driver:
 
 After the backend container is started, it will use Flyway again to apply the movie recommendations service's schema and data.
 
-Once the data loading is finished, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
+Once the data loading is complete, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -305,14 +301,13 @@ Once the data loading is finished, open the [YugaPlus UI](http://localhost:3000/
   </div>
 </div>
 
-{{< header Level="2" >}}Simulate a Region-Level Outage{{< /header >}}
+{{< header Level="2" >}}Simulate Region-Level Outage{{< /header >}}
 
-The YugaPlus backend connected to the database cluster in a way similar to how it used to connect with the PostgreSQL driver - by using the first node as a connection endpoint:
-`DB_URL=jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true`
+The YugaPlus backend connects to the database cluster similarly to the PostgreSQL driver by using the first node as a connection endpoint: `DB_URL=jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true`.
 
-However, this time, after the smart driver established a connection with the database, it discovered addresses of other database nodes automatically. The driver uses the addresses to load balance requests across all the nodes and to reopen connections if any database node fails. To make this working you passed the `load-balance=true` parameter to the `DB_URL` connection endpoint.
+However, this time, once the smart driver establishes a connection with the database, it automatically discovers the addresses of other database nodes. The driver then uses these addresses to load balance requests across all the nodes and to reopen connections if any database node fails. To enable this functionality, you included the `load-balance=true` parameter in the `DB_URL` connection endpoint.
 
-Now, imagine that there is a major outage in the US East region. The region became unavailable and due to that you lost the database node in that region.
+Now, imagine there's a major outage in the US East region, making the region unavailable and resulting in the loss of the database node in that region.
 
 1. Simulate the outage by killing the first node (`yugabytedb-node1`) that is the only node in the US East:
 
@@ -367,7 +362,7 @@ Now, imagine that there is a major outage in the US East region. The region beca
   </div>
 </div>
 
-This time the application responds successfully providing you with another list of movie recommendations. There might be a small delay (a few seconds) in the application's response time when you ask for the recommendations for the first time after stopping the database node. The delay can happen because the database connection pool and smart driver needs to detect that the outage and recreated the closed connections.
+This time, the application responds successfully, providing you with another list of movie recommendations. There might be a small delay—a few seconds—in the application's response time. This delay can occur because the database connection pool and smart driver need to detect the outage and recreate the closed connections.
 
 Finally, assuming that the US East region is restored after the outage:
 
@@ -393,8 +388,6 @@ Finally, assuming that the US East region is restored after the outage:
         -c 'select * from yb_servers()'
     ```
 
-    The output should be as follows:
-
     ```output
        host    | port | num_connections | node_type | cloud |   region    |     zone      | public_ip  |               uuid
 
@@ -405,8 +398,6 @@ Finally, assuming that the US East region is restored after the outage:
     (3 rows)
     ```
 
-TBD:
+Congratulations, you've finished Chapter 3! You've learned how to deploy YugabyteDB across multiple cloud regions and other distant locations to withstand various possible outages. Additionally, you practiced using the YugabyteDB Smart driver for automatic failover of database connections.
 
-* HINT: Watch the complete solution - apps across multiple regions. Watch the Super Bowl video.
-* The flyway advisory locks note.
-* The congratulations paragraph!
+Moving on to [Chapter 4](../chapter4-going-global), where you'll learn how to use the latency-optimized geo-partitioning for low-latency reads and writes across all the user locations

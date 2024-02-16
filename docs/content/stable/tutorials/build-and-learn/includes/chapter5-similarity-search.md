@@ -1,4 +1,4 @@
-```output
+```text
 Can you recommend movies that are similar to James Bond?
 ```
 

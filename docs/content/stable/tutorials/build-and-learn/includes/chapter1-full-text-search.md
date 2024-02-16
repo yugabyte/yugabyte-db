@@ -1,4 +1,4 @@
-```output
+```text
 adventure
 ```
 

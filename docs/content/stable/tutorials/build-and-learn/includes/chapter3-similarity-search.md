@@ -1,6 +1,6 @@
 Set the rank to **7**, select the **Comedy** genre and ask the following question:
 
-```output
+```text
 What are the funniest comedy movies worth watching?
 ```
 

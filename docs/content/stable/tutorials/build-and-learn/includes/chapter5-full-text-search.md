@@ -1,3 +1,3 @@
-```output
+```text
 James Bond
 ```

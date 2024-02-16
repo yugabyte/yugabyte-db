@@ -1,4 +1,4 @@
-```output
+```text
 A movie about a space adventure with an unexpected ending
 ```
 

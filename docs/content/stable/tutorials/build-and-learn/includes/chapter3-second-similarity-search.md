@@ -1,6 +1,6 @@
 Set the rank to **7**, select the **Animation** genre and ask for recommendations:
 
-```output
+```text
 Thought-provoking animation movies for adults
 ```
 

@@ -1,6 +1,6 @@
 Set the rank to **7** and search for one very familiar movie:
 
-```output
+```text
 A long time ago in a galaxy far, far away...
 ```
 
