@@ -8,7 +8,7 @@ The service will use the prompt to perform a full-text search across movie overv
 
 PostgreSQL can filter movies by rank and category before doing the full-text search. For instance, set rank to **7**, choose **Science Fiction** as the category, and repeat the search again:
 
-![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-full-text-search-pre-filtering.png)
+![Full-Text Search Wiht Pre-Filtering Result](/images/tutorials/build-and-learn/chapter1-full-text-search-pre-filtering.png)
 
 Here's the SQL query that YugaPlus uses to find the movie recommendations:
 

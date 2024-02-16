@@ -8,7 +8,7 @@ The service turns your prompt into an embedding with OpenAI's model, then search
 
 PostgreSQL can filter movies by rank and category before doing the vector search. For instance, set rank to **7**, choose **Science Fiction** as the category, and repeat the search again:
 
-![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-similarity-search-pre-filtering.png)
+![Similarity Search With Pre-Filtering Result](/images/tutorials/build-and-learn/chapter1-similarity-search-pre-filtering.png)
 *(Hint: Pick a movie you like and add it to your library with the **Add to Library** button.)*
 
 Here's the SQL query that YugaPlus uses to find the movie recommendations:
