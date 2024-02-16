@@ -4,27 +4,33 @@ package com.yugabyte.yw.common.gflags;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.WireProtocol;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.master.MasterClusterOuterClass;
 
+@Slf4j
 public class AutoFlagUtilTest extends FakeDBApplication {
 
   private AutoFlagUtil autoFlagUtil;
@@ -111,6 +117,78 @@ public class AutoFlagUtilTest extends FakeDBApplication {
         .thenReturn(ImmutableSet.of("ysql_1", "ysql_2"))
         .thenReturn(ImmutableSet.of("ysql_1", "ysql_2"));
     assertFalse(autoFlagUtil.upgradeRequireFinalize("old-version", "new-version"));
+  }
+
+  @Test
+  public void testCheckSourcePromotedAutoFlagsPromotedOnTargetFailure() {
+    Universe sourceUniverse = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    Universe targetUniverse = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+
+    Set<String> sourceAutoFlagsSet =
+        ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized", "FLAG_1");
+
+    Set<String> targetAutoFlagsSet =
+        ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
+
+    GetAutoFlagsConfigResponse sourceResp =
+        getAutoFlagConfigResponse(sourceAutoFlagsSet, sourceAutoFlagsSet);
+    GetAutoFlagsConfigResponse targetResp =
+        getAutoFlagConfigResponse(targetAutoFlagsSet, targetAutoFlagsSet);
+    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    try {
+      when(mockYBClient.autoFlagsConfig()).thenReturn(sourceResp, targetResp);
+      List<GFlagsValidation.AutoFlagDetails> autoFlagDetails = new ArrayList<>();
+      GFlagsValidation.AutoFlagsPerServer flagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      flagsPerServer.autoFlagDetails = new ArrayList<>();
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), (ServerType) any()))
+          .thenReturn(flagsPerServer);
+    } catch (Exception e) {
+    }
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(
+                    sourceUniverse, targetUniverse));
+
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+  }
+
+  @Test
+  public void testCheckSourcePromotedAutoFlagsPromotedOnTargetSuccess() {
+    Universe sourceUniverse = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    Universe targetUniverse = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+
+    Set<String> sourceAutoFlagsSet =
+        ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
+
+    Set<String> targetAutoFlagsSet =
+        ImmutableSet.of(
+            "TEST_auto_flags_new_install", "TEST_auto_flags_initialized", "FLAG_1", "FLAG_2");
+
+    GetAutoFlagsConfigResponse sourceResp =
+        getAutoFlagConfigResponse(sourceAutoFlagsSet, sourceAutoFlagsSet);
+    GetAutoFlagsConfigResponse targetResp =
+        getAutoFlagConfigResponse(targetAutoFlagsSet, targetAutoFlagsSet);
+    when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
+    try {
+      when(mockYBClient.autoFlagsConfig()).thenReturn(sourceResp, targetResp);
+      List<GFlagsValidation.AutoFlagDetails> autoFlagDetails = new ArrayList<>();
+      GFlagsValidation.AutoFlagsPerServer flagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      flagsPerServer.autoFlagDetails = new ArrayList<>();
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), (ServerType) any()))
+          .thenReturn(flagsPerServer);
+    } catch (Exception e) {
+    }
+
+    try {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    } catch (Exception e) {
+      fail();
+    }
   }
 
   private GetAutoFlagsConfigResponse getAutoFlagConfigResponse(
