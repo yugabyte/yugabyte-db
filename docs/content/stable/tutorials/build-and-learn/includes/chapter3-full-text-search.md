@@ -1,5 +1,7 @@
+Select the **Comedy** genre and ask for movie suggestions:
+
 ```text
-comedy
+romantic comedy
 ```
 
-This time the full-text search happens over a distributed YugabyteDB cluster.
+![Full-Text Search Result](/images/tutorials/build-and-learn/chapter3-full-text-search-result.png)
