@@ -12,29 +12,27 @@ type: docs
 ---
 
 {{< note title="YugaPlus - Time to Scale" >}}
-The days passed, and the YugaPlus streaming service saw thousands of new users, all eagerly watching their favorite movies 24/7. It wasn't long before the YugaPlus team noticed a looming issue: their PostgreSQL database server was quickly approaching its limits in storage and compute capacity. They pondered upgrading to a larger database instance with increased storage and more CPUs. Yet, such an upgrade would not only cause downtime during the migration but also might become a recurring issue as capacity limits would eventually be reached again.
+As days went by, the YugaPlus streaming service welcomed thousands of new users, all continuously enjoying their movies, series, and sport events. Soon, the team faced a critical issue: the PostgreSQL database server was nearing its storage and compute capacity limits. Considering an upgrade to a larger instance would offer more storage and CPUs, but it also meant potential downtime during migration and the risk of hitting capacity limits again in the future.
 
-After careful consideration, the team decided to tackle these scalability challenges by migrating to a multi-node YugabyteDB cluster that could scale up and out on demand...
+Eventually, the decision was made to address these scalability challenges by transitioning to a multi-node YugabyteDB cluster, capable of scaling both vertically and horizontally as needed...
 {{< /note >}}
 
-In this chapter you'll learn:
+In this chapter, you'll learn:
 
-* How to start a YugabyteDB cluster with the yugabyted tool
-* How to use the YugabyteDB UI to check the state of the cluster
-* How to scale by adding additional nodes to the cluster
-* How to take advantage of the PostgreSQL compatibility by switching the application from PostgreSQL to YugabyteDB with zero-code changes.
+* How to start a YugabyteDB cluster with the yugabyted tool.
+* How to use the YugabyteDB UI to monitor the state of the cluster.
+* How to scale the cluster by adding additional nodes.
+* How to leverage PostgreSQL compatibility by switching the application from PostgreSQL to YugabyteDB without any code changes.
 
 **Prerequisites**
 
-You need to complete [chapter 1](../chapter1-debuting-with-postgres) of the tutorial before embarking on this one.
+You need to complete [chapter 1](../chapter1-debuting-with-postgres) of the tutorial before proceeding to this one.
 
 {{< header Level="2" >}}Start YugabyteDB{{< /header >}}
 
-There are many ways to start with YugabyteDB. You can deploy it on bare metal, or run it as a container, or use it as a fully-managed service.
+YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#yugabyted) deploying a YugabyteDB cluster in a containerized environment.
 
-You'll follow the steps of the YugaPlus team that used the [yugabyted tool](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#yugabyted) to start their first YugabyteDB cluster in their own contenarized environment.
-
-Start a single-node YugabyteDB cluster in Docker:
+To begin, start a single-node YugabyteDB cluster in Docker:
 
 1. Create a directory to serve as the volume for the YugabyteDB nodes:
 
@@ -42,7 +40,7 @@ Start a single-node YugabyteDB cluster in Docker:
     mkdir ~/yugabyte-volume
     ```
 
-2. Start a node:
+2. Start the first database node:
 
     ```shell
     docker run -d --name yugabytedb-node1 --net yugaplus-network \
@@ -54,11 +52,10 @@ Start a single-node YugabyteDB cluster in Docker:
 
 {{< note title="Default ports" >}}
 
-The command pulls the latest Docker image of YugabyteDB, starts the container and uses the **yugabyted** tool to spin up a database node.
-The container exposes the following port numbers to your host operating system:
+The command pulls the latest Docker image of YugabyteDB, starts the container, and employs the **yugabyted** tool to launch a database node. The container makes the following ports available to your host operating system:
 
-* `15433` - the YugabyteDB UI
-* `5433` - the database port your client applications connect to. This the PostgreSQL server/postmaster process that is responsible for managing client connections and starting new backend processes.
+* `15433` - for the YugabyteDB monitoring UI.
+* `5433` - serves as the database port to which your client applications connect. This port is associated with the PostgreSQL server/postmaster process, which manages client connections and initiates new backend processes.
 
 For a complete list of ports, refer to the [default ports](https://docs.yugabyte.com/preview/reference/configuration/default-ports/) documentation.
 {{< /note >}}
@@ -106,13 +103,11 @@ Next, open a database connection and run a few SQL requests:
 
 {{< header Level="2" >}}Explore YugabyteDB UI{{< /header >}}
 
-When you start a node with the **yugabyted** tool, the tool also spins up a YugabyteDB UI process that listens on port `15433`. You can connect to the UI from a browser to explore various cluster metrics and parameters.
-
-Go the UI's main dashboard by opening this address from your browser: <http://localhost:15433/>
+Starting a node with the **yugabyted** tool also activates a YugabyteDB UI process, accessible on port `15433`. To explore various cluster metrics and parameters, connect to the UI from your browser: <http://localhost:15433/>
 
 ![YugabyteDB UI Main Dashboard](/images/tutorials/build-and-learn/chapter2-yugabytedb-ui-main-dashboard.png)
 
-Presently, the dashboard shows that there is only one YugabyteDB node in the cluster and that the **replication factor** is set to `1`. It means that as of now your YugabyteDB database instance is not much different from the PostgreSQL container started in chapter 1. However, you can easily turn YugabyteDB into a truly distributed and fault-tolerant database by adding additional nodes to the cluster.
+Currently, the dashboard indicates that the cluster has only one YugabyteDB node, with the replication factor set to `1`. This setup means your YugabyteDB database instance, at this point, isn't significantly different from the PostgreSQL container started in Chapter 1. However, by adding more nodes to the cluster, you can transform YugabyteDB into a fully distributed and fault-tolerant database.
 
 {{< header Level="2" >}}Scale the Cluster{{< /header >}}
 
@@ -138,10 +133,9 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
         bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --daemon=false
     ```
 
-Both nodes join by connecting to the first node which address is passed in the `--join=yugabytedb-node1` parameter.
-Each node needs to have a unique container name and a dedicated sub-folder under the volume directory (`-v ~/yugabyte-volume/nodeN`).
+Both nodes join the cluster by connecting to the first node, whose address is specified in the `--join=yugabytedb-node1` parameter. Also, each node has a unique container name and its own sub-folder under the volume directory, specified with `-v ~/yugabyte-volume/nodeN`.
 
-Confirm that all the nodes discovered each other and formed a 3-node cluster:
+Run this command, to confirm that all nodes have discovered each other and formed a 3-node cluster:
 
 ```shell
 docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -159,25 +153,36 @@ The output should be as follows:
 (3 rows)
 ```
 
-Next, refresh the YugabyteDB UI's main dashboard:
+Next, refresh the [YugabyteDB UI](http://localhost:15433/) main dashboard:
 
 ![YugabyteDB UI Main Dashboard With 3 Nodes](/images/tutorials/build-and-learn/chapter2-yugabytedb-ui-3-nodes.png)
 
-You'll see that:
+Upon checking, you'll see that:
 
-* All three nodes are healthy and in the `RUNNING` state
-* The **replication factor** is now set to `3` meaning that each node will keep a copy of your data that is replicated synchronously with the Raft consensus protocol. This will let you tolerate an outage of one of the nodes without compromising the availability of the database and consistency of your data.
+* All three nodes are healthy and in the `RUNNING` state.
+* The **replication factor** has been changed to `3`, indicating that now each node maintains a replica of your data that is replicated synchronously with the Raft consensus protocol. This configuration allows your database deployment to tolerate the outage of one node without losing availability or compromising data consistency.
 
-Finally, open the **Nodes** dashboard that provides detailed information about the nodes: <http://localhost:15433/?tab=tabNodes>
+To view more detailed information about the cluster nodes, go to the **Nodes** dashboard at: <http://localhost:15433/?tab=tabNodes>
 
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
-TBD You'll see that (appeal to the scalability story here, you can scale data as well as read-write workloads):
-Check here: <https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts>
+The **Number of Tablets** column provides insights into how YugabyteDB [distributes data and workload](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts):
 
-* Tablets
-* Leaders
-* Peers
+* **Tablets** - YugabyteDB shards your data by splitting tables into tablets, which are then distributed across the cluster nodes. Currently, the cluster splits system-level tables into `9` tablets (see the **Total** column).
+
+* Tablet **Leaders** and **Peers** - each tablet comprises of a tablet leader and set of tablet peers, each of which stores one copy of the data belonging to the tablet. There are as many leaders and peers for a tablet as the replication factor, and they form a Raft group. The tablet **leaders** are responsible for processing read/write requests that require the data belonging to the tablet. *By distributed tablet leaders across the cluster, YugabyteDB is capable of scaling your data and read/write workloads.*
+
+{{< tip title="Doing some math" >}}
+In your case, the replication factor is `3` and there are `9` tablets in total. Each tablet has `1` leader and `2` peers.
+
+The tablet leaders are evenly distributed across all the nodes (see the **Leader** column which is `3` for every node). Plus, every node is a peer for a table it's not the leader for, which brings the total number of **Peers** to `6` on every node.
+
+Therefore, with an RF of `3`, you have:
+
+* `9` tablets in total
+* With `9` leaders (because a tablet can have only one leader) and
+* With `18` peers (as each tablet is replicated twice, aligning with RF=3).
+{{< /tip >}}
 
 {{< header Level="2" >}}Switch YugaPlus to YugabyteDB{{< /header >}}
 
@@ -185,7 +190,7 @@ Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
 All you need to do is to restart the application containers with YugabyteDB-specific connectivity settings:
 
-1. Use `Ctrl+C` or `docker-compose stop` to stop the application containers.
+1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the application containers.
 
 2. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
 
@@ -200,7 +205,7 @@ If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable 
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB yet. You can use Flyway with YugabyteDB even without this type of locks.
+The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of locks.
 {{< /note >}}
 
 3. Start the application:
@@ -209,9 +214,9 @@ The application uses Flyway to apply database migrations on startup. Flyway will
     docker-compose up
     ```
 
-This time, the `yugaplus-backend` container connects to YugabyteDB that listens on port `5433`. The container uses the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`).
+This time, the `yugaplus-backend` container connects to YugabyteDB, which listens on port `5433`. Given YugabyteDB's feature and runtime compatibility with PostgreSQL, the container continues using the PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`), the pgvector extension, and other libraries and frameworks created for PostgreSQL.
 
-Upon successful connection, the backend uses Flyway to apply database migrations:
+Upon establishing a successful connection, the backend uses Flyway to execute database migrations:
 
 ```output
 .DbMigrate      : Current version of schema "public": << Empty Schema >>
@@ -262,4 +267,8 @@ Search for movie recommendations:
   </div>
 </div>
 
-Congratulations, you've completed Chapter 2! You have successfully deployed a multi-node YugabyteDB cluster and switched the YugaPlus movie recommendations service to the distributed database with no code-level changes. The application took advantage of YugabyteDB's feature and runtime compatibility with PostgreSQL by continuing using libraries, drivers, frameworks, and extensions that were originally created for PostgreSQL.
+Congratulations, you've finished Chapter 2! You've successfully deployed a multi-node YugabyteDB cluster and transitioned the YugaPlus movie recommendations service to this distributed database without any code changes.
+
+The application leveraged YugabyteDB's feature and runtime compatibility with PostgreSQL, continuing to utilize the libraries, drivers, frameworks, and extensions originally designed for PostgreSQL.
+
+Moving on to [Chapter 3](../chapter3-tolerating-outages), where you'll learn how to tolerate outages even in the event of major incidents in the cloud.
