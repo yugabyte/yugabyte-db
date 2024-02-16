@@ -54,9 +54,9 @@ A Kubernetes node is expected to meet the following requirements:
 
 ## Supported YugabyteDB versions
 
-YugabyteDB Anywhere aims to support _all_ officially supported versions of YugabyteDB.
+YugabyteDB Anywhere supports _all_ officially supported versions of YugabyteDB.
 
-This version of YBA supports the following YugabyteDB versions:
+You can use YBA {{< yb-version version="stable" format="short">}} to deploy the following versions of YugabyteDB:
 
 - v2.14 series: 2.14.0 to 2.14.15
 - v2.18 series: 2.18.0 to 2.18.5
