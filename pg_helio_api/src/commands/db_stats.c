@@ -217,7 +217,8 @@ BuildResultData(Datum databaseName, DbStatsResult *result, int32 scale)
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
 					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT mongo_api_internal.db_stats_worker(%%L) $$, $1))");
+					 "FORMAT($$ SELECT %s.db_stats_worker(%%L) $$, $1))",
+					 ApiInternalSchemaName);
 
 	int numValues = 1;
 	Datum values[1] = { PointerGetDatum(collectionIdArray) };

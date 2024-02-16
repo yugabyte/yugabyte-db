@@ -33,7 +33,7 @@ PG_FUNCTION_INFO_V1(command_throw_mongo_error);
  *
  * This function is useful in those scenarios and its UDF should be called as:
  *
- * PERFORM mongo_api_internal.throw_mongo_error(118, 'Collection x.y is not sharded.');
+ * PERFORM ApiInternalSchema.throw_mongo_error(118, 'Collection x.y is not sharded.');
  */
 Datum
 pg_attribute_noreturn()

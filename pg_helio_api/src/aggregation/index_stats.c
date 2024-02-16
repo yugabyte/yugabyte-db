@@ -23,6 +23,7 @@
 #include "planner/helio_planner.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
+#include "metadata/metadata_cache.h"
 
 
 static const char *IndexUsageKey = "index_usage";
@@ -105,7 +106,8 @@ IndexStatsCoordinator(Datum databaseName, Datum collectionName,
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
 					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT mongo_api_internal.index_stats_worker(%%L, %%L) $$, $1, $2))");
+					 "FORMAT($$ SELECT %s.index_stats_worker(%%L, %%L) $$, $1, $2))",
+					 ApiInternalSchemaName);
 
 	int numValues = 2;
 	Datum values[2] = { databaseName, collectionName };

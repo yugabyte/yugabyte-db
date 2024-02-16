@@ -589,7 +589,7 @@ IsReadWriteCommand(Query *query)
 
 /*
  * ReplaceMongoCollectionFunction replaces all occurences of the
- * mongo_api_v1.collection() function call with the corresponding
+ * ApiSchema.collection() function call with the corresponding
  * table.
  */
 static Query *
@@ -613,7 +613,7 @@ ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundParams,
 
 /*
  * ReplaceMongoCollectionFunctionWalker recurses into the input to replace
- * all occurences of the mongo_api_v1.collection() function call with the corresponding
+ * all occurences of the ApiSchema.collection() function call with the corresponding
  * table.
  */
 static bool
@@ -632,7 +632,7 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 
 		if (IsResolvableMongoCollectionBasedRTE(rte, context->boundParams))
 		{
-			/* extract common arguments for collection-based RTE of the form mongo_api_v1.*collection*(db, coll, ..) */
+			/* extract common arguments for collection-based RTE of the form ApiSchema.*collection*(db, coll, ..) */
 			RangeTblFunction *rangeTableFunc = linitial(rte->functions);
 			FuncExpr *funcExpr = (FuncExpr *) rangeTableFunc->funcexpr;
 			Const *dbConst = GetConstParamValue((Node *) linitial(funcExpr->args),
@@ -651,7 +651,7 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 			{
 				/*
 				 * MongoDB treats non-existent collections as empty.
-				 * Here we replace the mongo_api_v1.collection() function call
+				 * Here we replace the ApiSchema.collection() function call
 				 * empty_data_table() which returns an response mimicking SELECT
 				 * from an empty mongo data collection.
 				 */
@@ -722,7 +722,7 @@ GetConstParamValue(Node *param, ParamListInfo boundParams)
 
 /*
  * IsResolvableMongoCollectionBasedRTE returns whether the given node is a function RTE
- * of the form mongo_api_v1.*collection*('db', 'coll', ...).
+ * of the form ApiSchema.*collection*('db', 'coll', ...).
  *
  * Otherwise, we return false, thereby allowing the RTE_FUNCTION to be called directly, and not
  * changing it to a RTE_RELATION.

@@ -725,8 +725,8 @@ CollectionIdsGetIndexCount(ArrayType *collectionIdsArray)
 {
 	const char *query =
 		FormatSqlQuery("SELECT COUNT(*) FROM %s.collection_indexes "
-					   "WHERE collection_id = ANY($1) AND (index_is_valid OR mongo_api_internal.index_build_is_in_progress(index_id))",
-					   ApiCatalogSchemaName);
+					   "WHERE collection_id = ANY($1) AND (index_is_valid OR %s.index_build_is_in_progress(index_id))",
+					   ApiCatalogSchemaName, ApiInternalSchemaName);
 
 	int nargs = 1;
 	Oid argTypes[1] = { INT8ARRAYOID };
@@ -1022,7 +1022,7 @@ BoolDatumGetBoolIndexOption(bool datumIsNull, Datum datum)
 
 
 /*
- * IndexSpecAsBson is the C interface for mongo_api_internal.index_spec_as_bson.
+ * IndexSpecAsBson is the C interface for ApiInternalSchema.index_spec_as_bson.
  */
 pgbson *
 IndexSpecAsBson(const IndexSpec *indexSpec)

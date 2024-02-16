@@ -362,7 +362,7 @@ static const char * SerializeWeightedPaths(List *weightedPaths);
 
 /*
  * IsCallCreateIndexesStmt returns true if given node is a CallStmt that runs
- * mongo_api_v1.create_indexes() UDF.
+ * ApiSchema.create_indexes() UDF.
  */
 bool
 IsCallCreateIndexesStmt(const Node *node)
@@ -378,7 +378,7 @@ IsCallCreateIndexesStmt(const Node *node)
 
 /*
  * IsCallReIndexStmt returns true if given node is a CallStmt that runs
- * mongo_api_v1.re_index() UDF.
+ * ApiSchema.re_index() UDF.
  */
 bool
 IsCallReIndexStmt(const Node *node)
@@ -412,7 +412,7 @@ ComputeIndexTermLimit(uint32_t baseIndexTermLimit)
 
 /*
  * command_create_indexes_non_concurrently is the implementation of the
- * internal logic of mongo_api_internal.create_indexes_non_concurrently().
+ * internal logic of ApiInternalSchema.create_indexes_non_concurrently().
  */
 Datum
 command_create_indexes_non_concurrently(PG_FUNCTION_ARGS)
@@ -504,7 +504,7 @@ command_create_temp_indexes_non_concurrently(PG_FUNCTION_ARGS)
 
 /*
  * command_create_indexes is the implementation of the internal logic for
- * mongo_api_v1.create_indexes().
+ * ApiSchema.create_indexes().
  */
 void
 command_create_indexes(const CallStmt *callStmt, ProcessUtilityContext context,
@@ -558,7 +558,7 @@ command_create_indexes(const CallStmt *callStmt, ProcessUtilityContext context,
 
 /*
  * command_reindex is the implementation of the internal logic for
- * mongo_api_v1.re_index().
+ * ApiSchema.re_index().
  */
 void
 command_reindex(const CallStmt *callStmt,
@@ -5701,11 +5701,11 @@ SendTupleToClient(HeapTuple tup, TupleDesc tupDesc, DestReceiver *destReceiver)
 
 /*
  * generate_create_index_arg is a UDF only used for testing purposes and
- * designed to simplify creating bson "arg" for mongo_api_v1.create_indexes()
+ * designed to simplify creating bson "arg" for ApiSchema.create_indexes()
  * UDF. Example usage is as follows:
- *   CALL mongo_api_v1.create_indexes(
+ *   CALL ApiSchema.create_indexes(
  *     'db', generate_create_index_arg('collection', '{"a.b.$**": 1}'));
- *   CALL mongo_api_v1.create_indexes(
+ *   CALL ApiSchema.create_indexes(
  *     'db', generate_create_index_arg('collection', '{"x": 1, "y.z": -1}'));
  *
  * Callers are expected to provide collection name, index name and the bson

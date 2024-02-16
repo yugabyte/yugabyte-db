@@ -338,8 +338,8 @@ BuildResultData(Datum databaseName, Datum collectionName, CollStatsResult *resul
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
 					 "SELECT success, result FROM run_command_on_all_nodes("
-					 "FORMAT($$ SELECT mongo_api_v1.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
-					 scale);
+					 "FORMAT($$ SELECT %s.coll_stats_worker(%%L, %%L, %d) $$, $1, $2))",
+					 ApiSchemaName, scale);
 
 	int numValues = 2;
 	Datum values[2] = { databaseName, collectionName };

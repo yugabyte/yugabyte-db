@@ -220,7 +220,7 @@ GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
  * Stage parameters:
  * { allUsers: <boolean>, idleConnections: <boolean>, idleCursors: <boolean>, idleSessions: <boolean>, localOps: <boolean> }
  * This stage will form the query
- * SELECT document FROM mongo_api_v1.current_op_aggregation({ currentOpSpec });
+ * SELECT document FROM ApiSchema.current_op_aggregation({ currentOpSpec });
  * Requires this to be the first stage, so the prior query is discarded.
  */
 Query *

@@ -2321,7 +2321,7 @@ CreateShardKeyFiltersForQuery(const bson_value_t *queryDocument, pgbson *shardKe
 /*
  * GetCollectionReferencedByDocumentVar finds the collection referenced by
  * documentExpr if it contains a single Var, or NULL if it not a single Var,
- * or the FROM clause entry is not a mongo_api_v1.collection call.
+ * or the FROM clause entry is not a ApiSchema.collection call.
  */
 static MongoCollection *
 GetCollectionReferencedByDocumentVar(Expr *documentExpr,
@@ -2337,7 +2337,7 @@ GetCollectionReferencedByDocumentVar(Expr *documentExpr,
 
 	Var *documentVar = linitial(documentVars);
 
-	/* find the FROM mongo_api_v1.collection(...) clause to which document refers */
+	/* find the FROM ApiSchema.collection(...) clause to which document refers */
 	RangeTblEntry *rte = rt_fetch(documentVar->varno, currentQuery->rtable);
 	if (!IsResolvableMongoCollectionBasedRTE(rte, boundParams))
 	{
@@ -2355,7 +2355,7 @@ GetCollectionReferencedByDocumentVar(Expr *documentExpr,
 
 /*
  * GetCollectionForRTE returns the MongoCollection metadata for a given
- * mongo_api_v1.collection(..) RTE.
+ * ApiSchema.collection(..) RTE.
  */
 static MongoCollection *
 GetCollectionForRTE(RangeTblEntry *rte, ParamListInfo boundParams)

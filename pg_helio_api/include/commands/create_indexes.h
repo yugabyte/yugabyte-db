@@ -3,7 +3,7 @@
  *
  * include/commands/create_indexes.h
  *
- * Internal implementation of mongo_api_v1.create_indexes.
+ * Internal implementation of ApiSchema.create_indexes.
  *
  *-------------------------------------------------------------------------
  */

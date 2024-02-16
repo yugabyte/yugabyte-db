@@ -3549,7 +3549,7 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	 */
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 
-	/* Match spec for mongo_api_v1.collection() function */
+	/* Match spec for ApiSchema.collection() function */
 	List *colNames = list_make4(makeString("shard_key_value"), makeString("object_id"),
 								makeString("document"), makeString("creation_time"));
 

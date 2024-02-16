@@ -612,7 +612,7 @@ command_create_indexes_background_internal(PG_FUNCTION_ARGS)
 	PG_CATCH();
 	{
 		/* run_command_on_coordinator does not return error code in case of failure inside the called function
-		 * i.e. mongo_api_internal.create_indexes_background_internal.
+		 * i.e. ApiInternalSchema.create_indexes_background_internal.
 		 */
 		MemoryContextSwitchTo(savedMemoryContext);
 		ErrorData *edata = CopyErrorDataAndFlush();

@@ -3,7 +3,7 @@
  *
  * include/commands/coll_stats.h
  *
- * Exports from the implementation of mongo_api_v1.coll_stats.
+ * Exports from the implementation of ApiSchema.coll_stats.
  *
  *-------------------------------------------------------------------------
  */

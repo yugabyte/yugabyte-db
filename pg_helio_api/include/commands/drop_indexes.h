@@ -4,7 +4,7 @@
  *
  * include/metadata/drop_indexes.h
  *
- * Internal implementation of mongo_api_v1.drop_indexes.
+ * Internal implementation of ApiSchema.drop_indexes.
  *
  *-------------------------------------------------------------------------
  */

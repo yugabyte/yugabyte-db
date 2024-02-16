@@ -141,7 +141,7 @@ typedef struct HelioApiOidCacheData
 	/* OID of the current_op aggregation function */
 	Oid BsonCurrentOpAggregationFunctionId;
 
-	/* OID of the mongo_api_v1.list_indexes function */
+	/* OID of the ApiSchema.list_indexes function */
 	Oid IndexSpecAsBsonFunctionId;
 
 	/* OID of the sample_collection function */
@@ -150,13 +150,13 @@ typedef struct HelioApiOidCacheData
 	/* OID of the TABLESAMPLE SYSTEM_ROWS(n) function */
 	Oid ExtensionTableSampleSystemRowsFunctionId;
 
-	/* OID of mongo_api_v1.collection() UDF */
+	/* OID of ApiSchema.collection() UDF */
 	Oid CollectionFunctionId;
 
-	/* OID of mongo_api_v1.create_indexes() UDF */
+	/* OID of ApiSchema.create_indexes() UDF */
 	Oid CreateIndexesProcedureId;
 
-	/* OID of mongo_api_v1.re_index() UDF */
+	/* OID of ApiSchema.re_index() UDF */
 	Oid ReindexProcedureId;
 
 	/* OID of ApiCatalogSchemaName.collections table */
@@ -842,7 +842,7 @@ HelioApiExtensionOwner(void)
 
 
 /*
- * ApiCollectionFunctionId returns the OID of the mongo_api_v1.collection()
+ * ApiCollectionFunctionId returns the OID of the ApiSchema.collection()
  * function.
  */
 Oid
@@ -906,7 +906,7 @@ TextEqualOperatorId(void)
 
 /*
  * ApiCreateIndexesProcedureId returns the OID of the
- * mongo_api_v1.create_indexes() procedure.
+ * ApiSchema.create_indexes() procedure.
  */
 Oid
 ApiCreateIndexesProcedureId(void)
@@ -959,7 +959,7 @@ ApiCreateIndexesProcedureId(void)
 
 /*
  * ApiReIndexProcedureId returns the OID of the
- * mongo_api_v1.re_index() procedure.
+ * ApiSchema.re_index() procedure.
  */
 Oid
 ApiReIndexProcedureId(void)
@@ -1869,7 +1869,7 @@ BsonTrueFunctionId(void)
 
 
 /*
- * Returns the OID of the mongo_api_v1.cursor_state function.
+ * Returns the OID of the ApiSchema.cursor_state function.
  */
 Oid
 ApiCursorStateFunctionId(void)
@@ -1892,7 +1892,7 @@ ApiCursorStateFunctionId(void)
 
 
 /*
- * Returns the OID of the mongo_api_v1.current_cursor_state function.
+ * Returns the OID of the ApiSchema.current_cursor_state function.
  */
 Oid
 ApiCurrentCursorStateFunctionId(void)

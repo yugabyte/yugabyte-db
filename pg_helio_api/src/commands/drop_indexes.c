@@ -106,7 +106,7 @@ static void CancelIndexBuildRequest(int indexId);
 Datum
 command_drop_indexes(PG_FUNCTION_ARGS)
 {
-	/* mongo_api_v1.drop_indexes already verified NULL args but .. */
+	/* ApiSchema.drop_indexes already verified NULL args but .. */
 	if (PG_ARGISNULL(0))
 	{
 		ereport(ERROR, (errmsg("dbName cannot be NULL")));
@@ -492,7 +492,7 @@ DropIndexesConcurrentlyInternal(char *dbName, pgbson *arg)
 	PG_CATCH();
 	{
 		/* Since run_command_on_coordinator does not return error code in case of failure inside the called function
-		 * i.e. mongo_api_internal.drop_indexes_concurrently_internal in this case.
+		 * i.e. ApiInternalSchema.drop_indexes_concurrently_internal in this case.
 		 * The way we are solving it by adding 'errmsg' and 'code' in the DropIndexesResult and
 		 * setting them (with ok->false) when there is any exception in here.
 		 */

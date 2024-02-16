@@ -1179,7 +1179,8 @@ void
 RenameCollection(Datum dbNameDatum, Datum srcCollectionNameDatum, Datum
 				 destCollectionNameDatum, bool dropTarget)
 {
-	const char *cmdStr = "SELECT mongo_api_v1.rename_collection($1, $2, $3, $4)";
+	const char *cmdStr = FormatSqlQuery("SELECT %s.rename_collection($1, $2, $3, $4)",
+										ApiSchemaName);
 
 	Oid argTypes[4] = { TEXTOID, TEXTOID, TEXTOID, BOOLOID };
 	Datum argValues[4] = {
@@ -1218,10 +1219,12 @@ DropStagingCollectionForOut(Datum dbNameDatum, Datum srcCollectionNameDatum)
 {
 	/*
 	 *  Note that chage tracking is turned off for this delete
-	 *  mongo_api_v1.drop_collection(
+	 *  helio_api.drop_collection(
 	 *      daatabaseName, collectionName, write_concern, uuid, track_changes)
 	 */
-	const char *cmdStr = "SELECT mongo_api_v1.drop_collection($1, $2, null, null, false)";
+	const char *cmdStr = FormatSqlQuery(
+		"SELECT %s.drop_collection($1, $2, null, null, false)",
+		ApiSchemaName);
 
 	Oid argTypes[2] = { TEXTOID, TEXTOID };
 	Datum argValues[2] = {
@@ -1257,7 +1260,8 @@ OverWriteDataFromStagingToDest(Datum srcDbNameDatum, Datum srcCollectionNameDatu
 							   dropSourceCollection)
 {
 	const char *cmdStr =
-		"SELECT mongo_api_internal.copy_collection_data($1, $2, $3, $4, $5)";
+		FormatSqlQuery("SELECT %s.copy_collection_data($1, $2, $3, $4, $5)",
+					   ApiInternalSchemaName);
 
 	Oid argTypes[5] = { TEXTOID, TEXTOID, TEXTOID, TEXTOID, BOOLOID };
 	Datum argValues[5] = {
@@ -1296,9 +1300,12 @@ SetupCollectionForOut(char *srcDbName, char *srcCollectionName, char *destDbName
 					  destCollectionName, bool createTemporaryTable)
 {
 	const char *cmdStr = createTemporaryTable ?
-						 "SELECT mongo_api_internal.setup_temporary_out_collection($1, $2, $3, $4)"
+						 FormatSqlQuery(
+		"SELECT %s.setup_temporary_out_collection($1, $2, $3, $4)", ApiInternalSchemaName)
 						 :
-						 "SELECT mongo_api_internal.setup_renameable_out_collection($1, $2, $3, $4)";
+						 FormatSqlQuery(
+		"SELECT %s.setup_renameable_out_collection($1, $2, $3, $4)",
+		ApiInternalSchemaName);
 
 	Oid argTypes[4] = { TEXTOID, TEXTOID, TEXTOID, TEXTOID };
 	Datum argValues[4] = {

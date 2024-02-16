@@ -200,13 +200,15 @@ CurrentOpAggregateCore(PG_FUNCTION_ARGS, TupleDesc descriptor,
 	}
 	else
 	{
-		const char *query = "SELECT success, result FROM run_command_on_all_nodes("
-							"FORMAT($$ SELECT mongo_api_v1.current_op_worker(%L) $$, $1))";
-
+		StringInfo cmdStr = makeStringInfo();
+		appendStringInfo(cmdStr,
+						 "SELECT success, result FROM run_command_on_all_nodes("
+						 "FORMAT($$ SELECT %s.current_op_worker(%%L) $$, $1))",
+						 ApiSchemaName);
 		int numValues = 1;
 		Datum values[1] = { PointerGetDatum(spec) };
 		Oid types[1] = { BsonTypeId() };
-		workerBsons = GetWorkerBsonsFromAllWorkers(query, values, types, numValues,
+		workerBsons = GetWorkerBsonsFromAllWorkers(cmdStr->data, values, types, numValues,
 												   "CurrentOp");
 	}
 
@@ -410,8 +412,9 @@ WorkerGetBaseActivities()
 					 "	WHERE nsp.nspname = '%s' AND c.relkind = 'r' AND c.oid != '%s.changes'::regclass AND pl.pid = pa.pid LIMIT 1",
 					 ApiDataSchemaName, ApiDataSchemaName);
 
-	appendStringInfoString(queryInfo,
-						   " ) e2 ON true WHERE (NOT query LIKE '%mongo_api_v1.current_op%') AND (application_name = 'MongoGateway-Data' OR application_name = 'HelioDBInternal')");
+	appendStringInfo(queryInfo,
+					 " ) e2 ON true WHERE (NOT query LIKE '%%%s.current_op%%') AND (application_name = 'MongoGateway-Data' OR application_name = 'HelioDBInternal')",
+					 ApiSchemaName);
 
 	List *workerActivities = NIL;
 	SPIParseOpenOptions parseOptions =
@@ -703,6 +706,184 @@ WriteOneActivityToDocument(SingleWorkerActivity *workerActivity,
 
 
 /*
+ * Gets the command name and details for a command executing in the
+ * API schema
+ */
+static const char *
+DetectApiSchemaCommand(const char *topLevelQuery, const char *schemaName,
+					   SingleWorkerActivity *activity,
+					   pgbson_writer *commandWriter)
+{
+	const char *namespaceQuery = strstr(topLevelQuery, schemaName);
+	if (namespaceQuery == NULL)
+	{
+		return NULL;
+	}
+
+	const char *query = namespaceQuery + strlen(schemaName);
+	if (strstr(query, ".update(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "update", 6,
+							   activity->processedMongoCollection);
+		return "update";
+	}
+	else if (strstr(query, ".insert(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "insert", 6,
+							   activity->processedMongoCollection);
+		return "insert";
+	}
+	else if (strstr(query, ".delete(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "delete", 6,
+							   activity->processedMongoCollection);
+		return "remove";
+	}
+	else if (strstr(query, ".cursor_get_more(") == query)
+	{
+		PgbsonWriterAppendInt64(commandWriter, "getMore", 6, 0);
+		return "getmore";
+	}
+	else if (strstr(query, ".find_cursor_first_page(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "find", 4,
+							   activity->processedMongoCollection);
+		return "query";
+	}
+	else if (strstr(query, ".find_and_modify(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "findAndModify", 13,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".aggregate_cursor_first_page(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "aggregate", 9,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".count_query(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "count", 5,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".distinct_query(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "distinct", 8,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".list_collections_cursor_first_page(") == query)
+	{
+		PgbsonWriterAppendInt64(commandWriter, "listCollections", 15, 1);
+		return "command";
+	}
+	else if (strstr(query, ".list_indexes_cursor_first_page(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "listIndexes", 11,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".create_indexes(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".drop_indexes(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "dropIndexes", 11,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".coll_stats(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "collStats", 9,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".create_collection_view(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "create", 6,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".coll_mod(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "collMod", 7,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".shard_collection(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "shardCollection", 15,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".drop_collection(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "drop", 4,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+	else if (strstr(query, ".drop_database(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "dropDatabase", 13,
+							   activity->processedMongoDatabase);
+		return "command";
+	}
+
+	return NULL;
+}
+
+
+/*
+ * Gets the command name and details for a command executing in the
+ * API internal schema
+ */
+static const char *
+DetectApiInternalSchemaCommand(const char *topLevelQuery, const char *schemaName,
+							   SingleWorkerActivity *activity,
+							   pgbson_writer *commandWriter)
+{
+	const char *namespaceQuery = strstr(topLevelQuery, schemaName);
+	if (namespaceQuery == NULL)
+	{
+		return NULL;
+	}
+
+	const char *query = namespaceQuery + strlen(schemaName);
+	if (strstr(query, ".update_one(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "update", 6,
+							   activity->processedMongoCollection);
+		return "workerCommand";
+	}
+	else if (strstr(query, ".insert_one(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "insert", 6,
+							   activity->processedMongoCollection);
+		return "workerCommand";
+	}
+	else if (strstr(query, ".delete_one(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "delete", 6,
+							   activity->processedMongoCollection);
+		return "workerCommand";
+	}
+	else if (strstr(query, ".create_indexes_non_concurrently(") == query)
+	{
+		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
+							   activity->processedMongoCollection);
+		return "command";
+	}
+
+	return NULL;
+}
+
+
+/*
  * Parses the "query" of the pg_stat_activity and returns the top level "op"
  * for that query. Also updates the "command" document for the operation in the
  * writer.
@@ -714,101 +895,43 @@ static const char *
 WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 							pgbson_writer *commandWriter)
 {
-	if (strstr(query, "mongo_api_v1.update(") != NULL)
+	/* Check for a command on the top level API namespace */
+	const char *commandName = DetectApiSchemaCommand(query, ApiSchemaName, activity,
+													 commandWriter);
+	if (commandName != NULL)
 	{
-		PgbsonWriterAppendUtf8(commandWriter, "update", 6,
-							   activity->processedMongoCollection);
-		return "update";
+		return commandName;
 	}
-	else if (strstr(query, "mongo_api_internal.update_one(") != NULL)
+
+	/* Also check for helio_api explicitly */
+	if (strcmp(ApiSchemaName, "helio_api") != 0)
 	{
-		PgbsonWriterAppendUtf8(commandWriter, "update", 6,
-							   activity->processedMongoCollection);
-		return "workerCommand";
+		commandName = DetectApiSchemaCommand(query, "helio_api", activity, commandWriter);
+		if (commandName != NULL)
+		{
+			return commandName;
+		}
 	}
-	else if (strstr(query, "mongo_api_v1.insert(") != NULL)
+
+	commandName = DetectApiInternalSchemaCommand(query, ApiInternalSchemaName, activity,
+												 commandWriter);
+	if (commandName != NULL)
 	{
-		PgbsonWriterAppendUtf8(commandWriter, "insert", 6,
-							   activity->processedMongoCollection);
-		return "insert";
+		return commandName;
 	}
-	else if (strstr(query, "mongo_api_internal.insert_one(") != NULL)
+
+	/* Also check for helio_api explicitly */
+	if (strcmp(ApiInternalSchemaName, "helio_api_internal") != 0)
 	{
-		PgbsonWriterAppendUtf8(commandWriter, "insert", 6,
-							   activity->processedMongoCollection);
-		return "workerCommand";
+		commandName = DetectApiSchemaCommand(query, "helio_api_internal", activity,
+											 commandWriter);
+		if (commandName != NULL)
+		{
+			return commandName;
+		}
 	}
-	else if (strstr(query, "mongo_api_v1.delete(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "delete", 6,
-							   activity->processedMongoCollection);
-		return "remove";
-	}
-	else if (strstr(query, "mongo_api_internal.delete_one(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "delete", 6,
-							   activity->processedMongoCollection);
-		return "workerCommand";
-	}
-	else if (strstr(query, "mongo_api_v1.cursor_get_more(") != NULL)
-	{
-		PgbsonWriterAppendInt64(commandWriter, "getMore", 6, 0);
-		return "getmore";
-	}
-	else if (strstr(query, "mongo_api_v1.find_cursor_first_page(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "find", 4,
-							   activity->processedMongoCollection);
-		return "query";
-	}
-	else if (strstr(query, "mongo_api_v1.find_and_modify(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "findAndModify", 13,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.aggregate_cursor_first_page(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "aggregate", 9,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.count_query(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "count", 5,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.distinct_query(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "distinct", 8,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.list_collections_cursor_first_page(") != NULL)
-	{
-		PgbsonWriterAppendInt64(commandWriter, "listCollections", 15, 1);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.list_indexes_cursor_first_page(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "listIndexes", 11,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_internal.create_indexes_non_concurrently(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.create_indexes(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "CREATE INDEX") != NULL)
+
+	if (strstr(query, "CREATE INDEX") != NULL)
 	{
 		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
 							   activity->processedMongoCollection);
@@ -816,8 +939,8 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 		activity->processedBuildIndexStatProgress = true;
 		return "workerCommand";
 	}
-	else if (strstr(query, "ALTER TABLE") != NULL && strstr(query, "ADD CONSTRAINT") !=
-			 NULL)
+	else if (strstr(query, "ALTER TABLE") != NULL &&
+			 strstr(query, "ADD CONSTRAINT") != NULL)
 	{
 		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
 							   activity->processedMongoCollection);
@@ -825,49 +948,6 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 		WriteIndexSpec(activity, commandWriter);
 		activity->processedBuildIndexStatProgress = true;
 		return "workerCommand";
-	}
-	else if (strstr(query, "mongo_api_v1.drop_indexes(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "dropIndexes", 11,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.coll_stats(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "collStats", 9,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.create_collection_view(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "create", 6,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.coll_mod(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "collMod", 7,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.shard_collection(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "shardCollection", 15,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "mongo_api_v1.drop_collection(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "drop", 4,
-							   activity->processedMongoCollection);
-		return "command";
-	}
-	else if (strstr(query, "helio_api.drop_database(") != NULL ||
-			 strstr(query, "mongo_api_v1.drop_database(") != NULL)
-	{
-		PgbsonWriterAppendUtf8(commandWriter, "dropDatabase", 13,
-							   activity->processedMongoDatabase);
-		return "command";
 	}
 	else
 	{
