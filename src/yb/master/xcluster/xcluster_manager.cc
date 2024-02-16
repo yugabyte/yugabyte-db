@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
 #include "yb/rpc/rpc_context.h"
@@ -317,9 +318,9 @@ Status XClusterManager::IsCreateXClusterReplicationDone(
   auto create_result = VERIFY_RESULT(XClusterSourceManager::IsCreateXClusterReplicationDone(
       xcluster::ReplicationGroupId(req->replication_group_id()), target_master_addresses, epoch));
 
-  resp->set_done(create_result.done);
-  if (create_result.done) {
-    StatusToPB(create_result.status, resp->mutable_replication_error());
+  resp->set_done(create_result.done());
+  if (create_result.done()) {
+    StatusToPB(create_result.status(), resp->mutable_replication_error());
   }
   return Status::OK();
 }

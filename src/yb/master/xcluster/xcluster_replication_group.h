@@ -18,6 +18,8 @@
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class IsOperationDoneResult;
 class SysCatalogTable;
 
 namespace client {
@@ -25,8 +27,6 @@ class XClusterRemoteClient;
 }  // namespace client
 
 namespace master {
-
-struct IsOperationDoneResult;
 
 // TODO: #19714 Create XClusterReplicationGroup, a wrapper over UniverseReplicationInfo, that will
 // manage the ReplicationGroup and its ProducerEntryPB in ClusterConfigInfo.

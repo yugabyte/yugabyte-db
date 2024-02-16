@@ -38,21 +38,22 @@ struct NamespaceCheckpointInfo {
   std::vector<TableInfo> table_infos;
 };
 
-struct IsOperationDoneResult {
-  IsOperationDoneResult() : done(false) {}
-  IsOperationDoneResult(bool done, Status status) : done(done), status(std::move(status)) {}
-
-  bool done;      // Indicates of the operation completed.
-  Status status;  // If the operation completed and it failed, this will contain the error.
-
-  std::string ToString() const { return YB_STRUCT_TO_STRING(done, status); }
-};
-
-inline std::ostream& operator<<(std::ostream& out, const IsOperationDoneResult& result) {
-  return out << result.ToString();
-}
-
 YB_DEFINE_ENUM(StreamCheckpointLocation, (kOpId0)(kCurrentEndOfWAL));
+
+using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
+
+class XClusterCreateStreamsContext {
+ public:
+  XClusterCreateStreamsContext() = default;
+  virtual ~XClusterCreateStreamsContext() = default;
+
+  virtual void Commit() {}
+
+  std::vector<scoped_refptr<CDCStreamInfo>> streams_;
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(XClusterCreateStreamsContext);
+};
 
 using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
 

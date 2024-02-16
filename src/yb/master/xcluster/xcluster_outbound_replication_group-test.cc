@@ -22,6 +22,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -45,7 +46,7 @@ class XClusterRemoteClientMocked : public client::XClusterRemoteClient {
  public:
   XClusterRemoteClientMocked() : client::XClusterRemoteClient("na", MonoDelta::kMax) {
     DefaultValue<Result<UniverseUuid>>::Set(kTargetUniverseUuid);
-    DefaultValue<Result<IsOperationDoneResult>>::Set(IsOperationDoneResult(true, Status::OK()));
+    DefaultValue<Result<IsOperationDoneResult>>::Set(IsOperationDoneResult::Done());
   }
 
   MOCK_METHOD2(Init, Status(const xcluster::ReplicationGroupId&, const std::vector<HostPort>&));
@@ -433,10 +434,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
 
   EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
-      .WillOnce(Return(IsOperationDoneResult(false, Status::OK())));
+      .WillOnce(Return(IsOperationDoneResult::NotDone()));
 
   auto create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
-  ASSERT_FALSE(create_result.done);
+  ASSERT_FALSE(create_result.done());
 
   // Fail the Setup.
   const auto error_str = "Failed by test";
@@ -454,25 +455,25 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
       SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfo::CREATING_REPLICATION_GROUP);
 
   EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
-      .WillOnce(Return(IsOperationDoneResult(true, STATUS(IllegalState, error_str))));
+      .WillOnce(Return(IsOperationDoneResult::Done(STATUS(IllegalState, error_str))));
   create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
-  ASSERT_TRUE(create_result.done);
-  ASSERT_STR_CONTAINS(create_result.status.ToString(), error_str);
+  ASSERT_TRUE(create_result.done());
+  ASSERT_STR_CONTAINS(create_result.status().ToString(), error_str);
 
   pb = ASSERT_RESULT(outbound_rg.GetMetadata());
   ASSERT_FALSE(pb.has_target_universe_info());
 
   // Success case.
   EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
-      .WillOnce(Return(IsOperationDoneResult(true, Status::OK())));
+      .WillOnce(Return(IsOperationDoneResult::Done()));
 
   EXPECT_CALL(*remote_client, SetupDbScopedUniverseReplication(_, _, _, _, _, _));
 
   // Calling create again should not do anything.
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
   create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
-  ASSERT_TRUE(create_result.done);
-  ASSERT_OK(create_result.status);
+  ASSERT_TRUE(create_result.done());
+  ASSERT_OK(create_result.status());
 
   pb = ASSERT_RESULT(outbound_rg.GetMetadata());
   ASSERT_TRUE(pb.has_target_universe_info());
