@@ -3099,7 +3099,8 @@ Status CatalogManager::DoSplitTablet(
       if (!child_tablet_ids_sorted[i].empty()) {
         continue;
       }
-      auto new_child = CreateTabletInfo(table.get(), tablet_partitions[i]);
+      auto new_child =
+          CreateTabletInfo(table.get(), tablet_partitions[i], SysTabletsEntryPB::CREATING);
       child_tablet_ids_sorted[i] = new_child->id();
       new_tablets.push_back(std::move(new_child));
     }
@@ -4247,7 +4248,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Inserted new table and tablet info into CatalogManager maps");
   VLOG_WITH_PREFIX(1) << "Inserted new table and tablet info into CatalogManager maps";
 
-  if (!joining_colocation_group) {
+  // Clone will create its own tablets as part of repartitioning.
+  if (!joining_colocation_group && !req.is_clone()) {
     auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
     if (opt_wal_retention) {
       table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
@@ -4489,13 +4491,13 @@ Status CatalogManager::VerifyTablePgLayer(
 }
 
 Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partition>& partitions,
-                                                           const TableInfoPtr& table) {
+                                                           const TableInfoPtr& table,
+                                                           SysTabletsEntryPB::State state) {
   TabletInfos tablets;
-  // Create the TabletInfo objects in state PREPARING.
   for (const Partition& partition : partitions) {
     PartitionPB partition_pb;
     partition.ToPB(&partition_pb);
-    tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
+    tablets.push_back(CreateTabletInfo(table.get(), partition_pb, state));
   }
 
   // Add the table/tablets to the in-memory map for the assignment.
@@ -4648,7 +4650,18 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   }
 
   if (tablets) {
-    *tablets = VERIFY_RESULT(CreateTabletsFromTable(partitions, *table));
+    if (req.is_clone()) {
+      // If this is a cloned table, the tablets will be created by the source tablets when
+      // they apply the clone op.
+      *tablets = VERIFY_RESULT(
+          CreateTabletsFromTable(partitions, *table, SysTabletsEntryPB::CREATING));
+      for (auto& tablet : *tablets) {
+        tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
+      }
+    } else {
+      *tablets = VERIFY_RESULT(
+          CreateTabletsFromTable(partitions, *table, SysTabletsEntryPB::PREPARING));
+    }
   }
 
   if (resp != nullptr) {
@@ -5463,14 +5476,15 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 }
 
 TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
-                                               const PartitionPB& partition) {
+                                               const PartitionPB& partition,
+                                               SysTabletsEntryPB::State state) {
   auto tablet = make_scoped_refptr<TabletInfo>(table, GenerateIdUnlocked(SysRowEntryType::TABLET));
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
   tablet->mutable_metadata()->StartMutation();
   SysTabletsEntryPB *metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
-  metadata->set_state(SysTabletsEntryPB::PREPARING);
+  metadata->set_state(state);
   metadata->mutable_partition()->CopyFrom(partition);
   metadata->set_table_id(table->id());
   if (FLAGS_use_parent_table_id_field && !table->is_system()) {
@@ -5481,6 +5495,12 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
     // to be the id of the original table that creates the tablet.
     metadata->add_table_ids(table->id());
   }
+
+  ConsensusStatePB* cstate = metadata->mutable_committed_consensus_state();
+  cstate->set_current_term(kMinimumTerm);
+  consensus::RaftConfigPB* config = cstate->mutable_config();
+  config->set_opid_index(consensus::kInvalidOpIdIndex);
+
   return tablet;
 }
 
@@ -7352,7 +7372,6 @@ Status CatalogManager::RegisterNewTabletForSplit(
   const auto& source_tablet_meta = tablet_lock->pb;
 
   auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
-  new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   const auto new_split_depth = source_tablet_meta.split_depth() + 1;
@@ -11356,6 +11375,13 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
     VLOG(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
     return;
   }
+
+  if (tablet->LockForRead()->pb.created_by_clone()) {
+    // No need to recreate cloned tablets, since this is always done on source tablet replicas.
+    VLOG(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
+    return;
+  }
+
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
     VLOG(2) << "Tablet " << tablet->ToString() << " still being created. "
@@ -11639,13 +11665,10 @@ Status CatalogManager::SelectReplicasForTablet(
     VERIFY_RESULT(GetTableReplicationInfo(table_guard->pb.replication_info(),
           tablet->table()->TablespaceIdForTableCreation()));
 
-  // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
-  cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB* config = cstate->mutable_config();
-  config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
       replication_info, ts_descs, config, per_table_state, global_state));

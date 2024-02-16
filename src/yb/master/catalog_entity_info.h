@@ -83,8 +83,7 @@ struct ExternalTableSnapshotData {
   size_t num_tablets = 0;
   typedef std::pair<std::string, std::string> PartitionKeys;
   typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
-  typedef std::vector<PartitionPB> Partitions;
-  Partitions partitions;
+  std::vector<std::pair<TabletId, PartitionPB>> old_tablets;
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
   std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
