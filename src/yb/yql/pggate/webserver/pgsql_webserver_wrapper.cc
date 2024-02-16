@@ -15,6 +15,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <math.h>
+#include <cassert>
 
 #include <map>
 #include <vector>
@@ -169,7 +170,33 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
+  uint64_t num_pools = 0;
+
   GetYsqlConnMgrStats(&stats_list);
+  num_pools = stats_list.size();
+
+  ysql_conn_mgr_prometheus_attr.erase(DATABASE);
+  ysql_conn_mgr_prometheus_attr.erase(USER);
+
+  // Publish the count for number of pools.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
+      AggregationFunction::kSum, kServerLevel),
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  // Publish the last time ysql conn mgr metrics are emitted.
+  if (stats_list.size() > 0) {
+    assert(strcmp(stats_list[0].database_name, "control_connection") == 0 &&
+              strcmp(stats_list[0].user_name, "control_connection") == 0);
+    WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+        ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_time_updated",
+        // Index 0 of list denotes control connection pool, fetching last time updated metric
+        // from its field.
+        stats_list[0].last_updated_time, AggregationFunction::kSum, kServerLevel),
+        "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
+  }
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
