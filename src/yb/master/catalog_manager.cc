@@ -9339,7 +9339,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
   SharedLock lock(mutex_);
   for (const auto& table : tables_->GetAllTables()) {
     auto ltm = table->LockForRead();
-    if (table->namespace_id() != database->id()) {
+    if (ltm->namespace_id() != database->id() || ltm->started_deleting()) {
       continue;
     }
     if (IsXClusterEnabledUnlocked(*table)) {

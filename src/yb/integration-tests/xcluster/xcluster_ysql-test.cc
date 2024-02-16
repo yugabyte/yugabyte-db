@@ -2405,8 +2405,8 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
       auto table = ASSERT_RESULT(CreateYsqlTable(
           &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
           boost::none /* tablegroup */, kNTabletsPerTable));
-      // For now, only replicate the second table for test_namespace.
-      if (is_replicated_producer && i == 1) {
+      // For now, skip the first table and replicate the rest.
+      if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
         ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
         producer_tables_.push_back(yb_table);
@@ -2434,6 +2434,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
+  // Delete a table on the source and target so that there are dropped tables in syscatalog.
+  ASSERT_OK(producer_client()->DeleteTable(producer_tables_[0]->id()));
+  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[0]->id()));
   ASSERT_NOK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_NOK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
