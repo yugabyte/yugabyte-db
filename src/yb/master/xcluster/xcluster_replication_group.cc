@@ -261,7 +261,7 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
   return it->producer_namespace_id();
 }
 
-bool ShouldAddTableToReplicationGroup(
+Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
   const auto& table_pb = table_info.old_pb();
@@ -314,6 +314,10 @@ bool ShouldAddTableToReplicationGroup(
     auto producer_entry =
         FindOrNull(consumer_registry.producer_map(), universe.ReplicationGroupId().ToString());
     if (producer_entry) {
+      SCHECK(
+          !producer_entry->disable_stream(), IllegalState,
+          "Table belongs to xCluster replication group $0 which is currently disabled",
+          universe.ReplicationGroupId());
       for (auto& [stream_id, stream_info] : producer_entry->stream_map()) {
         if (stream_info.consumer_table_id() == table_info.id()) {
           VLOG(1) << "Table " << table_info.ToString()

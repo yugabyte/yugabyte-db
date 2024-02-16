@@ -62,7 +62,7 @@ Status HandleLocalAutoFlagsConfigChange(
 
 // Check if the table should be added to the replication group. Returns false if the table is
 // already part of the group.
-bool ShouldAddTableToReplicationGroup(
+Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager);
 

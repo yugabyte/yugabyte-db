@@ -567,12 +567,11 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
     return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
   }
 
-  RETURN_NOT_OK(SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsCreateTableDone",
-      &master::MasterDdlProxy::IsCreateTableDoneAsync));
+  auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsCreateTableDone", &master::MasterDdlProxy::IsCreateTableDoneAsync);
 
   *create_in_progress = !resp.done();
-  return Status::OK();
+  return status;
 }
 
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,

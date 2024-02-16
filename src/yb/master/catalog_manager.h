@@ -109,6 +109,7 @@ class ThreadPool;
 class AddTransactionStatusTabletRequestPB;
 class AddTransactionStatusTabletResponsePB;
 class UniverseKeyRegistryPB;
+class IsOperationDoneResult;
 
 template<class T>
 class AtomicGauge;
@@ -344,16 +345,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                  bool* alter_in_progress);
 
   Status WaitForAlterTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
-
-  // Check if the transaction status table creation is done.
-  //
-  // This is called at the end of IsCreateTableDone if the table has transactions enabled.
-  Result<bool> IsTransactionStatusTableCreated();
-
-  // Check if the metrics snapshots table creation is done.
-  //
-  // This is called at the end of IsCreateTableDone.
-  Result<bool> IsMetricsSnapshotsTableCreated();
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
   Status VerifyTablePgLayer(
@@ -2142,7 +2133,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<TableInfoPtr> GetGlobalTransactionStatusTable();
 
-  Result<bool> IsCreateTableDone(const TableInfoPtr& table);
+  Result<IsOperationDoneResult> IsCreateTableDone(const TableInfoPtr& table);
 
   // SetupReplicationWithBootstrap
   Status ValidateReplicationBootstrapRequest(

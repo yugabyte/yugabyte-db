@@ -63,7 +63,8 @@ Status AddTableToXClusterTargetTask::FirstStep() {
 
   auto table_l = table_info_->LockForRead();
 
-  if (!ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_)) {
+  if (!VERIFY_RESULT(
+          ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_))) {
     LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
                           << " does not need to be added to xCluster universe replication";
     Complete();
@@ -83,8 +84,9 @@ Status AddTableToXClusterTargetTask::FirstStep() {
     return Status::OK();
   }
 
-  auto callback =
-      std::bind(&AddTableToXClusterTargetTask::BootstrapTableCallback, shared_from(this), _1);
+  auto callback = [this](client::BootstrapProducerResult bootstrap_result) {
+    SCHEDULE(AddTableToReplicationGroup, std::move(bootstrap_result));
+  };
 
   if (!is_db_scoped_) {
     auto xcluster_rpc = VERIFY_RESULT(
@@ -104,10 +106,14 @@ Status AddTableToXClusterTargetTask::FirstStep() {
       {table_info_->pgschema_name()}, std::move(callback));
 }
 
-Status AddTableToXClusterTargetTask::BootstrapTableCallback(
+Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
     client::BootstrapProducerResult bootstrap_result) {
-  auto [producer_table_ids, bootstrap_ids, bootstrap_time] =
-      VERIFY_RESULT(std::move(bootstrap_result));
+  const auto& replication_group_id = universe_->ReplicationGroupId();
+
+  auto [producer_table_ids, bootstrap_ids, bootstrap_time] = VERIFY_RESULT_PREPEND(
+      std::move(bootstrap_result),
+      Format("Failed to bootstrap table for xCluster replication group $0", replication_group_id));
+
   CHECK_EQ(producer_table_ids.size(), 1);
   CHECK_EQ(bootstrap_ids.size(), 1);
   if (is_db_scoped_) {
@@ -140,13 +146,8 @@ Status AddTableToXClusterTargetTask::BootstrapTableCallback(
 
   bootstrap_time_ = bootstrap_time;
 
-  SCHEDULE(AddTableToReplicationGroup, producer_table_ids[0], bootstrap_ids[0]);
-  return Status::OK();
-}
-
-Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
-    TableId producer_table_id, std::string bootstrap_id) {
-  const auto& replication_group_id = universe_->ReplicationGroupId();
+  auto& producer_table_id = producer_table_ids[0];
+  auto& bootstrap_id = bootstrap_ids[0];
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "Adding table to xcluster universe replication "
                                  << replication_group_id << " with bootstrap_id:" << bootstrap_id
                                  << ", bootstrap_time:" << bootstrap_time_
