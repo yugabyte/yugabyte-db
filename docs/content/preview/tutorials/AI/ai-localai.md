@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-This tutorial shows how you can use LocalAI to create an interactive query interface. It features a Python application that uses Wikipedia texts of popular programming languages to generate text-embeddings for each programming language and store them in a YugabyteDB database using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
+This tutorial shows how you can use [LocalAI](https://localai.io/) to create an interactive query interface. It features a Python application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for Wikipedia texts of popular programming languages, as well as user prompts. Embeddings for each programming language are stored in a YugabyteDB database using the `pgvector extension`.
 
 ## Prerequisites
 
