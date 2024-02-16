@@ -49,6 +49,7 @@ XClusterManager::~XClusterManager() {}
 void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
 
 Status XClusterManager::Init() {
+  RETURN_NOT_OK(XClusterSourceManager::Init());
   RETURN_NOT_OK(XClusterTargetManager::Init());
 
   return Status::OK();
@@ -197,8 +198,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
   }
 
   auto namespace_ids = VERIFY_RESULT(CreateOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), namespace_names, epoch));
   for (const auto& namespace_id : namespace_ids) {
     *resp->add_namespace_ids() = namespace_id;
   }
@@ -214,8 +214,7 @@ Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
   SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
 
   auto namespace_id = VERIFY_RESULT(AddNamespaceToOutboundReplicationGroup(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch,
-      rpc->GetClientDeadline()));
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_name(), epoch));
 
   resp->set_namespace_id(namespace_id);
   return Status::OK();
@@ -245,7 +244,7 @@ Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
 Status XClusterManager::IsXClusterBootstrapRequired(
     const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+  SCHECK_PB_FIELDS_ARE_SET(*req, replication_group_id, namespace_id);
 
   LOG_FUNC_AND_RPC;
 

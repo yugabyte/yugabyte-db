@@ -856,14 +856,7 @@ Status CatalogManager::CreateNewXReplStream(
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
 
   // Kick-off the CDC state table creation before any other logic.
-  CreateTableResponsePB table_resp;
-  RETURN_NOT_OK(CreateTableIfNotFound(
-      cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
-      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
-      epoch));
-  // Mark the cluster as CDC enabled now that we have trigged the CDC state table creation.
-  SetCDCServiceEnabled();
-  TRACE("Created CDC state table");
+  RETURN_NOT_OK(CreateCdcStateTableIfNotFound(epoch));
 
   // TODO(#18934): Move to the DDL transactional atomicity model.
   CDCSDKStreamCreationState cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kInitialized;
@@ -7427,6 +7420,40 @@ void CatalogManager::MarkUniverseForCleanup(
     const xcluster::ReplicationGroupId& replication_group_id) {
   LockGuard lock(mutex_);
   universes_to_clear_.push_back(replication_group_id);
+}
+
+Status CatalogManager::CreateCdcStateTableIfNotFound(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(CreateTableIfNotFound(
+      cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, epoch));
+
+  TRACE("Created CDC state table");
+
+  // Mark the cluster as CDC enabled now that we have triggered the CDC state table creation.
+  SetCDCServiceEnabled();
+
+  return Status::OK();
+}
+
+Result<scoped_refptr<CDCStreamInfo>> CatalogManager::InitNewXReplStream() {
+  LockGuard lock(mutex_);
+  TRACE("Acquired catalog manager lock");
+
+  auto stream_id =
+      VERIFY_RESULT(xrepl::StreamId::FromString(GenerateIdUnlocked(SysRowEntryType::CDC_STREAM)));
+  auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
+  stream->mutable_metadata()->StartMutation();
+
+  cdc_stream_map_[stream_id] = stream;
+
+  return stream;
+}
+
+void CatalogManager::ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_id) {
+  LockGuard lock(mutex_);
+  TRACE("Acquired catalog manager lock");
+
+  cdc_stream_map_.erase(stream_id);
 }
 
 }  // namespace master

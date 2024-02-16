@@ -770,6 +770,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     enum State {
       CHECKPOINTING = 0;
       READY = 1;
+      FAILED = 2;
     }
     required State state = 1;
 
@@ -784,6 +785,8 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     map<string, TableInfoPB> table_infos = 2;
 
     optional bool initial_bootstrap_required = 3; // [default = false]
+
+    optional AppStatusPB error_status = 4; // Set when state is FAILED
   }
 
   // Namespace Id -> NamespaceInfoPB
