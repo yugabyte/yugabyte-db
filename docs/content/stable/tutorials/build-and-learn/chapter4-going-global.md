@@ -238,9 +238,37 @@ Next, proceed to search for movie recommendations and select one of the suggesti
   </div>
 </div>
 
-3. Add the **The Empire Strikes Back** to the library by clicking on the **Add to Library** button:
+3. Add one of the movies to the library by clicking on the **Add to Library** button:
 
-![US East Empire Strikes Back Library](/images/tutorials/build-and-learn/chapter4-us-east-empire-strikes-back-result.png)
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      Similarity Search (OpenAI)
+    </a>
+  </li>
+  <li>
+    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="false">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Full-text search
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
+
+  ![US East Similarity Search Library](/images/tutorials/build-and-learn/chapter4-us-east-empire-strikes-back-result.png)
+
+  </div>
+  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+
+  ![US East Full-Text Search Library](/images/tutorials/build-and-learn/chapter4-full-text-search-add-movie.png)
+
+  </div>
+</div>
 
 4. Confirm that the movie has been added to the user's library:
 
