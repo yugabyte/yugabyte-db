@@ -287,16 +287,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  // Reduce the deadline passed to yb-master for DDL operation (CreateCDCStream) so that we timeout
-  // faster.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = 10;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
     LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
     // This sleep duration must be >= timeout of the CreateCDCStream RPC in yb-master. This is
     // specified in the DdlDeadline() function in pg_ddl.cc.
-    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
+    SleepFor(MonoDelta::FromSeconds(60 * kTimeMultiplier));
   });
   SyncPoint::GetInstance()->EnableProcessing();
 
