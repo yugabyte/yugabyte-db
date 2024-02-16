@@ -13,6 +13,7 @@
 #pragma once
 
 #include <memory>
+#include <queue>
 
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/xrepl_metrics.h"
@@ -84,6 +85,7 @@ static const char* const kCheckpointType = "checkpoint_type";
 static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
+
 struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
@@ -105,6 +107,48 @@ struct TabletCDCCheckpointInfo {
   int64_t cdc_sdk_latest_active_time = 0;
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
 };
+
+struct TabletCDCSDKCheckpointInfo {
+  OpId from_op_id;
+  std::string key;
+  int32_t write_id;
+  uint64_t snapshot_time;
+  int64_t safe_hybrid_time;
+  int32_t wal_segment_index;
+};
+
+class YbUniqueRecordID {
+ public:
+  explicit YbUniqueRecordID(
+      const TabletId& tablet_id, const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+  explicit YbUniqueRecordID(
+      RowMessage_Op op, uint64_t commit_time, uint64_t record_time, std::string& tablet_id,
+      uint32_t write_id);
+
+  static bool CanFormYBUniqueRecordId(const std::shared_ptr<CDCSDKProtoRecordPB>& record);
+
+  bool lessThan(const std::shared_ptr<YbUniqueRecordID>& record);
+
+  uint64_t GetCommitTime() const;
+
+ private:
+  RowMessage_Op op_;
+  uint64_t commit_time_;
+  uint64_t record_time_;
+  std::string tablet_id_;
+  uint32_t write_id_;
+};
+
+using RecordIdToRecord =
+    std::pair<std::shared_ptr<YbUniqueRecordID>, std::shared_ptr<CDCSDKProtoRecordPB>>;
+using RecordInfo = std::pair<TabletId, RecordIdToRecord>;
+
+struct CompareCDCSDKProtoRecords {
+  bool operator()(const RecordInfo& lhs, const RecordInfo& rhs) const;
+};
+
+using TabletRecordPriorityQueue = std::priority_queue<
+      RecordInfo, std::vector<RecordInfo>, CompareCDCSDKProtoRecords>;
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
@@ -139,6 +183,15 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetCheckpointRequestPB* req,
       GetCheckpointResponsePB* resp,
       rpc::RpcContext rpc) override;
+
+  // Walsender StartReplication RPCs
+  void InitVirtualWALForCDC(
+      const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void GetConsistentChanges(
+      const GetConsistentChangesRequestPB* req, GetConsistentChangesResponsePB* resp,
+      rpc::RpcContext context) override;
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
@@ -345,6 +398,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
 
+  std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(HostPort hostport);
+
   OpId GetMinSentCheckpointForTablet(const std::string& tablet_id);
 
   std::shared_ptr<MemTracker> GetMemTracker(
@@ -460,6 +515,43 @@ class CDCServiceImpl : public CDCServiceIf {
   bool ValidateAutoFlagsConfigVersion(
       const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
 
+  Status InitVirtualWALInternal(
+      const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& table_list,
+      HostPort hostport, CoarseTimePoint deadline);
+
+  Status GetTabletListAndCheckpoint(
+      const xrepl::StreamId& stream_id, const TableId table_id, HostPort hostport,
+      CoarseTimePoint deadline, const TabletId& parent_tablet_id = "");
+
+  Status GetConsistentChangesInternal(
+      const xrepl::StreamId& stream_id, GetConsistentChangesResponsePB* resp, HostPort hostport,
+      CoarseTimePoint deadline);
+
+  Status GetChangesInternal(
+      const xrepl::StreamId& stream_id, const std::unordered_set<TabletId> tablet_to_poll_list,
+      HostPort hostport, CoarseTimePoint deadline);
+
+  Status PopulateGetChangesRequest(
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, GetChangesRequestPB& req);
+
+  Status AddRecordsToTabletQueue(const TabletId& tablet_id, const GetChangesResponsePB& resp);
+
+  Status UpdateTabletCheckpointForNextRequest(
+      const TabletId& tablet_id, const GetChangesResponsePB& resp);
+
+  Status AddEntryToVirtualWalPriorityQueue(
+      TabletId tablet_id, TabletRecordPriorityQueue* sorted_records);
+
+  Result<RecordIdToRecord> FindConsistentRecord(
+      const xrepl::StreamId& stream_id, TabletRecordPriorityQueue* sorted_records,
+      std::vector<TabletId>* empty_tablet_queues, HostPort hostport, CoarseTimePoint deadline);
+
+  Status InitLSNAndTxnIDGenerators(const xrepl::StreamId& stream_id);
+
+  Result<uint64_t> GetRecordLSN(const std::shared_ptr<YbUniqueRecordID>& record_id);
+
+  Result<uint32_t> GetRecordTxnID(const std::shared_ptr<YbUniqueRecordID>& record_id);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
@@ -515,6 +607,16 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unordered_set<std::string> paused_xcluster_producer_streams_ GUARDED_BY(mutex_);
 
   uint32_t xcluster_config_version_ GUARDED_BY(mutex_) = 0;
+
+  // TODO: These fields will eventually move to per VirtualWAL.
+  std::unordered_set<TableId> publication_table_list_;
+  std::unordered_map<TabletId, TableId> tablet_to_table_map_;
+  std::unordered_set<TabletId> tablet_list_to_poll_;
+  std::unordered_map<TabletId, TabletCDCSDKCheckpointInfo> tablet_next_req_checkpoint_map_;
+  std::unordered_map<TabletId, std::vector<std::shared_ptr<CDCSDKProtoRecordPB>>> tablet_queues_;
+  uint64_t lsn;
+  uint32_t txn_id;
+  std::shared_ptr<YbUniqueRecordID> last_unique_record_id_;
 };
 
 }  // namespace cdc
