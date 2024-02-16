@@ -57,17 +57,4 @@ class XClusterCreateStreamsContext {
 
 using XClusterCheckpointStreamsResult = Result<std::pair<std::vector<TableId>, bool>>;
 
-class XClusterCreateStreamsContext {
- public:
-  XClusterCreateStreamsContext() = default;
-  virtual ~XClusterCreateStreamsContext() = default;
-
-  virtual void Commit() {}
-
-  std::vector<scoped_refptr<CDCStreamInfo>> streams_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(XClusterCreateStreamsContext);
-};
-
 }  // namespace yb::master
