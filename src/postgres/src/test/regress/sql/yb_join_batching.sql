@@ -492,6 +492,8 @@ analyze p1;
 analyze p2;
 analyze p3;
 
+set yb_prefer_bnl = off;
+
 -- The following hints try to force an illegal BNL
 /*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
@@ -505,6 +507,8 @@ p3.a = p1.a + p2.a;
 -- This is a legal BNL
 /*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
+
+set yb_prefer_bnl = on;
 
 drop table p1;
 drop table p2;
