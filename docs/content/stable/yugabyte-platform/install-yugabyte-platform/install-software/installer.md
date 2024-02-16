@@ -67,6 +67,8 @@ After the installation is complete, you can use YBA Installer to manage your ins
   /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
   ```
 
+  Additionally, add the commands from the [sudo_whitelist](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/sudo_whitelist.txt) to the sudoers file.
+
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
