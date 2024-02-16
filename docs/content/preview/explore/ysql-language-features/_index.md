@@ -54,11 +54,6 @@ The following table lists the advanced features in YSQL.
 | [Collations](advanced-features/collations/) | Collations in YSQL |
 | [Foreign data wrappers](advanced-features/foreign-data-wrappers/) | Foreign data wrappers in YSQL |
 
-<!--
-| <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
-| <span style="font-size:16px">[Advanced Topics](advanced-topics/)</span>     | Using `VIEWS`, PostgreSQL extensions supported in YSQL, temporary tables, etc. |
--->
-
 ## Going beyond SQL
 
 Because YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.

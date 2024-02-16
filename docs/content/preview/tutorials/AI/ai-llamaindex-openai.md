@@ -259,4 +259,4 @@ LlamaIndex is a powerful tool for building RAG applications over a variety of in
 
 For more information about LlamaIndex, see the [LlamaIndex documentation](https://docs.llamaindex.ai/en/stable/).
 
-If you would like to learn more on building LLM apps with YugabyteDB, check out the [LangChain and OpenAI](../../ai/ai-langchain-openai/) tutorial.
+If you would like to learn more on building LLM apps with YugabyteDB, check out the [LangChain and OpenAI](../ai-langchain-openai/) tutorial.

@@ -15,7 +15,7 @@ type: docs
 
 [Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING`, or `WHERE` clauses.
 
-Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](..//queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), or [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
+Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](../queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), or [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
 The query optimizer is responsible for determining the most efficient join strategy for a given query, aiming to minimize the computational cost and improve overall performance. Knowing these strategies will help you understand the performance of your queries.
 
