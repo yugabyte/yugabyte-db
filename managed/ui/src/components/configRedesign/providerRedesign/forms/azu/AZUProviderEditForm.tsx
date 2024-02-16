@@ -5,6 +5,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
+import { useTranslation } from 'react-i18next';
 
 import {
   RadioGroupOrientation,
@@ -160,6 +161,7 @@ export const AZUProviderEditForm = ({
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
 
+  const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<AZUProviderEditFormFieldValues>({
     defaultValues: defaultValues,
@@ -174,7 +176,9 @@ export const AZUProviderEditForm = ({
 
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {

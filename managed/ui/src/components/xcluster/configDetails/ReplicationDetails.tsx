@@ -401,7 +401,7 @@ export function ReplicationDetails({
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
             <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}/replication/`}>
-              Replication
+              xCluster Replication
             </Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {xClusterConfig.name}
