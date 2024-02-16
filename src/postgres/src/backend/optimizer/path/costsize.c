@@ -2504,8 +2504,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	 * would amount to optimizing for the case where the join method is
 	 * disabled, which doesn't seem like the way to bet.
 	 */
+	/*
+	 * YB: If yb_prefer_bnl is on and normal nestloops are allowed for this join
+	 * we do not add the disable cost penalty. See #21129 for more information.
+	 */
 	if ((!yb_is_batched && !enable_nestloop) ||
-		 (yb_is_batched && !yb_enable_batchednl))
+		 (yb_is_batched && !yb_enable_batchednl &&
+		  !(yb_prefer_bnl && enable_nestloop)))
 		startup_cost += disable_cost;
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */
