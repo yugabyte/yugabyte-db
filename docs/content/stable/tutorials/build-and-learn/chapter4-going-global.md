@@ -12,24 +12,26 @@ type: docs
 ---
 
 {{< note title="YugaPlus - Going Geo-Distributed" >}}
-The popularity of the YugaPlus streaming platform kept soaring. In the United States alone, millions of users watched their favorite movies, series, and sport events daily. And with this level of growth, the YugaPlus team faced the next challenge. Many customers complained about the YugaPlus app being unresponsive and slow especially during the peak hours. Turned out, that most of those complaints originated from the users living in the US West Coast. Their requests had to travel through the country to the US East Coast which was the preferred region of the multi-region YugabyteDB cluster. The high latency between the West and East regions explained the poor user experience.
+The popularity of the YugaPlus streaming platform has continued to soar. In the United States alone, millions of users watch their favorite movies, series, and sports events daily. With this level of growth, the YugaPlus team faced a new challenge.
 
-Eventually, the YugaPlus team decided to provide the same level of experience for all of the customers regardless of their location. And they did that by achieving the **low-latency reads and writes** with one of the design patterns for global applications...
+Many customers complained about the YugaPlus app being unresponsive and slow, especially during peak hours. It turned out that most of these complaints originated from users living on the US West Coast. Their requests had to travel across the country to the US East Coast, which hosted the preferred region of the multi-region YugabyteDB cluster. The high latency between the West and East regions explained the poor user experience.
+
+Eventually, the YugaPlus team decided to ensure all customers, regardless of their location, received the same level of experience. They achieved low-latency reads and writes using one of the design patterns for global applications...
 {{< /note >}}
 
-In this chapter you'll learn:
+In this chapter, you'll learn:
 
 * How to use the latency-optimized geo-partitioning for low-latency reads and writes across all the user locations
 
 **Prerequisites**
 
-You need to complete [chapter 3](../chapter3-tolerating-outages) of the tutorial before proceeding with this one.
+You need to complete [chapter 3](../chapter3-tolerating-outages) of the tutorial before proceeding to this one.
 
 {{< header Level="2" >}}Geo-Partition the User Library{{< /header >}}
 
-The [latency-optimized geo-partitioning pattern](https://docs.yugabyte.com/stable/develop/build-global-apps/latency-optimized-geo-partition/) allows to pin user data to cloud regions that are closest to the users physical locations. By doing that, your multi-region application can process read and write requests at low latency across all locations.
+The [latency-optimized geo-partitioning pattern](https://docs.yugabyte.com/stable/develop/build-global-apps/latency-optimized-geo-partition/) allows to pin user data to cloud regions closest to the users' physical locations. By implementing this strategy, your multi-region application can process read and write requests with low latency across all locations.
 
-The YugaPlus movies recommendation service has the `user_library` table that is an excellent candidate for the geo-partitioning. The current structure of the table is as follows:
+The `user_library` table in the YugaPlus movies recommendation service is an excellent candidate for geo-partitioning. The current structure of the table is as follows:
 
 ```shell
 docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -47,9 +49,9 @@ docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
  added_time       | timestamp without time zone |           | not null | CURRENT_TIMESTAMP
 ```
 
-You can geo-partition this table in such a way so that its data is distributed across cloud regions closest to the users. As a result, when a particular user will be checking or updating its library with the next movies to watch, the requests will be served from the region nearby the user's physical location.
+By geo-partitioning this table, you can ensure that its data is distributed across cloud regions closest to the users. Consequently, when a user checks or updates their library with the next movies to watch, the requests will be served from a region the user records belongs.
 
-Perform the following steps to create a geo-partitioned version of the `user_library` table:
+Follow these steps to create a geo-partitioned version of the `user_library` table:
 
 1. Navigate to the directory with database migrations files of the YugaPlus app:
 
@@ -137,14 +139,14 @@ Restart the application using the new migration file:
     docker-compose up --build
     ```
 
-After container is started and connected to the database, Flyway will detect and apply the new migration file. You will see the following message in the logs of the `yugaplus-backend` container:
+Once the container is started and connected to the database, Flyway will detect and apply the new migration file. You should see the following message in the logs of the `yugaplus-backend` container:
 
 ```output
 INFO 1 --- [main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "2 - create geo partitioned user library" [non-transactional]
 INFO 1 --- [main] o.f.core.internal.command.DbMigrate      : Successfully applied 1 migration to schema "public", now at version v2
 ```
 
-Finally, execute the following SQL statement to confirm that the `user_library` table is now split into three geo-partitions:
+To confirm that the `user_library` table is now split into three geo-partitions, execute the following SQL statement:
 
 ```shell
 docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -170,14 +172,14 @@ Partitions: user_library_usa_central FOR VALUES IN ('Chicago', 'Kansas City'),
 
 With the `user_library` table being geo-partitioned, you're ready to experiment with this design pattern.
 
-1. Go to your browser, refresh the [YugaPlus frontend UI](http://localhost:3000/) and log in using the default user whose credentials are pre-populated in the sing-in form:
+1. Navigate to your browser, refresh [YugaPlus frontend UI](http://localhost:3000/), and log in using the default user credentials pre-populated in the sign-in form:
 
     ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
-2. Once signed-in, you'll see that this user is from **New York** city:
+2. After signing in, you'll notice that this user is from **New York City**:
     ![US East User Library](/images/tutorials/build-and-learn/chapter4-us-east-user-empty-library.png)
 
-3. You can confirm the user's location by executing the following statement:
+3. To further confirm the user's location, execute the following SQL statement:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -192,9 +194,9 @@ With the `user_library` table being geo-partitioned, you're ready to experiment 
     (1 row)
     ```
 
-Next, search for movie recommendations and add one of the suggestions to the user library:
+Next, proceed to search for movie recommendations and select one of the suggestions to add to the user library:
 
-1. Confirm that the user library of John Doe is empty:
+1. To verify that John Doe's user library is initially empty, execute the following check:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -255,7 +257,7 @@ Next, search for movie recommendations and add one of the suggestions to the use
     (1 row)
     ```
 
-As you can see you keep querying the `user_library` table directly while internally the John Doe's data is stored in the `user_library_usa_east` partition that is mapped to a database node in the US East region:
+When you query the `user_library` table directly, the database internally accesses John Doe's data stored in the `user_library_usa_east` partition. This partition is mapped to a database node located in the US East region:
 
 1. Query the `user_library_usa_east` partition directly:
 
@@ -293,25 +295,37 @@ As you can see you keep querying the `user_library` table directly while interna
     (0 rows)
     ```
 
-As a result all John's queries to the `user_library` table will be served from a database node in the US East coast. This location is closest to John who is based off New York city. And this is exactly how the latency-optimized geo-partitioning design pattern helps you to achieve low latency reads and writes across multiple cloud regions and other distant locations.
+As a result, all of John's queries to the `user_library` table will be served from a database node on the US East Coast, the location closest to John, who is based in New York City. This is a prime example of how the latency-optimized geo-partitioning design pattern significantly reduces read and write latencies across multiple cloud regions and distant locations, thereby enhancing user experience.
 
-{{< tip title="Test From Other Locations" >}}
-Wish to see how the geo-partitioning works for users living in other parts of the USA?
+{{< note title="Test From Other Locations" >}}
+Interested in seeing how geo-partitioning benefits users across the USA?
 
-Emely Smith is another happy user of YugaPlus. She is based off San Francisco.
+Meet Emely Smith, another satisfied YugaPlus user, residing in San Francisco.
 
-Sing in into the movie recommendations service under her account with the following credentials:
+Log into the movie recommendations service using her account with the following credentials:
 
 * username: `user2@gmail.com`
 * password: `MyYugaPlusPassword`
 
-Add a few movies to her library and confirm that those are stored in the `user_library_usa_west` partition that is mapped to a database node in the US West region:
+After logging in, add several movies to her library. Then, verify that these additions are stored in the `user_library_usa_west` partition, which is mapped to a database node in the US West region:
 
 ```shell
 docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
         -c 'select * from user_library_usa_west'
 ```
 
+{{< /note >}}
+
+{{< tip title="Alternate Design Patterns for Low-Latency Requests" >}}
+
+The YugaPlus application stores its movie catalog in the `movie` table. Given that the data in this table is generic and not specific to user location, it cannot be effectively geo-partitioned for latency optimization. However, other [design patterns](https://docs.yugabyte.com/preview/develop/build-global-apps/#design-patterns) can be used to ensure low-latency access to this table.
+
+For example, the video below demonstrates how to achieve low-latency reads across the United States by using the global database and follower reads patterns:
+
+{{< youtube id="OTxBp6qC9tY" title="The Art of Scaling Accross Multiple Regions" >}}
+
 {{< /tip >}}
 
 Congratulations, you've completed Chapter 4! You learned how to take advantage of the latency-optimized geo-partitiong design pattern in a multi-region setting.
+
+Moving on to the final [Chapter 5](../chapter5-going-cloud-native), where you'll learn how to offload cluster management and operations by migrating to YugabyteDB Managed.
