@@ -1,18 +1,16 @@
 ```text
-adventure
+space travel
 ```
 
-The service will use the prompt to perform a full-text search over the movies overviews. The result can be as follows:
+The service will use the prompt to perform a full-text search across movie overviews. The results will appear as follows:
 
-TBD: picture
+![Full-Text Search Result](/images/tutorials/build-and-learn/chapter1-full-text-search-result.png)
 
-PostgreSQL can also pre-filter the movies based on the rank and category before performing the full-text search.
+PostgreSQL can filter movies by rank and category before doing the full-text search. For instance, set rank to **7**, choose **Science Fiction** as the category, and repeat the search again:
 
-For instance, set the **rank** to `7`, select the **Science Fiction** category and repeat the search. The suggestions should be similar to the ones below. Pick the one you like and to your own library by clicking the **Add to Library** button.
+![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-full-text-search-pre-filtering.png)
 
-![Similarity Search Result](/images/tutorials/build-and-learn/chapter1-similarity-search-pre-filtering.png)
-
-The actual SQL query used to generate movie recommendations is as follows:
+Here's the SQL query that YugaPlus uses to find the movie recommendations:
 
 ```sql
 SELECT id, title, overview, vote_average, release_date FROM movie 
