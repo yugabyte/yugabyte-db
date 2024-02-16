@@ -1,8 +1,8 @@
 ---
-title: Learn YugabyteDB
-headerTitle: Learn YugabyteDB
+title: Tutorial Overview
+headerTitle: Tutorial Overview
 linkTitle: Overview
-description: Learn and build tutorial overview
+description: Build and Learn tutorial overview
 menu:
   stable:
     identifier: overview
@@ -11,6 +11,18 @@ menu:
 type: docs
 ---
 
-Quick overview and a table of content explaining what you're going to learn in each chapter.
+Welcome to the Build & Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
 
-Also, add a placeholder for the video. You can make the video unlisted and make it public on the day of the tutorial release.
+Throughout the following five chapters, you'll gain practical experience in these areas:
+
+* [Chapter 1: Debuting with PostgreSQL](../chapter1-debuting-with-postgres) - Deploy the first version of the YugaPlus movie recommendation service on PostgreSQL. You'll also understand how YugaPlus utilizes the PostgreSQL pgvector extension to provide movie recommendations.
+
+* [Chapter 2: Scaling with YugabyteDB](../chapter2-scaling-with-yugabytedb) - Learn how YugabyteDB distributes data and workloads while migrating YugaPlus to a multi-node YugabyteDB cluster. Additionally, you'll witness YugabyteDB's PostgreSQL compatibility in action as the application is migrated without any code changes.
+
+* [Chapter 3: Tolerating outages](../chapter3-tolerating-outages) - Discover how YugabyteDB handles various outages, including major cloud incidents. You'll transition the YugaPlus movie recommendation service to a multi-region cluster, upgrade to the YugabyteDB smart driver, and then attempt to disrupt the application's availability.
+
+* [Chapter 4: Going geo-distributed](../chapter4-going-global) - Understand various design patterns for global applications to find the balance between availability and performance for your application workloads. Practice using the latency-optimized geo-partitioning pattern so that YugaPlus can achieve low latency reads and writes across distant locations.
+
+* [Chapter 5: Offloading operations](../chapter5-going-cloud-native) - Migrate the YugaPlus streaming platform to YugabyteDB Managed to learn how to offload the management, maintenance, and operations of your database clusters.
+
+Ready? Then let's move on to [chapter 1](../chapter1-debuting-with-postgres)!

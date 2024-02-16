@@ -1,9 +1,8 @@
 ---
 title: Build and Learn Tutorial
-headerTitle: Learn YugabyteDB fundamentals by building a sample application
+headerTitle: Build and learn the essential capabilities of YugabyteDB
 linkTitle: Build and Learn
-description: Learn YugabyteDB fundamental capabilities by building a scalable and highly-available application
-headcontent: Gain practical experience designing and building scalable and highly-available applications with YugabyteDB 
+description: learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform
 menu:
   stable:
     identifier: tutorials-build-and-learn
@@ -11,3 +10,9 @@ menu:
     weight: 1
 type: indexpage
 ---
+
+Welcome to the Build & Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
+
+![YugaPlus Movie Recommendations Service](/images/tutorials/build-and-learn/build-and-learn-main-app-screenshot.png)
+
+Let's start with the [Tutorial Overview](./overview), where you'll discover how each chapter will introduce you to the fundamentals of YugabyteDB.
