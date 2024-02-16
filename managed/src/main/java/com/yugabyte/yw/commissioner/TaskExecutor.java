@@ -132,7 +132,7 @@ public class TaskExecutor {
   private static final int MAX_TASK_CREATOR_CALLSTACK_SIZE = 15;
 
   // Default wait timeout for subtasks to complete since the abort call.
-  private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(60);
+  private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(30);
 
   // ExecutorService provider for subtasks if explicit ExecutorService
   // is set for the subtasks in a task.
@@ -248,7 +248,7 @@ public class TaskExecutor {
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
         TaskExecutor.this,
-        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(5)),
+        (taskExecutor) -> taskExecutor.shutdown(Duration.ofMinutes(2)),
         100 /* weight */);
     this.taskTypeMap = taskTypeMap;
     this.inverseTaskTypeMap = inverseTaskTypeMap;
