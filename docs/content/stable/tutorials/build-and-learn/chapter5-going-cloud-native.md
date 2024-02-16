@@ -12,21 +12,21 @@ type: docs
 ---
 
 {{< note title="YugaPlus - Offloading operations" >}}
-YugaPlus became one of the top streaming platforms with hundreds of millions people around the world spending countless hours watching their favorite movies, series and live events. The YugaPlus team mastered the art of scaling in the cloud by building the service that handles user traffic at low latency across multiple regions and tolerates all sorts of possible outages.
+YugaPlus has become one of the top streaming platforms, with hundreds of millions of people around the world spending countless hours watching their favorite movies, series, and live events. The YugaPlus team has mastered the art of scaling in the cloud, building a service that handles user traffic with low latency across multiple regions and tolerates all sorts of possible outages.
 
-But the maintenance of such a platform was not a trivial task. The engineering and infrastructure teams spend a good chunk of their time just to keep the streaming platform running, secured and up-to-date.
+However, maintaining such a platform was not a trivial task. The engineering and infrastructure teams spent a significant portion of their time just to keep the streaming platform running, secure, and up-to-date.
 
-Eventually, the YugaPlus team found a way how to spend more time on innovation. They transitioned to YugabyteDB Managed, a DBaaS that let them offload management, maintenance, and operations of their database cluster...
+Eventually, the YugaPlus team found a way to spend more time on innovation. They transitioned to YugabyteDB Managed, a DBaaS (Database-as-a-Service) that allowed them to offload the management, maintenance, and operations of their database cluster...
 {{< /note >}}
 
-In this chapter you'll learn:
+In this chapter, you'll learn:
 
 * How deploy a free YugabyteDB Managed instance
 * How to connect the application to the YugabyteDB Managed cluster
 
 **Prerequisites**
 
-You need to complete [chapter 4](../chapter4-going-global) of the tutorial before proceeding with this one.
+You need to complete [chapter 4](../chapter4-going-global) of the tutorial before proceeding to this one.
 
 {{< header Level="2" >}}Start YugabyteDB Managed Cluster{{< /header >}}
 
@@ -40,11 +40,11 @@ Follow these steps to deploy a free YugabyteDB Managed instance:
 
     ![YugatebyDB Managed Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
 
-3. Choose the Sandbox cluster option:
+3. Choose the **Sandbox** cluster option:
 
     ![YugatebyDB Managed Sandbox Cluster](/images/tutorials/build-and-learn/chapter5-choose-sandbox.png)
 
-4. Pick between available cloud providers and regions (note, Microsoft Azure is available only for paid clusters):
+4. Select a preferred cloud provider and region (note, Microsoft Azure is available only for paid clusters):
 
     ![YugatebyDB Managed Select Cloud](/images/tutorials/build-and-learn/chapter5-select-cloud.png)
 
@@ -60,13 +60,13 @@ Follow these steps to deploy a free YugabyteDB Managed instance:
 
     ![YugatebyDB Managed Cluster Creation](/images/tutorials/build-and-learn/chapter5-cluster-creation-process.png)
 
-It can take up to 5 minutes to spin up a sandbox instance and configure it for you.
+Spinning up and configuring your sandbox instance can take up to 5 minutes. During this time, the system is preparing everything you need to get started with your YugabyteDB Managed instance.
 
 {{< header Level="2" >}}Connect Application to YugabyteDB Managed{{< /header >}}
 
-After the YugabyteDB Managed cluster is started, go ahead and connect the YugaPlus movies recommendation app to it.
+After the YugabyteDB Managed cluster is started, go ahead and connect the YugaPlus movie recommendations application to it.
 
-First, rebuild the YugaPlus backend image to skip one of the files during the database migration phase:
+First, rebuild the YugaPlus backend image to remove one of the database migration files created in the previous chapter:
 
 1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
 
@@ -112,17 +112,17 @@ Next, start the application connecting to your YugabyteDB Managed cluster:
     docker-compose up
     ```
 
-As soon as the `yugaplus-backend` container gets started, it will apply the database migration files to your cloud database instance. You can see the created tables on the **Tables** tab of the YugabyteDB Managed dashboard:
+As soon as the `yugaplus-backend` container starts, it applies the database migration files to your cloud database instance. You can view the created tables in the **Tables** tab of the YugabyteDB Managed dashboard.
 
 ![YugatebyDB Managed Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
 {{< note title="Can't connect to YugabyteDB Managed?" >}}
-In case the backend container fails to connect to YugabyteDB Managed, make sure that you've added your IP address to the [IP Allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
+If the application fails to connect to YugabyteDB Managed, ensure you've added your IP address to the [IP Allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
 {{< /note >}}
 
 {{< header Level="2" >}}Ask for Movie Recommendations One Last Time...{{< /header >}}
 
-With the YugaPlus backend running and successfully connected to your YugabyteDB Managed cluster, let's do one last search for movie recommendations.
+With the YugaPlus backend operational and successfully connected to your YugabyteDB Managed cluster, do one final search for movie recommendations.
 
 1. Go to [YugaPlus frontend UI](http://localhost:3000/)
 
@@ -154,12 +154,14 @@ With the YugaPlus backend running and successfully connected to your YugabyteDB 
   </div>
 </div>
 
-And, as a one last hint, if it feels like that some queries are running slow, just go to the **Performance**->**Slow Queries** dashboard of YugabyteDB Managed to see if any of them requires some optimization:
+{{< tip title="Need to troubleshoot slow queries?" >}}
+And, as one last hint, if it seems that some queries are running slow, navigate to the **Performance** -> **Slow Queries** dashboard of YugabyteDB Managed to check if any require optimization.
 
 ![YugatebyDB Managed Slow Queries](/images/tutorials/build-and-learn/chapter5-slow-queries.png)
+{{< /tip >}}
 
-Congratulations you've completed chapter 5, the final chapter of the tutorial! Throughout the tutorial you learned essential capabilities of YugabyteDB that set you for the next stage of your development journey.
+Congratulations! You've completed Chapter 5, the final chapter of the tutorial. Throughout this tutorial, you've learned essential capabilities of YugabyteDB that set you up for the next stage of your development journey.
 
-You started with PostgreSQL and then took advantage of YugabyteDB's feature and runtime compatibility with PostgreSQL by migrating to a distributed YugabyteDB cluster. Then, you learned how to tolerate various outages by deploying a multi-region YugabyteDB cluster and using the YugabyteDB Smart driver. After that, you practiced using the latency-optimized geo-partitioning design pattern to scale both reads and writes across various locations. In the end, you learned how to offload management and operations of your database cluster by migrating to YugabyteDB Manager.
+Let's recap! You started with PostgreSQL and then leveraged YugabyteDB's feature and runtime compatibility with PostgreSQL by migrating to a distributed YugabyteDB cluster. You learned how to tolerate various outages by deploying a multi-region YugabyteDB cluster and using the YugabyteDB Smart driver. Afterward, you practiced using the latency-optimized geo-partitioning design pattern to scale both reads and writes across various locations. Finally, you learned how to offload the management and operations of your database cluster by migrating to YugabyteDB Managed.
 
-Having said that, good luck building applications that scale and never fail!
+With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://communityinviter.com/apps/yugabyte-db/register), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.
