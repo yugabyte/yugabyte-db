@@ -35,6 +35,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/operations/operation_tracker.h"
@@ -64,40 +65,49 @@ namespace tablet {
 
 class OperationTrackerTest : public YBTest {
  public:
-  class NoOpOperationState : public OperationState {
-   public:
-    NoOpOperationState() : OperationState(nullptr), req_(new consensus::ReplicateMsg()) {}
-    const google::protobuf::Message* request() const override { return req_.get(); }
-    void UpdateRequestFromConsensusRound() override {
-      req_ = consensus_round()->replicate_msg();
-    }
-    std::string ToString() const override { return "NoOpOperation"; }
-   private:
-    std::shared_ptr<consensus::ReplicateMsg> req_;
-  };
-
   class NoOpOperation : public Operation {
    public:
-    explicit NoOpOperation(std::unique_ptr<NoOpOperationState> state)
-      : Operation(std::move(state), consensus::LEADER, Operation::WRITE_TXN) {
+    NoOpOperation()
+        : Operation(OperationType::kWrite, nullptr), req_{rpc::MakeSharedMessage<LWWritePB>()} {
+      req_->set_batch_idx(1);
     }
+
+    ~NoOpOperation() override {}
 
     consensus::ReplicateMsgPtr NewReplicateMsg() override {
-      return std::make_shared<consensus::ReplicateMsg>();
+      auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
+      OpId(1, 1).ToPB(replicate->mutable_id());
+      replicate->set_hybrid_time(2);
+      replicate->set_op_type(consensus::OperationType::NO_OP);
+      return replicate;
     }
 
+    const rpc::LightweightMessage* request() const override { return req_.get(); }
+
+    void UpdateRequestFromConsensusRound() override {}
+
     Status Prepare(IsLeaderSide is_leader_side) override { return Status::OK(); }
-    void Start() override {}
-    Status Apply() override {
+    void Release() override {}
+
+    std::string ToString() const override { return "NoOp"; }
+
+    HybridTime WriteHybridTime() const override { return HybridTime::kMax; }
+
+   private:
+    Status DoReplicated(int64_t leader_term, Status* complete_status) override {
       return Status::OK();
     }
-    std::string ToString() const override {
-      return "NoOp";
-    }
+
+    Status DoAborted(const Status& status) override { return Status::OK(); }
+    void AddedAsPending(const TabletPtr& tablet) override {}
+    void RemovedFromPending(const TabletPtr& tablet) override {}
+
+    std::shared_ptr<LWWritePB> req_;
   };
 
   OperationTrackerTest()
-      : entity_(METRIC_ENTITY_tablet.Instantiate(&registry_, "test")) {
+      : entity_(METRIC_ENTITY_tablet.Instantiate(&registry_, "test")),
+        tracker_("OperationTrackerTest") {
     tracker_.StartInstrumentation(entity_);
   }
 
@@ -111,12 +121,9 @@ class OperationTrackerTest : public YBTest {
           &tracker_,
           nullptr,
           nullptr,
-          nullptr,
-          nullptr,
-          nullptr,
           TableType::DEFAULT_TABLE_TYPE));
-      auto tx = std::make_unique<NoOpOperation>(std::make_unique<NoOpOperationState>());
-      RETURN_NOT_OK(driver->Init(std::move(tx), consensus::LEADER));
+      std::unique_ptr<Operation> op = std::make_unique<NoOpOperation>();
+      RETURN_NOT_OK(driver->Init(&op, consensus::LEADER));
       local_drivers.push_back(driver);
     }
 
@@ -194,14 +201,18 @@ static void CheckMetrics(const scoped_refptr<MetricEntity>& entity,
                          int expected_num_writes,
                          int expected_num_alters,
                          int expected_num_rejections) {
-  ASSERT_EQ(expected_num_writes + expected_num_alters, down_cast<AtomicGauge<uint64_t>*>(
-      entity->FindOrNull(METRIC_all_operations_inflight).get())->value());
-  ASSERT_EQ(expected_num_writes, down_cast<AtomicGauge<uint64_t>*>(
-      entity->FindOrNull(METRIC_write_operations_inflight).get())->value());
-  ASSERT_EQ(expected_num_alters, down_cast<AtomicGauge<uint64_t>*>(
-      entity->FindOrNull(METRIC_alter_schema_operations_inflight).get())->value());
-  ASSERT_EQ(expected_num_rejections, down_cast<Counter*>(
-      entity->FindOrNull(METRIC_operation_memory_pressure_rejections).get())->value());
+  ASSERT_EQ(
+      expected_num_writes + expected_num_alters,
+      entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_all_operations_inflight)->value());
+  ASSERT_EQ(
+      expected_num_writes,
+      entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_write_operations_inflight)->value());
+  ASSERT_EQ(
+      expected_num_alters,
+      entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_alter_schema_operations_inflight)->value());
+  ASSERT_EQ(
+      expected_num_rejections,
+      entity->FindOrNull<Counter>(METRIC_operation_memory_pressure_rejections)->value());
 }
 
 // Basic testing for metrics. Note that the NoOpOperations we use in this
@@ -245,18 +256,18 @@ TEST_F(OperationTrackerTest, TestTooManyOperations) {
   // and check that when we fail, it's because we've hit the limit.
   Status s;
   vector<scoped_refptr<OperationDriver> > drivers;
-  for (int i = 0; s.ok(); i++) {
+  while (s.ok()) {
     s = AddDrivers(1, &drivers);
   }
 
   LOG(INFO) << "Added " << drivers.size() << " drivers";
   ASSERT_TRUE(s.IsServiceUnavailable());
-  ASSERT_STR_CONTAINS(s.ToString(), "exceeded its limit");
-  ASSERT_NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 1));
+  ASSERT_STR_CONTAINS(s.ToString(), "hit the limit");
+  ASSERT_NO_FATALS(CheckMetrics(entity_, narrow_cast<int>(drivers.size()), 0, 1));
   ASSERT_NO_FATALS(CheckMemTracker(t));
 
   ASSERT_TRUE(AddDrivers(1, &drivers).IsServiceUnavailable());
-  ASSERT_NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 2));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, narrow_cast<int>(drivers.size()), 0, 2));
   ASSERT_NO_FATALS(CheckMemTracker(t));
 
   // If we abort one operation, we should be able to add one more.
