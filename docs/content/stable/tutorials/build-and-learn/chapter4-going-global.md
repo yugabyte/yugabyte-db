@@ -54,7 +54,7 @@ Perform the following steps to create a geo-partitioned version of the `user_lib
 1. Navigate to the directory with database migrations files of the YugaPlus app:
 
     ```shell
-    cd backend/src/main/resources/db/migration/
+    cd {yugaplus-project-dir}/backend/src/main/resources/db/migration/
     ```
 
 2. In that directory, create a new migration file `V2__create_geo_partitioned_user_library.sql`:
@@ -121,40 +121,23 @@ Perform the following steps to create a geo-partitioned version of the `user_lib
         FOR VALUES IN ('San Francisco', 'Los Angeles') TABLESPACE usa_west_ts;
     ```
 
-Update the YugaPlus's backend Docker image and restart the container:
+Restart the application using the new migration file:
 
-1. Kill the backend container:
-
-    ```shell
-    docker stop yugaplus-backend
-    docker rm yugaplus-backend
-    ```
-
-2. Navigate to the backend directory of the YugaPlus app:
+1. Go back to the YugaPlus project dir:
 
     ```shell
-    cd backend
+    cd {yugaplus-project-dir}
     ```
 
-3. Build a new Docker image:
+2. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
+
+3. Rebuild the Docker images and start the containers back:
 
     ```shell
-    docker build -t yugaplus-backend .
+    docker-compose up --build
     ```
 
-4. Start a backend container:
-
-    ```shell
-    docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-        -e DB_URL="jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true" \
-        -e DB_USER=yugabyte \
-        -e DB_PASSWORD=yugabyte \
-        -e DB_DRIVER_CLASS_NAME=com.yugabyte.Driver \
-        -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
-        yugaplus-backend
-    ```
-
-After container is started and connected to the database, Flyway will detect and apply the new migration file. You will see the following message in the logs of the backend container:
+After container is started and connected to the database, Flyway will detect and apply the new migration file. You will see the following message in the logs of the `yugaplus-backend` container:
 
 ```output
 INFO 1 --- [main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "2 - create geo partitioned user library" [non-transactional]
@@ -190,7 +173,6 @@ With the `user_library` table being geo-partitioned, you're ready to experiment 
 1. Go to your browser, refresh the [YugaPlus frontend UI](http://localhost:3000/) and log in using the default user whose credentials are pre-populated in the sing-in form:
 
     ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
-    {{% includeMarkdown "includes/restart-frontend.md" %}}
 
 2. Once signed-in, you'll see that this user is from **New York** city:
     ![US East User Library](/images/tutorials/build-and-learn/chapter4-us-east-user-empty-library.png)

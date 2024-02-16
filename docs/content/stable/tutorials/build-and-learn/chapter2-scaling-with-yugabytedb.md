@@ -173,7 +173,7 @@ Finally, open the **Nodes** dashboard that provides detailed information about t
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
 TBD You'll see that (appeal to the scalability story here, you can scale data as well as read-write workloads):
-Check here: https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts
+Check here: <https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts>
 
 * Tablets
 * Leaders
@@ -183,35 +183,33 @@ Check here: https://docs.yugabyte.com/stable/architecture/docdb-replication/repl
 
 Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
-All you need to do is to restart the `yugaplus-backend` container with updated database connectivity settings:
+All you need to do is to restart the application containers with YugabyteDB-specific connectivity settings:
 
-1. Stop and remove the application backend:
+1. Use `Ctrl+C` or `docker-compose stop` to stop the application containers.
 
-    ```shell
-    docker stop yugaplus-backend
-    docker rm  yugaplus-backend
-    ```
+2. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
 
-2. Start the backend connecting it to the YugabyteDB cluster:
-
-    ```shell
-    docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-        -e DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte \
-        -e DB_USER=yugabyte \
-        -e DB_PASSWORD=yugabyte \
-        -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
-        yugaplus-backend
+    ```yaml
+    - DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
+    - DB_USER=yugabyte
+    - DB_PASSWORD=yugabyte
     ```
 
 {{< note title="Flyway and Advisory Locks" >}}
-If you use YugabyteDB 2.20.1 or later, then add the following environment variable to the `docker run` command above:
+If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable in the `docker-compose.yaml` file to the following value:
 
-`-e DB_CONN_INIT_SQL="SET yb_silence_advisory_locks_not_supported_error=true" \`
+`- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
 The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB yet. You can use Flyway with YugabyteDB even without this type of locks.
 {{< /note >}}
 
-The application backend connects to YugabyteDB that listens on port `5433` using the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`). The application uses the default username and password which is `yugabyte`.
+3. Start the application:
+
+    ```shell
+    docker-compose up
+    ```
+
+This time, the `yugaplus-backend` container connects to YugabyteDB that listens on port `5433`. The container uses the same PostgreSQL JDBC driver (`DB_URL=jdbc:postgresql://...`).
 
 Upon successful connection, the backend uses Flyway to apply database migrations:
 
@@ -234,7 +232,7 @@ For real production workloads consider using [YugabyteDB Voyager](https://docs.y
 
 After schema is created and data is loaded, refresh the frontend UI and log into the app one more time: <http://localhost:3000/login>
 
-![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/chapter1-login-screen.png)
+![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
 Search for movie recommendations:
 

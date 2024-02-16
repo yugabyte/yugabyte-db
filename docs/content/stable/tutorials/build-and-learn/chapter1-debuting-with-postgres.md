@@ -86,69 +86,42 @@ The service consists of a React frontend and a Java backend. You don't need prio
     git clone https://github.com/YugabyteDB-Samples/YugaPlus.git .
     ```
 
-2. Create an OpenAI API key: <https://platform.openai.com>
+2. [Create](<https://platform.openai.com>) an OpenAI API key. The application needs an OpenAI embedding model to perform vector similarity search. In case you decide not to use OpenAI, the application will use less advanced full-text search mode.
 
-{{< tip title="Free Tier">}}
-At the time of writing, OpenAI offered a generous free tier, which was more than sufficient to complete this tutorial.
+{{< tip title="OpenAI Free Tier">}}
+At the time of writing, OpenAI offered a generous free tier, which was sufficient to complete this tutorial. So, you're highly encouraged to complete the tutorial using the advanced vector similarity search mode.
 {{< /tip >}}
 
-**Start the backend:**
+3. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
 
-1. Navigate to the backend directory of the project:
-
-    ```shell
-    cd {yugaplus-dir}/backend
+    ```yaml
+    - OPENAI_API_KEY=your-openai-key
     ```
 
-2. Build the Docker image:
+**Start the application:**
+
+1. Navigate to the YugaPlus project directory:
 
     ```shell
-    docker build -t yugaplus-backend .
+    cd {yugaplus-project-dir}
     ```
 
-3. Start a backend container using your `OPENAI_API_KEY`:
+2. Build application images and start the containers:
 
     ```shell
-    docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-        -e DB_URL=jdbc:postgresql://postgres:5432/postgres \
-        -e DB_USER=postgres \
-        -e DB_PASSWORD=password \
-        -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
-        yugaplus-backend
+    docker-compose up --build
     ```
 
-The backend connects to the PostgreSQL container, initializes the movies catalog, and pre-loads a sample dataset with over 2,800 movies. This dataset includes embeddings pre-generated for movie overviews using the OpenAI Embedding model (`text-embedding-ada-002`). Upon successful startup, the backend will display the following messages in the terminal window:
+The `yugaplus-backend` container connects to the PostgreSQL container, initializes the movies catalog, and pre-loads a sample dataset with over 2,800 movies. This dataset includes embeddings pre-generated for movie overviews using an OpenAI Embedding model (`text-embedding-ada-002`). Upon successful startup, the backend will display the following messages in the terminal window:
 
 ```output
 INFO 1 --- [main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path ''
 INFO 1 --- [main] c.y.backend.YugaPlusBackendApplication   : Started YugaPlusBackendApplication in 18.681 seconds (process running for 19.173)
 ```
 
-**Start the frontend:**
+The `yugaplus-frontend` container starts in a few seconds and is accessible at the following address: <http://localhost:3000/>
 
-1. Open another terminal window and navigate to the frontend directory of the project:
-
-    ```shell
-    cd {yugaplus-dir}/frontend
-    ```
-
-2. Build the Docker image:
-
-    ```shell
-    docker build -t yugaplus-frontend . 
-    ```
-
-3. Deploy a frontend container:
-
-    ```shell
-    docker run --name yugaplus-frontend --net yugaplus-network -p 3000:3000 \
-        -e REACT_APP_PROXY_URL=http://yugaplus-backend:8080 \
-        yugaplus-frontend
-    ```
-
-The frontend container starts in a few seconds and is accessible at the following address: <http://localhost:3000/>
-
-Use the credentials below to log into YugaPlus!
+Go ahead and log into YugaPlus! The app automatically pre-populates the sing-in form with the following user credentials:
 
 * Username: `user1@gmail.com`
 * Password: `MyYugaPlusPassword`

@@ -83,13 +83,10 @@ With YugabyteDB, your recovery time objective (RTO) is measured in seconds with 
 Usually, the RTO is in the range from 3 to 15 seconds. Depends on the latency between availability zones, regions and data centers where you deploy YugabyteDB nodes.
 {{< /tip >}}
 
-However, the YugaPlus backend was not prepared for this outage. The backend container used the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests. This is a truncated version of the `docker run` command that you used to start the backend container:
+However, the YugaPlus backend was not prepared for this outage. The backend container used the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
 
-```shell
-docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-    -e DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte \
-    ...other parameters
-    yugaplus-backend
+```yaml
+DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
 ```
 
 If you open the [YugaPlus frontend UI](http://localhost:3000/) and try to search for movies recommendations or sing in into the service, then you'll see an error.
@@ -146,14 +143,7 @@ Before you deploy a multi-region YugabyteDB cluster, remove the existing contain
     mkdir ~/yugabyte-volume
     ```
 
-3. Stop and remove the YugaPlus backend container:
-
-    ```shell
-    docker stop yugaplus-backend
-    docker rm yugaplus-backend
-    ```
-
-    Note, you do NOT need to remove the YugaPlus frontend container. The frontend will reconnect to the backend automatically after the latter is started.
+3. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
 
 The yugabyted tool lets you deploy and configure multi-region YugabyteDB clusters on your local machine. This gives you an ability to emulate the multi-region deployment locally for prototyping and development.
 
@@ -202,6 +192,16 @@ Use the tool to provision a YugabyteDB cluster across regions in the US East, Ce
     ```shell
     docker exec -it yugabytedb-node1 \
         bin/yugabyted configure data_placement --fault_tolerance=region --base_dir=/home/yugabyte/yb_data
+    ```
+
+    ```output
+    +---------------------------------------------------------------------------------------------------+
+
+    |                                             yugabyted                                             |
+    +---------------------------------------------------------------------------------------------------+
+    | Status                     : Configuration successful. Primary data placement is geo-redundant.   |
+    | Fault Tolerance            : Primary Cluster can survive at most any 1 region failure.            |
+    +---------------------------------------------------------------------------------------------------+
     ```
 
 4. Confirm that the nodes discovered each other and formed a single multi-region cluster:
@@ -255,26 +255,29 @@ The YugaPlus movies recommendation service is written in Java and already includ
 </dependency>
 ```
 
-Launch the backend container using the smart driver for the database connectivity:
+Launch the backend container using the smart driver:
 
-```shell
-docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-    -e DB_URL="jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true" \
-    -e DB_USER=yugabyte \
-    -e DB_PASSWORD=yugabyte \
-    -e DB_DRIVER_CLASS_NAME=com.yugabyte.Driver \
-    -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
-    yugaplus-backend
-```
+1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
 
-The following has changed in the `docker run` command:
+    ```yaml
+    - DB_URL=jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true
+    - DB_DRIVER_CLASS_NAME=com.yugabyte.Driver
+    ```
 
-* The `DB_URL` parameter now uses the `jdbc:yugabytedb:...` schema instead `jdbc:postgresql:...`. This is necessary to get the smart driver loaded and used at runtime.
-* The `DB_DRIVER_CLASS_NAME` passes the driver's class name to the database-specifci application logic.
+    The following has changed:
+
+    * The `DB_URL` parameter now uses the `jdbc:yugabytedb:...` schema instead `jdbc:postgresql:...`. This is necessary to get the smart driver loaded and used at runtime.
+    * The `DB_DRIVER_CLASS_NAME` specifies the name of the smart driver's class.
+
+2. Start the application:
+
+    ```shell
+    docker-compose up
+    ```
 
 After the backend container is started, it will use Flyway again to apply the movie recommendations service's schema and data.
 
-Once the data loading is finished, connect to the [YugaPlus frontend](http://localhost:3000/) from your browser and search for a new movie to watch.
+Once the data loading is finished, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -301,8 +304,6 @@ Once the data loading is finished, connect to the [YugaPlus frontend](http://loc
   {{% includeMarkdown "includes/chapter3-full-text-search.md" %}}
   </div>
 </div>
-
-{{% includeMarkdown "includes/restart-frontend.md" %}}
 
 {{< header Level="2" >}}Simulate a Region-Level Outage{{< /header >}}
 
@@ -370,7 +371,7 @@ This time the application responds successfully providing you with another list 
 
 Finally, assuming that the US East region is restored after the outage:
 
-1. Bring the second node back to the cluster:
+1. Bring the first node back to the cluster:
 
     ```shell
     docker run -d --name yugabytedb-node1 --net yugaplus-network \

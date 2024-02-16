@@ -68,52 +68,51 @@ After the YugabyteDB Managed cluster is started, go ahead and connect the YugaPl
 
 First, rebuild the YugaPlus backend image to skip one of the files during the database migration phase:
 
-1. Stop and remove the YugaPlus backend container:
-
-    ```shell
-    docker stop yugaplus-backend
-    docker rm yugaplus-backend
-    ```
+1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
 
 2. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase. The YugabyteDB Managed sandbox instance can't be used for the geo-partitioning use case that explored in chapter 4.
 
     ```shell
-    cd {yugaplus_app}/backend/src/main/resources/db/migration/
+    cd {yugaplus-project-dir}/backend/src/main/resources/db/migration/
     mv V2__create_geo_partitioned_user_library.sql skip_create_geo_partitioned_user_library.sql
     ```
 
-3. Navigate to the root of the backend directory of the YugaPlus app:
+3. Navigate to the YugaPlus project dir:
 
     ```shell
-    cd {yugaplus_app}/backend
+    cd {yugaplus-project-dir}
     ```
 
-4. Build a new Docker image:
+4. Rebuild the Docker images:
 
     ```shell
-    docker build -t yugaplus-backend .
+    docker-compose build
     ```
 
-Next, go to the YugabyteDB Managed **Settings** tab and copy the **public** address of your cluster instance:
+Next, start the application connecting to your YugabyteDB Managed cluster:
 
-![YugatebyDB Managed Public Address](/images/tutorials/build-and-learn/chapter5-public-address.png)
+1. Go to the YugabyteDB Managed **Settings** tab and copy the **public** address of your cluster instance:
 
-Finally, bring the YugaPlus backend back by connecting it to your YugabyteDB Managed instance:
+    ![YugatebyDB Managed Public Address](/images/tutorials/build-and-learn/chapter5-public-address.png)
 
-```shell
-docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
-    -e DB_URL="jdbc:yugabytedb://${YOUR_YBM_PUBLIC_ADDRESS}:5433/yugabyte?sslmode=require" \
-    -e DB_USER=${YOUR_YBM_USER} \
-    -e DB_PASSWORD=${YOUR_YBM_PASSWORD} \
-    -e DB_DRIVER_CLASS_NAME=com.yugabyte.Driver \
-    -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
-    yugaplus-backend
-```
+2. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
 
-* `${YOUR_YBM_PUBLIC_ADDRESS}` - is the public address of your YugabyteDB Managed instance.
-* `${YOUR_YBM_USER}` and `${YOUR_YBM_PASSWORD}` - your database credentials from the file that you downloaded during the cluster configuration.
+    ```yaml
+    - DB_URL=jdbc:yugabytedb://${YOUR_YBM_PUBLIC_ADDRESS}:5433/yugabyte?sslmode=require
+    - DB_USER=${YOUR_YBM_USER}
+    - DB_PASSWORD=${YOUR_YBM_PASSWORD}
+    ```
 
-As soon as the backend container gets started, it will apply the database migration files to your cloud database instance. You can see the created tables on the **Tables** tab of the YugabyteDB Managed dashboard:
+    * `${YOUR_YBM_PUBLIC_ADDRESS}` - is the public address of your YugabyteDB Managed instance.
+    * `${YOUR_YBM_USER}` and `${YOUR_YBM_PASSWORD}` - your database credentials from the file that you downloaded during the cluster configuration.
+
+3. Start the application:
+
+    ```shell
+    docker-compose up
+    ```
+
+As soon as the `yugaplus-backend` container gets started, it will apply the database migration files to your cloud database instance. You can see the created tables on the **Tables** tab of the YugabyteDB Managed dashboard:
 
 ![YugatebyDB Managed Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
@@ -126,7 +125,6 @@ In case the backend container fails to connect to YugabyteDB Managed, make sure 
 With the YugaPlus backend running and successfully connected to your YugabyteDB Managed cluster, let's do one last search for movie recommendations.
 
 1. Go to [YugaPlus frontend UI](http://localhost:3000/)
-    {{% includeMarkdown "includes/restart-frontend.md" %}}
 
 2. Ask for movie recommendations:
 
