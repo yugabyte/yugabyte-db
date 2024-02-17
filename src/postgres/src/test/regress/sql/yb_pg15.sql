@@ -509,6 +509,20 @@ UPDATE min_updates_test SET f1 = f1;
 SELECT * FROM min_updates_test ORDER BY f1;
 -- YB_TODO: end
 
+-- delete with join on wholerow
+create table test (id int unique);
+insert into test values (1), (2), (3);
+delete from test WHERE test = ANY (select test from test);
+drop table test;
+
+-- join regular and temp relation on wholerow
+create table emp(id int unique, name text);
+insert into emp values (1, 'a'), (2, 'b'), (3, 'c');
+create temporary table emp3(id int, name text);
+insert into emp3 values (1, 'a'), (2, 'b'), (3, 'c');
+select * from emp FULL JOIN emp3 on emp = emp3;
+drop table emp;
+drop table emp3;
 -- suppress warning that depends on wal_level
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION p;

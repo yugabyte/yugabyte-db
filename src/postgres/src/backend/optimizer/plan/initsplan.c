@@ -86,6 +86,7 @@ static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
 static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
+static ListCell * yb_find_wholerow_of_record_type(List *expr);
 
 
 /*****************************************************************************
@@ -262,6 +263,25 @@ add_vars_to_targetlist(PlannerInfo *root, List *vars,
 				rel->reltarget->exprs = lappend(rel->reltarget->exprs,
 												copyObject(var));
 				/* reltarget cost and width will be computed later */
+			}
+			else if (IsYugaByteEnabled() && var->varattno == InvalidOid &&
+					 var->vartype != RECORDOID)
+			{
+				/*
+				 * YB note: var is a wholerow Var with vartype == rel_type_id.
+				 * Prioritize it over existing wholerow of RECOROID type (if
+				 * any) in rel->reltarget->exprs.
+				 */
+				ListCell *lc =
+					yb_find_wholerow_of_record_type(rel->reltarget->exprs);
+				if (lc)
+				{
+					rel->reltarget->exprs =
+						list_delete_cell(rel->reltarget->exprs, lc);
+					/* XXX is copyObject necessary here? */
+					rel->reltarget->exprs = lappend(rel->reltarget->exprs,
+													copyObject(var));
+				}
 			}
 			rel->attr_needed[attno] = bms_add_members(rel->attr_needed[attno],
 													  where_needed);
@@ -2909,4 +2929,17 @@ check_memoizable(RestrictInfo *restrictinfo)
 
 	if (OidIsValid(typentry->hash_proc) && OidIsValid(typentry->eq_opr))
 		restrictinfo->right_hasheqoperator = typentry->eq_opr;
+}
+
+static ListCell *
+yb_find_wholerow_of_record_type(List *expr)
+{
+	ListCell *lc;
+	foreach (lc, expr)
+	{
+		Var *var = lfirst_node(Var, lc);
+		if (var->varattno == InvalidOid && var->vartype == RECORDOID)
+			return lc;
+	}
+	return NULL;
 }
