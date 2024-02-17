@@ -24,6 +24,7 @@ org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 org.yb.pgsql.TestPgRegressGin
 org.yb.pgsql.TestPgRegressHashInQueries
+org.yb.pgsql.TestPgRegressMatview
 org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 org.yb.pgsql.TestPgRegressNonTxnCopy
 org.yb.pgsql.TestPgRegressPlanner#testPgRegressDml

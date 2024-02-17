@@ -713,9 +713,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		appendStringInfo(&querybuf,
 						"CREATE TEMP TABLE %s AS "
-						"SELECT mv, newdata "
+						"SELECT mv.*::%s AS mv, newdata.*::%s AS newdata "
 						"FROM %s mv FULL JOIN %s newdata ON (",
-						diffname, matviewname, tempname);
+						diffname, matviewname, tempname, matviewname, tempname);
 	}
 	else
 	{
@@ -849,8 +849,8 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		/* Can't use TID in YB mode */
 		appendStringInfoString(&querybuf,
-							   " AND newdata OPERATOR(pg_catalog.*=) mv) "
-							   "WHERE newdata IS NULL OR mv IS NULL ");	
+							   " AND newdata.* OPERATOR(pg_catalog.*=) mv.*) "
+							   "WHERE newdata.* IS NULL OR mv.* IS NULL ");
 	}
 	else
 	{
@@ -901,7 +901,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 				appendStringInfo(&querybuf, "AND ");
 
 		}
-		
+
 		if (SPI_execute(querybuf.data, false, 1) != SPI_OK_SELECT)
 			elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 		if (SPI_processed > 0)
@@ -921,9 +921,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	{
 		/* Can't use TID in YB mode */
 		appendStringInfo(&querybuf,
-						 "DELETE FROM %s mv WHERE mv OPERATOR(pg_catalog.=) ANY "
+						 "DELETE FROM %s mv WHERE mv.*::%s OPERATOR(pg_catalog.=) ANY "
 						 "(SELECT mv FROM %s diff WHERE (", 
-						 matviewname, diffname);
+						 matviewname, matviewname, diffname);
 		TupleDesc tuple_desc = RelationGetDescr(matviewRel);
 
 		for (int i = 1; i <= tuple_desc->natts; i++) {
