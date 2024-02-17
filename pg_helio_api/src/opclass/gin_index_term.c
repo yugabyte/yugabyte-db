@@ -190,20 +190,156 @@ TruncateStringOrBinaryTerm(int32_t dataSize, int32_t indexTermSizeLimit,
 
 
 /*
+ * Truncate an entry that is present in an object or array.
+ * For types that don't support truncation mark the outer entry as definitely
+ * not truncated.
+ */
+static bool
+TruncateNestedEntry(pgbson_element_writer *elementWriter, const
+					bson_value_t *currentValue,
+					bool *forceAsNotTruncated, int32_t indexTermSizeLimit, int32_t
+					currentLength)
+{
+	switch (currentValue->value_type)
+	{
+		/* Fixed size values - just write it out */
+		case BSON_TYPE_MAXKEY:
+		case BSON_TYPE_MINKEY:
+		case BSON_TYPE_BOOL:
+		case BSON_TYPE_DATE_TIME:
+		case BSON_TYPE_NULL:
+		case BSON_TYPE_OID:
+		case BSON_TYPE_TIMESTAMP:
+		case BSON_TYPE_UNDEFINED:
+		{
+			/* Primitive values aren't truncated */
+			PgbsonElementWriterWriteValue(elementWriter, currentValue);
+			return false;
+		}
+
+		case BSON_TYPE_DECIMAL128:
+		case BSON_TYPE_DOUBLE:
+		case BSON_TYPE_INT32:
+		case BSON_TYPE_INT64:
+		{
+			/* These are variable length but can be compared together
+			 * To ensure we have proper comparison in the middle of an array,
+			 * Convert them to a unified type. This is needed to handle
+			 * terms that come after the number.
+			 * e.g. if you had an array
+			 * [ Int32(1), "123456789012345" ]
+			 * and
+			 * [ Decimal128(1), "123456789012345" ]
+			 *
+			 * These 2 arrays are and should be able to be read via a query of
+			 * $eq: [ Double(1), "1234567890123456789" ]
+			 *
+			 * If the truncation limit was say 18 bytes we would get
+			 * (ignoring structural overhead):
+			 * [ Int32(1), "123456789012345"] (not truncated)
+			 * [ Decimal128(1), "12" ] (truncated)
+			 * which can produce incorrect results.
+			 *
+			 * So we convert all numerics to a common value.
+			 */
+			bson_value_t numericValue = *currentValue;
+			bool checkFixedInteger = true;
+			if (IsBsonValue32BitInteger(currentValue, checkFixedInteger))
+			{
+				numericValue.value.v_int32 = BsonValueAsInt32(currentValue);
+				numericValue.value_type = BSON_TYPE_INT32;
+			}
+			else if (IsBsonValue64BitInteger(currentValue, checkFixedInteger))
+			{
+				numericValue.value.v_int64 = BsonValueAsInt64(currentValue);
+				numericValue.value_type = BSON_TYPE_INT64;
+			}
+			else
+			{
+				/*
+				 * We convert to double to save some space if applicable
+				 * That way we always store it as the smallest possible size
+				 */
+				numericValue.value.v_decimal128 = GetBsonValueAsDecimal128(currentValue);
+				numericValue.value_type = BSON_TYPE_DECIMAL128;
+
+				if (IsDecimal128InDoubleRange(&numericValue))
+				{
+					numericValue.value.v_double = BsonValueAsDouble(&numericValue);
+					numericValue.value_type = BSON_TYPE_DOUBLE;
+				}
+			}
+			PgbsonElementWriterWriteValue(elementWriter, &numericValue);
+
+			/* Numerics are not truncated by themselves */
+			return false;
+		}
+
+		case BSON_TYPE_ARRAY:
+		case BSON_TYPE_DOCUMENT:
+		case BSON_TYPE_CODEWSCOPE:
+		case BSON_TYPE_DBPOINTER:
+		case BSON_TYPE_REGEX:
+		case BSON_TYPE_CODE:
+		{
+			/* TODO: Support truncating this? */
+			*forceAsNotTruncated = true;
+			PgbsonElementWriterWriteValue(elementWriter, currentValue);
+			return false;
+		}
+
+		case BSON_TYPE_BINARY:
+		case BSON_TYPE_SYMBOL:
+		case BSON_TYPE_UTF8:
+		{
+			int valueSizeLimit = indexTermSizeLimit - currentLength;
+			bson_value_t valueCopy = *currentValue;
+
+			/* The prefix for the string/binary is 1 byte for the type code
+			 * given that the path
+			 * overhead is tracked externally by the caller.
+			 */
+			const int32_t stringPrefixLength = 1;
+			bool isTruncated = TruncateStringOrBinaryTerm(
+				stringPrefixLength,
+				valueSizeLimit, currentValue->value_type,
+				&valueCopy.value.v_utf8.len);
+			PgbsonElementWriterWriteValue(elementWriter, &valueCopy);
+
+			return isTruncated;
+		}
+
+		default:
+		{
+			*forceAsNotTruncated = true;
+			PgbsonElementWriterWriteValue(elementWriter, currentValue);
+			return false;
+		}
+	}
+}
+
+
+/*
  * Write and truncate an array into the target array writer accounting
  * for the index term size limit.
  */
 static bool
-TruncateArrayTerm(int32_t dataSize, int32_t indexTermSizeLimit,
+TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
+				  indexTermHardLimit,
 				  bson_iter_t *arrayIterator, pgbson_array_writer *arrayWriter)
 {
 	bool forceAsNotTruncated = false;
 	int32_t currentLength = 0;
+
+	pgbson_element_writer elementWriter;
+	PgbsonInitArrayElementWriter(arrayWriter, &elementWriter);
 	while (bson_iter_next(arrayIterator))
 	{
 		/* Get the current size */
 		currentLength = (int32_t) PgbsonArrayWriterGetSize(arrayWriter);
-		if (currentLength + dataSize > indexTermSizeLimit)
+
+		/* We stop writing if we are over the soft limit. */
+		if (currentLength + dataSize > indexTermSoftLimit)
 		{
 			/* We've exceeded the limit - mark as truncated */
 			return !forceAsNotTruncated;
@@ -215,124 +351,116 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSizeLimit,
 		}
 
 		const bson_value_t *iterValue = bson_iter_value(arrayIterator);
-		switch (iterValue->value_type)
+
+		/* Leave up to 4 bytes from the hard limit for the path\0 */
+		int32_t valueLengthLeft = indexTermHardLimit - dataSize - 4;
+
+		/* Values can go until the hard limit. */
+		bool truncated = TruncateNestedEntry(&elementWriter, iterValue,
+											 &forceAsNotTruncated,
+											 valueLengthLeft, currentLength);
+		if (truncated)
 		{
-			/* Fixed size values - just write it out */
-			case BSON_TYPE_MAXKEY:
-			case BSON_TYPE_MINKEY:
-			case BSON_TYPE_BOOL:
-			case BSON_TYPE_DATE_TIME:
-			case BSON_TYPE_NULL:
-			case BSON_TYPE_OID:
-			case BSON_TYPE_TIMESTAMP:
-			case BSON_TYPE_UNDEFINED:
-			{
-				/* Primitive values aren't truncated */
-				PgbsonArrayWriterWriteValue(arrayWriter, iterValue);
-				continue;
-			}
-
-			case BSON_TYPE_DECIMAL128:
-			case BSON_TYPE_DOUBLE:
-			case BSON_TYPE_INT32:
-			case BSON_TYPE_INT64:
-			{
-				/* These are variable length but can be compared together
-				 * To ensure we have proper comparison in the middle of an array,
-				 * Convert them to a unified type. This is needed to handle
-				 * terms that come after the number.
-				 * e.g. if you had an array
-				 * [ Int32(1), "123456789012345" ]
-				 * and
-				 * [ Decimal128(1), "123456789012345" ]
-				 *
-				 * These 2 arrays are and should be able to be read via a query of
-				 * $eq: [ Double(1), "1234567890123456789" ]
-				 *
-				 * If the truncation limit was say 18 bytes we would get
-				 * (ignoring structural overhead):
-				 * [ Int32(1), "123456789012345"] (not truncated)
-				 * [ Decimal128(1), "12" ] (truncated)
-				 * which can produce incorrect results.
-				 *
-				 * So we convert all numerics to a common value.
-				 */
-				bson_value_t numericValue = *iterValue;
-				bool checkFixedInteger = true;
-				if (IsBsonValue32BitInteger(iterValue, checkFixedInteger))
-				{
-					numericValue.value.v_int32 = BsonValueAsInt32(iterValue);
-					numericValue.value_type = BSON_TYPE_INT32;
-				}
-				else if (IsBsonValue64BitInteger(iterValue, checkFixedInteger))
-				{
-					numericValue.value.v_int64 = BsonValueAsInt64(iterValue);
-					numericValue.value_type = BSON_TYPE_INT64;
-				}
-				else
-				{
-					/*
-					 * We convert to double to save some space if applicable
-					 * That way we always store it as the smallest possible size
-					 */
-					numericValue.value.v_decimal128 = GetBsonValueAsDecimal128(iterValue);
-					numericValue.value_type = BSON_TYPE_DECIMAL128;
-
-					if (IsDecimal128InDoubleRange(&numericValue))
-					{
-						numericValue.value.v_double = BsonValueAsDouble(&numericValue);
-						numericValue.value_type = BSON_TYPE_DOUBLE;
-					}
-				}
-				PgbsonArrayWriterWriteValue(arrayWriter, &numericValue);
-				continue;
-			}
-
-			case BSON_TYPE_CODEWSCOPE:
-			case BSON_TYPE_DBPOINTER:
-			case BSON_TYPE_DOCUMENT:
-			case BSON_TYPE_ARRAY:
-			case BSON_TYPE_REGEX:
-			case BSON_TYPE_BINARY:
-			case BSON_TYPE_CODE:
-			{
-				/* TODO: Support truncating this? */
-				forceAsNotTruncated = true;
-				PgbsonArrayWriterWriteValue(arrayWriter, iterValue);
-				break;
-			}
-
-			case BSON_TYPE_SYMBOL:
-			case BSON_TYPE_UTF8:
-			{
-				int valueSizeLimit = indexTermSizeLimit - currentLength;
-				bson_value_t valueCopy = *iterValue;
-				const int32_t stringPrefixLength = 4;
-				bool isTruncated = TruncateStringOrBinaryTerm(
-					stringPrefixLength,
-					valueSizeLimit, iterValue->value_type,
-					&valueCopy.value.v_utf8.len);
-				PgbsonArrayWriterWriteValue(arrayWriter, &valueCopy);
-
-				if (isTruncated)
-				{
-					/* Stop writing any more */
-					return true;
-				}
-				break;
-			}
-
-			default:
-			{
-				forceAsNotTruncated = true;
-				PgbsonArrayWriterWriteValue(arrayWriter, iterValue);
-				break;
-			}
+			return true;
 		}
 	}
 
 	currentLength = (int32_t) PgbsonArrayWriterGetSize(arrayWriter);
-	if (currentLength + dataSize > indexTermSizeLimit)
+	if (currentLength + dataSize > indexTermSoftLimit)
+	{
+		/* We've exceeded the limit - mark as truncated */
+		return !forceAsNotTruncated;
+	}
+
+	/* Not truncated */
+	return false;
+}
+
+
+/*
+ * Write and truncate a document into the target document writer accounting
+ * for the index term size limit.
+ */
+static bool
+TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
+					 bson_iter_t *documentIterator, pgbson_writer *documentWriter)
+{
+	bool forceAsNotTruncated = false;
+	int32_t currentLength = 0;
+
+	pgbson_element_writer elementWriter;
+	while (bson_iter_next(documentIterator))
+	{
+		/* Get the current size */
+		currentLength = (int32_t) PgbsonWriterGetSize(documentWriter);
+		if (currentLength + dataSize > softLimit)
+		{
+			/* We've exceeded the limit - mark as truncated */
+			return !forceAsNotTruncated;
+		}
+		else
+		{
+			/* We're under the size limit reset */
+			forceAsNotTruncated = false;
+		}
+
+		const bson_value_t *iterValue = bson_iter_value(documentIterator);
+		const StringView pathView = bson_iter_key_string_view(documentIterator);
+
+		/* Determine how we're going to write this value */
+		int32_t requiredLengthWithPath = currentLength + dataSize +
+										 (int32_t) pathView.length + 1;
+
+		bool truncated;
+		if (requiredLengthWithPath < softLimit)
+		{
+			/* Path at least fits under the soft limit, write the path */
+			PgbsonInitObjectElementWriter(documentWriter, &elementWriter, pathView.string,
+										  pathView.length);
+
+			/* Since the path is under the limit, the value for this path can go until the hard limit */
+			int32_t valueLengthLeft = hardLimit - dataSize - pathView.length - 1;
+			truncated = TruncateNestedEntry(&elementWriter, iterValue,
+											&forceAsNotTruncated,
+											valueLengthLeft, currentLength);
+		}
+		else if (requiredLengthWithPath < hardLimit)
+		{
+			/* The path fits between the soft limit and hard limit
+			 * Write the path only but with MaxKey and mark this path as truncated
+			 */
+			bson_value_t maxKeyValue = { 0 };
+			maxKeyValue.value_type = BSON_TYPE_MAXKEY;
+			PgbsonWriterAppendValue(documentWriter, pathView.string, pathView.length,
+									&maxKeyValue);
+			truncated = true;
+		}
+		else
+		{
+			/*
+			 * currentLength + dataSize < softLimit but
+			 * currentLength + dataSize + path.Length > hardLimit
+			 * which implies pathLength > (hardLimit - softLimit)
+			 *  The path goes over the hard limit - write as many bytes until
+			 * the hard limit and write a MaxKey()
+			 */
+			int32_t pathExcess = requiredLengthWithPath - hardLimit;
+			int32_t pathViewlength = pathView.length - pathExcess;
+			bson_value_t maxKeyValue = { 0 };
+			maxKeyValue.value_type = BSON_TYPE_MAXKEY;
+			PgbsonWriterAppendValue(documentWriter, pathView.string, pathViewlength,
+									&maxKeyValue);
+			truncated = true;
+		}
+
+		if (truncated)
+		{
+			return true;
+		}
+	}
+
+	currentLength = (int32_t) PgbsonWriterGetSize(documentWriter);
+	if (currentLength + dataSize > softLimit)
 	{
 		/* We've exceeded the limit - mark as truncated */
 		return !forceAsNotTruncated;
@@ -456,22 +584,45 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			BsonValueInitIterator(&indexElement->bsonValue, &arrayIterator);
 			PgbsonWriterStartArray(writer, indexPath.string, indexPath.length,
 								   &arrayWriter);
-			truncated = TruncateArrayTerm(dataSize, loweredSizeLimit, &arrayIterator,
-										  &arrayWriter);
+			truncated = TruncateArrayTerm(dataSize, loweredSizeLimit,
+										  termMetadata->indexTermSizeLimit,
+										  &arrayIterator, &arrayWriter);
 			PgbsonWriterEndArray(writer, &arrayWriter);
+			return truncated;
+		}
+
+		case BSON_TYPE_DOCUMENT:
+		{
+			/* For documents, the fixed term sizes are as above.
+			 * Given that paths are variable, unlike arrays, the rules for serialization
+			 * become different. Instead of the logic above, we assume that the soft-limit
+			 * is MaxTermSize - 17. When we hit the soft-limit:
+			 * - If we've already serialized a path, we serialize the value with truncation
+			 * and bail (and mark as truncated)
+			 * - If we haven't serialized a path, we serialize until HardLimit - 2, Write
+			 * MaxKey() and mark as truncated.
+			 */
+			int32_t fixedTermLimit = 17;
+			int32_t softLimit = termMetadata->indexTermSizeLimit - fixedTermLimit;
+			int32_t hardLimit = termMetadata->indexTermSizeLimit - 2;
+
+			bson_iter_t documentIterator;
+			bool truncated = false;
+			pgbson_writer documentWriter;
+			BsonValueInitIterator(&indexElement->bsonValue, &documentIterator);
+			PgbsonWriterStartDocument(writer, indexPath.string, indexPath.length,
+									  &documentWriter);
+
+			truncated = TruncateDocumentTerm(dataSize, softLimit, hardLimit,
+											 &documentIterator,
+											 &documentWriter);
+			PgbsonWriterEndDocument(writer, &documentWriter);
 			return truncated;
 		}
 
 		/* TODO: These types need to be truncated */
 		case BSON_TYPE_CODEWSCOPE:
 		case BSON_TYPE_DBPOINTER:
-		case BSON_TYPE_DOCUMENT:
-		{
-			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
-									&indexElement->bsonValue);
-			return false;
-		}
-
 		case BSON_TYPE_REGEX:
 		{
 			/* Regex truncation is in the history but removed for now;
