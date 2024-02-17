@@ -829,7 +829,7 @@ DetectApiSchemaCommand(const char *topLevelQuery, const char *schemaName,
 	}
 	else if (strstr(query, ".drop_database(") == query)
 	{
-		PgbsonWriterAppendUtf8(commandWriter, "dropDatabase", 13,
+		PgbsonWriterAppendUtf8(commandWriter, "dropDatabase", 12,
 							   activity->processedMongoDatabase);
 		return "command";
 	}
