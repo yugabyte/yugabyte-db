@@ -448,6 +448,10 @@ export const TableSelect = (props: TableSelectProps) => {
       true
     ) < 0 &&
     !participantsHaveLinkedXClusterConfig;
+  const selectedIndexTableCount = getSelectedIndexTableCount(
+    sourceUniverseTablesQuery.data,
+    selectedTableUUIDs
+  );
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -593,7 +597,7 @@ export const TableSelect = (props: TableSelectProps) => {
       props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
         <Typography variant="body2">
           {t('tableSelectionCount', {
-            selectedTableCount: selectedTableUUIDs.length,
+            selectedTableCount: selectedTableUUIDs.length - selectedIndexTableCount,
             availableTableCount: replicationItems[tableType].tableCount
           })}
         </Typography>
@@ -721,6 +725,16 @@ const getReplicationItemsFromTables = (
     }
   );
 };
+
+const getSelectedIndexTableCount = (sourceUniverseTables: YBTable[], selectedTableUuid: string[]) =>
+  sourceUniverseTables.reduce(
+    (indexTableCount, table) =>
+      selectedTableUuid.includes(getTableUuid(table)) &&
+      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+        ? indexTableCount + 1
+        : indexTableCount,
+    0
+  );
 
 // Colocated parent tables have table.tablename in the following format:
 //   <uuid>.colocation.parent.tablename

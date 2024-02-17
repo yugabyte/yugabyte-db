@@ -483,8 +483,13 @@ const getDefaultFormValues = (
   sourceUniverseTables: YBTable[],
   sourceUniverseNamespace: UniverseNamespace[]
 ): Partial<EditTablesFormValues> => {
+  const sourceUniverseTableUuids = sourceUniverseTables.map((table) =>
+    formatUuidForXCluster(getTableUuid(table))
+  );
   return {
-    tableUuids: xClusterConfig.tables,
+    tableUuids: xClusterConfig.tables.filter((xClusterTableUuid) =>
+      sourceUniverseTableUuids.includes(xClusterTableUuid)
+    ),
     namespaceUuids: getXClusterConfigNamespaces(
       xClusterConfig,
       sourceUniverseTables,
