@@ -28,11 +28,11 @@ You'll learn the following:
 
 * [Docker](https://www.docker.com) 20 or later.
 * [Docker Compose](https://docs.docker.com/compose/install/) 1.29 or later.
-* An [OpenAI API key](https://platform.openai.com/docs/overview). Without the API key, the application will revert to performing full-text searches over the movie catalog, instead of vector similarity searches. Note that the full-text search capability is significantly less advanced.
+* An [OpenAI API key](https://platform.openai.com/docs/introduction). Without the API key, the application will revert to performing full-text searches over the movie catalog, instead of vector similarity searches. Note that the full-text search capability is significantly less advanced.
 
-{{< header Level="2" >}}Start PostgreSQL With pgvector{{< /header >}}
+## Start PostgreSQL with pgvector
 
-The pgvector extension transforms PostgreSQL into a vector database, capable of storing and accessing vectorized data. The movie recommendations service utilizes pgvector to provide users with highly relevant recommendations based on their input.
+The pgvector extension transforms PostgreSQL into a vector database, capable of storing and accessing vectorized data. The movie recommendations service uses pgvector to provide users with highly relevant recommendations based on their input.
 
 Follow these steps to start a PostgreSQL instance with pgvector and enable the extension:
 
@@ -75,7 +75,7 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
 
 With the database operational, you're now ready to deploy the first version of YugaPlus on your machine!
 
-{{< header Level="2" >}}Deploy YugaPlus Movie Recommendations Service{{< /header >}}
+## Deploy YugaPlus movie recommendations service
 
 The service is comprised of a React frontend and a Java backend. Prior knowledge of React or Java is not necessary, nor is the installation of any language-specific toolchains required. Both the frontend and backend are deployed using Docker, which automatically downloads all necessary libraries and frameworks.
 
@@ -89,9 +89,9 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
 
 2. [Create](<https://platform.openai.com>) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
 
-{{< tip title="OpenAI Free Tier">}}
+    {{< tip title="OpenAI Free Tier">}}
 As of this writing, OpenAI provides a generous free tier, sufficient for completing this tutorial. Therefore, it's highly recommended to use the advanced vector similarity search mode.
-{{< /tip >}}
+    {{< /tip >}}
 
 3. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
 
@@ -129,7 +129,7 @@ Proceed to log into YugaPlus! The app automatically pre-populates the sign-in fo
 
 ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
-{{< header Level="2" >}}Search For Your Favorite Movies{{< /header >}}
+## Search for your favorite movies
 
 After you log in, you'll see the YugaPlus home page split into two parts. In **Your Movies**, you'll find movies you're watching or want to watch. The **Search New Movies** section lets you find new movies by typing what you're looking for in plain English.
 

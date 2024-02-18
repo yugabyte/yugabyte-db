@@ -26,7 +26,7 @@ In this chapter, you'll learn:
 
 You need to complete [chapter 2](../chapter2-scaling-with-yugabytedb) of the tutorial before proceeding to this one.
 
-{{< header Level="2" >}}Simulate an Outage{{< /header >}}
+## Simulate an outage
 
 Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
 
@@ -117,7 +117,7 @@ The PostgreSQL JDBC driver allows the specification of multiple database connect
 
 Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the YugabyteDB smart driver on the application end.
 
-{{< header Level="2" >}}Deploy Multi-Region Cluster{{< /header >}}
+## Deploy a multi-region cluster
 
 YugabyteDB provides high availability (HA) by replicating data across various fault domains. A fault domain can be a server rack, an availability zone, a data center, or a cloud region.
 
@@ -237,7 +237,7 @@ There is no one-size-fits-all solution for multi-region deployments, whether wit
 Up to this point, you have deployed a multi-region cluster following the [global database with the preferred region pattern](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/).
 {{< /tip >}}
 
-{{< header Level="2" >}}Switch to YugabyteDB Smart Driver{{< /header >}}
+## Switch to YugabyteDB smart driver
 
 The [YugabyteDB smart drivers](https://docs.yugabyte.com/preview/drivers-orms/smart-drivers/) extend the capabilities of standard PostgreSQL drivers by simplifying load balancing of application requests and automatically handling various failures at the application layer.
 
@@ -301,7 +301,7 @@ Once the data loading is complete, open the [YugaPlus UI](http://localhost:3000/
   </div>
 </div>
 
-{{< header Level="2" >}}Simulate Region-Level Outage{{< /header >}}
+## Simulate a region-level outage
 
 The YugaPlus backend connects to the database cluster similarly to the PostgreSQL driver by using the first node as a connection endpoint: `DB_URL=jdbc:yugabytedb://yugabytedb-node1:5433/yugabyte?load-balance=true`.
 

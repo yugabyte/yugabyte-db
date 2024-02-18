@@ -27,7 +27,7 @@ In this chapter, you'll learn:
 
 You need to complete [chapter 3](../chapter3-tolerating-outages) of the tutorial before proceeding to this one.
 
-{{< header Level="2" >}}Geo-Partition the User Library{{< /header >}}
+## Geo-partition the user library
 
 The [latency-optimized geo-partitioning pattern](https://docs.yugabyte.com/stable/develop/build-global-apps/latency-optimized-geo-partition/) allows to pin user data to cloud regions closest to the users' physical locations. By implementing this strategy, your multi-region application can process read and write requests with low latency across all locations.
 
@@ -168,7 +168,7 @@ Partitions: user_library_usa_central FOR VALUES IN ('Chicago', 'Kansas City'),
             user_library_usa_west FOR VALUES IN ('San Francisco', 'Los Angeles')
 ```
 
-{{< header Level="2" >}}Experiment From the US East Coast{{< /header >}}
+## Experiment from the US East Coast
 
 With the `user_library` table being geo-partitioned, you're ready to experiment with this design pattern.
 
@@ -212,63 +212,63 @@ Next, proceed to search for movie recommendations and select one of the suggesti
 
 2. Ask for movie recommendations:
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
-    </a>
-  </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
-    </a>
-  </li>
-</ul>
+    <ul class="nav nav-tabs-alt nav-tabs-yb">
+    <li >
+        <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
+        role="tab" aria-controls="similarity-search" aria-selected="true">
+        <i class="fa-brands fa-apple" aria-hidden="true"></i>
+        Similarity Search (OpenAI)
+        </a>
+    </li>
+    <li>
+        <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
+        role="tab" aria-controls="full-text-search" aria-selected="false">
+        <i class="fa-brands fa-linux" aria-hidden="true"></i>
+        Full-text search
+        </a>
+    </li>
+    </ul>
 
-<div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter4-us-east-similarity-search.md" %}}
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
-  {{% includeMarkdown "includes/chapter4-us-east-full-text-search.md" %}}
-  </div>
-</div>
+    <div class="tab-content">
+    <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
+    {{% includeMarkdown "includes/chapter4-us-east-similarity-search.md" %}}
+    </div>
+    <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+    {{% includeMarkdown "includes/chapter4-us-east-full-text-search.md" %}}
+    </div>
+    </div>
 
 3. Add one of the movies to the library by clicking on the **Add to Library** button:
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
-    </a>
-  </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
-    </a>
-  </li>
-</ul>
+    <ul class="nav nav-tabs-alt nav-tabs-yb">
+    <li >
+        <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
+        role="tab" aria-controls="similarity-search" aria-selected="true">
+        <i class="fa-brands fa-apple" aria-hidden="true"></i>
+        Similarity Search (OpenAI)
+        </a>
+    </li>
+    <li>
+        <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
+        role="tab" aria-controls="full-text-search" aria-selected="false">
+        <i class="fa-brands fa-linux" aria-hidden="true"></i>
+        Full-text search
+        </a>
+    </li>
+    </ul>
 
-<div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
+    <div class="tab-content">
+    <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
 
-  ![US East Similarity Search Library](/images/tutorials/build-and-learn/chapter4-us-east-empire-strikes-back-result.png)
+    ![US East Similarity Search Library](/images/tutorials/build-and-learn/chapter4-us-east-empire-strikes-back-result.png)
 
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+    </div>
+    <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
 
-  ![US East Full-Text Search Library](/images/tutorials/build-and-learn/chapter4-full-text-search-add-movie.png)
+    ![US East Full-Text Search Library](/images/tutorials/build-and-learn/chapter4-full-text-search-add-movie.png)
 
-  </div>
-</div>
+    </div>
+    </div>
 
 4. Confirm that the movie has been added to the user's library:
 
@@ -350,7 +350,7 @@ The YugaPlus application stores its movie catalog in the `movie` table. Given th
 
 For example, the video below demonstrates how to achieve low-latency reads across the United States by using the global database and follower reads patterns:
 
-{{< youtube id="OTxBp6qC9tY" title="The Art of Scaling Accross Multiple Regions" >}}
+{{< youtube id="OTxBp6qC9tY" title="The Art of Scaling Across Multiple Regions" >}}
 
 {{< /tip >}}
 

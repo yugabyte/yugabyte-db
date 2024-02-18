@@ -28,9 +28,9 @@ In this chapter, you'll learn:
 
 You need to complete [chapter 1](../chapter1-debuting-with-postgres) of the tutorial before proceeding to this one.
 
-{{< header Level="2" >}}Start YugabyteDB{{< /header >}}
+## Start YugabyteDB
 
-YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#yugabyted) deploying a YugabyteDB cluster in a containerized environment.
+YugabyteDB offers various deployment options, including bare metal, containerization, or as a fully-managed service. In this tutorial, you'll use the [yugabyted tool](../../../reference/configuration/yugabyted/#yugabyted) deploying a YugabyteDB cluster in a containerized environment.
 
 To begin, start a single-node YugabyteDB cluster in Docker:
 
@@ -57,12 +57,12 @@ The command pulls the latest Docker image of YugabyteDB, starts the container, a
 * `15433` - for the YugabyteDB monitoring UI.
 * `5433` - serves as the database port to which your client applications connect. This port is associated with the PostgreSQL server/postmaster process, which manages client connections and initiates new backend processes.
 
-For a complete list of ports, refer to the [default ports](https://docs.yugabyte.com/preview/reference/configuration/default-ports/) documentation.
+For a complete list of ports, refer to the [default ports](../../../reference/configuration/default-ports/) documentation.
 {{< /note >}}
 
 Next, open a database connection and run a few SQL requests:
 
-1. Connect to the container and open a database connection using the [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) command-line tool:
+1. Connect to the container and open a database connection using the [ysqlsh](../../../admin/ysqlsh/) command-line tool:
 
     ```shell
     # Wait until the node is initialize and ready to accept connection
@@ -101,7 +101,7 @@ Next, open a database connection and run a few SQL requests:
     exit
     ```
 
-{{< header Level="2" >}}Explore YugabyteDB UI{{< /header >}}
+## Explore YugabyteDB UI
 
 Starting a node with the **yugabyted** tool also activates a YugabyteDB UI process, accessible on port `15433`. To explore various cluster metrics and parameters, connect to the UI from your browser: <http://localhost:15433/>
 
@@ -109,7 +109,7 @@ Starting a node with the **yugabyted** tool also activates a YugabyteDB UI proce
 
 Currently, the dashboard indicates that the cluster has only one YugabyteDB node, with the replication factor set to `1`. This setup means your YugabyteDB database instance, at this point, isn't significantly different from the PostgreSQL container started in Chapter 1. However, by adding more nodes to the cluster, you can transform YugabyteDB into a fully distributed and fault-tolerant database.
 
-{{< header Level="2" >}}Scale the Cluster{{< /header >}}
+## Scale the cluster
 
 Use the **yugabyted** tool to scale the cluster by adding two more nodes:
 
@@ -166,7 +166,7 @@ To view more detailed information about the cluster nodes, go to the **Nodes** d
 
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
-The **Number of Tablets** column provides insights into how YugabyteDB [distributes data and workload](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts):
+The **Number of Tablets** column provides insights into how YugabyteDB [distributes data and workload](../../../architecture/docdb-replication/replication/#concepts):
 
 * **Tablets** - YugabyteDB shards your data by splitting tables into tablets, which are then distributed across the cluster nodes. Currently, the cluster splits system-level tables into `9` tablets (see the **Total** column).
 
@@ -179,12 +179,12 @@ The tablet leaders are evenly distributed across all the nodes (see the **Leader
 
 Therefore, with an RF of `3`, you have:
 
-* `9` tablets in total
-* With `9` leaders (because a tablet can have only one leader) and
-* With `18` peers (as each tablet is replicated twice, aligning with RF=3).
+* `9` tablets in total; with
+* `9` leaders (because a tablet can have only one leader); and
+* `18` peers (as each tablet is replicated twice, aligning with RF=3).
 {{< /tip >}}
 
-{{< header Level="2" >}}Switch YugaPlus to YugabyteDB{{< /header >}}
+## Switch YugaPlus to YugabyteDB
 
 Now, you're ready to switch the application from PostgreSQL to YugabyteDB.
 
@@ -200,13 +200,13 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     - DB_PASSWORD=yugabyte
     ```
 
-{{< note title="Flyway and Advisory Locks" >}}
+    {{< note title="Flyway and Advisory Locks" >}}
 If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable in the `docker-compose.yaml` file to the following value:
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
 The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of locks.
-{{< /note >}}
+    {{< /note >}}
 
 3. Start the application:
 
@@ -232,10 +232,10 @@ Upon establishing a successful connection, the backend uses Flyway to execute da
 ```
 
 {{< tip title="YugabyteDB Voyager - Database Migration Tool" >}}
-For real production workloads consider using [YugabyteDB Voyager](https://docs.yugabyte.com/preview/yugabyte-voyager/) an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager easily migrates data from PostgreSQL, MySQL, and Oracle databases.
+For real production workloads consider using [YugabyteDB Voyager](/preview/yugabyte-voyager/), an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager easily migrates data from PostgreSQL, MySQL, and Oracle databases.
 {{< /tip >}}
 
-After schema is created and data is loaded, refresh the frontend UI and log into the app one more time: <http://localhost:3000/login>
+After the schema is created and data is loaded, refresh the frontend UI and log into the app one more time: <http://localhost:3000/login>
 
 ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 

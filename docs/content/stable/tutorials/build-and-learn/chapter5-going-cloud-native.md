@@ -28,7 +28,7 @@ In this chapter, you'll learn:
 
 You need to complete [chapter 4](../chapter4-going-global) of the tutorial before proceeding to this one.
 
-{{< header Level="2" >}}Start YugabyteDB Managed Cluster{{< /header >}}
+## Start YugabyteDB Managed cluster
 
 [YugabyteDB Managed](http://cloud.yugabyte.com/) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). The service offers a **free sandbox cluster** for everyone wishing to use YugabyteDB in a real cloud environment.
 
@@ -62,7 +62,7 @@ Follow these steps to deploy a free YugabyteDB Managed instance:
 
 Spinning up and configuring your sandbox instance can take up to 5 minutes. During this time, the system is preparing everything you need to get started with your YugabyteDB Managed instance.
 
-{{< header Level="2" >}}Connect Application to YugabyteDB Managed{{< /header >}}
+## Connect the application to YugabyteDB Managed
 
 After the YugabyteDB Managed cluster is started, go ahead and connect the YugaPlus movie recommendations application to it.
 
@@ -120,7 +120,7 @@ As soon as the `yugaplus-backend` container starts, it applies the database migr
 If the application fails to connect to YugabyteDB Managed, ensure you've added your IP address to the [IP Allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
 {{< /note >}}
 
-{{< header Level="2" >}}Ask for Movie Recommendations One Last Time...{{< /header >}}
+## Ask for movie recommendations one last time
 
 With the YugaPlus backend operational and successfully connected to your YugabyteDB Managed cluster, do one final search for movie recommendations.
 
