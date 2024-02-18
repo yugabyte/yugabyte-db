@@ -111,7 +111,10 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
                   "Failed to set the role for universe %s to %s on XClusterConfig(%s): %s",
                   universe.getUniverseUUID(), requestedRole, xClusterConfig, resp.errorMessage()));
         }
-        log.info("Universe role for universe {} was set to {}", requestedRole);
+        log.info(
+            "Universe role for universe {} was set to {}",
+            universe.getUniverseUUID(),
+            requestedRole);
 
         if (HighAvailabilityConfig.get().isPresent()) {
           universe.incrementVersion();

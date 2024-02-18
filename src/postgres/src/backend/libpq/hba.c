@@ -54,6 +54,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 
 #define MAX_TOKEN	256
@@ -2278,7 +2279,9 @@ check_hba(hbaPort *port)
 				continue;
 
 			/* Check SSL state */
-			if (port->ssl_in_use)
+			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use)
 			{
 				/* Connection is SSL, match both "host" and "hostssl" */
 				if (hba->conntype == ctHostNoSSL)

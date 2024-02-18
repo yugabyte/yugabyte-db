@@ -17,7 +17,7 @@ This tutorial demonstrates how use LlamaIndex to build RAG (Retrieval-Augmented 
 
 ## Prerequisites
 
-* Python3
+* Python 3
 * Docker
 
 ## Set up the application
@@ -34,7 +34,7 @@ Download the application and provide settings specific to your deployment:
 
     Dependencies can be installed in a virtual environment, or globally on your machine.
 
-    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment
+    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment.
 
         ```sh
         python3 -m venv yb-llamaindex-env
@@ -44,7 +44,7 @@ Download the application and provide settings specific to your deployment:
         # pip install -r requirements-m1.txt
         ```
 
-    * Option 2: Install Dependencies Globally
+    * Option 2: Install Dependencies Globally.
 
         ```sh
         pip install llama-index

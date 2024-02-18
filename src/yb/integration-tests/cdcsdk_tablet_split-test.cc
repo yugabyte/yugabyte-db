@@ -119,6 +119,122 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledFor
   ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
 }
 
+TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitWithBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  // Testing compaction without compaction file filtering for TTL expiration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0.$1 ADD COLUMN $2 INT", "public", kTableName, kValue2ColumnName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  LOG(INFO) << "Sleep for 2 seconds to update retention barriers";
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  // Insert and Updates.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2, $3) VALUES (1, 2, 3)", kTableName, kKeyColumnName, kValueColumnName,
+      kValue2ColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 4 WHERE $2 = 1", kTableName, kValue2ColumnName, kKeyColumnName));
+  SleepFor(MonoDelta::FromSeconds(2));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // LOG(INFO) << "response = " << change_resp.DebugString();
+
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_after_split.size(), 2);
+
+  LOG(INFO) << "Sleep for 2 seconds to update retention barriers";
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+
+  // Since inserted only one row and update value column for that row hence after
+  // tablet split, only one child tablet will have the row record.
+  for (int i = 0; i < tablets_after_split.size(); ++i) {
+    GetChangesResponsePB change_resp =
+        ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_after_split, nullptr, i));
+    LOG(INFO) << "response = " << change_resp.DebugString();
+    uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+
+    // This if condition will check if this is the tablet which don't have DML records and
+    // only have DDL record.
+    if (record_size == 1) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(0);
+      ASSERT_EQ(record.row_message().op(), RowMessage::DDL);
+      continue;
+    }
+
+    int insert_count = 0;
+    int update_count = 0;
+    for (uint32_t j = 0; j < record_size; ++j) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(j);
+      if (record.row_message().op() == RowMessage::INSERT) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 0);
+        ASSERT_EQ(record.row_message().old_tuple(2).datum_int32(), 0);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+        ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().new_tuple(2).datum_int32(), 3);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+
+        insert_count++;
+      } else if (record.row_message().op() == RowMessage::UPDATE) {
+        ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+        ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), 1);
+        ASSERT_EQ(record.row_message().old_tuple(1).datum_int32(), 2);
+        ASSERT_EQ(record.row_message().old_tuple(2).datum_int32(), 3);
+
+        ASSERT_EQ(record.row_message().new_tuple(0).datum_int32(), 1);
+        if (record.row_message().new_tuple(1).column_name() == kValue2ColumnName) {
+          ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 4);
+          ASSERT_EQ(record.row_message().new_tuple(2).datum_int32(), 2);
+        } else {
+          ASSERT_EQ(record.row_message().new_tuple(1).datum_int32(), 2);
+          ASSERT_EQ(record.row_message().new_tuple(2).datum_int32(), 4);
+        }
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        update_count++;
+      }
+    }
+    ASSERT_EQ(insert_count, 1);
+    ASSERT_EQ(update_count, 1);
+  }
+}
+
 void CDCSDKTabletSplitTest::TestIntentPersistencyAfterTabletSplit(
     CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;

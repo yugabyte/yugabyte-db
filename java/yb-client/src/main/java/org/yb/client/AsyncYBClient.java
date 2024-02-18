@@ -87,15 +87,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
@@ -2062,7 +2054,7 @@ public class AsyncYBClient implements AutoCloseable {
     if (request instanceof GetTabletListToPollForCDCRequest ||
         request instanceof SplitTabletRequest ||
         request instanceof FlushTableRequest) {
-      tablet = getFirstTablet(tableId);
+      tablet = getRandomActiveTablet(tableId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.
@@ -2800,6 +2792,33 @@ public class AsyncYBClient implements AutoCloseable {
     }
     return tablets.firstEntry().getValue();
 
+  }
+
+  /**
+   * @param tableId table UUID to which the {@link RemoteTablet} should belong
+   * @return a {@link RemoteTablet} for which there are active tservers available
+   */
+  RemoteTablet getRandomActiveTablet(String tableId) {
+    ConcurrentSkipListMap<byte[], RemoteTablet> tablets = tabletsCache.get(tableId);
+
+    if (tablets == null) {
+      LOG.debug("Tablets cache does not have any information for table " + tableId);
+      return null;
+    }
+
+    if (tablets.firstEntry() == null) {
+      LOG.debug("Tablets cache map empty for table " + tableId);
+      return null;
+    }
+
+    for (Map.Entry<byte[], RemoteTablet> entry : tablets.entrySet()) {
+      if (!entry.getValue().tabletServers.isEmpty()) {
+        return entry.getValue();
+      }
+    }
+
+    LOG.debug("No remote tablet found with a tablet server for table " + tableId);
+    return null;
   }
 
   RemoteTablet getTablet(String tableId, String tabletId) {

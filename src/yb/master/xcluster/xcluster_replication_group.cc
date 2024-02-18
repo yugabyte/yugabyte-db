@@ -19,6 +19,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/cdc/xcluster_util.h"
@@ -260,7 +261,7 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
   return it->producer_namespace_id();
 }
 
-bool ShouldAddTableToReplicationGroup(
+Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
   const auto& table_pb = table_info.old_pb();
@@ -313,6 +314,10 @@ bool ShouldAddTableToReplicationGroup(
     auto producer_entry =
         FindOrNull(consumer_registry.producer_map(), universe.ReplicationGroupId().ToString());
     if (producer_entry) {
+      SCHECK(
+          !producer_entry->disable_stream(), IllegalState,
+          "Table belongs to xCluster replication group $0 which is currently disabled",
+          universe.ReplicationGroupId());
       for (auto& [stream_id, stream_info] : producer_entry->stream_map()) {
         if (stream_info.consumer_table_id() == table_info.id()) {
           VLOG(1) << "Table " << table_info.ToString()
@@ -407,7 +412,7 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     if (!is_alter_request) {
       status = STATUS(NotFound, "Could not find xCluster replication group");
     }
-    return IsOperationDoneResult(true, status);
+    return IsOperationDoneResult::Done(std::move(status));
   }
 
   CHECK(universe);
@@ -424,7 +429,7 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     // Add failed universe to GC now that we've responded to the user.
     catalog_manager.MarkUniverseForCleanup(replication_group_id);
 
-    return IsOperationDoneResult(true, setup_error);
+    return IsOperationDoneResult::Done(std::move(setup_error));
   }
 
   bool is_done = false;
@@ -433,7 +438,7 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     is_done = VERIFY_RESULT(IsSafeTimeReady(l->pb, *catalog_manager.GetXClusterManager()));
   }
 
-  return IsOperationDoneResult(is_done, Status::OK());
+  return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
 }
 
 }  // namespace yb::master

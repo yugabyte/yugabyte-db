@@ -105,7 +105,8 @@ public class AppInit {
       RuntimeConfGetter confGetter,
       PrometheusConfigManager prometheusConfigManager,
       ImageBundleUtil imageBundleUtil,
-      @Named("AppStartupTimeMs") Long startupTime)
+      @Named("AppStartupTimeMs") Long startupTime,
+      ReleasesUtils releasesUtils)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -281,6 +282,9 @@ public class AppInit {
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
+
+        // Cleanup any untracked uploaded releases
+        releasesUtils.cleanupUntracked();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();

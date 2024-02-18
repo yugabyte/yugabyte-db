@@ -46,14 +46,18 @@
     },
     "queryError": {
       "failedToFetchUniverselist": "Error fetching universe list.",
-      "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
+      "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
+      "failedToFetchTargetUniverseNamespaces": "Unable to fetch namespaces for target universe UUID: {{}}",
+      "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
-      "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
+      "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
+      "failedToFetchHostInfo": "Failed to fetch YBA host details."
     },
     "prometheusMetricTrace": {
       "async_replication_sent_lag_micros": "Async Replication Lag",
@@ -131,8 +135,8 @@
         "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
         "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
-        "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in xCluster replication as the source universe will interrupt the replication and require a restart of the xCluster config to resume replication after TLS rotation is completed.",
-        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in xCluster replication will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+        "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in an xCluster configuration as the source universe will interrupt the replication and require a restart of the xCluster configuration to resume replication after TLS rotation is completed.",
+        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
       },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
@@ -148,8 +152,8 @@
         "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
         "footerMsg2": "if any unusual behavior is detected.",
         "rollbackPrevious": "roll back to the previous version",
-        "avoidDisruption": "Avoid disruption to xCluster replication",
-        "xclusterWarning": "This universe is part of one or more xCluster replications. To minimize disruptions to these replications during the upgrade process, you should, if possible, upgrade the target universe first.",
+        "avoidDisruption": "Avoid disruption to xCluster configuration",
+        "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruptions to these configurations during the upgrade process, you should, if possible, upgrade the target universe first.",
         "rollbackUpgradeTite": "Roll Back Upgrade",
         "rollbackModalMsg": "Are you sure you wish to roll back to ",
         "rollbackOnenode": "Rollback one node at a time",
@@ -618,7 +622,7 @@
         }
       },
       "disasterRecovery": {
-        "heading": "Disaster Recovery",
+        "heading": "xCluster Disaster Recovery",
         "actionButton": {
           "abortSwitchover": "Abort Switchover",
           "switchover": "Switchover",
@@ -634,7 +638,7 @@
             "switchover": "Switchover",
             "failover": "Failover",
             "advancedSubmenu": "Advanced",
-            "restartReplication": "Full Copy DR Primary",
+            "restartReplication": "Resync DR Replica",
             "dbSync": "Reconcile Config with Database"
           }
         },
@@ -844,12 +848,12 @@
               }
             },
             "error": {
-              "requestFailureLabel": "Create active-active single-master disaster recovery (DR) request failed",
-              "taskFailure": "Failed to enable active-active single-master disaster recovery (DR)."
+              "requestFailureLabel": "Enable disaster recovery (DR) request failed",
+              "taskFailure": "Failed to enable disaster recovery (DR)."
             },
             "success": {
-              "requestSuccess": "Enabling active-active single-master disaster recovery (DR)...",
-              "taskSuccess": "Active-active single-master disaster recovery (DR) is now enabled."
+              "requestSuccess": "Enabling disaster recovery (DR)...",
+              "taskSuccess": "Disaster recovery (DR) is now enabled."
             }
           },
           "deleteModal": {
@@ -859,12 +863,12 @@
             "deleteConsequence": "Your databases will no longer be replicated and there will be no DR replica universe to failover to in case of a disaster.",
             "confirmationInstructions": "Enter the current universe name to confirm.",
             "error": {
-              "requestFailureLabel": "Active-active single-master disaster recovery (DR) removal request failed",
-              "taskFailure": "Active-active single-master disaster recovery (DR) removal task failed."
+              "requestFailureLabel": "Disaster recovery (DR) removal request failed",
+              "taskFailure": "Disaster recovery (DR) removal task failed."
             },
             "success": {
-              "requestSuccess": "Removing active-active single-master disaster recovery (DR)...",
-              "taskSuccess": "Removed active-active single-master disaster recovery (DR)."
+              "requestSuccess": "Removing disaster recovery (DR)...",
+              "taskSuccess": "Removed disaster recovery (DR)."
             }
           },
           "editModal": {
@@ -948,7 +952,7 @@
         }
       },
       "xCluster": {
-        "heading": "Replication",
+        "heading": "xCluster Replication",
         "actionButton": {
           "createXClusterConfig": {
             "label": "Configure Replication",
@@ -971,12 +975,16 @@
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
               "body": "Select at least 1 table to proceed"
+            },
+            "validationMinimumNamespaceUuids": {
+              "title": "No databases selected.",
+              "body": "Select at least 1 database to proceed"
             }
           },
           "warning": {
             "insufficientDiskSpace": {
               "title": "Warning: You may need additional disk space.",
-              "body": "Some selected tables require full copying. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
+              "body": "Some selected tables require a full copy. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
         },
@@ -1038,7 +1046,7 @@
         "restartReplicationModal": {
           "title": {
             "xCluster": "Restart Replication",
-            "dr": "Create a New Full Copy of the DR Primary"
+            "dr": "Resync DR Replica with a Full Copy of DR Primary"
           },
           "step": {
             "selectTables": {

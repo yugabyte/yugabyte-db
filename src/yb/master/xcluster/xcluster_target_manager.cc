@@ -125,15 +125,22 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
     const GetXClusterSafeTimeForNamespaceRequestPB* req,
     GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch) {
   SCHECK(!req->namespace_id().empty(), InvalidArgument, "Namespace id must be provided");
-  auto safe_time_ht = VERIFY_RESULT(xcluster_safe_time_service_->GetXClusterSafeTimeForNamespace(
-      epoch.leader_term, req->namespace_id(), req->filter()));
+  auto safe_time_ht =
+      VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
   return Status::OK();
 }
 
-Result<XClusterNamespaceToSafeTimeMap>
-XClusterTargetManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(const LeaderEpoch& epoch) {
-  return xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
+Result<HybridTime> XClusterTargetManager::GetXClusterSafeTimeForNamespace(
+    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+    const XClusterSafeTimeFilter& filter) {
+  return xcluster_safe_time_service_->GetXClusterSafeTimeForNamespace(
+      epoch.leader_term, namespace_id, filter);
+}
+
+Status XClusterTargetManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(xcluster_safe_time_service_->ComputeSafeTime(epoch.leader_term));
+  return Status::OK();
 }
 
 Status XClusterTargetManager::SetXClusterNamespaceToSafeTimeMap(
@@ -170,7 +177,14 @@ XClusterTargetManager::GetPostTabletCreateTasks(
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
 
   for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
-    if (ShouldAddTableToReplicationGroup(*universe, *table_info, catalog_manager_)) {
+    auto result = ShouldAddTableToReplicationGroup(*universe, *table_info, catalog_manager_);
+    if (!result.ok()) {
+      LOG(WARNING) << result.status();
+      table_info->SetCreateTableErrorStatus(result.status());
+      continue;
+    }
+
+    if (*result) {
       tasks.emplace_back(std::make_shared<AddTableToXClusterTargetTask>(
           universe, catalog_manager_, *master_.messenger(), table_info, epoch));
     }

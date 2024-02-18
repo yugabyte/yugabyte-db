@@ -784,6 +784,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xclusterEnableAutoFlagValidation =
+      new ConfKeyInfo<>(
+          "yb.xcluster.enable_auto_flag_validation",
+          ScopeType.GLOBAL,
+          "Enable xcluster/DR auto flag validation",
+          "Enables checks for xcluster/disaster recovery validations for autoflags for xcluster/DR"
+              + " operations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",
@@ -1159,15 +1168,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the option to view new releases page",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static final ConfKeyInfo<Boolean> haDisableCertValidation =
-      new ConfKeyInfo<>(
-          "yb.ha.ws.ssl.loose.acceptAnyCertificate",
-          ScopeType.GLOBAL,
-          "Disable all cert validation for HA communication",
-          "When set, https certs will not be validated for HA communication."
-              + " Communication will still be encrypted.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.disableHostnameVerification",
@@ -1176,6 +1176,24 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "When set, the hostname in https certs will not be validated for HA communication."
               + " Communication will still be encrypted.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> haTestConnectionRequestTimeout =
+      new ConfKeyInfo<>(
+          "yb.ha.test_request_timeout",
+          ScopeType.GLOBAL,
+          "HA test connection request timeout",
+          "The request to test HA connection to standby will timeout after the specified amount of"
+              + " time.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> haTestConnectionConnectionTimeout =
+      new ConfKeyInfo<>(
+          "yb.ha.test_connection_timeout",
+          ScopeType.GLOBAL,
+          "HA test connection connection timeout",
+          "The client will wait for the specified amount of time to make a connection to the remote"
+              + " address.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorCrashYbaOnOperatorFail =
       new ConfKeyInfo<>(
@@ -1202,4 +1220,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable user creation on OIDC login",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  // TODO(bhavin192): this could be removed or moved to customer keys
+  // later.
+  public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.kubernetes_provider_validation",
+          ScopeType.GLOBAL,
+          "Kubernetes provider validation",
+          "Hidden as the feature is work in progress"
+              + " and returns a mock response with validation errors.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

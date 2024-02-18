@@ -44,89 +44,43 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
             /* local_client */ nullptr, table_name.namespace_name(), table_name.namespace_id(),
             /* connect_to_pg_func */ nullptr) {}
 
-  Status ProcessDDLQueueTable(const HybridTime& apply_safe_time) {
+  Status ProcessDDLQueueTable(
+      const std::optional<HybridTime>& apply_safe_time, int num_records = 1) {
     XClusterOutputClientResponse resp;
     resp.get_changes_response = std::make_shared<cdc::GetChangesResponsePB>();
-    resp.get_changes_response->set_safe_hybrid_time(apply_safe_time.ToUint64());
+    if (apply_safe_time) {
+      resp.get_changes_response->set_safe_hybrid_time(apply_safe_time->ToUint64());
+    }
+    for (int i = 0; i < num_records; ++i) {
+      resp.get_changes_response->add_records();
+    }
     return XClusterDDLQueueHandler::ProcessDDLQueueTable(resp);
   }
 
   void ClearState() {
     rows_.clear();
-    command_tag_to_count_map_.clear();
-    processed_keys_.clear();
+    get_rows_to_process_calls_ = 0;
   }
 
+  bool GetAppliedNewRecords() { return applied_new_records_; }
+
   HybridTime safe_time_ht_;
-  std::vector<std::tuple<int64, yb::Uuid, int, std::string>> rows_;
-  // Count of how many times a command tag has been processed.
-  std::unordered_map<std::string, int> command_tag_to_count_map_;
+  std::vector<std::tuple<int64, int64, std::string>> rows_;
+  int get_rows_to_process_calls_ = 0;
 
  private:
   Status InitPGConnection(const HybridTime& apply_safe_time) override { return Status::OK(); }
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace() override { return safe_time_ht_; }
 
-  Result<std::vector<std::tuple<int64, yb::Uuid, int, std::string>>> GetRowsToProcess() override {
+  Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess() override {
+    get_rows_to_process_calls_++;
     return rows_;
   }
 
-  Result<bool> CheckIfAlreadyProcessed(
-      int64 start_time, const Uuid& node_id, int pg_backend_pid) override {
-    return processed_keys_.contains({start_time, node_id, pg_backend_pid});
-  }
-
-  Status StoreSessionVariables(
-      int64 start_time, const yb::Uuid& node_id, int pg_backend_pid) override {
+  Status ProcessDDLQuery(int64 start_time, int64 query_id, const std::string& query) override {
     return Status::OK();
   }
-
-  Status RemoveDdlQueueEntry(
-      int64 start_time, const yb::Uuid& node_id, int pg_backend_pid) override {
-    // Mark this key as having been processed.
-    processed_keys_.insert(DdlQueuePrimaryKey{start_time, node_id, pg_backend_pid});
-    return Status::OK();
-  }
-
-  Status HandleCreateTable(
-      bool already_processed, const std::string& query, const rapidjson::Document& doc) override {
-    if (already_processed) {
-      // Verify that we don't execute the query (would fail as pg_conn_ is not set).
-      return XClusterDDLQueueHandler::HandleCreateTable(already_processed, query, doc);
-    }
-    command_tag_to_count_map_[kDDLCommandCreateTable]++;
-    return Status::OK();
-  }
-
-  Status HandleDropTable(
-      bool already_processed, const std::string& query, const rapidjson::Document& doc) override {
-    if (already_processed) {
-      // Verify that we don't execute the query (would fail as pg_conn_ is not set).
-      return XClusterDDLQueueHandler::HandleDropTable(already_processed, query, doc);
-    }
-    command_tag_to_count_map_[kDDLCommandDropTable]++;
-    return Status::OK();
-  }
-
-  struct DdlQueuePrimaryKey {
-    int64 start_time;
-    Uuid node_id;
-    int pg_backend_pid;
-
-    struct Hash {
-      std::size_t operator()(const DdlQueuePrimaryKey& pk) const noexcept {
-        std::size_t hash = 0;
-        boost::hash_combine(hash, pk.start_time);
-        boost::hash_combine(hash, pk.node_id);
-        boost::hash_combine(hash, pk.pg_backend_pid);
-
-        return hash;
-      }
-    };
-
-    bool operator==(const DdlQueuePrimaryKey&) const = default;
-  };
-  std::unordered_set<DdlQueuePrimaryKey, DdlQueuePrimaryKey::Hash> processed_keys_;
 };
 
 class XClusterDDLQueueHandlerMockedTest : public YBTest {
@@ -189,8 +143,7 @@ std::string ConstructJson(
 
 TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   const auto ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
-  Uuid node_id = Uuid::Generate();
-  int pg_backend_pid = 1;
+  int query_id = 1;
 
   auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
   ddl_queue_handler.safe_time_ht_ = ht1;
@@ -200,15 +153,14 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   complete_json_str = static_cast<char>(kCompleteJsonb);
   {
     ddl_queue_handler.ClearState();
-    ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid, Format("$0{}", kCompleteJsonb));
+    ddl_queue_handler.rows_.emplace_back(1, query_id, Format("$0{}", kCompleteJsonb));
     // Should fail since its an empty json.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid,
+        1, query_id,
         Format("$0{\"command_tag\":\"CREATE TABLE\", \"query\": \"n/a\"}", kCompleteJsonb));
     // Should fail since missing version field.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
@@ -216,16 +168,14 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid,
-        Format("$0{\"version\":1, \"query\": \"n/a\"}", kCompleteJsonb));
+        1, query_id, Format("$0{\"version\":1, \"query\": \"n/a\"}", kCompleteJsonb));
     // Should fail since missing command_tag field.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid,
-        Format("$0{\"version\":1, \"command_tag\":\"CREATE TABLE\"}", kCompleteJsonb));
+        1, query_id, Format("$0{\"version\":1, \"command_tag\":\"CREATE TABLE\"}", kCompleteJsonb));
     // Should fail since missing query field.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
   }
@@ -234,52 +184,71 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid, ConstructJson(/* version */ 999, kDDLCommandCreateTable));
+        1, query_id, ConstructJson(/* version */ 999, kDDLCommandCreateTable));
     // Should fail since version is unsupported.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, node_id, pg_backend_pid, ConstructJson(/* version */ 1, "INVALID COMMAND TAG"));
+        1, query_id, ConstructJson(/* version */ 1, "INVALID COMMAND TAG"));
     // Should fail since command tag is unknown.
     ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
   }
+
+  // Verify that supported command tags are processed.
+  {
+    ddl_queue_handler.ClearState();
+    for (const auto& command_tag : {kDDLCommandCreateTable, kDDLCommandDropTable}) {
+      ddl_queue_handler.rows_.emplace_back(
+          1, query_id, ConstructJson(/* version */ 1, command_tag));
+    }
+    ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
+  }
 }
 
-TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyAlreadyProcessed) {
-  const auto ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
-  const int kVersion = 1;
-  Uuid node_id = Uuid::Generate();
-  int pg_backend_pid = 1;
-
+TEST_F(XClusterDDLQueueHandlerMockedTest, SkipScanWhenNoNewRecords) {
   auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
-  // Construct row list.
-  ddl_queue_handler.rows_.emplace_back(
-      1, node_id, pg_backend_pid, ConstructJson(kVersion, kDDLCommandCreateTable));
-  ddl_queue_handler.rows_.emplace_back(
-      2, node_id, pg_backend_pid,
-      ConstructJson(kVersion, kDDLCommandCreateTable, "\"new_table_id\": \"n/a\""));
-  ddl_queue_handler.rows_.emplace_back(
-      3, node_id, pg_backend_pid, ConstructJson(kVersion, kDDLCommandDropTable));
 
+  const auto ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
   ddl_queue_handler.safe_time_ht_ = ht1;
-  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
-  // Ensure we called the proper tags the correct number of times.
-  ASSERT_EQ(ddl_queue_handler.command_tag_to_count_map_[kDDLCommandCreateTable], 2);
-  ASSERT_EQ(ddl_queue_handler.command_tag_to_count_map_[kDDLCommandDropTable], 1);
 
-  // Try again with the same rows, since already_processed, will call main class functions to parse.
-  // Will fail since first Create Table doesn't have new_table_id field.
-  ASSERT_NOK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
-  std::get<3>(ddl_queue_handler.rows_[0]) =
-      ConstructJson(kVersion, kDDLCommandCreateTable, "\"new_table_id\": \"n/a\"");
+  // Initial call should always process new records.
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), true);
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1, /* num_records */ 0));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 1);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), false);
 
-  // Try again with the same rows, ensure that we handle already_processed.
-  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1));
-  // Should still have same numbers.
-  ASSERT_EQ(ddl_queue_handler.command_tag_to_count_map_[kDDLCommandCreateTable], 2);
-  ASSERT_EQ(ddl_queue_handler.command_tag_to_count_map_[kDDLCommandDropTable], 1);
+  // If we haven't had new records, then don't process.
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1, /* num_records */ 0));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 1);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), false);
+
+  // If there are new records then process.
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1, /* num_records */ 1));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 2);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), false);
+
+  // Verify calls without an apply_safe_time correctly update applied_new_records_.
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(
+      /* apply_safe_time */ std::nullopt, /* num_records */ 0));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 2);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), false);
+
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(
+      /* apply_safe_time */ std::nullopt, /* num_records */ 2));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 2);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), true);
+
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(
+      /* apply_safe_time */ std::nullopt, /* num_records */ 0));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 2);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), true);
+
+  // Next call with an apply_safe_time should process.
+  ASSERT_OK(ddl_queue_handler.ProcessDDLQueueTable(ht1, /* num_records */ 0));
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 3);
+  ASSERT_EQ(ddl_queue_handler.GetAppliedNewRecords(), false);
 }
 
 }  // namespace yb::tserver

@@ -22,11 +22,15 @@
 
 namespace yb {
 
+class IsOperationDoneResult;
+
 namespace client {
 class XClusterRemoteClient;
 }  // namespace client
 
 namespace master {
+
+class XClusterOutboundReplicationGroupTaskFactory;
 
 class XClusterOutboundReplicationGroup
     : public std::enable_shared_from_this<XClusterOutboundReplicationGroup>,
@@ -37,16 +41,21 @@ class XClusterOutboundReplicationGroup
         get_namespace_id_func;
     const std::function<Result<NamespaceName>(const NamespaceId&)> get_namespace_name_func;
     const std::function<Result<std::vector<TableInfoPtr>>(const NamespaceId&)> get_tables_func;
-    const std::function<Result<std::vector<xrepl::StreamId>>(
-        const std::vector<TableInfoPtr>&, CoarseTimePoint,
-        StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch)>
-        bootstrap_tables_func;
+    const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
+        const std::vector<TableId>&, const LeaderEpoch&)>
+        create_xcluster_streams_func;
+    const std::function<Status(
+        const std::vector<std::pair<TableId, xrepl::StreamId>>&, StreamCheckpointLocation,
+        const LeaderEpoch&, bool, std::function<void(Result<bool>)>)>
+        checkpoint_xcluster_streams_func;
     const std::function<Result<DeleteCDCStreamResponsePB>(
         const DeleteCDCStreamRequestPB&, const LeaderEpoch&)>
         delete_cdc_stream_func;
 
     // SysCatalog functions.
-    const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
+    const std::function<Status(
+        const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*,
+        const std::vector<scoped_refptr<CDCStreamInfo>>&)>
         upsert_to_sys_catalog_func;
     const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
         delete_from_sys_catalog_func;
@@ -55,7 +64,8 @@ class XClusterOutboundReplicationGroup
   explicit XClusterOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-      HelperFunctions helper_functions, scoped_refptr<TasksTracker> tasks_tracker);
+      HelperFunctions helper_functions, scoped_refptr<TasksTracker> tasks_tracker,
+      XClusterOutboundReplicationGroupTaskFactory& task_factory);
 
   virtual ~XClusterOutboundReplicationGroup() = default;
 
@@ -67,11 +77,9 @@ class XClusterOutboundReplicationGroup
   Result<SysXClusterOutboundReplicationGroupEntryPB> GetMetadata() const EXCLUDES(mutex_);
 
   Result<std::vector<NamespaceId>> AddNamespaces(
-      const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names,
-      CoarseTimePoint deadline) EXCLUDES(mutex_);
+      const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names) EXCLUDES(mutex_);
 
-  Result<NamespaceId> AddNamespace(
-      const LeaderEpoch& epoch, const NamespaceName& namespace_name, CoarseTimePoint deadline)
+  Result<NamespaceId> AddNamespace(const LeaderEpoch& epoch, const NamespaceName& namespace_name)
       EXCLUDES(mutex_);
 
   Status RemoveNamespace(const LeaderEpoch& epoch, const NamespaceId& namespace_id)
@@ -101,12 +109,12 @@ class XClusterOutboundReplicationGroup
 
   bool HasNamespace(const NamespaceId& namespace_id) const EXCLUDES(mutex_);
 
-  void AddTable(
-      const TableInfoPtr& table_info, const LeaderEpoch& epoch, StdStatusCallback completion_cb)
-      EXCLUDES(mutex_);
-
  private:
   friend class XClusterOutboundReplicationGroupMocked;
+  friend class AddTableToXClusterSourceTask;
+  friend class XClusterCheckpointNamespaceTask;
+
+  using NamespaceInfoPB = SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB;
 
   // LockForRead and LockForWrite are used to get a read or write lock on the outbound_rg_info_ and
   // ensure the group is not deleted.
@@ -117,21 +125,17 @@ class XClusterOutboundReplicationGroup
   Result<XClusterOutboundReplicationGroupInfo::WriteLock> LockForWrite() REQUIRES(mutex_);
 
   Result<NamespaceId> AddNamespaceInternal(
-      const NamespaceName& namespace_name, CoarseTimePoint deadline,
-      XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch)
-      REQUIRES(mutex_);
+      const NamespaceName& namespace_name, XClusterOutboundReplicationGroupInfo::WriteLock& l,
+      const LeaderEpoch& epoch) REQUIRES(mutex_);
 
-  Status Upsert(XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch)
-      REQUIRES(mutex_);
+  Status Upsert(
+      XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch,
+      const std::vector<scoped_refptr<CDCStreamInfo>>& streams = {}) REQUIRES(mutex_);
 
   // Deletes all the streams for the given namespace.
   Status DeleteNamespaceStreams(
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const SysXClusterOutboundReplicationGroupEntryPB& pb) REQUIRES(mutex_);
-
-  Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTables(
-      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline,
-      const LeaderEpoch& epoch) REQUIRES(mutex_);
 
   virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const;
@@ -143,11 +147,72 @@ class XClusterOutboundReplicationGroup
   Status AddTableInternal(TableInfoPtr table_info, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
+  Result<NamespaceInfoPB> CreateNamespaceInfo(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch) REQUIRES(mutex_);
+
+  // Returns the NamespaceInfoPB for the given namespace_id. If its not found returns a NotFound
+  // status. Caller must hold the WriteLock.
+  Result<NamespaceInfoPB*> GetNamespaceInfo(const NamespaceId& namespace_id) REQUIRES(mutex_);
+  // Const version of the above. Caller must hold the ReadLock.
+  Result<const NamespaceInfoPB*> GetNamespaceInfo(const NamespaceId& namespace_id) const
+      REQUIRES_SHARED(mutex_);
+
+  // Graceful version of the above that does not return a bad status.
+  // Validates the WriteLock result and returns the NamespaceInfoPB for the given namespace_id. If
+  // WriteLock failed due to the replication group being dropped of if the namespace is not found
+  // returns nullptr.
+  NamespaceInfoPB* GetNamespaceInfoSafe(
+      const Result<XClusterOutboundReplicationGroupInfo::WriteLock>& lock_result,
+      const NamespaceId& namespace_id) const REQUIRES(mutex_);
+
+  Result<NamespaceInfoPB::TableInfoPB*> GetTableInfo(
+      NamespaceInfoPB& ns_info, const TableId& table_id) REQUIRES(mutex_);
+
+  Status CreateStreamForNewTable(
+      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  Status CheckpointNewTable(
+      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch,
+      StdStatusCallback completion_cb) EXCLUDES(mutex_);
+
+  Status MarkNewTablesAsCheckpointed(
+      const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch);
+
+  void StartNamespaceCheckpointTasks(
+      const std::vector<NamespaceId>& namespace_ids, const LeaderEpoch& epoch);
+
+  // Create streams for tables that were part of the initial bootstrap and do not yet have a stream.
+  // This function is idempotent.
+  Status CreateStreamsForInitialBootstrap(const NamespaceId& namespace_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  // Checkpoint streams for tables that were part of the initial bootstrap and have not yet been
+  // checkpointed. This function is idempotent.
+  Status CheckpointStreamsForInitialBootstrap(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch,
+      std::function<void(XClusterCheckpointStreamsResult)> completion_cb) EXCLUDES(mutex_);
+
+  // Returns False if there are any more table from the initial bootstrap that are pending
+  // checkpointing.
+  // Returns True if all tables have been checkpointed and namespace is marked as READY.
+  //  This function is idempotent.
+  Result<bool> MarkBootstrapTablesAsCheckpointed(
+      const NamespaceId& namespace_id, XClusterCheckpointStreamsResult checkpoint_result,
+      const LeaderEpoch& epoch);
+
+  // If the checkpointing operation failed then set the namespace to FAILED state and record the
+  // error.
+  void MarkCheckpointNamespaceAsFailed(
+      const NamespaceId& namespace_id, const LeaderEpoch& epoch, const Status& status);
+
   HelperFunctions helper_functions_;
 
   // Mutex used to ensure reads are not allowed when writes are happening.
   mutable std::shared_mutex mutex_;
   std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
+
+  XClusterOutboundReplicationGroupTaskFactory& task_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(XClusterOutboundReplicationGroup);
 };

@@ -52,6 +52,8 @@
 #include "yb/gutil/callback.h"
 
 #include "yb/rpc/scheduler.h"
+#include "yb/rpc/strand.h"
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/opid.h"
@@ -118,6 +120,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
+    rpc::ThreadPool* raft_notifications_pool,
     RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager);
 
@@ -128,7 +131,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::unique_ptr<PeerProxyFactory> peer_proxy_factory,
     std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
-    std::unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const std::string& peer_uuid,
@@ -675,7 +678,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
-  std::unique_ptr<ThreadPoolToken> raft_pool_token_;
+  std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token_;
 
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;

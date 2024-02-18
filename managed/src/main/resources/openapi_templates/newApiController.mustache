@@ -20,6 +20,14 @@ import com.yugabyte.yw.controllers.AbstractPlatformController;
 {{/hasAuthMethods}}
 {{/-first}}
 {{/operations.operation}}
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 {{^handleExceptions}}
 import java.io.IOException;
 {{/handleExceptions}}
@@ -63,6 +71,23 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   }
 
 {{#operation}}
+  {{#vendorExtensions.x-yba-api-authz}}
+  {{#-first}}
+  @AuthzPath({
+  {{/-first}}
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.{{#lambda.uppercase}}{{requiredPermission.resourceType}}{{/lambda.uppercase}}, action = Action.{{#lambda.uppercase}}{{requiredPermission.action}}{{/lambda.uppercase}}),
+        resourceLocation = @Resource(path = Util.{{#lambda.uppercase}}{{resourceLocation.path}}{{/lambda.uppercase}},
+          sourceType = SourceType.{{#lambda.uppercase}}{{resourceLocation.sourceType}}{{/lambda.uppercase}}{{#resourceLocation.dbClass}},
+          dbClass = {{resourceLocation.dbClass}}{{/resourceLocation.dbClass}}{{#resourceLocation.identifier}},
+          identifier = "{{resourceLocation.identifier}}"{{/resourceLocation.identifier}}{{#resourceLocation.columnName}},
+          columnName = "{{resourceLocation.columnName}}"{{/resourceLocation.columnName}}){{#checkOnlyPermission}},
+        checkOnlyPermission = {{checkOnlyPermission}}{{/checkOnlyPermission}}){{^-last}},{{/-last}}
+  {{#-last}}
+  })
+  {{/-last}}
+  {{/vendorExtensions.x-yba-api-authz}}
   {{#wrapCalls}}@ApiAction{{/wrapCalls}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}(Http.Request request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{>pathParams}}{{^-last}}, {{/-last}}{{/pathParams}}) {{^handleExceptions}}{{#bodyParams}}throws IOException{{/bodyParams}}{{/handleExceptions}}{{#handleExceptions}}throws Exception{{/handleExceptions}} {
     {{#bodyParams}}
@@ -222,6 +247,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{>responseToResult}}
     {{/useInterfaces}}
   }
+
 {{/operation}}
 }
 {{/operations}}

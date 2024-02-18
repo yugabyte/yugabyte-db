@@ -109,6 +109,7 @@ class ThreadPool;
 class AddTransactionStatusTabletRequestPB;
 class AddTransactionStatusTabletResponsePB;
 class UniverseKeyRegistryPB;
+class IsOperationDoneResult;
 
 template<class T>
 class AtomicGauge;
@@ -263,8 +264,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateTableIfNotFound(
       const std::string& namespace_name, const std::string& table_name,
-      std::function<Result<CreateTableRequestPB>()> generate_request, CreateTableResponsePB* resp,
-      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+      std::function<Result<CreateTableRequestPB>()> generate_request, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
   // Create a new transaction status table.
   Status CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
@@ -344,16 +345,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                  bool* alter_in_progress);
 
   Status WaitForAlterTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
-
-  // Check if the transaction status table creation is done.
-  //
-  // This is called at the end of IsCreateTableDone if the table has transactions enabled.
-  Result<bool> IsTransactionStatusTableCreated();
-
-  // Check if the metrics snapshots table creation is done.
-  //
-  // This is called at the end of IsCreateTableDone.
-  Result<bool> IsMetricsSnapshotsTableCreated();
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
   Status VerifyTablePgLayer(
@@ -1576,6 +1567,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void MarkUniverseForCleanup(const xcluster::ReplicationGroupId& replication_group_id)
       EXCLUDES(mutex_);
 
+  Status CreateCdcStateTableIfNotFound(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  // Create a new Xrepl stream, start mutation and add it to cdc_stream_map_.
+  // Caller is responsible for writing the stream to sys_catalog followed by CommitMutation.
+  // or calling ReleaseAbandonedXreplStream to release the unused stream.
+  Result<scoped_refptr<CDCStreamInfo>> InitNewXReplStream() EXCLUDES(mutex_);
+  void ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
+
+  Status SetWalRetentionForTable(
+      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2131,7 +2133,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<TableInfoPtr> GetGlobalTransactionStatusTable();
 
-  Result<bool> IsCreateTableDone(const TableInfoPtr& table);
+  Result<IsOperationDoneResult> IsCreateTableDone(const TableInfoPtr& table);
 
   // SetupReplicationWithBootstrap
   Status ValidateReplicationBootstrapRequest(
@@ -2764,8 +2766,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
-  Status SetWalRetentionForTable(
-      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Status BackfillMetadataForCDC(
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 

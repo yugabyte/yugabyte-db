@@ -36,9 +36,9 @@ The valid *arguments* for initiate cutover to target are described in the follow
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for initiate cutover to target. |
-| --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| &#8209;&#8209;prepare&#8209;for&#8209;fall&#8209;back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
 ### Example
 
@@ -62,7 +62,7 @@ The valid *arguments* for initiate cutover to source are described in the follow
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
 ### Example
@@ -87,7 +87,7 @@ The valid *arguments* for initiate cutover to source-replica are described in th
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover. |
 
 ### Example
@@ -112,7 +112,7 @@ The valid *arguments* for cutover status are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover status. |
 
 ### Example

@@ -437,8 +437,6 @@ class AzureCloudAdmin():
             disk_params
         ).result()
 
-        cachingType = "ReadOnly" if size <= 4095 else "None"
-
         vm.storage_profile.data_disks.append({
             "lun": lun,
             "name": disk_name,
@@ -446,9 +444,7 @@ class AzureCloudAdmin():
             "managed_disk": {
                 "storageAccountType": AZURE_SKU_FORMAT[vol_type],
                 "id": data_disk.id
-            },
-            "caching": cachingType
-        })
+            }})
 
         async_disk_attach = self.compute_client.virtual_machines.begin_create_or_update(
             RESOURCE_GROUP,
