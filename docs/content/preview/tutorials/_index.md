@@ -19,6 +19,12 @@ cascade:
     href="build-apps/"
     icon="/images/section_icons/quick_start/sample_apps.png">}}
 
+  {{<index/item
+    title="Build and learn"
+    body="Learn how to deploy and scale an application from single-node PostgreSQL to multi-region YugabyteDB."
+    href="build-and-learn/"
+    icon="fa-solid fa-globe">}}
+
 {{</index/block>}}
 
 ### Cloud
@@ -46,10 +52,10 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
 {{<index/block>}}
 
   {{<index/item
-    title="Kafka"
-    body="Stream data with different Kafka environments."
-    href="cdc-tutorials/"
-    icon="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">}}
+    title="AI"
+    body="Add a scalable and highly-available database to your AI projects."
+    href="ai/"
+    icon="fa-solid fa-robot">}}
 
 {{</index/block>}}
 

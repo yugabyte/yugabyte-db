@@ -28,6 +28,12 @@ type: indexpage
     icon="/images/tutorials/ai/icons/llamaindex-icon.svg">}}
 
   {{<index/item
+    title="LocalAI"
+    body="Build an LLM application, hosted locally or on-prem using LocalAI and YugabyteDB."
+    href="ai-localai/"
+    icon="/images/tutorials/ai/icons/localai-icon.svg">}}
+
+  {{<index/item
     title="Azure OpenAI"
     body="Build a scalable generative AI application using YugabyteDB as the database backend."
     href="../azure/azure-openai/"
