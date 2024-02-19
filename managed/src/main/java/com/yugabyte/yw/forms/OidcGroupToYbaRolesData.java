@@ -4,6 +4,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.UUID;
@@ -24,13 +25,18 @@ public class OidcGroupToYbaRolesData {
             throw new PlatformServiceException(BAD_REQUEST, "Roles cannot be empty!");
           }
           for (UUID roleUUID : pair.getRoles()) {
-            Role r = Role.find.byId(roleUUID);
-            if (r == null) {
+            Role role = Role.find.byId(roleUUID);
+            if (role == null) {
               throw new PlatformServiceException(BAD_REQUEST, "Invalid role UUID!");
             }
-            if (r.getName().equals("SuperAdmin")) {
+            if (role.getName().equals("SuperAdmin")) {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Cannot assign SuperAdmin role to groups!");
+            }
+            // Custom roles will be supported in the future
+            if (role.getRoleType().equals(RoleType.Custom)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot assign custom role to groups!");
             }
           }
         });

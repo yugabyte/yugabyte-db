@@ -1312,7 +1312,7 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 #### backfill_index_write_batch_size
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
 Default: 128
 

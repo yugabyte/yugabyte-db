@@ -177,7 +177,6 @@ ycqlsh> quit;
 | SHOW SESSION      | Tracing from `ycqlsh` is not supported.                   |
 | TRACING           | Tracing from `ycqlsh` is not supported.                   |
 
-
 ## Learn more
 
 - [CREATE KEYSPACE](../../../api/ycql/ddl_create_keyspace)

@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
@@ -410,7 +411,14 @@ public class SessionController extends AbstractPlatformController {
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin(Http.Request request) {
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
-    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
+    Users user;
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      user = thirdPartyLoginHandler.findUserByEmailOrCreateNewUser(request, email);
+    } else {
+      user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
+      user.setUserType(UserType.oidc);
+      user.save();
+    }
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
