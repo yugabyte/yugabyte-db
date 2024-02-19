@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.HAConfigFormData;
+import com.yugabyte.yw.forms.HAConfigGetResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.ApiOperation;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -81,6 +83,10 @@ public class HAController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(
+      nickname = "getHAConfig",
+      value = "Get high availability config",
+      response = HAConfigGetResp.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -100,7 +106,8 @@ public class HAController extends AuthenticatedController {
         return Results.status(NOT_FOUND, jsonMsg);
       }
 
-      return PlatformResults.withData(config.get());
+      HAConfigGetResp resp = new HAConfigGetResp(config.get());
+      return PlatformResults.withData(resp);
     } catch (Exception e) {
       LOG.error("Error retrieving HA config", e);
 

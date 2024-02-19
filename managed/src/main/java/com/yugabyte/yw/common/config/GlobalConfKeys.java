@@ -1168,6 +1168,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the option to view new releases page",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> replicationFrequency =
+      new ConfKeyInfo<>(
+          "yb.ha.replication_frequency",
+          ScopeType.GLOBAL,
+          "Replication frequency",
+          "Replication frequency",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.disableHostnameVerification",
