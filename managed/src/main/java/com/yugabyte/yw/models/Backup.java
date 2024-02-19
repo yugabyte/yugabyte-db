@@ -414,7 +414,7 @@ public class Backup extends Model {
     // Get current timestamp.
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
+        Backup.find.query().where().lt("expiry", now).in("state", BackupState.Completed).findList();
 
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
