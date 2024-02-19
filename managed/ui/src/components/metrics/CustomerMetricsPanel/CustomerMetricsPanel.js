@@ -100,57 +100,60 @@ const PanelBody = ({
     metricMeasure === MetricMeasure.OVERALL ||
     origin === MetricOrigin.TABLE
   ) {
+    const metricTabs = MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
+      const tabTitle = MetricTypesWithOperations[type].title;
+      const metricContent = MetricTypesWithOperations[type];
+      if (
+        !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
+        selectedUniverse?.universeDetails?.nodeDetailsSet.some(
+          (node) => node[APIMetricToNodeFlag[type]]
+        )
+      ) {
+        if (!invalidTabType.includes(type)) {
+          prevTabs.push(
+            <Tab
+              eventKey={type}
+              title={tabTitle}
+              key={`${type}-${metricMeasure}-tab`}
+              mountOnEnter={true}
+              unmountOnExit={true}
+            >
+              <GraphTab
+                type={type}
+                metricsKey={metricContent.metrics}
+                nodePrefixes={nodePrefixes}
+                selectedUniverse={selectedUniverse}
+                title={metricContent.title}
+                width={width}
+                tableName={tableName}
+                isGranularMetricsEnabled={isGranularMetricsEnabled}
+              />
+            </Tab>
+          );
+        }
+      }
+      return prevTabs;
+    }, []);
+    if (origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig) {
+      metricTabs.push(
+        <Tab
+          eventKey={'xClusterDr'}
+          title={'xCluster DR'}
+          key={`xClusterDr-${metricMeasure}-tab`}
+          mountOnEnter={true}
+          unmountOnExit={true}
+        >
+          <Box marginTop="16px" textAlign="center">
+            <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
+              <span className="dr-metrics-link">See xCluster DR Metrics</span>
+            </Link>
+          </Box>
+        </Tab>
+      );
+    }
     result = (
       <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
-        {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
-          const tabTitle = MetricTypesWithOperations[type].title;
-          const metricContent = MetricTypesWithOperations[type];
-          if (
-            !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
-            selectedUniverse?.universeDetails?.nodeDetailsSet.some(
-              (node) => node[APIMetricToNodeFlag[type]]
-            )
-          ) {
-            if (!invalidTabType.includes(type)) {
-              prevTabs.push(
-                <Tab
-                  eventKey={type}
-                  title={tabTitle}
-                  key={`${type}-${metricMeasure}-tab`}
-                  mountOnEnter={true}
-                  unmountOnExit={true}
-                >
-                  <GraphTab
-                    type={type}
-                    metricsKey={metricContent.metrics}
-                    nodePrefixes={nodePrefixes}
-                    selectedUniverse={selectedUniverse}
-                    title={metricContent.title}
-                    width={width}
-                    tableName={tableName}
-                    isGranularMetricsEnabled={isGranularMetricsEnabled}
-                  />
-                </Tab>
-              );
-            }
-          }
-          return prevTabs;
-        }, [])}
-        {origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig && (
-          <Tab
-            eventKey={'xClusterDr'}
-            title={'xCluster DR'}
-            key={`xClusterDr-${metricMeasure}-tab`}
-            mountOnEnter={true}
-            unmountOnExit={true}
-          >
-            <Box marginTop="16px" textAlign="center">
-              <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
-                <span className="dr-metrics-link">See xCluster DR Metrics</span>
-              </Link>
-            </Box>
-          </Tab>
-        )}
+        {metricTabs}
       </YBTabsPanel>
     );
   } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
