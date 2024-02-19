@@ -114,11 +114,19 @@ int od_auth_query(od_client_t *client, char *peer)
 	}
 
 	/* set auth query route user and database */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_kiwi_var_set(&auth_client->startup.user,
+		     rule->auth_query_user, strlen(rule->auth_query_user) + 1);
+
+	yb_kiwi_var_set(&auth_client->startup.database,
+		     rule->auth_query_db, strlen(rule->auth_query_db) + 1);
+#else
 	kiwi_var_set(&auth_client->startup.user, KIWI_VAR_UNDEF,
 		     rule->auth_query_user, strlen(rule->auth_query_user) + 1);
 
 	kiwi_var_set(&auth_client->startup.database, KIWI_VAR_UNDEF,
 		     rule->auth_query_db, strlen(rule->auth_query_db) + 1);
+#endif
 
 	/* route */
 	od_router_status_t status;
