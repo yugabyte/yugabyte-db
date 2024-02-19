@@ -1767,11 +1767,15 @@ TEST_F(CDCSDKBeforeImageTest, TestCompactionWithConsistentSnapshotAndBeforeImage
   ASSERT_OK(UpdateRows(2 /* key */, 4 /* value */, &test_cluster_));
   ASSERT_OK(UpdateRows(2 /* key */, 5 /* value */, &test_cluster_));
 
+  auto explicit_checkpoint = change_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp.safe_hybrid_time());
   change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
-      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
   // for updating cdc_state with explicit checkpoint
+  explicit_checkpoint = change_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp.safe_hybrid_time());
   change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
-      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
 
   WaitForCompaction(table);
   expected_row = ReadFromCdcStateTable(stream_id, tablets[0].tablet_id());
