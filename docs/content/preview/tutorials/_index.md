@@ -17,13 +17,19 @@ cascade:
     title="Hello world"
     body="Build a hello world application using your favorite programming language."
     href="build-apps/"
-    icon="/images/section_icons/quick_start/sample_apps.png">}}
+    icon="fa-solid fa-rocket">}}
 
   {{<index/item
     title="Build and learn"
     body="Learn how to deploy and scale an application from single-node PostgreSQL to multi-region YugabyteDB."
     href="build-and-learn/"
     icon="fa-solid fa-globe">}}
+
+  {{<index/item
+    title="Product lab"
+    body="Test YugabyteDB features using a live demo application."
+    href="../yugabyte-cloud/managed-labs/"
+    icon="fa-solid fa-flask">}}
 
 {{</index/block>}}
 
