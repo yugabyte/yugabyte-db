@@ -11,9 +11,17 @@ menu:
 type: docs
 ---
 
-In case of most task failures in YugabyteDB Anywhere (YBA) universes (VMs or Kubernetes), you can retry the tasks from the YBA UI or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task). To do so, navigate to **Universes** in the YBA UI, select your universe, and click **Retry task** as per the following illustration:
+In case of most task failures in YugabyteDB Anywhere (YBA) universes (VMs or Kubernetes), you can retry the tasks from the YBA UI or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task).
 
-![Retry task](/images/yp/retry-task.png)
+You can retry a task using one of the following ways:
+
+- Navigate to **Universes** in the YBA UI, select your universe, and click **Retry task** as per the following illustration:
+
+    ![Retry task](/images/yp/retry-task1.png)
+
+- Navigate to **Tasks** in the YBA UI, click **See Details** corresponding to the failed universe task, and click **Retry Task**.
+
+    ![Retry task](/images/yp/retry-task2.png)
 
 A retry of the original task reruns the individual steps of the task in an idempotent fashion. This should resolve a failure if it was caused by a temporary issue.
 
