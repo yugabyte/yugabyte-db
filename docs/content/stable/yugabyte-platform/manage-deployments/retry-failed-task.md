@@ -19,5 +19,5 @@ A retry of the original task reruns the individual steps of the task in an idemp
 
 For example, a quota limit may prevent a universe scale up a task causing it to fail. When the quota limit is adjusted to the right value and the task is retried, it should succeed. If the underlying issue is more permanent, contact {{% support-platform %}}.
 
-Critical task failures such as universe scale up or down, placement changes, software upgrades, and flags changes disable other critical tasks from being run on the universe. It is recommended to retry the failed task to completion before attempting other operations on the universe, or contact {{% support-platform %}} if the task continues to fail.
+Critical task failures, such as scaling a universe, placement changes, software upgrades, and flag changes block other critical tasks from being run on the universe. It is recommended to retry the failed task to completion before attempting other operations on the universe, or contact {{% support-platform %}} if the task continues to fail.
 Note that some operations like taking [universe backups](../../back-up-restore-universes/), or creating [support bundles](../../troubleshoot/universe-issues/#use-support-bundles) can always be attempted even after such failures.
