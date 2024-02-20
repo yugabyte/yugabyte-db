@@ -93,7 +93,7 @@ const PanelBody = ({
       (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
     )?.value === 'true';
   const drConfigUuid =
-    selectedUniverse?.drConfigUuidsAsSource[0] ?? selectedUniverse?.drConfigUuidsAsTarget[0];
+    selectedUniverse?.drConfigUuidsAsSource?.[0] ?? selectedUniverse?.drConfigUuidsAsTarget?.[0];
   const hasDrConfig = !!drConfigUuid;
   if (
     metricMeasure === MetricMeasure.OUTLIER ||
