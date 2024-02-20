@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { find } from 'lodash';
+import { find, has } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
@@ -140,9 +140,11 @@ export const constructImageBundlePayload = (formValues: any) => {
     const sshUserOverride = (img as any).sshUserOverride;
     const sshPortOverride = (img as any).sshPortOverride;
 
-    if (!sshPortOverride && !sshUserOverride) return;
-
     formValues.regions.forEach((region: CloudVendorRegionField) => {
+      if (!has(img.details.regions, region.code)) {
+        img.details.regions[region.code] = {};
+      }
+
       if (sshUserOverride) {
         img.details.regions[region.code]['sshUserOverride'] = sshUserOverride;
       }
