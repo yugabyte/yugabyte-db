@@ -52,6 +52,7 @@ class WaitingTxnRegistry {
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
 using WaitDoneCallback = std::function<void(const Status&, HybridTime)>;
+using IntentProviderFunc = std::function<Result<IntentTypesContainer>()>;
 
 // This class is responsible for coordinating conflict transactions which are still running. A
 // running transaction can enter the wait queue while blocking on other running transactions in
@@ -81,6 +82,7 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider,
       WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
@@ -94,6 +96,7 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
       int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider,
       WaitDoneCallback callback);
 
   void Poll(HybridTime now);
