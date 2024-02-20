@@ -53,7 +53,7 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
 
 {{</index/block>}}
 
-### AI
+### Other technologies
 
 {{<index/block>}}
 
@@ -62,12 +62,6 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
     body="Add a scalable and highly-available database to your AI projects."
     href="ai/"
     icon="fa-solid fa-robot">}}
-
-{{</index/block>}}
-
-### CDC
-
-{{<index/block>}}
 
   {{<index/item
     title="Kafka"
