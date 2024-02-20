@@ -19,10 +19,10 @@ However, maintaining such a platform was not a trivial task. The engineering and
 Eventually, the YugaPlus team found a way to spend more time on innovation. They transitioned to YugabyteDB Managed, a DBaaS (Database-as-a-Service) that allowed them to offload the management, maintenance, and operations of their database cluster...
 {{< /note >}}
 
-In this chapter, you'll learn:
+In this chapter, you'll learn how to do the following:
 
-* How deploy a free YugabyteDB Managed instance
-* How to connect the application to the YugabyteDB Managed cluster
+* Deploy a free YugabyteDB Managed instance.
+* Connect the application to the YugabyteDB Managed cluster.
 
 **Prerequisites**
 
@@ -117,7 +117,7 @@ As soon as the `yugaplus-backend` container starts, it applies the database migr
 ![YugatebyDB Managed Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
 {{< note title="Can't connect to YugabyteDB Managed?" >}}
-If the application fails to connect to YugabyteDB Managed, ensure you've added your IP address to the [IP Allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
+If the application fails to connect to YugabyteDB Managed, ensure you've added your IP address to the [IP Allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
 {{< /note >}}
 
 ## Ask for movie recommendations one last time

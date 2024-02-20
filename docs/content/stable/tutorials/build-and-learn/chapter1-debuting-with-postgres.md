@@ -19,10 +19,10 @@ The launch was successful, with the first users signing up for YugaPlus to enjoy
 
 In this chapter, you'll deploy one of the YugaPlus services—the movie recommendations service. This service takes user questions in plain English and uses an underlying generative AI stack (OpenAI, Spring AI, and PostgreSQL pgvector) or the full-text search capabilities of PostgreSQL to provide users with the most relevant movie recommendations.
 
-You'll learn the following:
+You'll learn how to do the following:
 
-* How to deploy PostgreSQL with pgvector in Docker.
-* How to perform vector similarity or full-text searches in PostgreSQL.
+* Deploy PostgreSQL with pgvector in Docker.
+* Perform vector similarity or full-text searches in PostgreSQL.
 
 **Prerequisites**
 

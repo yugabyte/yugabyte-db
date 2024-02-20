@@ -12,15 +12,15 @@ type: docs
 ---
 
 {{< note title="YugaPlus - Weathering Storms in the Cloud" >}}
-One busy evening, the YugaPlus team was caught off-guard by a service outage. The streaming platform had gone down, and customers started voicing their frustrations on social media. Within minutes, the team pinpointed that there was a major incident in a cloud region that hosted their database instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
+One busy evening, the YugaPlus team was caught off-guard by a service outage. The streaming platform had gone down, and customers started voicing their frustrations on social media. In minutes, the team pinpointed that there was a major incident in a cloud region that hosted their database instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
 
 Eventually, **four hours later** the cloud provider restored the failed region and the YugaPlus streaming platform was live again. After this incident the YugaPlus team decided to migrate to a multi-region architecture that would help them to tolerate all sorts of possible outages in the future...
 {{< /note >}}
 
-In this chapter, you'll learn:
+In this chapter, you'll learn how to do the following:
 
-* How to set up and start a YugabyteDB cluster that spans multiple regions
-* How to work with the YugabyteDB smart driver for routing requests automatically and handling failovers
+* Set up and start a YugabyteDB cluster that spans multiple regions.
+* Work with the YugabyteDB smart driver to route requests automatically and handle failovers.
 
 **Prerequisites**
 
@@ -83,7 +83,7 @@ Usually, the RTO is in the range from 3 to 15 seconds. Depends on the latency be
 
 However, the YugaPlus backend was not prepared for this outage. The backend relied on the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
 
-```yaml
+```output.yaml
 DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
 ```
 
@@ -111,7 +111,7 @@ at org.postgresql.core.v3.ConnectionFactoryImpl.openConnectionImpl(ConnectionFac
 ... 14 common frames omitted
 ```
 
-The backend still tries to connect to the stopped node; it doesn't know how to fallback to the remaining nodes that can continue serving the application's requests.
+The backend still tries to connect to the stopped node; it doesn't know how to fall back to the remaining nodes that can continue serving the application's requests.
 
 The PostgreSQL JDBC driver allows the specification of multiple database connection endpoints that can be used for fault tolerance and load balancing. However, the list of these connection endpoints is static, meaning that you would need to restart the application whenever you add or remove nodes from the YugabyteDB cluster.
 
@@ -193,7 +193,6 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
 
     ```output
     +---------------------------------------------------------------------------------------------------+
-
     |                                             yugabyted                                             |
     +---------------------------------------------------------------------------------------------------+
     | Status                     : Configuration successful. Primary data placement is geo-redundant.   |
@@ -218,7 +217,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
     (3 rows)
     ```
 
-In a real cloud environment, the distance between chosen cloud regions will have an impact on the overall application latency. With YugabyteDB, you can minimize cross-region requests by defining a [preferred region](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/#set-preferred-regions). This configuration ensures all tablet leaders reside in the preferred region, providing low-latency reads for users near the region and predictable latency for those further away.
+In a real cloud environment, the distance between chosen cloud regions will have an impact on the overall application latency. With YugabyteDB, you can minimize cross-region requests by defining a [preferred region](../../../develop/build-global-apps/global-database/#set-preferred-regions). This configuration ensures all tablet leaders reside in the preferred region, providing low-latency reads for users near the region and predictable latency for those further away.
 
 Complete the multi-region cluster configuration by setting the US East region as the preferred one.
 
@@ -231,14 +230,14 @@ docker exec -it yugabytedb-node1 bin/yb-admin \
 The `set_preferred_zones` command allows defining a preferred region/zone using a priority-based approach. The US East region is the preferred one because its priority is set to `1`. If that region becomes unavailable, then the US Central region becomes the next preferred one, provided its priority is set to `2`.
 
 {{< tip title="Design Patterns for Global Applications" >}}
-There is no one-size-fits-all solution for multi-region deployments, whether with YugabyteDB or any other distributed database. However, you can choose from several [design patterns for global applications](https://docs.yugabyte.com/preview/develop/build-global-apps/#design-patterns) and configure your database to best suit your multi-region application workloads.
+There is no one-size-fits-all solution for multi-region deployments, whether with YugabyteDB or any other distributed database. However, you can choose from several [design patterns for global applications](../../../develop/build-global-apps/#design-patterns) and configure your database to best suit your multi-region application workloads.
 
-Up to this point, you have deployed a multi-region cluster following the [global database with the preferred region pattern](https://docs.yugabyte.com/preview/develop/build-global-apps/global-database/).
+Up to this point, you have deployed a multi-region cluster following the [global database with the preferred region pattern](../../../develop/build-global-apps/global-database/).
 {{< /tip >}}
 
 ## Switch to YugabyteDB smart driver
 
-The [YugabyteDB smart drivers](https://docs.yugabyte.com/preview/drivers-orms/smart-drivers/) extend the capabilities of standard PostgreSQL drivers by simplifying load balancing of application requests and automatically handling various failures at the application layer.
+The [YugabyteDB smart drivers](../../../drivers-orms/smart-drivers/) extend the capabilities of standard PostgreSQL drivers by simplifying load balancing of application requests and automatically handling various failures at the application layer.
 
 The YugaPlus movies recommendation service, written in Java, already includes the JDBC smart driver as a dependency in its `pom.xml` file.
 

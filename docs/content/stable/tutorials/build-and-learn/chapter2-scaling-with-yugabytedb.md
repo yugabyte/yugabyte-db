@@ -17,12 +17,12 @@ As days went by, the YugaPlus streaming service welcomed thousands of new users,
 Eventually, the decision was made to address these scalability challenges by transitioning to a multi-node YugabyteDB cluster, capable of scaling both vertically and horizontally as needed...
 {{< /note >}}
 
-In this chapter, you'll learn:
+In this chapter, you'll learn how to do the following:
 
-* How to start a YugabyteDB cluster with the yugabyted tool.
-* How to use the YugabyteDB UI to monitor the state of the cluster.
-* How to scale the cluster by adding additional nodes.
-* How to leverage PostgreSQL compatibility by switching the application from PostgreSQL to YugabyteDB without any code changes.
+* Start a YugabyteDB cluster with the yugabyted tool.
+* Use the YugabyteDB UI to monitor the state of the cluster.
+* Scale the cluster by adding additional nodes.
+* Leverage PostgreSQL compatibility by switching the application from PostgreSQL to YugabyteDB without any code changes.
 
 **Prerequisites**
 
