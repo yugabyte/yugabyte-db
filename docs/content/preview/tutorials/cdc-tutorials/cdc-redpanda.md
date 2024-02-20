@@ -36,7 +36,7 @@ The following table describes how the data flows through each of these component
 
 | Step | Operations/Tasks | Component |
 | --- | --- | --- |
-| 1 | CDC Enabled and [Create the Stream ID](../../../../integrations/cdc/debezium/) for specific YSQL database. | YugabyteDB |
+| 1 | CDC Enabled and [Create the Stream ID](../../../integrations/cdc/debezium/) for specific YSQL database. | YugabyteDB |
 | 2 | [Install and configure Redpanda](https://docs.redpanda.com/docs/get-started/quick-start/?quickstart=docker) and download YugabyteDB Debezium Connector. | Redpanda Cloud or Redpanda Docker<br/>YugabyteDB CDC Connector |
 | 3 | Create and Deploy connector configuration in Redpanda. | Redpanda, Kafka Connect |
 
@@ -44,9 +44,9 @@ The following table describes how the data flows through each of these component
 
 ### Install YugabyteDB
 
-You have multiple options to [install or deploy YugabyteDB](../../../../deploy/).
+You have multiple options to [install or deploy YugabyteDB](../../../deploy/).
 
-If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../../quick-start/docker/).
+If you're running a Windows Machine then you can [leverage Docker on Windows with YugabyteDB](../../../quick-start/docker/).
 
 ### Install and set up Redpanda
 

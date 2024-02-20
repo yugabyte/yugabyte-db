@@ -68,7 +68,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
 1. Configure your event hub to connect and receive data from the Debezium Connector for Yugabyte. You can create an Azure Event Hub configuration file that will be saved locally on the machine, for example you can save the configuration file as `eventhub.config` in the Kafka `bin` directory. For more details on creating your configuration file, refer to the sample available in the [Kafka Connect for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) documentation.
 
-1. Download the Debezium connector jar file from the Yugabyte GitHub repository (<https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar>). Save this jar file in your Kafka `libs` folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
+1. Download the [Debezium connector jar file](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) from the Yugabyte GitHub repository. Save this jar file in your Kafka `libs` folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
 
 1. Navigate to the Kafka bin directory (for example, /home/azureuser/kafka_2.12-3.2.0/bin) on your machine and run the following command:
 
