@@ -26,11 +26,12 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/docdb/doc_ql_filefilter.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/docdb_filter_policy.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
-#include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
@@ -56,6 +57,9 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
+
+DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
+    "Use hybrid time SST filter when checking for conflicts with committed transactions.");
 
 namespace yb {
 namespace docdb {
@@ -859,16 +863,20 @@ class StrongConflictChecker {
         buffer_(*buffer)
   {}
 
-Status Check(
+  Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
     const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
     if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
+      auto hybrid_time_file_filter =
+          FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
+                                                        : nullptr;
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
           BloomFilterMode::USE_BLOOM_FILTER,
           intent_key,
-          rocksdb::kDefaultQueryId);
+          rocksdb::kDefaultQueryId,
+          hybrid_time_file_filter);
       value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
     value_iter_.Seek(intent_key);

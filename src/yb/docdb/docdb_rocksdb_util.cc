@@ -20,13 +20,15 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
