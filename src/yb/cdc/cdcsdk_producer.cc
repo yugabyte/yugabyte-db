@@ -2291,8 +2291,8 @@ Status GetChangesForCDCSDK(
           last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
     } else {
       pending_intents = true;
-      VLOG(1) << "Couldn't stream all records with this GetChanges call for transaction: "
-              << transaction_id.ToString() << ", tablet_id: " << tablet_id
+      VLOG(1) << "Couldn't stream all records with this GetChanges call for tablet_id: "
+              << tablet_id << ", transaction_id: " << transaction_id.ToString()
               << ", commit_time: " << commit_timestamp
               << ". The remaining records will be streamed in susequent GetChanges calls.";
       SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
@@ -2471,9 +2471,9 @@ Status GetChangesForCDCSDK(
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
                 VLOG(1)
-                    << "Couldn't stream all records with this GetChanges call for transaction: "
-                    << txn_id.ToString() << ", tablet_id: " << tablet_id << ", op_id" << op_id
-                    << ", commit_time: " << *commit_timestamp
+                    << "Couldn't stream all records with this GetChanges call for tablet_id: "
+                    << tablet_id << ", transaction_id: " << txn_id.ToString()
+                    << ", op_id: " << op_id << ", commit_time: " << *commit_timestamp
                     << ". The remaining records will be streamed in susequent GetChanges calls.";
                 SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
               } else {
