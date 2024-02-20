@@ -1808,6 +1808,16 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				bound_inclusive = true;
 				switch_fallthrough();
 			case BTGreaterStrategyNumber:
+				/*
+				 * For prechecks, we skip computation of the range bounds as we
+				 * are interested in only knowing if the keys can be bound, and
+				 * not what they bind to. Further, in some cases such as nested
+				 * subqueries, the value datums may not yet be available during
+				 * the precheck.
+				 */
+				if (is_for_precheck)
+					break;
+
 				if (start_valid[idx])
 				{
 					/* take max of old value and new value */
@@ -1831,6 +1841,16 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				bound_inclusive = true;
 				switch_fallthrough();
 			case BTLessStrategyNumber:
+				/*
+				 * For prechecks, we skip computation of the range bounds as we
+				 * are interested in only knowing if the keys can be bound, and
+				 * not what they bind to. Further, in some cases such as nested
+				 * subqueries, the value datums may not yet be available during
+				 * the precheck.
+				 */
+				if (is_for_precheck)
+					break;
+
 				if (end_valid[idx])
 				{
 					/* take min of old value and new value */
