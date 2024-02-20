@@ -411,3 +411,37 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl 
 SELECT a, b FROM test_tbl WHERE b = 4;
 DROP INDEX test_idx;
 DROP TABLE test_tbl;
+
+-- (#21004) The tests in this section validate that computation of range bounds
+-- is skipped while prechecking an Index-only Scan's rescan condition.
+DROP TABLE IF EXISTS aa;
+DROP TABLE IF EXISTS bb;
+CREATE TABLE aa (col_varchar_key VARCHAR(1), col_varchar_nokey VARCHAR(1));
+CREATE TABLE bb (col_varchar_key VARCHAR(1), col_varchar_nokey VARCHAR(1));
+INSERT INTO aa VALUES ('g', 'g');
+INSERT INTO bb VALUES ('g', 'g');
+CREATE INDEX bb_varchar_key ON bb (col_varchar_key ASC);
+-- Correlation between two different tables
+EXPLAIN (COSTS OFF) SELECT (
+  SELECT
+    COUNT(*)
+  FROM
+    bb AS subquery_t1
+  WHERE
+    subquery_t1.col_varchar_key <= table2.col_varchar_nokey AND
+    subquery_t1.col_varchar_key <= table2.col_varchar_nokey
+) AS field1
+FROM
+  aa AS table2;
+-- Correlation of the same table 
+SELECT (
+  SELECT
+    COUNT(*)
+  FROM
+    bb AS subquery_t1
+  WHERE
+    subquery_t1.col_varchar_key >= table1.col_varchar_nokey AND
+    subquery_t1.col_varchar_key > 'a'
+) AS field1
+FROM
+  bb AS table1;
