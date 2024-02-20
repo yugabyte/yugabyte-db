@@ -37,6 +37,7 @@ To begin, start a single-node YugabyteDB cluster in Docker:
 1. Create a directory to serve as the volume for the YugabyteDB nodes:
 
     ```shell
+    rm -r ~/yugabyte-volume
     mkdir ~/yugabyte-volume
     ```
 
@@ -47,7 +48,7 @@ To begin, start a single-node YugabyteDB cluster in Docker:
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --base_dir=/home/yugabyte/yb_data --daemon=false
+        bin/yugabyted start --base_dir=/home/yugabyte/yb_data --background=false
     ```
 
 {{< note title="Default ports" >}}
@@ -62,13 +63,11 @@ For a complete list of ports, refer to the [default ports](../../../reference/co
 
 Next, open a database connection and run a few SQL requests:
 
-1. Connect to the container and open a database connection using the [ysqlsh](../../../admin/ysqlsh/) command-line tool:
+1. Wait for the node to finish the initialization and connect to the container opening a database connection with the [ysqlsh](../../../admin/ysqlsh/) command-line tool:
 
     ```shell
-    # Wait until the node is initialize and ready to accept connection
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
 
-    # Open a SQL-session with the node
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1
     ```
 
@@ -120,7 +119,7 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
         -p 15434:15433 -p 5434:5433 \
         -v ~/yugabyte-volume/node2:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --daemon=false
+        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --background=false
     ```
 
 2. Start the third node:
@@ -130,7 +129,7 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
         -p 15435:15433 -p 5435:5433 \
         -v ~/yugabyte-volume/node3:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --daemon=false
+        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --background=false
     ```
 
 Both nodes join the cluster by connecting to the first node, whose address is specified in the `--join=yugabytedb-node1` parameter. Also, each node has a unique container name and its own sub-folder under the volume directory, specified with `-v ~/yugabyte-volume/nodeN`.
@@ -242,28 +241,29 @@ After the schema is created and data is loaded, refresh the frontend UI and log 
 Search for movie recommendations:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
+  <li>
+    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="true">
+      <img src="/icons/search.svg" alt="full-text search">
+      Full-Text Search
     </a>
   </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
+  <li >
+    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="false">
+      <img src="/icons/openai-logomark.svg" alt="vector similarity search">
+      Vector Similarity Search
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter2-similarity-search.md" %}}
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter2-full-text-search.md" %}}
+  </div>
+
+  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter2-similarity-search.md" %}}
   </div>
 </div>
 

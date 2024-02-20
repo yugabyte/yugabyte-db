@@ -155,24 +155,23 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --base_dir=/home/yugabyte/yb_data --daemon=false \
+        bin/yugabyted start --base_dir=/home/yugabyte/yb_data --background=false \
             --cloud_location=gcp.us-east1.us-east1-a \
             --fault_tolerance=region
     ```
 
     The format for the `--cloud_location` parameter is `cloud_name.region_name.zone_name`. You can specify any cloud, region, or zone name to align with your real production deployment.
 
-2. Start the second and third nodes in the US West and Central locations respectively:
+2. Wait for the first node to finish the initialization and start two more nodes in the US West and Central locations respectively:
 
     ```shell
-    # Wait until the node is initialize and ready to accept connection
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
 
     docker run -d --name yugabytedb-node2 --net yugaplus-network \
         -p 15434:15433 -p 5434:5433 \
         -v ~/yugabyte-volume/node2:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --daemon=false \
+        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --background=false \
             --cloud_location=gcp.us-central1.us-central1-a \
             --fault_tolerance=region
 
@@ -180,7 +179,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
         -p 15435:15433 -p 5435:5433 \
         -v ~/yugabyte-volume/node3:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --daemon=false \
+        bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --background=false \
             --cloud_location=gcp.us-west2.us-west2-a \
             --fault_tolerance=region
     ```
@@ -276,28 +275,28 @@ After the backend container is started, it will use Flyway again to apply the mo
 Once the data loading is complete, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
+  <li>
+    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="true">
+      <img src="/icons/search.svg" alt="full-text search">
+      Full-Text Search
     </a>
   </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
+  <li >
+    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="false">
+      <img src="/icons/openai-logomark.svg" alt="vector similarity search">
+      Vector Similarity Search
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter3-similarity-search.md" %}}
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter3-full-text-search.md" %}}
+  </div>
+  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter3-similarity-search.md" %}}
   </div>
 </div>
 
@@ -337,28 +336,28 @@ Now, imagine there's a major outage in the US East region, making the region una
 3. Search for movies recommendation one more time using the [YugaPlus application UI](http://localhost:3000/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
+  <li>
+    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="true">
+      <img src="/icons/search.svg" alt="full-text search">
+      Full-Text Search
     </a>
   </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
+  <li >
+    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="false">
+      <img src="/icons/openai-logomark.svg" alt="vector similarity search">
+      Vector Similarity Search
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter3-second-similarity-search.md" %}}
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter3-second-full-text-search.md" %}}
+  </div>
+  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter3-second-similarity-search.md" %}}
   </div>
 </div>
 
@@ -373,7 +372,7 @@ Finally, assuming that the US East region is restored after the outage:
         -p 15433:15433 -p 5433:5433 \
         -v ~/yugabyte-volume/node1:/home/yugabyte/yb_data --restart unless-stopped \
         yugabytedb/yugabyte:latest \
-        bin/yugabyted start --join=yugabytedb-node2 --base_dir=/home/yugabyte/yb_data --daemon=false \
+        bin/yugabyted start --join=yugabytedb-node2 --base_dir=/home/yugabyte/yb_data --background=false \
             --cloud_location=gcp.us-east1.us-east1-a \
             --fault_tolerance=region
     ```
@@ -381,7 +380,6 @@ Finally, assuming that the US East region is restored after the outage:
 2. Make sure the node has joined the cluster:
 
     ```shell
-    # Wait until the node is initialize and ready to accept connection
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
 
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \

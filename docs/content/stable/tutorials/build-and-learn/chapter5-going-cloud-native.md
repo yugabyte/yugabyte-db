@@ -129,28 +129,28 @@ With the YugaPlus backend operational and successfully connected to your Yugabyt
 2. Ask for movie recommendations:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
-       role="tab" aria-controls="similarity-search" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      Similarity Search (OpenAI)
+  <li>
+    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="true">
+      <img src="/icons/search.svg" alt="full-text search">
+      Full-Text Search
     </a>
   </li>
-  <li>
-    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
-       role="tab" aria-controls="full-text-search" aria-selected="false">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Full-text search
+  <li >
+    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="false">
+    <img src="/icons/openai-logomark.svg" alt="vector similarity search">
+      Vector Similarity Search
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
-  {{% includeMarkdown "includes/chapter5-similarity-search.md" %}}
-  </div>
-  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter5-full-text-search.md" %}}
+  </div>
+  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter5-similarity-search.md" %}}
   </div>
 </div>
 

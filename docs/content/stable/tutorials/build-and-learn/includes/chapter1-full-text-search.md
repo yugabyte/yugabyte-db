@@ -16,6 +16,6 @@ Here's the SQL query that YugaPlus uses to find the movie recommendations:
 SELECT id, title, overview, vote_average, release_date FROM movie 
 WHERE vote_average >= :rank 
 AND genres @> :category::jsonb 
-AND overview LIKE :prompt 
+AND overview_lexemes @@ plainto_tsquery('english', :prompt) 
 LIMIT :max_results
 ```
