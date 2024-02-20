@@ -100,7 +100,7 @@ Code is well tested. Typically these features are not enabled by default. Enabli
 
 Support for the overall feature will not be dropped, though details may change in a subsequent GA release.
 
-For production use cases, it is recommended to validate the use case with the Yugabyte Product team. Refer product documentation for specific limitations.
+For production use cases, it is recommended to validate the use case with the Yugabyte Product team. Refer to product documentation for specific limitations.
 
 Any bug fixes or improvements are managed and fixed with the same timeline and processes as those in GA.
 
