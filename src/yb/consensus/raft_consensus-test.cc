@@ -47,6 +47,8 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/server/logical_clock.h"
 
 #include "yb/util/async_util.h"
@@ -90,11 +92,11 @@ class MockQueue : public PeerMessageQueue {
  public:
   explicit MockQueue(const scoped_refptr<MetricEntity>& tablet_metric_entity, log::Log* log,
                      const server::ClockPtr& clock,
-                     std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
+                     std::unique_ptr<rpc::Strand> observers_strand)
       : PeerMessageQueue(
           tablet_metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
           FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
-          std::move(raft_pool_observers_token)) {}
+          std::move(observers_strand)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
   MOCK_METHOD4(SetLeaderMode, void(const OpId& committed_opid,
@@ -251,9 +253,12 @@ class RaftConsensusTest : public YBTest {
     log_->TEST_SetAllOpIdsSafe(true);
 
     ASSERT_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
-    std::unique_ptr<ThreadPoolToken> raft_pool_token =
-        raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
-    queue_ = new MockQueue(tablet_metric_entity_, log_.get(), clock_, std::move(raft_pool_token));
+    raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+      .name = "raft_notifications",
+      .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+    });
+    queue_ = new MockQueue(tablet_metric_entity_, log_.get(), clock_,
+                           std::make_unique<rpc::Strand>(raft_notifications_pool_.get()));
     peer_manager_ = new MockPeerManager;
     operation_factory_.reset(new MockOperationFactory);
 
@@ -400,6 +405,7 @@ class RaftConsensusTest : public YBTest {
   MockQueue* queue_;
   MockPeerManager* peer_manager_;
   std::unique_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,

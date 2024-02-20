@@ -285,6 +285,6 @@ In the current implementation of `ybgin`, only single query term lookups are all
 
 ## Learn more
 
-- [Understand GIN indexes](../../../../explore/indexes-constraints/gin/)
+- [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)

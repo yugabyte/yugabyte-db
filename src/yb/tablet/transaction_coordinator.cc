@@ -1125,17 +1125,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return !aborted_subtxn_info->set().Contains(subtxn_set);
   }
 
-  std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) override {
-    {
-      std::lock_guard lock(managed_mutex_);
-      auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        return std::nullopt;
-      }
-      return it->first_touch();
-    }
-  }
-
   void Shutdown() {
     deadlock_detection_poller_.Shutdown();
     deadlock_detector_.Shutdown();

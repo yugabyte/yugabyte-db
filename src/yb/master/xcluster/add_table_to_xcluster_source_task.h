@@ -39,7 +39,11 @@ class AddTableToXClusterSourceTask : public PostTabletCreateTaskBase {
  private:
   Status FirstStep() override;
 
-  void CompletionCallback(const Status& status);
+  Status CheckpointStream();
+
+  void CheckpointCompletionCallback(const Status& status);
+
+  Status MarkTableAsCheckpointed();
 
   const std::shared_ptr<XClusterOutboundReplicationGroup> outbound_replication_group_;
 };

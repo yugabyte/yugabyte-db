@@ -159,7 +159,8 @@ OperationTracker::~OperationTracker() {
 
 Status OperationTracker::Add(OperationDriver* driver) {
   int64_t driver_mem_footprint = driver->SpaceUsed();
-  if (mem_tracker_ && !mem_tracker_->TryConsume(driver_mem_footprint)) {
+  MemTracker* blocking_mem_tracker = nullptr;
+  if (mem_tracker_ && !mem_tracker_->TryConsume(driver_mem_footprint, &blocking_mem_tracker)) {
     if (metrics_) {
       metrics_->operation_memory_pressure_rejections->Increment();
     }
@@ -170,11 +171,19 @@ Status OperationTracker::Add(OperationDriver* driver) {
     // May be nullptr in unit tests even when operation is not nullptr.
     TabletPtr tablet = operation ? operation->tablet_nullable() : nullptr;
 
+    if (!blocking_mem_tracker) {
+      blocking_mem_tracker = mem_tracker_.get();
+    }
+    auto consumption = blocking_mem_tracker->consumption();
+    auto limit = blocking_mem_tracker->limit();
+    auto blocked_by = AsString(blocking_mem_tracker);
+    auto operation_type = driver->operation_type();
     string msg = Substitute(
-        "Operation failed, tablet $0 operation memory consumption ($1) "
-        "has exceeded its limit ($2) or the limit of an ancestral tracker",
-        tablet ? tablet->tablet_id() : "(unknown)",
-        mem_tracker_->consumption(), mem_tracker_->limit());
+        "Operation of type $0 failed: tablet $1 hit the limit $3 of memory tracker $4 "
+        "while trying to consume an additional $5 bytes; "
+        "the memory tracker had already given out $2 bytes.",
+        AsString(operation_type), tablet ? tablet->tablet_id() : "(unknown)", consumption, limit,
+        blocked_by, driver_mem_footprint);
 
     YB_LOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;
 

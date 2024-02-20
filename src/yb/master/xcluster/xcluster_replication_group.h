@@ -18,6 +18,8 @@
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class IsOperationDoneResult;
 class SysCatalogTable;
 
 namespace client {
@@ -25,8 +27,6 @@ class XClusterRemoteClient;
 }  // namespace client
 
 namespace master {
-
-struct IsOperationDoneResult;
 
 // TODO: #19714 Create XClusterReplicationGroup, a wrapper over UniverseReplicationInfo, that will
 // manage the ReplicationGroup and its ProducerEntryPB in ClusterConfigInfo.
@@ -62,7 +62,7 @@ Status HandleLocalAutoFlagsConfigChange(
 
 // Check if the table should be added to the replication group. Returns false if the table is
 // already part of the group.
-bool ShouldAddTableToReplicationGroup(
+Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager);
 

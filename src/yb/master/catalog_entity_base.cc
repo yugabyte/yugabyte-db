@@ -33,7 +33,7 @@ std::size_t CatalogEntityWithTasks::NumTasks() const {
 
 bool CatalogEntityWithTasks::HasTasks() const {
   SharedLock l(mutex_);
-  VLOG_WITH_FUNC(3) << AsString(pending_tasks_);
+  VLOG_IF(3, !pending_tasks_.empty()) << __func__ << ": " << AsString(pending_tasks_);
   return !pending_tasks_.empty();
 }
 

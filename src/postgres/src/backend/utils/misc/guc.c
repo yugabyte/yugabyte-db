@@ -2461,6 +2461,17 @@ static struct config_bool ConfigureNamesBool[] =
 		yb_use_tserver_key_auth_check_hook, NULL, NULL
 	},
 
+	{
+		{"yb_enable_saop_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported scalar array operations down "
+						 "to DocDB for evaluation."),
+			NULL
+		},
+		&yb_enable_saop_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

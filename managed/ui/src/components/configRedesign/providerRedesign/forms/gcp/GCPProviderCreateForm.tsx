@@ -4,6 +4,7 @@ import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -140,6 +141,7 @@ export const GCPProviderCreateForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const { t } = useTranslation();
 
   const defaultValues: Partial<GCPProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
@@ -163,7 +165,11 @@ export const GCPProviderCreateForm = ({
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const onFormSubmit: SubmitHandler<GCPProviderCreateFormFieldValues> = async (formValues) => {

@@ -487,7 +487,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
           <Tab.Pane
             eventKey={'recovery'}
-            tabtitle="Disaster Recovery"
+            tabtitle="xCluster Disaster Recovery"
             key="recovery-tab"
             mountOnEnter={true}
             unmountOnExit={true}

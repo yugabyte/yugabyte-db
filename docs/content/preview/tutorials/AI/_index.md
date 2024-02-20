@@ -36,6 +36,17 @@ type: indexpage
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ai-localai">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/ai/icons/localai-icon.svg" aria-hidden="true" />
+        <div class="title">LocalAI</div>
+      </div>
+      <div class="body">
+        Build an LLM application, hosted locally or on-prem using LocalAI and YugabyteDB.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="../azure/azure-openai/">
       <div class="head">
         <img class="icon" src="/images/tutorials/azure/icons/OpenAI-Icon.svg" aria-hidden="true" />

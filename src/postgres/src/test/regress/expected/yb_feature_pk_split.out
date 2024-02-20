@@ -95,10 +95,10 @@ SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 
 -- Operator `IN`
 EXPLAIN SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
-                              QUERY PLAN
------------------------------------------------------------------------
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
  Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
+   Remote Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');

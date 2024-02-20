@@ -14249,7 +14249,7 @@
         },
         "userType" : {
           "description" : "User Type",
-          "enum" : [ "local", "ldap" ],
+          "enum" : [ "local", "ldap", "oidc" ],
           "type" : "string"
         },
         "uuid" : {
@@ -14313,7 +14313,7 @@
         },
         "userType" : {
           "description" : "User Type",
-          "enum" : [ "local", "ldap" ],
+          "enum" : [ "local", "ldap", "oidc" ],
           "type" : "string"
         },
         "uuid" : {

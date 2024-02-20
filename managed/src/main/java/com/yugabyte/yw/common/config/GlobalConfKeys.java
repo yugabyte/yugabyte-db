@@ -626,9 +626,9 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_default_role",
           ScopeType.GLOBAL,
+          "LDAP Default Role",
           "Which role to use in case role cannot be discerned via LDAP",
-          "Hidden because this key has dedicated UI",
-          ConfDataType.LdapDefaultRoleEnum,
+          ConfDataType.UserRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<TlsProtocol> ldapTlsProtocol =
       new ConfKeyInfo<>(
@@ -782,6 +782,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable disaster recovery",
           "It indicates whether creating disaster recovery configs are enabled",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> xclusterEnableAutoFlagValidation =
+      new ConfKeyInfo<>(
+          "yb.xcluster.enable_auto_flag_validation",
+          ScopeType.GLOBAL,
+          "Enable xcluster/DR auto flag validation",
+          "Enables checks for xcluster/disaster recovery validations for autoflags for xcluster/DR"
+              + " operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
@@ -1159,6 +1168,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the option to view new releases page",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> replicationFrequency =
+      new ConfKeyInfo<>(
+          "yb.ha.replication_frequency",
+          ScopeType.GLOBAL,
+          "Replication frequency",
+          "Replication frequency",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.disableHostnameVerification",
@@ -1222,4 +1239,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " and returns a mock response with validation errors.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<Role> oidcDefaultRole =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_default_role",
+          ScopeType.GLOBAL,
+          "OIDC default role",
+          "Which role to use incase group memberships are not found",
+          ConfDataType.UserRoleEnum,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }

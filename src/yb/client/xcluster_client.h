@@ -21,7 +21,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/common/schema.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
@@ -29,6 +29,8 @@
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
+
+class IsOperationDoneResult;
 
 namespace master {
 class MasterReplicationProxy;
@@ -64,7 +66,7 @@ class XClusterRemoteClient {
       const std::vector<TableId>& source_table_ids,
       const std::vector<xrepl::StreamId>& bootstrap_ids);
 
-  virtual Result<master::IsOperationDoneResult> IsSetupUniverseReplicationDone(
+  virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id);
 
   Status GetXClusterTableCheckpointInfos(

@@ -125,7 +125,7 @@ For yum to download all the required dependencies, ensure that the list of *all*
 1. Navigate to the folder containing all the files and install the rpm files using the following command:
 
     ```sh
-    sudo yum install *
+    sudo yum --disablerepo=* install *
     ```
 
 1. Check that yb-voyager is installed using the following command:
