@@ -109,12 +109,4 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
       PHP
     </a>
   </li>
-
-  <li>
-    <a href="scala/ycql/" class="orange">
-      <i class="icon-scala"></i>
-      Scala
-    </a>
-  </li>
-
 </ul>
