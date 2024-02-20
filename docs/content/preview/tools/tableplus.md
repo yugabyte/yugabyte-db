@@ -30,6 +30,10 @@ To install TablePlus, go to the [Download page](https://tableplus.com/download/)
 
 You can use TablePlus to connect to YugabyteDB using the YSQL and YCQL APIs.
 
+{{<warning title="Caveats">}}
+When using the default Cassandra driver to connect to YugabyteDB via the YCQL interface, YugabyteDB-specific enhancements like **JSONB** will not work.
+{{</warning>}}
+
 To create a connection, do the following:
 
 1. In TablePlus, from the **Connection** menu, choose **New**.
@@ -46,7 +50,7 @@ To create a connection, do the following:
 
 1. Click **Connect** to create the connection.
 
-Connections are saved in the application, and displayed every time you start TablePlus.
+Connections are saved in the application and displayed every time you start TablePlus.
 
 ![YB ALL](/images/develop/tools/tableplus/yb-all-connection.png)
 
