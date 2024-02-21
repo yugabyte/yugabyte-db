@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -196,15 +197,36 @@ public class AutoFlagUtil {
   public void checkSourcePromotedAutoFlagsPromotedOnTarget(
       Universe sourceUniverse, Universe targetUniverse) {
 
+    String sourceUniverseSoftwareVersion =
+        sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isSourceUniverseAFCompatible =
+        CommonUtils.isAutoFlagSupported(sourceUniverseSoftwareVersion);
+
+    String targetUniverseSoftwareVersion =
+        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isTargetUniverseAFCompatible =
+        CommonUtils.isAutoFlagSupported(targetUniverseSoftwareVersion);
+
+    if (!isSourceUniverseAFCompatible && !isTargetUniverseAFCompatible) {
+      log.warn("Skipping auto flags compatibility check as both universe are not AF compatible.");
+      return;
+    }
+
     List<ServerType> serverTypes =
         new ArrayList<>(Arrays.asList(ServerType.MASTER, ServerType.TSERVER));
     try {
       for (ServerType serverType : serverTypes) {
-        Set<String> sourcePromotedAndModifiedAutoFlags =
-            getPromotedAutoFlags(sourceUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
-        Set<String> targetPromotedAndModifiedAutoFlags =
-            getPromotedAutoFlags(targetUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        Set<String> sourcePromotedAndModifiedAutoFlags = new HashSet<>();
+        Set<String> targetPromotedAndModifiedAutoFlags = new HashSet<>();
 
+        if (isSourceUniverseAFCompatible) {
+          sourcePromotedAndModifiedAutoFlags =
+              getPromotedAutoFlags(sourceUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        }
+        if (isTargetUniverseAFCompatible) {
+          targetPromotedAndModifiedAutoFlags =
+              getPromotedAutoFlags(targetUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        }
         sourcePromotedAndModifiedAutoFlags.removeAll(targetPromotedAndModifiedAutoFlags);
         if (sourcePromotedAndModifiedAutoFlags.size() != 0) {
           throw new PlatformServiceException(
