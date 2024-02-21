@@ -90,7 +90,7 @@ A binary-comparable encoding is used for translating the value for each YCQL typ
 
 ## Packed row format
 
-Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+Packed row format for the YSQL API is [Generally Available](/preview/releases/versioning/#feature-availability), while the support for Packed Row feature in the YCQL API works is still in Tech Preview (/preview/releases/versioning/#feature-availability).
 
 A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For example, a row with one primary key `K` and `n` non-key columns , that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
@@ -103,7 +103,7 @@ While UDTs (user-defined types) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
+The packed row format can be controlled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 
@@ -130,10 +130,13 @@ Testing the packed row feature with different configurations showed significant 
 
 ### Limitations
 
-The packed row feature works for the YSQL API using the YSQL-specific GFlags with most cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
+The packed row feature for the YSQL API works across all cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
 
-* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
-* [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
+* [#20638](https://github.com/yugabyte/yugabyte-db/issues/20638) Colocated and Packed Row - There is an issue with aggressive garbage collection of the schema versions that are stored in DocDB, in order to interpret Packed Row data. This issue is limited to the colocated table setting, and manifests in certain flavors of compactions. Since it results in non-recoverable errors for colocated workloads, the gflag ysql_enable_packed_row_for_colocated_table can be set to false, to avoid the issue on 2.20.1 builds, while the team works to address the issue.
+
+* [#21131](https://github.com/yugabyte/yugabyte-db/issues/21131) As of 2.20, new universes created in 2.20+ version will get Packed Row for YSQL is enabled by default. However, if an universe is on version lower than 2.20 is upgraded to 2.20, Packed Row feature for YSQL API feature is not enabled. This is because of a known limitation with XCluster universes. The target of XCluster setup might not be able to interpret the Packed Row unless it is upgraded first etc. The team is working towards handling this limitation as part of this issue.
+
+* The packed row feature for the YCQL API works is still in Tech Preview (/preview/releases/versioning/#feature-availability). While there are no known limitations, the team is working on hardeing the feature for YCQL API.
 
 ## Data expiration in YCQL
 
