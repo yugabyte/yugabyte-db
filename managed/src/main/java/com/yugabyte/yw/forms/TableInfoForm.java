@@ -76,7 +76,8 @@ public class TableInfoForm {
     @JsonIgnore
     public boolean isColocatedChildTable() {
       // Colocated parent tables do not have ParentTableId set.
-      if (this.colocated
+      if (this.colocated != null
+          && this.colocated
           && this.colocationParentId != null
           && this.relationType != MasterTypes.RelationType.COLOCATED_PARENT_TABLE_RELATION) {
         return true;
