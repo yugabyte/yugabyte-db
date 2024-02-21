@@ -6599,7 +6599,7 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Disk Bytes / Sec / Node",
+    "title" : "Disk Bytes / Node",
     "id" : 27,
     "targets" : [ {
       "hide" : false,
