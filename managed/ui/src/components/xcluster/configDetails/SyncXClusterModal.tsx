@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import { AxiosError } from 'axios';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { Typography } from '@material-ui/core';
 
 import { api, drConfigQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import {
@@ -32,7 +33,6 @@ type SyncXClusterConfigModalProps =
 const MODAL_NAME = 'SyncDbModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.syncDbModal';
 
-// TODO: Test. Verify error handling.
 export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const queryClient = useQueryClient();
@@ -65,11 +65,20 @@ export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => 
               </span>
             );
           } else {
-            toast.success(t('success.taskSuccess'));
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t('success.taskSuccess')}
+              </Typography>
+            );
           }
           invalidateQueries();
         };
 
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         modalProps.onClose();
         fetchTaskUntilItCompletes(data.taskUUID, handleTaskCompletion, invalidateQueries);
       },
