@@ -150,7 +150,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           }
           invalidateQueries();
         };
+
         modalProps.onClose();
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
