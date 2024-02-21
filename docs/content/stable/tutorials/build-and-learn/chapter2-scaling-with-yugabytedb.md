@@ -41,7 +41,14 @@ To begin, start a single-node YugabyteDB cluster in Docker:
     mkdir ~/yugabyte-volume
     ```
 
-2. Start the first database node:
+2. Pull the latest YugabyteDB docker image:
+
+    ```shell
+    docker rmi yugabytedb/yugabyte:latest
+    docker pull yugabytedb/yugabyte:latest
+    ```
+
+3. Start the first database node:
 
     ```shell
     docker run -d --name yugabytedb-node1 --net yugaplus-network \
@@ -199,13 +206,13 @@ All you need to do is to restart the application containers with YugabyteDB-spec
     - DB_PASSWORD=yugabyte
     ```
 
-    {{< note title="Flyway and Advisory Locks" >}}
+    {{< warning title="Flyway and Advisory Locks" >}}
 If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable in the `docker-compose.yaml` file to the following value:
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
 The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of locks.
-    {{< /note >}}
+    {{< /warning >}}
 
 3. Start the application:
 
