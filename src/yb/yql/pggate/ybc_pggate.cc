@@ -1687,7 +1687,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_enable_pg_per_database_oid_allocator =
-          &FLAGS_ysql_enable_pg_per_database_oid_allocator
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator,
+      .ysql_enable_db_catalog_version_mode =
+          &FLAGS_ysql_enable_db_catalog_version_mode,
   };
   // clang-format on
   return &accessor;

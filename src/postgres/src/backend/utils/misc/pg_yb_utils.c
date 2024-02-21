@@ -518,16 +518,9 @@ bool
 YBIsDBCatalogVersionMode()
 {
 	static bool cached_is_db_catalog_version_mode = false;
-	static int cached_gflag = -1;
 
 	if (cached_is_db_catalog_version_mode)
 		return true;
-
-	if (cached_gflag == -1)
-	{
-		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_ysql_enable_db_catalog_version_mode", false);
-	}
 
 	/*
 	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
@@ -535,7 +528,7 @@ YBIsDBCatalogVersionMode()
 	 */
 	if (!IsYugaByteEnabled() ||
 		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
-		!cached_gflag)
+		!*YBCGetGFlags()->ysql_enable_db_catalog_version_mode)
 		return false;
 
 	/*
