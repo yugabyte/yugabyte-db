@@ -2,10 +2,10 @@ import React, { FC, useRef, useState } from 'react';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-
 import { YBInputProps, YBInput } from '../YBInput/YBInput';
 import { YBButton } from '../YBButton/YBButton';
 import { getMemorySizeUnits } from '../../helpers/utils';
+import { YBProgress } from '../YBProgress/YBProgress';
 
 import { ReactComponent as UploadIcon } from '../../assets/upload.svg';
 import { ReactComponent as CloseIcon } from '../../assets/close-large.svg';
@@ -74,6 +74,7 @@ const useStyles = makeStyles((theme) => ({
 
 export type YBFileUploadProps = {
   label: string;
+  progressValue?: number;
   isUploaded?: boolean;
   uploadedFileName?: string;
   dataTestId?: string;
@@ -88,6 +89,7 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
   dataTestId,
   fileList,
   fileSizeLimit,
+  progressValue = 0,
   ...props
 }) => {
   const classes = useStyles();
@@ -186,6 +188,7 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
                   onClick={() => {
                     setdisplayUploadFileName(undefined);
                     setIsFileUploaded(false);
+                    removeFile(files[0]);
                   }}
                 />
               </Box>
@@ -200,12 +203,28 @@ export const YBFileUpload: FC<YBFileUploadProps> = ({
               <span key={file?.name}>
                 <Box className={clsx(classes.fileItem, { [classes.error]: isValid(file) })} mb={1}>
                   <Box>{file?.name}</Box>
-                  <CloseIcon
-                    className={classes.closeIcon}
-                    onClick={() => {
-                      removeFile(file);
-                    }}
-                  />
+                  <Box className={clsx(classes.actions)}>
+                    <Box>
+                      {!isUploaded && (
+                        <YBProgress color="primary" value={progressValue}></YBProgress>
+                      )}
+                    </Box>
+                    {isUploaded && (
+                      <Box className={classes.statusBox}>
+                        <>
+                          <span className={classes.statusText}>{'Completed'}</span>
+                          <img src={Checked} alt="status" />
+                        </>
+                      </Box>
+                    )}
+
+                    <CloseIcon
+                      className={classes.closeIcon}
+                      onClick={() => {
+                        removeFile(file);
+                      }}
+                    />
+                  </Box>
                 </Box>
                 {isValid(file) && fileSizeLimit && (
                   <Box mt={-0.25} mb={1} ml={1}>

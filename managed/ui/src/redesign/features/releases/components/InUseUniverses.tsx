@@ -1,8 +1,8 @@
+import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { ReleaseUniverses } from './dtos';
-import { Link } from 'react-router';
 
 interface InUseUniversesProps {
   inUseUniverses: ReleaseUniverses[] | undefined;
@@ -30,7 +30,7 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
   const formatName = (cell: any, row: any) => {
     return (
       <Box>
-        <Link to={`/universes/${row.uuid}`}>
+        <Link to={`/universes/${row.uuid}`} target="_blank">
           <span style={{ textDecoration: 'underline' }}>{row.name}</span>
         </Link>
       </Box>
@@ -42,7 +42,7 @@ export const InUseUniverses = ({ inUseUniverses }: InUseUniversesProps) => {
       <span className={helperClasses.header}>{`Universes (${inUseUniverseslength})`}</span>
       {inUseUniverseslength > 0 ? (
         <BootstrapTable data={inUseUniverses!}>
-          <TableHeaderColumn dataField={'id'} isKey={true} hidden={true} />
+          <TableHeaderColumn dataField={'uuid'} isKey={true} hidden={true} />
           <TableHeaderColumn width="50%" dataFormat={formatName} />
           <TableHeaderColumn width="50%" dataField={'creation_date'}>
             {t('releases.creationDate')}
