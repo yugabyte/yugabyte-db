@@ -240,7 +240,7 @@ Upon establishing a successful connection, the backend uses Flyway to execute da
 For real production workloads consider using [YugabyteDB Voyager](/preview/yugabyte-voyager/), an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager easily migrates data from PostgreSQL, MySQL, and Oracle databases.
 {{< /tip >}}
 
-After the schema is created and data is loaded, refresh the frontend UI and log into the app one more time: <http://localhost:3000/login>
+After the schema is created and data is loaded, refresh the YugaPlus UI and sign in one more time at <http://localhost:3000/login>.
 
 ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
 

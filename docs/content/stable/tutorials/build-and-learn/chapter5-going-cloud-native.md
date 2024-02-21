@@ -124,7 +124,7 @@ If the application fails to connect to YugabyteDB Managed, ensure you've added y
 
 With the YugaPlus backend operational and successfully connected to your YugabyteDB Managed cluster, do one final search for movie recommendations.
 
-1. Go to [YugaPlus frontend UI](http://localhost:3000/)
+1. Go to the [YugaPlus UI](http://localhost:3000/).
 
 2. Ask for movie recommendations:
 
@@ -162,6 +162,11 @@ And, as one last hint, if it seems that some queries are running slow, navigate 
 
 Congratulations! You've completed Chapter 5, the final chapter of the tutorial. Throughout this tutorial, you've learned essential capabilities of YugabyteDB that set you up for the next stage of your development journey.
 
-Let's recap! You started with PostgreSQL and then leveraged YugabyteDB's feature and runtime compatibility with PostgreSQL by migrating to a distributed YugabyteDB cluster. You learned how to tolerate various outages by deploying a multi-region YugabyteDB cluster and using the YugabyteDB Smart driver. Afterward, you practiced using the latency-optimized geo-partitioning design pattern to scale both reads and writes across various locations. Finally, you learned how to offload the management and operations of your database cluster by migrating to YugabyteDB Managed.
+Let's recap!
+
+* You started with PostgreSQL and then leveraged YugabyteDB's [feature and runtime compatibility](../../../explore/ysql-language-features/) with PostgreSQL by migrating to a distributed YugabyteDB cluster.
+* You learned how to [tolerate various outages](../../../explore/fault-tolerance/) by deploying a multi-region YugabyteDB cluster and using the [YugabyteDB smart driver](../../../drivers-orms/smart-drivers/).
+* You used the latency-optimized [geo-partitioning design pattern](../../../develop/build-global-apps/latency-optimized-geo-partition/) to scale both reads and writes across various locations.
+* You learned how to offload the management and operations of your database cluster by migrating to [YugabyteDB Managed](/preview/yugabyte-cloud/).
 
 With that said, good luck building applications that scale and never fail! And don't forget to [join our community](https://communityinviter.com/apps/yugabyte-db/register), where you can get your questions answered and learn about the latest updates from the world of YugabyteDB.

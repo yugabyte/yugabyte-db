@@ -271,7 +271,7 @@ Bring back the application using the smart driver:
 
 After the backend container is started, it will use Flyway again to apply the movie recommendations service's schema and data.
 
-Once the data loading is complete, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
+After the data loading is complete, open the [YugaPlus UI](http://localhost:3000/) and search for a new movie to watch.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -332,7 +332,7 @@ Now, imagine there's a major outage in the US East region, making the region una
     (2 rows)
     ```
 
-3. Search for movies recommendation one more time using the [YugaPlus application UI](http://localhost:3000/).
+3. Search for movie recommendations one more time using the [YugaPlus UI](http://localhost:3000/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

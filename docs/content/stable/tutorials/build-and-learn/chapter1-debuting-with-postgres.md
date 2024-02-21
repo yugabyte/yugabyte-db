@@ -116,24 +116,24 @@ INFO 1 --- [main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on p
 INFO 1 --- [main] c.y.backend.YugaPlusBackendApplication   : Started YugaPlusBackendApplication in 18.681 seconds (process running for 19.173)
 ```
 
-The `yugaplus-frontend` container starts in a few seconds and can be accessed at: <http://localhost:3000/>
+The `yugaplus-frontend` container starts in a few seconds and can be accessed at <http://localhost:3000/>.
 
-Proceed to log into YugaPlus! The app automatically pre-populates the sign-in form with the following user credentials:
+Proceed to sign in to YugaPlus! The app automatically pre-populates the sign-in form with the following user credentials:
 
 * Username: `user1@gmail.com`
 * Password: `MyYugaPlusPassword`
 
-![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
+![YugaPlus Sign in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
 ## Search for your favorite movies
 
-After you log in, you'll see the YugaPlus home page split into two parts. In **Your Movies**, you'll find movies you're watching or want to watch. The **Search New Movies** section lets you find new movies by typing what you're looking for in plain English.
+After you sign in, you'll see the YugaPlus home page split into two parts. In **Your Movies**, you'll find movies you're watching or want to watch. The **Search New Movies** section lets you find new movies by typing what you're looking for in plain English.
 
 ![YugaPlus Home Screen](/images/tutorials/build-and-learn/chapter1-home-screen.png)
 
 Internally, the service uses the following database schema:
 
-![YugaPlus Home Screen](/images/tutorials/build-and-learn/yugaplus-schema.png)
+![YugaPlus database schema](/images/tutorials/build-and-learn/yugaplus-schema.png)
 
 * `movie` - this table keeps track of movies on YugaPlus. The `overview_vector` column has 1536-dimensional vectors made using OpenAI's `text-embedding-ada-002` model from movie descriptions in the `overview` column. The `overview_lexemes` column stores the lexemes of movie overviews that are used for full-text search.
 * `user_account` - this table holds user-specific details.

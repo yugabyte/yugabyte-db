@@ -171,9 +171,9 @@ Partitions: user_library_usa_central FOR VALUES IN ('Chicago', 'Kansas City'),
 
 With the `user_library` table being geo-partitioned, you're ready to experiment with this design pattern.
 
-1. Navigate to your browser, refresh [YugaPlus frontend UI](http://localhost:3000/), and log in using the default user credentials pre-populated in the sign-in form:
+1. In your browser, refresh the [YugaPlus UI](http://localhost:3000/), and sign in using the default user credentials pre-populated in the form:
 
-    ![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/login-screen.png)
+    ![YugaPlus sign in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
 2. After signing in, you'll notice that this user is from **New York City**:
     ![US East User Library](/images/tutorials/build-and-learn/chapter4-us-east-user-empty-library.png)
@@ -321,7 +321,7 @@ Interested in seeing how geo-partitioning benefits users across the USA?
 
 Meet Emely Smith, another satisfied YugaPlus user, residing in San Francisco.
 
-Log into the movie recommendations service using her account with the following credentials:
+Sign in to YugaPlus using her account with the following credentials:
 
 * username: `user2@gmail.com`
 * password: `MyYugaPlusPassword`
