@@ -61,8 +61,7 @@ using namespace std::placeholders;
 DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
     "Use hybrid time SST filter when checking for conflicts with committed transactions.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::IntentTypeSet;
 using dockv::KeyBytes;
@@ -1541,5 +1540,4 @@ Status PopulateLockInfoFromParsedIntent(
   return Status::OK();
 }
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb
