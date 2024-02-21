@@ -45,6 +45,8 @@ DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 using client::YBClient;
