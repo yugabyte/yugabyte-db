@@ -13,7 +13,7 @@ type: docs
 
 >**Welcome to the Story of YugaPlus**
 >
->Our story concerns YugaPlus, a small startup streaming service, and describes their journey from a single server running PostgreSQL with a regional customer base to global business. Follow along as YugaPlus launches its service, migrates to YugabyteDB to scale in the cloud, and builds a low latency fault-tolerant service for its growing user base.
+>Our story concerns YugaPlus, a small streaming service startup, and describes their journey from a single server running PostgreSQL with a regional customer base to global business. Follow along as YugaPlus launches its service, migrates to YugabyteDB to scale in the cloud, and builds a low latency fault-tolerant service for its growing user base.
 
 Welcome to the Build and Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by following the story of YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
 
