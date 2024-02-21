@@ -321,6 +321,63 @@ network_bytes:
         "node_network_receive_bytes_irate": "RX"
         "node_network_transmit_bytes_irate": "TX"
 
+disk_io_time:
+  metric: ""
+  function: "avg_over_time|avg"
+  operator: "* 100"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_weighted_seconds_total_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+disk_io_read_latency:
+  metric: "node_disk_io_read_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Read Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
+disk_io_write_latency:
+  metric: "node_disk_io_write_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Write Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
 network_packets:
   metric: ""
   function: "avg_over_time|avg"
