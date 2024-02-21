@@ -438,7 +438,7 @@ disk_bytes_per_second_per_node:
   function: "avg_over_time|avg"
   panel_group: "Node Metrics"
   layout:
-    title: "Disk Bytes / Sec / Node"
+    title: "Disk Bytes / Node"
     xaxis:
       type: "date"
     yaxis:

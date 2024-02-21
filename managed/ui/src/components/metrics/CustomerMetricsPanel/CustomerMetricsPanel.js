@@ -76,13 +76,18 @@ const PanelBody = ({
 
   if (!(selectedUniverse === MetricConsts.ALL)) {
     selectedUniverse && isKubernetesUniverse(selectedUniverse)
-      ? invalidTabType.push(MetricTypes.SERVER)
+      ? invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO)
       : invalidTabType.push(MetricTypes.CONTAINER);
   }
 
   if (currentSelectedNodeType !== NodeType.ALL && origin !== MetricOrigin.TABLE) {
     currentSelectedNodeType === NodeType.MASTER
-      ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
+      ? invalidTabType.push(
+          MetricTypes.TSERVER,
+          MetricTypes.YSQL_OPS,
+          MetricTypes.YCQL_OPS,
+          MetricTypes.DISK_IO
+        )
       : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
     defaultTabToDisplay =
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
