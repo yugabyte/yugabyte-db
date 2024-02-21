@@ -6708,6 +6708,11 @@
       "legendFormat" : "Write",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_writes_irate\"}[300s])) by (saved_name)",
       "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Provisioned",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ybp_universe_node_provisioned_iops\"}[300s])) by (saved_name)",
+      "refId" : "C"
     } ],
     "gridPos" : {
       "w" : 12,

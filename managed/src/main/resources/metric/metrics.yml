@@ -172,7 +172,7 @@ disk_iops:
   function: "avg_over_time|avg"
   range: true
   filters:
-    saved_name: "node_disk_reads_irate|node_disk_writes_irate"
+    saved_name: "node_disk_reads_irate|node_disk_writes_irate|ybp_universe_node_provisioned_iops"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -183,6 +183,7 @@ disk_iops:
       alias:
         "node_disk_reads_irate": "Read"
         "node_disk_writes_irate": "Write"
+        "ybp_universe_node_provisioned_iops": "Provisioned"
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_irate_rps"
@@ -2306,7 +2307,6 @@ cdcsdk_sent_lag_micros:
       ticksuffix: "&nbsp;ms"
       alias:
         "cdcsdk_sent_lag_micros": "Current Lag"
-
 
 cdcsdk_expiry_time_mins:
   metric: "cdcsdk_expiry_time_ms"
