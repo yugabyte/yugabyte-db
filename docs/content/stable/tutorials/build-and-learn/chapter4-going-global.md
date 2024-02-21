@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-{{< note title="YugaPlus - Going Geo-Distributed" >}}
-The popularity of the YugaPlus streaming platform has continued to soar. In the United States alone, millions of users watch their favorite movies, series, and sports events daily. With this level of growth, the YugaPlus team faced a new challenge.
-
-Many customers complained about the YugaPlus app being unresponsive and slow, especially during peak hours. It turned out that most of these complaints originated from users living on the US West Coast. Their requests had to travel across the country to the US East Coast, which hosted the preferred region of the multi-region YugabyteDB cluster. The high latency between the West and East regions explained the poor user experience.
-
-Eventually, the YugaPlus team decided to ensure all customers, regardless of their location, received the same level of experience. They achieved low-latency reads and writes using one of the design patterns for global applications...
-{{< /note >}}
+>**YugaPlus - Going Geo-Distributed**
+>
+>The popularity of the YugaPlus streaming platform has continued to soar. In the United States alone, millions of users watch their favorite movies, series, and sports events daily. With this level of growth, the YugaPlus team faced a new challenge.
+>
+>Many customers complained about the YugaPlus app being unresponsive and slow, especially during peak hours. It turned out that most of these complaints originated from users living on the US West Coast. Their requests had to travel across the country to the US East Coast, which hosted the preferred region of the multi-region YugabyteDB cluster. The high latency between the West and East regions explained the poor user experience.
+>
+>Eventually, the YugaPlus team decided to ensure all customers, regardless of their location, received the same level of experience. They achieved low-latency reads and writes using one of the design patterns for global applications...
 
 In this chapter, you'll learn how to do the following:
 

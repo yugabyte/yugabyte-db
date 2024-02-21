@@ -1,6 +1,6 @@
 ---
-title: Tutorial Overview
-headerTitle: Tutorial Overview
+title: Build and Learn tutorial overview
+headerTitle: Tutorial overview
 linkTitle: Overview
 description: Build and Learn tutorial overview
 menu:
@@ -11,11 +11,15 @@ menu:
 type: docs
 ---
 
-Welcome to the Build & Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
+>**Welcome to the Story of YugaPlus**
+>
+>Our story concerns YugaPlus, a small startup streaming service, and describes their journey from a single server running PostgreSQL with a regional customer base to global business. Follow along as YugaPlus launches its service, migrates to YugabyteDB to scale in the cloud, and builds a low latency fault-tolerant service for its growing user base.
+
+Welcome to the Build and Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by following the story of YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
 
 Throughout the following five chapters, you'll gain practical experience in these areas:
 
-* [Chapter 1: Debuting with PostgreSQL](../chapter1-debuting-with-postgres) - Deploy the first version of the YugaPlus movie recommendation service on PostgreSQL. You'll also understand how YugaPlus utilizes the PostgreSQL pgvector extension and the full-text search capabilities to provide movie recommendations.
+* [Chapter 1: Debuting with PostgreSQL](../chapter1-debuting-with-postgres) - Deploy the first version of the YugaPlus movie recommendation service on PostgreSQL. You'll also understand how YugaPlus uses the PostgreSQL pgvector extension and the full-text search capabilities to provide movie recommendations.
 
 * [Chapter 2: Scaling with YugabyteDB](../chapter2-scaling-with-yugabytedb) - Learn how YugabyteDB distributes data and workloads while migrating YugaPlus to a multi-node YugabyteDB cluster. Additionally, you'll witness YugabyteDB's PostgreSQL compatibility in action as the application is migrated without any code changes.
 
@@ -25,4 +29,4 @@ Throughout the following five chapters, you'll gain practical experience in thes
 
 * [Chapter 5: Offloading operations](../chapter5-going-cloud-native) - Migrate the YugaPlus streaming platform to YugabyteDB Managed to learn how to offload the management, maintenance, and operations of your database clusters.
 
-Ready? Then let's move on to [chapter 1](../chapter1-debuting-with-postgres)!
+Ready? Then let's move on to [Chapter 1](../chapter1-debuting-with-postgres)!

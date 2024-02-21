@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-{{< note title="YugaPlus - Weathering Storms in the Cloud" >}}
-One busy evening, the YugaPlus team was caught off-guard by a service outage. The streaming platform had gone down, and customers started voicing their frustrations on social media. In minutes, the team pinpointed that there was a major incident in a cloud region that hosted their database instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
-
-Eventually, **four hours later** the cloud provider restored the failed region and the YugaPlus streaming platform was live again. After this incident the YugaPlus team decided to migrate to a multi-region architecture that would help them to tolerate all sorts of possible outages in the future...
-{{< /note >}}
+>**YugaPlus - Weathering Storms in the Cloud**
+>
+>One busy evening, the YugaPlus team was caught off-guard by a service outage. The streaming platform had gone down, and customers started voicing their frustrations on social media. In minutes, the team pinpointed that there was a major incident in a cloud region that hosted their database instance. The YugabyteDB cluster was deployed across three availability zones of the region, but that was not enough this time. The whole region was down disrupting the availability of the database and entire streaming platform.
+>
+>Eventually, **four hours later** the cloud provider restored the failed region and the YugaPlus streaming platform was live again. After this incident the YugaPlus team decided to migrate to a multi-region architecture that would help them to tolerate all sorts of possible outages in the future...
 
 In this chapter, you'll learn how to do the following:
 

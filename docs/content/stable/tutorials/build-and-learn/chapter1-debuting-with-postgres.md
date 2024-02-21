@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-{{< note title="YugaPlus - The Story Begins" >}}
-The first version of the YugaPlus streaming platform was set for its prime-time debut. The plan involved initially launching the service for users on the US West Coast, followed by a gradual rollout to users nationwide.
-
-The launch was successful, with the first users signing up for YugaPlus to enjoy their favorite movies, series, and sports events. The service, powered by PostgreSQL, handled the incoming traffic with ease.
-{{< /note >}}
+>**YugaPlus - The Story Begins**
+>
+>The first version of the YugaPlus streaming platform was set for its prime-time debut. The plan involved initially launching the service for users on the US West Coast, followed by a gradual rollout to users nationwide.
+>
+>The launch was successful, with the first users signing up for YugaPlus to enjoy their favorite movies, series, and sports events. The service, powered by PostgreSQL, handled the incoming traffic with ease.
 
 In this chapter, you'll deploy one of the YugaPlus services—the movie recommendations service. This service takes user questions in plain English and uses an underlying generative AI stack (OpenAI, Spring AI, and PostgreSQL pgvector) or the full-text search capabilities of PostgreSQL to provide users with the most relevant movie recommendations.
 

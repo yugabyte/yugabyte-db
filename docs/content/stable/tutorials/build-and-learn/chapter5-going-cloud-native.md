@@ -11,13 +11,13 @@ menu:
 type: docs
 ---
 
-{{< note title="YugaPlus - Offloading operations" >}}
-YugaPlus has become one of the top streaming platforms, with hundreds of millions of people around the world spending countless hours watching their favorite movies, series, and live events. The YugaPlus team has mastered the art of scaling in the cloud, building a service that handles user traffic with low latency across multiple regions and tolerates all sorts of possible outages.
-
-However, maintaining such a platform was not a trivial task. The engineering and infrastructure teams spent a significant portion of their time just to keep the streaming platform running, secure, and up-to-date.
-
-Eventually, the YugaPlus team found a way to spend more time on innovation. They transitioned to YugabyteDB Managed, a DBaaS (Database-as-a-Service) that allowed them to offload the management, maintenance, and operations of their database cluster...
-{{< /note >}}
+>**YugaPlus - Offloading Operations**
+>
+>YugaPlus has become one of the top streaming platforms, with hundreds of millions of people around the world spending countless hours watching their favorite movies, series, and live events. The YugaPlus team has mastered the art of scaling in the cloud, building a service that handles user traffic with low latency across multiple regions and tolerates all sorts of possible outages.
+>
+>However, maintaining such a platform was not a trivial task. The engineering and infrastructure teams were spending a significant portion of their time just to keep the streaming platform running, secure, and up-to-date.
+>
+>Eventually, the YugaPlus team found a way to spend more time on innovation. They transitioned to YugabyteDB Managed, a DBaaS (Database-as-a-Service) that allowed them to offload the management, maintenance, and operations of their database cluster...
 
 In this chapter, you'll learn how to do the following:
 

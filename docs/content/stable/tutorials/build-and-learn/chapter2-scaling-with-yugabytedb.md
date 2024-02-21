@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-{{< note title="YugaPlus - Time to Scale" >}}
-As days went by, the YugaPlus streaming service welcomed thousands of new users, all continuously enjoying their movies, series, and sport events. Soon, the team faced a critical issue: the PostgreSQL database server was nearing its storage and compute capacity limits. Considering an upgrade to a larger instance would offer more storage and CPUs, but it also meant potential downtime during migration and the risk of hitting capacity limits again in the future.
-
-Eventually, the decision was made to address these scalability challenges by transitioning to a multi-node YugabyteDB cluster, capable of scaling both vertically and horizontally as needed...
-{{< /note >}}
+>**YugaPlus - Time to Scale**
+>
+>As days went by, the YugaPlus streaming service welcomed thousands of new users, all continuously enjoying their movies, series, and sport events. Soon, the team faced a critical issue: the PostgreSQL database server was nearing its storage and compute capacity limits. Considering an upgrade to a larger instance would offer more storage and CPUs, but it also meant potential downtime during migration and the risk of hitting capacity limits again in the future.
+>
+>Eventually, the decision was made to address these scalability challenges by transitioning to a multi-node YugabyteDB cluster, capable of scaling both vertically and horizontally as needed...
 
 In this chapter, you'll learn how to do the following:
 
