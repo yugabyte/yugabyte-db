@@ -9,18 +9,6 @@ type: indexpage
 ---
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="build-apps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">Build an application</div>
-      </div>
-      <div class="body">
-        Use your favorite programming language to build applications for YugabyteDB.
-      </div>
-    </a>
-  </div>
-
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="build-global-apps/">
       <div class="head">

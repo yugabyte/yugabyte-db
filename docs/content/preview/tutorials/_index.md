@@ -25,12 +25,6 @@ cascade:
     href="build-and-learn/"
     icon="fa-solid fa-globe">}}
 
-  {{<index/item
-    title="Product lab"
-    body="Test YugabyteDB features using a live demo application."
-    href="../yugabyte-cloud/managed-labs/"
-    icon="fa-solid fa-flask">}}
-
 {{</index/block>}}
 
 ### Cloud

@@ -10,7 +10,7 @@ aliases:
 menu:
   preview_tutorials:
     identifier: build-apps
-    parent: tutorials-first
+    parent: tutorials
 type: indexpage
 weight: 5
 ---
