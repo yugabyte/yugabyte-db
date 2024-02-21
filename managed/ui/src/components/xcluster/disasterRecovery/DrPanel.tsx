@@ -48,7 +48,6 @@ import { EditConfigModal } from './editConfig/EditConfigModal';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
 import { XClusterConfig } from '../dtos';
-import { DrConfigState } from './dtos';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -74,7 +73,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
 
-    margin: `${theme.spacing(3)}px 0 ${theme.spacing(2)}px`,
+    marginBottom: theme.spacing(2),
 
     '& $actionButtonContainer': {
       marginLeft: 'auto'

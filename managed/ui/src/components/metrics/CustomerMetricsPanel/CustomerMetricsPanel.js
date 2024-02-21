@@ -4,6 +4,8 @@ import { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
+import { Link } from 'react-router';
+import { Box } from '@material-ui/core';
 
 import { GraphPanelHeaderContainer } from '../../metrics';
 import {
@@ -20,6 +22,7 @@ import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './CustomerMetricsPanel.scss';
 
@@ -85,47 +88,72 @@ const PanelBody = ({
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
   }
 
+  const isDrEnabled =
+    runtimeConfigs?.data?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
+    )?.value === 'true';
+  const drConfigUuid =
+    selectedUniverse?.drConfigUuidsAsSource?.[0] ?? selectedUniverse?.drConfigUuidsAsTarget?.[0];
+  const hasDrConfig = !!drConfigUuid;
   if (
     metricMeasure === MetricMeasure.OUTLIER ||
     metricMeasure === MetricMeasure.OVERALL ||
     origin === MetricOrigin.TABLE
   ) {
+    const metricTabs = MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
+      const tabTitle = MetricTypesWithOperations[type].title;
+      const metricContent = MetricTypesWithOperations[type];
+      if (
+        !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
+        selectedUniverse?.universeDetails?.nodeDetailsSet.some(
+          (node) => node[APIMetricToNodeFlag[type]]
+        )
+      ) {
+        if (!invalidTabType.includes(type)) {
+          prevTabs.push(
+            <Tab
+              eventKey={type}
+              title={tabTitle}
+              key={`${type}-${metricMeasure}-tab`}
+              mountOnEnter={true}
+              unmountOnExit={true}
+            >
+              <GraphTab
+                type={type}
+                metricsKey={metricContent.metrics}
+                nodePrefixes={nodePrefixes}
+                selectedUniverse={selectedUniverse}
+                title={metricContent.title}
+                width={width}
+                tableName={tableName}
+                isGranularMetricsEnabled={isGranularMetricsEnabled}
+              />
+            </Tab>
+          );
+        }
+      }
+      return prevTabs;
+    }, []);
+    if (origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig) {
+      metricTabs.push(
+        <Tab
+          eventKey={'xClusterDr'}
+          title={'xCluster DR'}
+          key={`xClusterDr-${metricMeasure}-tab`}
+          mountOnEnter={true}
+          unmountOnExit={true}
+        >
+          <Box marginTop="16px" textAlign="center">
+            <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
+              <span className="dr-metrics-link">See xCluster DR Metrics</span>
+            </Link>
+          </Box>
+        </Tab>
+      );
+    }
     result = (
       <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
-        {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
-          const tabTitle = MetricTypesWithOperations[type].title;
-          const metricContent = MetricTypesWithOperations[type];
-          if (
-            !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
-            selectedUniverse?.universeDetails?.nodeDetailsSet.some(
-              (node) => node[APIMetricToNodeFlag[type]]
-            )
-          ) {
-            if (!invalidTabType.includes(type)) {
-              prevTabs.push(
-                <Tab
-                  eventKey={type}
-                  title={tabTitle}
-                  key={`${type}-${metricMeasure}-tab`}
-                  mountOnEnter={true}
-                  unmountOnExit={true}
-                >
-                  <GraphTab
-                    type={type}
-                    metricsKey={metricContent.metrics}
-                    nodePrefixes={nodePrefixes}
-                    selectedUniverse={selectedUniverse}
-                    title={metricContent.title}
-                    width={width}
-                    tableName={tableName}
-                    isGranularMetricsEnabled={isGranularMetricsEnabled}
-                  />
-                </Tab>
-              );
-            }
-          }
-          return prevTabs;
-        }, [])}
+        {metricTabs}
       </YBTabsPanel>
     );
   } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
