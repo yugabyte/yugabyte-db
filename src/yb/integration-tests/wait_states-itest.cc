@@ -71,6 +71,7 @@ DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_int32(num_concurrent_backfills_allowed);
+DECLARE_int32(TEST_slowdown_backfill_by_ms);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_bool(TEST_export_wait_state_names);
@@ -105,6 +106,7 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_collect_end_to_end_traces) = true;
     pgwrapper::PgMiniTestBase::SetUp();
 
+    ASSERT_OK(EnsureClientCreated());
     ASSERT_OK(StartCQLServer());
     cql_driver_ = std::make_unique<CppCassandraDriver>(
         std::vector<std::string>{cql_host_}, cql_port_, UsePartitionAwareRouting::kTrue);
@@ -484,7 +486,9 @@ void AshTestWithCompactions::DoCompactionsAndFlushes(std::atomic<bool>& stop) {
       LOG(INFO) << "Compactions done " << num_compactions_done_;
     } else {
       LOG(INFO) << __func__ << "Running flush";
-      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+      ASSERT_OK(cluster_->FlushTablets(
+          tablet::FlushMode::kSync,
+          tablet::FlushFlags::kAllDbs | tablet::FlushFlags::kNoScopedOperation));
     }
     SleepFor(waitTime);
   }
@@ -509,7 +513,11 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         UsePriorityQueueForCompaction();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
         UsePriorityQueueForFlush();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_concurrent_backfills_allowed) = 1;
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_concurrent_backfills_allowed) = 1;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 20;
+      enable_sql_ = false;
+    }
     if (code_to_look_for_ == ash::WaitStateCode::kRetryableRequests_SaveToDisk) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
     }
@@ -614,13 +622,22 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
 };
 
 void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& stop) {
-  auto conn = ASSERT_RESULT(Connect());
-  for (int i = 0; !stop; i++) {
-    LOG(INFO) << "Creating a index idx_" << i;
-    WARN_NOT_OK(
-        conn.Execute(yb::Format("CREATE INDEX idx_$0 on t (value)", i)), "Create index failed");
+  auto session = ASSERT_RESULT(CqlSessionWithRetries(stop, __PRETTY_FUNCTION__));
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  for (int i = 1; !stop; i++) {
+    const client::YBTableName idx_name(YQL_DATABASE_CQL, kNamespace, yb::Format("cql_idx_$0", i));
+    LOG(INFO) << "Creating a CQL index " << idx_name.ToString();
+    EXPECT_OK(
+        session.ExecuteQuery(yb::Format("CREATE INDEX $0 ON t (value)", idx_name.table_name())));
+
+    auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, idx_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
     LOG(INFO) << "Created index " << i;
     ++num_indexes_created_;
+    SleepFor(10ms);
   }
 }
 
@@ -673,8 +690,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRetryableRequests_SaveToDisk,
       ash::WaitStateCode::kMVCC_WaitForSafeTime,
       ash::WaitStateCode::kLockedBatchEntry_Lock,
-      // TODO(#20820) : Enable once #20820 is fixed
-      // ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
+      ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
       ash::WaitStateCode::kCreatingNewTablet,
       ash::WaitStateCode::kSaveRaftGroupMetadataToDisk,
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,
