@@ -34,7 +34,7 @@ The YB Controller (YBC) service was introduced for all universes (except Kuberne
 
 ### Upgrading to v2.18.0
 
-YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](#upgrading-to-2160).
+YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](#upgrading-to-v2-16-0).
 
 ## Install new version of YugabyteDB
 

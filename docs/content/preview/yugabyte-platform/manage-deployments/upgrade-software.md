@@ -25,7 +25,7 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 **Impact**
 
-- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to accommodate YBC. This includes setting systemd-specific database service unit files (if used), and configuring TCP ports. Refer to [Manually provision on-premises nodes](../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to accommodate YBC. This includes setting systemd-specific database service unit files (if used), and configuring TCP ports. Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 
 - Upgrade OS - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
 
@@ -33,7 +33,7 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 ### Upgrading to v2.18.0
 
-YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](#upgrading-to-2160).
+YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](/#upgrading-to-v2-16-0).
 
 ### Upgrading to v2.18.2
 
@@ -41,7 +41,7 @@ The Node Agent was introduced for all universes. Node agent is an RPC service ru
 
 **Impact**
 
-- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to include installing node agent. Refer to [Manually provision on-premises nodes](../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
+- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to include installing node agent. Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
 
 - Upgrade OS - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate node agent.
 
@@ -59,7 +59,7 @@ To view the releases that are available, do the following:
 
 If a release that you want to install on a universe is not available, import it as follows:
 
-1. On the **Releases** page, click **Import** to open the **Import Releases** dialog shown in the following illustration:
+1. On the **Releases** page, click **Import** to open the **Import Releases** dialog as shown in the following illustration:
 
     ![Import Releases](/images/yp/import-releases.png)
 
