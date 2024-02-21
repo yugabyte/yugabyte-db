@@ -93,6 +93,13 @@ public class PlatformResults {
         example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }")
     public JsonNode errorJson;
 
+    @ApiModelProperty(
+        value = "User request JSON object",
+        dataType = "Object",
+        example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+        required = false)
+    public JsonNode requestJson;
+
     // for json deserialization
     public YBPError() {}
 
@@ -100,9 +107,14 @@ public class PlatformResults {
       this.error = error;
     }
 
-    public YBPError(JsonNode errorJson) {
+    public YBPError(JsonNode errorJson, JsonNode requestJson) {
       this.error = "See structured error message in errorJson field";
       this.errorJson = errorJson;
+      this.requestJson = requestJson;
+    }
+
+    public YBPError(JsonNode errorJson) {
+      this(errorJson, null);
     }
   }
 
@@ -118,11 +130,23 @@ public class PlatformResults {
         required = false)
     public JsonNode error;
 
+    @ApiModelProperty(
+        value = "User request JSON object",
+        dataType = "Object",
+        example = "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+        required = false)
+    public JsonNode requestJson;
+
     // for json deserialization
     YBPStructuredError() {}
 
     public YBPStructuredError(JsonNode err) {
       error = err;
+    }
+
+    public YBPStructuredError(JsonNode err, JsonNode req) {
+      error = err;
+      requestJson = req;
     }
   }
 
