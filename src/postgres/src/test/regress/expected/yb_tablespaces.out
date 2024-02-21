@@ -588,12 +588,12 @@ DROP ROLE regress_tablespace_user2;
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
--- Should fail to set tablespace on a table in a colocated database
-CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
-ERROR:  cannot create colocated table with a tablespace
+-- Should succeed in setting tablespace on a table in a colocated database
+CREATE TABLE tab_key (a INT) TABLESPACE x;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
+DROP TABLE tab_key;
 DROP TABLE tab_nonkey;
 \c yugabyte
 DROP DATABASE colocation_test;

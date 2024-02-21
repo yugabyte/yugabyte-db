@@ -85,6 +85,12 @@ DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
 TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
+DEFINE_NON_RUNTIME_PREVIEW_bool(
+    ysql_enable_colocated_tables_with_tablespaces, false,
+    "Enable creation of colocated tables with a specified placement policy via a tablespace."
+    "If true, creating a colocated table  will colocate the table on an implicit "
+    "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
+
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
 DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
