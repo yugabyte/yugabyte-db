@@ -33,6 +33,7 @@ org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 org.yb.pgsql.TestPgRegressReplicationSlot
 org.yb.pgsql.TestPgRegressSecondaryIndexScan
 org.yb.pgsql.TestPgRegressTabletSplit
+org.yb.pgsql.TestPgRegressTrigger
 org.yb.pgsql.TestPgReplicationSlot
 org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 org.yb.pgsql.TestPgWrapper#testNotNullConstraint

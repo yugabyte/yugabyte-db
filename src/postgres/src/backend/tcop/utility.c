@@ -2419,7 +2419,7 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 			tag = CMDTAG_ALTER_TABLE;
 			break;
 		case OBJECT_YBTABLEGROUP:
-			tag = CMDTAG_ALTER_YBTABLEGROUP;
+			tag = CMDTAG_ALTER_TABLEGROUP;
 			break;
 		case OBJECT_TABLESPACE:
 			tag = CMDTAG_ALTER_TABLESPACE;
@@ -2601,7 +2601,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_CreateTableGroupStmt:
-			tag = CMDTAG_CREATE_YBTABLEGROUP;
+			tag = CMDTAG_CREATE_TABLEGROUP;
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -2773,7 +2773,7 @@ CreateCommandTag(Node *parsetree)
 					tag = CMDTAG_DROP_STATISTICS;
 					break;
 				case OBJECT_YBTABLEGROUP:
-					tag = CMDTAG_DROP_YBTABLEGROUP;
+					tag = CMDTAG_DROP_TABLEGROUP;
 					break;
 				case OBJECT_YBPROFILE:
 					/* YB_TODO(neil) Needs to intro tag profile to the preprocessor.
@@ -3363,11 +3363,11 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_YbCreateProfileStmt:
-			tag = CMDTAG_CREATE_YBPROFILE;
+			tag = CMDTAG_CREATE_PROFILE;
 			break;
 
 		case T_YbDropProfileStmt:
-			tag = CMDTAG_DROP_YBPROFILE;
+			tag = CMDTAG_DROP_PROFILE;
 			break;
 
 		default:
