@@ -1862,9 +1862,9 @@ void SetBackfillSpecForYsqlBackfill(
     response->set_is_backfill_batch_done(true);
   }
 
-  VLOG(2) << "Got input spec " << yb::ToString(in_spec)
-          << " set output spec " << yb::ToString(out_spec)
-          << " batch_done=" << response->is_backfill_batch_done();
+  VLOG(2) << "Got input spec { " << in_spec.ShortDebugString()
+          << " } set output spec { " << out_spec.ShortDebugString()
+          << " } batch_done=" << response->is_backfill_batch_done();
   string serialized_pb;
   out_spec.SerializeToString(&serialized_pb);
   response->set_backfill_spec(b2a_hex(serialized_pb));
@@ -2410,11 +2410,10 @@ string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
-  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec)
-          << (VLOG_IS_ON(3) ? Format(" encoded as $0 a string of length $1",
-                                     b2a_hex(serialized_backfill_spec),
-                                     serialized_backfill_spec.length())
-                            : "");
+  VLOG(2) << "Generating backfill_spec { " << yb::ToString(backfill_spec)
+          << (VLOG_IS_ON(3) ? Format(" } encoded as $0",
+                                     b2a_hex(serialized_backfill_spec))
+                            : " }");
   return serialized_backfill_spec;
 }
 
@@ -2431,10 +2430,11 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   CHECK_EQ(PQntuples(res.get()), 1);
   CHECK_EQ(PQnfields(res.get()), 1);
   const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
-  VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
 
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
+  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
   return spec;
 }
 
@@ -2529,9 +2529,9 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
-  LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
-            << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
-            << " for " << AsString(indexes);
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for indexes " << AsString(indexes);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline);
@@ -2574,18 +2574,15 @@ Status Tablet::BackfillIndexesForYsql(
     *number_of_rows_processed += spec.count();
     *backfilled_until = spec.next_row_key();
 
-    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
-            << "Setting backfilled_until to "
-            << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until)) << " of length "
-            << backfilled_until->length();
+    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   } while (CanProceedToBackfillMoreRows(
       backfill_params, *backfilled_until, *number_of_rows_processed));
 
-  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows. "
-          << "Set backfilled_until to "
-          << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until));
+  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows in this chunk. "
+          << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
   return Status::OK();
 }
 
