@@ -88,6 +88,9 @@ DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 
+DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
+     "Enabled packing inserted columns into a single packed value in postgres layer.");
+
 namespace yb {
 namespace pggate {
 namespace {
@@ -1323,8 +1326,9 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
-  return down_cast<PgDmlWrite*>(handle)->BindRow(columns, count);
+Status PgApiImpl::DmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count) {
+  return down_cast<PgDmlWrite*>(handle)->BindRow(ybctid, columns, count);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
@@ -1437,13 +1441,30 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 
 // Insert ------------------------------------------------------------------------------------------
 
+Result<PgStatement*> PgApiImpl::NewInsertBlock(
+    const PgObjectId& table_id,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting) {
+  if (!FLAGS_ysql_pack_inserted_value) {
+    return nullptr;
+  }
+
+  auto stmt = std::make_unique<PgInsert>(
+      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ true);
+  RETURN_NOT_OK(stmt->Prepare());
+  PgStatement *result = nullptr;
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), &result));
+  return result;
+}
+
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
                             bool is_region_local,
                             PgStatement **handle,
-                            YBCPgTransactionSetting transaction_setting) {
+                            YBCPgTransactionSetting transaction_setting,
+                            PgStatement *block_insert_stmt) {
   *handle = nullptr;
   auto stmt = std::make_unique<PgInsert>(
-      pg_session_, table_id, is_region_local, transaction_setting);
+      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ false);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();

@@ -317,7 +317,7 @@ uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* clien
 }
 
 void AshCopyTServerSample(
-    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t& sample_time) {
+    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t sample_time) {
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
@@ -350,7 +350,7 @@ void AshCopyTServerSample(
 
 void AshCopyTServerSamples(
     YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
-    uint64_t& sample_time) {
+    uint64_t sample_time) {
   for (const auto& sample : samples.wait_states()) {
     AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
   }
@@ -1050,8 +1050,9 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
-  return ToYBCStatus(pgapi->DmlBindRow(handle, columns, count));
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count) {
+  return ToYBCStatus(pgapi->DmlBindRow(handle, ybctid, columns, count));
 }
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,
@@ -1184,6 +1185,21 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle) {
+  auto result = pgapi->NewInsertBlock(
+      PgObjectId(database_oid, table_oid), is_region_local, transaction_setting);
+  if (result.ok()) {
+    *handle = *result;
+    return NULL;
+  }
+  return ToYBCStatus(result.status());
+}
+
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
