@@ -92,12 +92,11 @@ Next, open a database connection and run a few SQL requests:
 
     The output should be as follows:
 
-    ```sql{.nocopy}
-       host    | port | num_connections | node_type | cloud  |   region    | zone  | public_ip  |               uuid
-
+    ```output
+        host    | port | num_connections | node_type | cloud  |   region    | zone  | public_ip  |               uuid
     ------------+------+-----------------+-----------+--------+-------------+-------+------------+----------------------------------
-    172.20.0.3 | 5433 |               0 | primary   | cloud1 | datacenter1 | rack1 | 172.20.0.3 | da90c891356e4c6faf1437cb86d4b782
-    (1 row)
+     172.20.0.3 | 5433 |               0 | primary   | cloud1 | datacenter1 | rack1 | 172.20.0.3 | da90c891356e4c6faf1437cb86d4b782
+     (1 row)
     ```
 
 4. Lastly, close the database session and exit the container:
@@ -168,7 +167,7 @@ Upon checking, you'll see that:
 * All three nodes are healthy and in the `RUNNING` state.
 * The **replication factor** has been changed to `3`, indicating that now each node maintains a replica of your data that is replicated synchronously with the Raft consensus protocol. This configuration allows your database deployment to tolerate the outage of one node without losing availability or compromising data consistency.
 
-To view more detailed information about the cluster nodes, go to the **Nodes** dashboard at: <http://localhost:15433/?tab=tabNodes>
+To view more detailed information about the cluster nodes, go to the **Nodes** dashboard at <http://localhost:15433/?tab=tabNodes>.
 
 ![YugabyteDB UI Nodes Dashboard](/images/tutorials/build-and-learn/chpater2-yugabytedb-ui-nodes-tab.png)
 
@@ -211,7 +210,7 @@ If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable 
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of locks.
+The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of lock.
     {{< /warning >}}
 
 3. Start the application:
