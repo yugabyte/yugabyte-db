@@ -4,6 +4,7 @@ import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
+import { Typography } from '@material-ui/core';
 
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBModal } from '../../common/forms/fields';
@@ -122,8 +123,6 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     },
     {
       onSuccess: (response) => {
-        closeModal();
-
         const invalidateQueries = () => {
           if (props.isDrInterface) {
             queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfig.uuid));
@@ -141,8 +140,21 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
                 </a>
               </span>
             );
+          } else {
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t(`success.taskSuccess.${props.isDrInterface ? 'dr' : 'xCluster'}`)}
+              </Typography>
+            );
           }
         };
+
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
+        closeModal();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>

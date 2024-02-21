@@ -916,7 +916,7 @@
               "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
             },
             "success": {
-              "requestSuccess": "Updating tables under replication.",
+              "requestSuccess": "Updating tables under replication...",
               "taskSuccess": "Updated tables under replication."
             }
           }
@@ -1007,11 +1007,13 @@
           "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
-            "taskFailure": "xCluster config DB sync task failed.",
+            "requestFailureLabel": "Reconcile config with database request failed.",
+            "taskFailure": "Reconcile config with database task failed.",
             "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
           },
           "success": {
-            "taskSuccess": "Reconciled xCluster config with DB."
+            "requestSuccess": "Reconciling config with database...",
+            "taskSuccess": "Reconciled config config with database."
           }
         },
         "restartReplicationModal": {
@@ -1045,6 +1047,13 @@
           "error": {
             "requestFailureLabel": "Create full copy request failed",
             "taskFailure": "Create full copy task failed."
+          },
+          "success": {
+            "requestSuccess": "Creating full copy...",
+            "taskSuccess": {
+              "dr": "Resynced DR replica.",
+              "xCluster": "Restart replication task succeeded."
+            }
           }
         }
       }
