@@ -250,8 +250,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
 
   RETURN_NOT_OK(writer->FlushAggregatedValues());
 
-  // Once all metrics have been flushed, we can release the ownership of all metrics.
-  owning_metric_maps.clear();
+  RETURN_NOT_OK(writer->FlushNumberOfEntriesCutOff());
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling

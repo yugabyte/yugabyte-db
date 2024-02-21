@@ -17,7 +17,11 @@
 
 #include "yb/util/enums.h"
 
+DECLARE_string(metric_node_name);
+
 namespace yb {
+
+static const char* const kNumberOfEntriesCutOffMetricName = "num_of_entries_cut_off";
 
 PrometheusWriter::PrometheusWriter(std::stringstream* output,
                                    const MetricPrometheusOptions& opts)
@@ -25,12 +29,18 @@ PrometheusWriter::PrometheusWriter(std::stringstream* output,
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count()),
       export_help_and_type_(opts.export_help_and_type),
-      prometheus_metric_filter_(CreatePrometheusMetricFilter(opts)) {}
+      prometheus_metric_filter_(CreatePrometheusMetricFilter(opts)),
+      remaining_allowed_entries_(opts.max_metric_entries) {}
 
 PrometheusWriter::~PrometheusWriter() {}
 
 Status PrometheusWriter::FlushAggregatedValues() {
   for (const auto& [metric_name, entity] : aggregated_values_) {
+    if (remaining_allowed_entries_ < entity.size()) {
+      num_of_entries_cut_off_ += entity.size();
+      continue;
+    }
+    remaining_allowed_entries_ -= entity.size();
     auto it = metric_help_and_type_.find(metric_name);
     for (const auto& [aggregation_id, value] : entity) {
       if (it != metric_help_and_type_.end()) {
@@ -40,6 +50,19 @@ Status PrometheusWriter::FlushAggregatedValues() {
           aggregated_id_to_attributes_[aggregation_id], metric_name, value));
     }
   }
+  return Status::OK();
+}
+
+Status PrometheusWriter::FlushNumberOfEntriesCutOff() {
+  // We expose this metric regardless of remaining_allowed_entries_.
+  if (export_help_and_type_) {
+    FlushHelpAndType(kNumberOfEntriesCutOffMetricName, "counter",
+        "Number of metric entries truncated due to exceeding the maximum metric entry limit");
+  }
+  MetricEntity::AttributeMap attr;
+  attr["exported_instance"] = FLAGS_metric_node_name;
+  RETURN_NOT_OK(FlushSingleEntry(attr, kNumberOfEntriesCutOffMetricName,
+      num_of_entries_cut_off_));
   return Status::OK();
 }
 
@@ -127,24 +150,22 @@ Status PrometheusWriter::WriteSingleEntry(
     DCHECK(aggregation_levels == kStreamLevel);
   }
 
-  auto tablet_id_it = attr.find("table_id");
+  auto table_id_it = attr.find("table_id");
 
   if (aggregation_levels & kTableLevel) {
-    if (metric_type == "table") {
-      if (export_help_and_type_) {
-        FlushHelpAndType(name, type, description);
-      }
-      RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
-    } else {
-      DCHECK(tablet_id_it != attr.end());
-      AddAggregatedEntry(tablet_id_it->second, attr, name, value, aggregation_function,
-          type, description);
-    }
+    DCHECK(table_id_it != attr.end());
+    AddAggregatedEntry(table_id_it->second, attr, name, value, aggregation_function,
+        type, description);
   }
 
   if (aggregation_levels & kServerLevel) {
-    if (tablet_id_it == attr.end()) {
-      // Metric type is server, so no need to aggregate.
+    if (table_id_it == attr.end()) {
+      if (remaining_allowed_entries_ == 0) {
+        num_of_entries_cut_off_++;
+        return Status::OK();
+      }
+      // Metric doesn't have table id, so no need to aggregate.
+      remaining_allowed_entries_--;
       if (export_help_and_type_) {
         FlushHelpAndType(name, type, description);
       }

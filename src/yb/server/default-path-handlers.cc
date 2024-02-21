@@ -94,6 +94,11 @@ TAG_FLAG(web_log_bytes, advanced);
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
     "Include #TYPE and #HELP in Prometheus metrics output by default");
 
+DEFINE_RUNTIME_uint32(max_prometheus_metric_entries, UINT32_MAX,
+    "The maximum number of Prometheus metric entries returned in each scrape. Note that if "
+    "adding a metric with all its entities would exceed the limit, then we will drop them all."
+    "Thus, the actual number of metric entries returned might be smaller than the limit.");
+
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -385,6 +390,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   MetricPrometheusOptions opts;
   opts.export_help_and_type =
       ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
+  opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
   ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
@@ -457,6 +463,19 @@ void ParseRequestOptions(
 
   if (prometheus_opts) {
     ParseMetricOptions(req, prometheus_opts);
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
+      try {
+        if (arg_p->starts_with('-')) {
+          throw std::invalid_argument("Input value is negative");
+        }
+        prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
+      } catch (const std::exception& e) {
+        LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
+                     << ". Failed to convert its value to unsigned 32 bits integer: "
+                     << e.what();
+      }
+    }
 
     if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
       prometheus_opts->export_help_and_type =
