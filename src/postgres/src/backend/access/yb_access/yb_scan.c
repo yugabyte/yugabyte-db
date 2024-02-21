@@ -687,6 +687,9 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 {
 	Relation relation = ybScan->relation;
 	Relation index = ybScan->index;
+	YbTableProperties yb_table_prop_relation = YbGetTableProperties(relation);
+	bool			  is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
 
@@ -701,9 +704,27 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * table in YugaByte.
 	 */
 
-	ybScan->prepare_params.querying_colocated_table =
-		IsSystemRelation(relation) ||
-		YbGetTableProperties(relation)->is_colocated;
+	if (!is_colocated_tables_with_tablespace_enabled)
+	{
+		ybScan->prepare_params.querying_colocated_table =
+			IsSystemRelation(relation) || yb_table_prop_relation->is_colocated;
+	}
+	else
+	{
+		/*
+		 * If ysql_enable_colocated_tables_with_tablespaces is enabled then we enable
+		 * querying_colocated_table for the following cases:
+		 * 	1. If the relation is a system catalog or TOAST table.
+		 *	2. If the index used for scan is a primary key index of the colocated table.
+		 * 	3. If the base table and it's index are part of the same tablegroup.
+		 */
+		ybScan->prepare_params.querying_colocated_table =
+			IsSystemRelation(relation) ||
+			(yb_table_prop_relation->is_colocated && index &&
+			 (index->rd_index->indisprimary ||
+			  yb_table_prop_relation->tablegroup_oid ==
+				  YbGetTableProperties(index)->tablegroup_oid));
+	}
 
 	if (index)
 	{

@@ -10,13 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/tserver/tablet_server_options.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -33,11 +38,241 @@ class ColocatedDBTest : public LibPqTestBase {
   }
 };
 
+class ColocatedTablesWithTablespacesTest : public ColocatedDBTest {
+ public:
+  void SetUp() override {
+    ColocatedDBTest::SetUp();
+
+    ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+    {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack2"}));
+
+    ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+    {"--placement_cloud=cloud1", "--placement_region=datacenter1", "--placement_zone=rack3"}));
+
+    ASSERT_OK(MiniClusterTestWithClient<ExternalMiniCluster>::CreateClient());
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    ColocatedDBTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_master_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+
+    options->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_colocated_tables_with_tablespaces");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+
+  Result<client::YBTableName> GetTable(
+      const std::string& namespace_name, const std::string& table_name) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+
+    req.set_name_filter(table_name);
+    req.mutable_namespace_()->set_name(namespace_name);
+    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+    req.set_exclude_system_tables(true);
+    req.add_relation_type_filter(master::USER_TABLE_RELATION);
+    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+
+    master::MasterDdlProxy master_proxy(
+        &client_->proxy_cache(), VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return STATUS(IllegalState, "Failed listing tables");
+    }
+
+    for (const auto& table : resp.tables()) {
+      if ((table.name() == table_name && table.namespace_().name() == namespace_name)) {
+        client::YBTableName yb_table;
+        yb_table.set_table_id(table.id());
+        yb_table.set_namespace_id(table.namespace_().id());
+        return yb_table;
+      }
+    }
+
+    return STATUS_FORMAT(
+        IllegalState, "Unable to find table $0 in namespace $1", table_name, namespace_name);
+  }
+
+  void CreateTablespacesWithOneReplica(PGConn* conn, const std::string& tablespaceName, int zone) {
+    const std::string placement_info = R"#(
+      '{
+        "num_replicas" : 1,
+        "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack$0",
+            "min_num_replicas" : 1
+          }
+        ]
+      }'
+    )#";
+
+    ASSERT_OK(conn->ExecuteFormat(
+        "CREATE TABLESPACE $0 WITH (replica_placement=$1);", tablespaceName,
+        Format(placement_info, zone)));
+  }
+
+  void CreateTablespacesWithThreeReplicas(PGConn* conn, const std::string& tablespaceName) {
+    const std::string placement_info = R"#(
+      '{
+        "num_replicas" : 3,
+        "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          },
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack2",
+            "min_num_replicas" : 1
+          },
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack3",
+            "min_num_replicas" : 1
+          }
+        ]
+      }'
+    )#";
+
+    ASSERT_OK(conn->ExecuteFormat(
+        "CREATE TABLESPACE $0 WITH (replica_placement=$1);", tablespaceName, placement_info));
+  }
+
+  void AssertLocation(
+      const std::string& tableName,
+      const std::string& databaseName,
+      std::vector<std::string>&
+          exp_locations) {
+    std::sort(exp_locations.begin(), exp_locations.end());
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+    ASSERT_OK(client_->GetTablets(ASSERT_RESULT(GetTable(databaseName, tableName)), 0,
+                              &tablets_1, nullptr));
+    ASSERT_EQ(tablets_1.size(), 1);
+
+    std::vector<std::string> locations;
+    for (const auto& replica : tablets_1[0].replicas()) {
+      const auto cloud_info = replica.ts_info().cloud_info();
+      locations.push_back(
+          cloud_info.placement_cloud() + "." + cloud_info.placement_region() + "." +
+          cloud_info.placement_zone());
+    }
+
+    std::sort(locations.begin(), locations.end());
+    ASSERT_EQ(locations, exp_locations);
+  }
+
+  void AssertSameTablet(
+      const std::vector<std::string>& tableNames, const std::string& databaseName) {
+    ASSERT_GT(tableNames.size(), 1);
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+    ASSERT_OK(client_->GetTablets(
+        ASSERT_RESULT(GetTable(databaseName, tableNames[0])), 0, &tablets_1, nullptr));
+    ASSERT_EQ(tablets_1.size(), 1);
+
+    std::string exp_tablet_id = tablets_1[0].tablet_id();
+
+    for (const auto& tableName : tableNames) {
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+      ASSERT_OK(client_->GetTablets(
+          ASSERT_RESULT(GetTable(databaseName, tableName)), 0, &tablets_1, nullptr));
+      ASSERT_EQ(tablets_1.size(), 1);
+      ASSERT_EQ(tablets_1[0].tablet_id(), exp_tablet_id);
+    }
+  }
+
+ protected:
+  int GetNumTabletServers() const override { return 3; };
+  std::vector<std::string> placement_rack1 = {"cloud1.datacenter1.rack1"};
+  std::vector<std::string> placement_rack2 = {"cloud1.datacenter1.rack2"};
+  std::vector<std::string> placement_rack3 = {"cloud1.datacenter1.rack3"};
+  std::vector<std::string> placement_with_three_replicas =
+  {"cloud1.datacenter1.rack1", "cloud1.datacenter1.rack2", "cloud1.datacenter1.rack3"};
+
+ private:
+  int kRpcTimeout = 120;
+};
+
 TEST_F(ColocatedDBTest, TestMasterToTServerRetryAddTableToTablet) {
   auto conn = ASSERT_RESULT(CreateColocatedDB("test_db"));
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_duplicate_addtabletotablet_request", "true"));
   ASSERT_OK(conn.Execute("CREATE TABLE test_tbl1 (key INT PRIMARY KEY, value TEXT)"));
+}
+
+TEST_F(ColocatedTablesWithTablespacesTest, ColocatedTablespaceTest) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
+  CreateTablespacesWithOneReplica(&conn, "tsp1", 1);
+  CreateTablespacesWithOneReplica(&conn, "tsp2", 2);
+  CreateTablespacesWithOneReplica(&conn, "tsp3", 3);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t4 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp3"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t5 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp2"));
+
+  AssertLocation("t1", "colodb", placement_rack1);
+  AssertLocation("t2", "colodb", placement_rack2);
+  AssertLocation("t3", "colodb", placement_rack1);
+  AssertLocation("t4", "colodb", placement_rack3);
+  AssertLocation("t5", "colodb", placement_rack2);
+
+  AssertSameTablet({"t1", "t3"}, "colodb");
+  AssertSameTablet({"t2", "t5"}, "colodb");
+
+  CreateTablespacesWithThreeReplicas(&conn, "tsp4");
+  ASSERT_OK(conn.Execute("CREATE TABLE t6 (key INT PRIMARY KEY, value TEXT) TABLESPACE tsp4"));
+  AssertLocation("t6", "colodb", placement_with_three_replicas);
+}
+
+TEST_F(ColocatedTablesWithTablespacesTest, ColocatedIndexWithTablespaceTest) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
+  CreateTablespacesWithOneReplica(&conn, "tsp1", 1);
+  CreateTablespacesWithOneReplica(&conn, "tsp2", 2);
+  CreateTablespacesWithOneReplica(&conn, "tsp3", 3);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (a INT, b INT, c INT) TABLESPACE tsp1;"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2(a INT, b INT, c INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX i1 on t1(a) TABLESPACE tsp2;"));
+  ASSERT_OK(conn.Execute("CREATE INDEX i2 on t1(b) TABLESPACE tsp3;"));
+  ASSERT_OK(conn.Execute("CREATE INDEX i3 on t1(c)"));
+
+  AssertSameTablet({"i3", "t2"}, "colodb");
+
+  AssertLocation("t1", "colodb", placement_rack1);
+  AssertLocation("i1", "colodb", placement_rack2);
+  AssertLocation("i2", "colodb", placement_rack3);
+}
+
+TEST_F(ColocatedTablesWithTablespacesTest, ColocatedPartitionedTableWithTablespaceTest) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
+  CreateTablespacesWithOneReplica(&conn, "tsp1", 1);
+  CreateTablespacesWithOneReplica(&conn, "tsp2", 2);
+
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE t1 (a INT PRIMARY KEY, b INT, c INT) PARTITION BY RANGE(a)"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE p1 PARTITION OF t1 FOR VALUES FROM (1) TO (10) TABLESPACE tsp1;"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE p2 PARTITION OF t1 FOR VALUES FROM (11) TO (20) TABLESPACE tsp2;"));
+
+  AssertLocation("p1", "colodb", placement_rack1);
+  AssertLocation("p2", "colodb", placement_rack2);
 }
 
 TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {

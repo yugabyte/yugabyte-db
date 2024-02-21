@@ -79,6 +79,8 @@ DECLARE_int32(client_read_write_timeout_ms);
 
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
+DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
@@ -1855,6 +1857,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
+      .ysql_enable_colocated_tables_with_tablespaces =
+          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
       .ysql_enable_create_database_oid_collision_retry =
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =

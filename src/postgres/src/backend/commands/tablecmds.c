@@ -12107,7 +12107,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename &&
+	if (IsYugaByteEnabled() && tablespacename && 
 		rel->rd_index &&
 		rel->rd_index->indisprimary) {
 		/*
@@ -12603,7 +12603,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.",
+			(errmsg("Data movement for table %s is successfully initiated.", 
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "
