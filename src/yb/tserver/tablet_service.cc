@@ -2623,6 +2623,8 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
       SetupErrorAndRespond(resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS,
                            &context);
       return;
+    } else if (s.IsServiceUnavailable()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 5) << "Start remote bootstrap failed: " << s;
     } else {
       LOG(WARNING) << "Start remote bootstrap failed: " << s;
     }
