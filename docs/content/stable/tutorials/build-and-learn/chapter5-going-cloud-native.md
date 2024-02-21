@@ -26,7 +26,7 @@ In this chapter, you'll learn how to do the following:
 
 **Prerequisites**
 
-You need to complete [chapter 4](../chapter4-going-global) of the tutorial before proceeding to this one.
+You need to complete [Chapter 4](../chapter4-going-global) of the tutorial before proceeding to this one.
 
 ## Start YugabyteDB Managed cluster
 

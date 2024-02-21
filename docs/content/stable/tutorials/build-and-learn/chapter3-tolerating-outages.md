@@ -24,11 +24,11 @@ In this chapter, you'll learn how to do the following:
 
 **Prerequisites**
 
-You need to complete [chapter 2](../chapter2-scaling-with-yugabytedb) of the tutorial before proceeding to this one.
+You need to complete [Chapter 2](../chapter2-scaling-with-yugabytedb) of the tutorial before proceeding to this one.
 
 ## Simulate an outage
 
-Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](https://docs.yugabyte.com/stable/architecture/docdb-replication/replication/#concepts) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
+Right now, your YugaPlus movie recommendation service runs on a 3-node YugabyteDB cluster. This setup, with a [replication factor](../../../architecture/docdb-replication/replication/#concepts) of 3 (RF=3), means you can have one database node go down with no disruption to your application workload.
 
 To see how this works, let's simulate an outage by stopping the first database node (`yugabytedb-node1`):
 
@@ -78,10 +78,10 @@ Despite the first node being unavailable, the cluster is still running. The othe
 {{< tip title="YugabyteDB RTO and RPO" >}}
 With YugabyteDB, your recovery time objective (RTO) is measured in seconds with recovery point objective (RPO) equal to 0 (no data loss).
 
-Usually, the RTO is in the range from 3 to 15 seconds. Depends on the latency between availability zones, regions and data centers where you deploy YugabyteDB nodes.
+Usually, the RTO is in the range of 3 to 15 seconds. It depends on the latency between availability zones, regions, and data centers where you deploy YugabyteDB nodes.
 {{< /tip >}}
 
-However, the YugaPlus backend was not prepared for this outage. The backend relied on the PostgreSQL JDBC driver to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
+However, the YugaPlus backend was not prepared for this outage. The backend relied on the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) to connect to the first node (`yugabytedb-node1`) that served as a proxy for all application requests:
 
 ```output.yaml
 DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
@@ -115,7 +115,7 @@ The backend still tries to connect to the stopped node; it doesn't know how to f
 
 The PostgreSQL JDBC driver allows the specification of multiple database connection endpoints that can be used for fault tolerance and load balancing. However, the list of these connection endpoints is static, meaning that you would need to restart the application whenever you add or remove nodes from the YugabyteDB cluster.
 
-Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the YugabyteDB smart driver on the application end.
+Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the [YugabyteDB JDBC smart driver]()(../../../drivers-orms/java/yugabyte-jdbc/) on the application end.
 
 ## Deploy a multi-region cluster
 

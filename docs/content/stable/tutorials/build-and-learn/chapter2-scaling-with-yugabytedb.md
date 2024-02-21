@@ -26,7 +26,7 @@ In this chapter, you'll learn how to do the following:
 
 **Prerequisites**
 
-You need to complete [chapter 1](../chapter1-debuting-with-postgres) of the tutorial before proceeding to this one.
+You need to complete [Chapter 1](../chapter1-debuting-with-postgres) of the tutorial before proceeding to this one.
 
 ## Start YugabyteDB
 

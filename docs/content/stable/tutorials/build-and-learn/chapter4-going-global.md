@@ -25,7 +25,7 @@ In this chapter, you'll learn how to do the following:
 
 **Prerequisites**
 
-You need to complete [chapter 3](../chapter3-tolerating-outages) of the tutorial before proceeding to this one.
+You need to complete [Chapter 3](../chapter3-tolerating-outages) of the tutorial before proceeding to this one.
 
 ## Geo-partition the user library
 

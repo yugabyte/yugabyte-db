@@ -100,7 +100,7 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
 1. Navigate to the YugaPlus project directory:
 
     ```shell
-    cd {yugaplus-project-dir}
+    cd yugaplus-build-and-learn-tutorial
     ```
 
 2. Build application images and start the containers:
