@@ -192,11 +192,15 @@ Oid PostgisMakePointFunctionId(void);
 Oid PostgisMakePolygonFunctionId(void);
 Oid PostgisMakeLineFunctionId(void);
 Oid PostgisGeographyCoversFunctionId(void);
+Oid PostgisGeographyDWithinFunctionId(void);
+Oid PostgisGeometryDWithinFunctionId(void);
 Oid PostgisBox2dfGeometryOverlapsFunctionId(void);
 Oid PostgisGIDXGeographyOverlapsFunctionId(void);
 Oid PostgisGeometryCoversFunctionId(void);
 Oid PostgisGeographyIntersectsFunctionId(void);
 Oid PostgisSetSRIDFunctionId(void);
+Oid PostgisGeometryExpandFunctionId(void);
+Oid PostgisGeographyExpandFunctionId(void);
 
 /* Text search functions */
 Oid WebSearchToTsQueryFunctionId(void);

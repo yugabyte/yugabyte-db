@@ -62,6 +62,12 @@ typedef struct IndexBsonGeospatialState
 	 * a tighter index bound check.
 	 */
 	List *segments;
+
+	/*
+	 * If radius is infinite for $center and $centerSphere in $within,
+	 * we simply return all documents without running any comparisons
+	 */
+	bool returnAllIndexTermsWithoutComparison;
 } IndexBsonGeospatialState;
 
 
@@ -233,8 +239,8 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 {
 	GISTENTRY *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	const pgbson *queryBson = PG_GETARG_PGBSON(1);
+	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
 	IndexBsonGeospatialState *state;
 	int stateArgPositions[2] = { 1, 2 };
 
@@ -284,6 +290,12 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (state->returnAllIndexTermsWithoutComparison)
+	{
+		*recheck = false;
+		PG_RETURN_BOOL(true);
+	}
+
 	bool result = DatumGetBool(OidFunctionCall5(
 								   PostgisGeometryGistConsistent2dFunctionId(),
 								   PointerGetDatum(entry),
@@ -291,8 +303,6 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 								   Int32GetDatum(strategy),
 								   PG_GETARG_DATUM(3),
 								   PG_GETARG_DATUM(4)));
-
-	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 
 	/*
 	 * recheck is always true for geospatial query operators because
@@ -362,20 +372,41 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 	const bson_value_t *queryValue = bson_iter_value(&queryDocIterator);
 	const ShapeOperator *shapeOperator = GetShapeOperatorByValue(queryValue, &points);
 	state->state.isSpherical = shapeOperator->isSpherical;
+	ShapeOperatorInfo *opInfo = NULL;
 
 	switch (strategy)
 	{
 		case BSON_INDEX_STRATEGY_DOLLAR_GEOWITHIN:
 		{
+			opInfo = palloc0(sizeof(ShapeOperatorInfo));
+			opInfo->queryStage = QueryStage_INDEX;
 			state->state.geoSpatialDatum = shapeOperator->getShapeDatum(&points,
-																		QUERY_OPERATOR_GEOWITHIN);
+																		QUERY_OPERATOR_GEOWITHIN,
+																		opInfo);
+
+			if (shapeOperator->op == GeospatialShapeOperator_CENTERSPHERE ||
+				shapeOperator->op == GeospatialShapeOperator_CENTER)
+			{
+				if (opInfo->opState != NULL)
+				{
+					DollarCenterOperatorState *centerState =
+						(DollarCenterOperatorState *) opInfo->opState;
+
+					if (centerState->isRadiusInfinite)
+					{
+						state->returnAllIndexTermsWithoutComparison = true;
+					}
+				}
+			}
+
 			break;
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GEOINTERSECTS:
 		{
 			state->state.geoSpatialDatum = shapeOperator->getShapeDatum(&points,
-																		QUERY_OPERATOR_GEOINTERSECTS);
+																		QUERY_OPERATOR_GEOINTERSECTS,
+																		opInfo);
 
 			break;
 		}
@@ -388,7 +419,11 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 		}
 	}
 
-	SegmentizeQuery(state);
+	/* Don't segmentize for $box, $center and $centerSphere*/
+	if (shapeOperator->shouldSegmentize)
+	{
+		SegmentizeQuery(state);
+	}
 }
 
 
@@ -486,15 +521,15 @@ bson_gist_geography_distance(PG_FUNCTION_ARGS)
 
 
 /*
- * bson_gist_geometry_consistent checks if the query bson can be satisfied with the index key
+ * bson_gist_geography_consistent checks if the query bson can be satisfied with the index key
  */
 Datum
 bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 {
 	GISTENTRY *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	const pgbson *queryBson = PG_GETARG_PGBSON(1);
+	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
 	IndexBsonGeospatialState *state;
 	int stateArgPositions[2] = { 1, 2 };
 
@@ -544,6 +579,12 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (state->returnAllIndexTermsWithoutComparison)
+	{
+		*recheck = false;
+		PG_RETURN_BOOL(true);
+	}
+
 	bool result = DatumGetBool(OidFunctionCall5(
 								   PostgisGeographyGistConsistentFunctionId(),
 								   PointerGetDatum(entry),
@@ -551,8 +592,6 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 								   Int32GetDatum(strategy),
 								   PG_GETARG_DATUM(3),
 								   PG_GETARG_DATUM(4)));
-
-	bool *recheck = (bool *) PG_GETARG_POINTER(4);
 
 	/*
 	 * recheck is always true for geospatial query operators because

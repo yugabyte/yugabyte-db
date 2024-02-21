@@ -344,7 +344,7 @@ SetQueryMatcherResult(ProcessCommonGeospatialState *state)
 				   GetGeographyFromWKB(wkbBytea);
 
 	bool isMatched = state->runtimeMatcher.matcherFunc(
-		flinfo, query, result);
+		flinfo, query, result, state->opInfo);
 	state->runtimeMatcher.isMatched = isMatched;
 
 	if (!isMatched)
@@ -744,6 +744,19 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 	if (!isValid)
 	{
 		return false;
+	}
+
+	/*
+	 * This check will be removed when support for checking all points
+	 * of polygons and lines is implemented in subsequent PR
+	 */
+	if (processState->opInfo != NULL &&
+		processState->opInfo->op == GeospatialShapeOperator_CENTERSPHERE &&
+		parseState.type != GeoJsonType_POINT)
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"GeoJson fields other than point type are not currently supported with $centerSphere")));
 	}
 
 	if (parseState.crs != NULL &&

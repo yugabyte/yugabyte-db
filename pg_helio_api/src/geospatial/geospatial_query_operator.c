@@ -42,6 +42,9 @@ typedef struct RuntimeBsonGeospatialState
 	 * e.g For $geoIntersects we use ST_Intersects function from Postgres
 	 */
 	FmgrInfo *postgisFuncFmgrInfo;
+
+	/* Shape operator specific state */
+	ShapeOperatorInfo *opInfo;
 } RuntimeBsonGeospatialState;
 
 
@@ -59,7 +62,9 @@ static bool CompareGeoWithinState(const pgbson *document, const char *path,
 static bool CompareGeoIntersectsState(const pgbson *document, const char *path,
 									  const RuntimeBsonGeospatialState *state);
 static bool CompareGeoDatumsWithFmgrInfo(FmgrInfo *fmgrInfo,
-										 Datum queryGeo, Datum documentGeo);
+										 Datum queryGeo, Datum documentGeo, const
+										 ShapeOperatorInfo
+										 *opInfo);
 
 /*
  * bson_dollar_geowithin implements runtime
@@ -143,9 +148,15 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 	bson_value_t shapePointsValue;
 	const ShapeOperator *shapeOperator =
 		GetShapeOperatorByValue(shapeOperatorValue, &shapePointsValue);
+	runtimeState->opInfo = palloc0(sizeof(ShapeOperatorInfo));
+	runtimeState->opInfo->op = shapeOperator->op;
+	runtimeState->opInfo->queryStage = QueryStage_RUNTIME;
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
 	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
-																	   QUERY_OPERATOR_GEOWITHIN);
+																	   QUERY_OPERATOR_GEOWITHIN,
+																	   runtimeState->
+																	   opInfo);
+	Oid coverFunctionOid;
 
 	/*
 	 * Postgis provides ST_Within function but that doesn't provide the same
@@ -155,9 +166,17 @@ PopulateBsonDollarGeoWithinQueryState(RuntimeBsonGeospatialState *runtimeState,
 	 *
 	 * So we use ST_Covers which includes geometries at the boundaries
 	 */
-	Oid coverFunctionOid = shapeOperator->isSpherical ?
+	if (shapeOperator->op == GeospatialShapeOperator_CENTERSPHERE)
+	{
+		coverFunctionOid = PostgisGeographyDWithinFunctionId();
+	}
+	else
+	{
+		coverFunctionOid = shapeOperator->isSpherical ?
 						   PostgisGeographyCoversFunctionId() :
 						   PostgisGeometryCoversFunctionId();
+	}
+
 	runtimeState->postgisFuncFmgrInfo = palloc0(sizeof(FmgrInfo));
 	fmgr_info(coverFunctionOid, runtimeState->postgisFuncFmgrInfo);
 }
@@ -177,11 +196,12 @@ PopulateBsonDollarGeoIntersectQueryState(RuntimeBsonGeospatialState *runtimeStat
 		GetShapeOperatorByValue(shapeOperatorValue, &shapePointsValue);
 
 	/* We already validated the shape operator to be only $geometry during planning, here just assert we are processing $geometry */
-	Assert(shapeOperator->shape == GeospatialShapeOperator_GEOMETRY);
-
+	Assert(shapeOperator->op == GeospatialShapeOperator_GEOMETRY);
 	runtimeState->state.isSpherical = shapeOperator->isSpherical;
 	runtimeState->state.geoSpatialDatum = shapeOperator->getShapeDatum(&shapePointsValue,
-																	   QUERY_OPERATOR_GEOINTERSECTS);
+																	   QUERY_OPERATOR_GEOINTERSECTS,
+																	   runtimeState->
+																	   opInfo);
 
 	Oid intersectsFunctionOid = PostgisGeographyIntersectsFunctionId();
 	runtimeState->postgisFuncFmgrInfo = palloc0(sizeof(FmgrInfo));
@@ -211,7 +231,7 @@ CompareGeoWithinState(const pgbson *document, const char *path,
 	withinState.runtimeMatcher.matcherFunc = &CompareGeoDatumsWithFmgrInfo;
 	withinState.runtimeMatcher.queryGeoDatum = runtimeState->state.geoSpatialDatum;
 	withinState.runtimeMatcher.flInfo = runtimeState->postgisFuncFmgrInfo;
-
+	withinState.opInfo = runtimeState->opInfo;
 
 	bson_iter_t documentIterator;
 	PgbsonInitIterator(document, &documentIterator);
@@ -284,7 +304,34 @@ CompareGeoIntersectsState(const pgbson *document, const char *path,
  */
 static bool
 CompareGeoDatumsWithFmgrInfo(FmgrInfo *fmgrInfo, Datum queryGeo,
-							 Datum documentGeo)
+							 Datum documentGeo, const ShapeOperatorInfo *opInfo)
 {
+	if (opInfo != NULL && opInfo->opState != NULL)
+	{
+		if (opInfo->op == GeospatialShapeOperator_CENTERSPHERE)
+		{
+			DollarCenterOperatorState *centerState =
+				(DollarCenterOperatorState *) opInfo->opState;
+
+			if (centerState->isRadiusInfinite)
+			{
+				return true;
+			}
+
+			Datum radiusArg = Float8GetDatum(centerState->radius);
+			return DatumGetBool(FunctionCall3(fmgrInfo, queryGeo, documentGeo,
+											  radiusArg));
+		}
+		else if (opInfo->op == GeospatialShapeOperator_CENTER)
+		{
+			DollarCenterOperatorState *centerState =
+				(DollarCenterOperatorState *) opInfo->opState;
+			if (centerState->isRadiusInfinite)
+			{
+				return true;
+			}
+		}
+	}
+
 	return DatumGetBool(FunctionCall2(fmgrInfo, queryGeo, documentGeo));
 }

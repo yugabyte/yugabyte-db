@@ -641,6 +641,18 @@ typedef struct HelioApiOidCacheData
 	/* Oid of ST_Covers (geography) Postgis function */
 	Oid PostgisGeographyCoversFunctionId;
 
+	/* Oid of ST_DWithin (geography) Postgis function */
+	Oid PostgisGeographyDWithinFunctionId;
+
+	/* Oid of ST_DWithin (geometry) Postgis function */
+	Oid PostgisGeometryDWithinFunctionId;
+
+	/* Oid of _ST_EXPAND (geography) Postgis function */
+	Oid PostgisGeographyExpandFunctionId;
+
+	/* Oid of ST_EXPAND (geometry) Postgis function */
+	Oid PostgisGeometryExpandFunctionId;
+
 	/* Oid of overlaps_2d(box2df, geometry) postgis function */
 	Oid PostgisBox2dfGeometryOverlapsFunctionId;
 
@@ -2924,6 +2936,42 @@ PostgisGeographyCoversFunctionId(void)
 
 
 /*
+ * PostgisGeographyDWithinFunctionId returns the OID of postgis_public.st_dwithin function.
+ * Note this variant is only used for geographies
+ */
+Oid
+PostgisGeographyDWithinFunctionId(void)
+{
+	int nargs = 4;
+	Oid geographyTypeId = GeographyTypeId();
+	Oid argTypes[4] = { geographyTypeId, geographyTypeId, FLOAT8OID, BOOLOID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeographyDWithinFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_dwithin", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryDWithinFunctionId returns the OID of postgis_public.st_dwithin function.
+ * Note this variant is only used for geometries
+ */
+Oid
+PostgisGeometryDWithinFunctionId(void)
+{
+	int nargs = 3;
+	Oid geometryTypeId = GeometryTypeId();
+	Oid argTypes[3] = { geometryTypeId, geometryTypeId, FLOAT8OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryDWithinFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_dwithin", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
  * PostgisGIDXGeographyOverlapsFunctionId returns the OID of postgis_public.overlaps_geog function.
  * which check gidx overlap between (gidx, geography)
  */
@@ -3073,6 +3121,41 @@ PostgisSetSRIDFunctionId(void)
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisSetSRIDFunctionId,
 		POSTGIS_EXTENSION_SCHEMA, "st_setsrid", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryExpandFunctionId returns the OID of the postgis_public.st_expand function.
+ */
+Oid
+PostgisGeometryExpandFunctionId(void)
+{
+	int nargs = 2;
+	Oid geometryOid = GeometryTypeId();
+	Oid argTypes[2] = { geometryOid, FLOAT8OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryExpandFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "st_expand", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeographyExpandFunctionId returns the OID of the postgis_public._st_expand function.
+ * Only expands the bounding box, the actual geography will remain unchanged.
+ */
+Oid
+PostgisGeographyExpandFunctionId(void)
+{
+	int nargs = 2;
+	Oid geographyOid = GeographyTypeId();
+	Oid argTypes[2] = { geographyOid, FLOAT8OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeographyExpandFunctionId,
+		POSTGIS_EXTENSION_SCHEMA, "_st_expand", nargs,
 		argTypes, missingOk);
 }
 

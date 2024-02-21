@@ -18,6 +18,8 @@
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "utils/list_utils.h"
 
+#define RADIUS_OF_EARTH_KM 6378.1
+
 /*
  * This defines the bounds of a rectangle in 2D space.
  */
@@ -34,15 +36,17 @@ static const ShapeOperator * GetShapeOperatorByName(const char *operatorName);
 static Datum GetLegacyPointDatum(double longitude, double latitude);
 
 /* Shape operators */
-static Datum BsonValueGetBox(const bson_value_t *value, MongoQueryOperatorType operator);
+static Datum BsonValueGetBox(const bson_value_t *value, MongoQueryOperatorType operator,
+							 ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetPolygon(const bson_value_t *value, MongoQueryOperatorType
-								 operator);
+								 operator, ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetCenter(const bson_value_t *value, MongoQueryOperatorType
-								operator);
+								operator, ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetCenterSphere(const bson_value_t *value,
-									  MongoQueryOperatorType operator);
+									  MongoQueryOperatorType operator,
+									  ShapeOperatorInfo *opInfo);
 static Datum BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType
-								  operator);
+								  operator, ShapeOperatorInfo *opInfo);
 
 
 /*
@@ -51,39 +55,45 @@ static Datum BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorT
 static const ShapeOperator GeoWithinShapeOperators[] = {
 	{
 		.shapeOperatorName = "$box",
-		.shape = GeospatialShapeOperator_BOX,
+		.op = GeospatialShapeOperator_BOX,
 		.isSpherical = false,
-		.getShapeDatum = BsonValueGetBox
+		.getShapeDatum = BsonValueGetBox,
+		.shouldSegmentize = false
 	},
 	{
 		.shapeOperatorName = "$center",
-		.shape = GeospatialShapeOperator_CENTER,
+		.op = GeospatialShapeOperator_CENTER,
 		.isSpherical = false,
-		.getShapeDatum = BsonValueGetCenter
+		.getShapeDatum = BsonValueGetCenter,
+		.shouldSegmentize = false
 	},
 	{
 		.shapeOperatorName = "$centerSphere",
-		.shape = GeospatialShapeOperator_CENTERSPHERE,
+		.op = GeospatialShapeOperator_CENTERSPHERE,
 		.isSpherical = true,
 		.getShapeDatum = BsonValueGetCenterSphere,
+		.shouldSegmentize = false
 	},
 	{
 		.shapeOperatorName = "$geometry",
-		.shape = GeospatialShapeOperator_GEOMETRY,
+		.op = GeospatialShapeOperator_GEOMETRY,
 		.isSpherical = true,
-		.getShapeDatum = BsonValueGetGeometry
+		.getShapeDatum = BsonValueGetGeometry,
+		.shouldSegmentize = true
 	},
 	{
 		.shapeOperatorName = "$polygon",
-		.shape = GeospatialShapeOperator_POLYGON,
+		.op = GeospatialShapeOperator_POLYGON,
 		.isSpherical = false,
-		.getShapeDatum = BsonValueGetPolygon
+		.getShapeDatum = BsonValueGetPolygon,
+		.shouldSegmentize = true
 	},
 	{
 		.shapeOperatorName = NULL,
-		.shape = GeospatialShapeOperator_UNKNOWN,
+		.op = GeospatialShapeOperator_UNKNOWN,
 		.isSpherical = false,
-		.getShapeDatum = NULL
+		.getShapeDatum = NULL,
+		.shouldSegmentize = false
 	}
 };
 
@@ -140,7 +150,7 @@ GetShapeOperatorByValue(const bson_value_t *shapeValue, bson_value_t *shapePoint
 		const ShapeOperator *shapeOperator = GetShapeOperatorByName(shapeOperatorName);
 
 		/* If anytime we encounter non existing shape operator return error */
-		if (shapeOperator->shape == GeospatialShapeOperator_UNKNOWN)
+		if (shapeOperator->op == GeospatialShapeOperator_UNKNOWN)
 		{
 			ereport(ERROR, (errcode(MongoBadValue),
 							errmsg("unknown geo specifier: %s: %s",
@@ -194,7 +204,8 @@ GetShapeOperatorByName(const char *operatorName)
  * box as a geometry datum
  */
 static Datum
-BsonValueGetBox(const bson_value_t *shapePointValue, MongoQueryOperatorType operator)
+BsonValueGetBox(const bson_value_t *shapePointValue, MongoQueryOperatorType operator,
+				ShapeOperatorInfo *opInfo)
 {
 	if (shapePointValue->value_type != BSON_TYPE_ARRAY &&
 		shapePointValue->value_type != BSON_TYPE_DOCUMENT)
@@ -306,7 +317,8 @@ BsonValueGetBox(const bson_value_t *shapePointValue, MongoQueryOperatorType oper
  * a closed ring
  */
 static Datum
-BsonValueGetPolygon(const bson_value_t *shapeValue, MongoQueryOperatorType operator)
+BsonValueGetPolygon(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
+					ShapeOperatorInfo *opInfo)
 {
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
@@ -447,8 +459,11 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, MongoQueryOperatorType opera
  * a center point and a radius
  */
 static Datum
-BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operator)
+BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
+				   ShapeOperatorInfo *opInfo)
 {
+	Assert(opInfo != NULL);
+
 	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
 		shapeValue->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -458,6 +473,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
 						errhint("unknown geo specifier: $center with argument type %s",
 								BsonTypeName(shapeValue->value_type))));
 	}
+
 
 	bson_iter_t centerValueIter;
 	BsonValueInitIterator(shapeValue, &centerValueIter);
@@ -498,12 +514,20 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
 
 		if (index == 1)
 		{
-			if (!BsonValueIsNumber(value) || BsonValueAsDouble(value) < 0)
+			if (!BsonValueIsNumber(value) || BsonValueAsDouble(value) < 0 ||
+				IsBsonValueNaN(value))
 			{
 				ereport(ERROR, (errcode(MongoBadValue),
 								errmsg("radius must be a non-negative number")));
 			}
-			else
+			else if (IsBsonValueInfinity(value))
+			{
+				DollarCenterOperatorState *state = palloc0(
+					sizeof(DollarCenterOperatorState));
+				state->isRadiusInfinite = true;
+				opInfo->opState = (ShapeOperatorState *) state;
+				return (Datum) 0;
+			}
 			{
 				radius = BsonValueAsDouble(value);
 			}
@@ -516,7 +540,7 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
 		ereport(ERROR, (errcode(MongoBadValue),
 						errmsg("Point must be an array or object")));
 	}
-	if (index == 1)
+	else if (index == 1)
 	{
 		ereport(ERROR, (errcode(MongoBadValue),
 						errmsg("radius must be a non-negative number")));
@@ -534,7 +558,8 @@ BsonValueGetCenter(const bson_value_t *shapeValue, MongoQueryOperatorType operat
  * geography.
  */
 static Datum
-BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator)
+BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator,
+					 ShapeOperatorInfo *opInfo)
 {
 	if (value->value_type != BSON_TYPE_DOCUMENT && value->value_type != BSON_TYPE_ARRAY)
 	{
@@ -621,14 +646,118 @@ BsonValueGetGeometry(const bson_value_t *value, MongoQueryOperatorType operator)
 
 /*
  * For a {$centerSphere: ...} shape operator return the respective
- * geography. For now it throws error to avoid Seg faults if it is used
+ * geography.
  */
 static Datum
-BsonValueGetCenterSphere(const bson_value_t *value,
-						 MongoQueryOperatorType operator)
+BsonValueGetCenterSphere(const bson_value_t *shapeValue, MongoQueryOperatorType operator,
+						 ShapeOperatorInfo *opInfo)
 {
-	ereport(ERROR, (errcode(MongoCommandNotSupported),
-					errmsg("$centerSphere is not supported yet")));
+	Assert(opInfo != NULL);
+
+	if (shapeValue->value_type != BSON_TYPE_ARRAY &&
+		shapeValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("unknown geo specifier: $centerSphere: %s",
+							   BsonValueToJsonForLogging(shapeValue)),
+						errhint(
+							"unknown geo specifier: $centerSphere with argument type %s",
+							BsonTypeName(shapeValue->value_type))));
+	}
+
+	bson_iter_t centerValueIter;
+	BsonValueInitIterator(shapeValue, &centerValueIter);
+	int16 index = 0;
+	Datum centerPoint = 0;
+	double radius = 0.0;
+	while (bson_iter_next(&centerValueIter))
+	{
+		if (index > 1)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg("Only 2 fields allowed for circular region")));
+		}
+		const bson_value_t *value = bson_iter_value(&centerValueIter);
+		if (index == 0)
+		{
+			if (value->value_type != BSON_TYPE_ARRAY &&
+				value->value_type != BSON_TYPE_DOCUMENT)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg("Point must be an array or object")));
+			}
+			else
+			{
+				Point point;
+				memset(&point, 0, sizeof(Point));
+
+				bool throwError = true;
+
+				GeospatialErrorContext errCtxt;
+				memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
+				errCtxt.errCode = MongoBadValue;
+
+				ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
+
+				StringInfo buffer = makeStringInfo();
+
+				/* Valid point, write to buffer */
+				WriteHeaderToWKBBuffer(buffer, WKBGeometryType_Point);
+				WritePointToWKBBuffer(buffer, &point);
+				bytea *wkbBytea = WKBBufferGetByteaWithSRID(buffer);
+				centerPoint = GetGeographyFromWKB(wkbBytea);
+			}
+		}
+
+		if (index == 1)
+		{
+			if (!BsonValueIsNumber(value) || BsonValueAsDouble(value) < 0 ||
+				IsBsonValueNaN(value))
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg("radius must be a non-negative number")));
+			}
+			else if (IsBsonValueInfinity(value))
+			{
+				DollarCenterOperatorState *state = palloc0(
+					sizeof(DollarCenterOperatorState));
+				state->isRadiusInfinite = true;
+				opInfo->opState = (ShapeOperatorState *) state;
+				return (Datum) 0;
+			}
+			else
+			{
+				radius = BsonValueAsDouble(value);
+			}
+		}
+		index++;
+	}
+
+	if (index == 0)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("Point must be an array or object")));
+	}
+	else if (index == 1)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("radius must be a non-negative number")));
+	}
+
+	DollarCenterOperatorState *state = palloc0(sizeof(DollarCenterOperatorState));
+	state->isRadiusInfinite = false;
+	state->radius = radius * RADIUS_OF_EARTH_KM * 1000;
+	opInfo->opState = (ShapeOperatorState *) state;
+
+	if (opInfo->queryStage == QueryStage_INDEX)
+	{
+		/* Return geography with expanded area for index pushdown. */
+		return OidFunctionCall2(PostgisGeographyExpandFunctionId(),
+								centerPoint,
+								Float8GetDatum(state->radius));
+	}
+
+	return centerPoint;
 }
 
 

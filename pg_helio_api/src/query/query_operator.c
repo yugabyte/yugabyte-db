@@ -1769,8 +1769,11 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			const ShapeOperator *shapeOperator = GetShapeOperatorByValue(value,
 																		 &shapesValue);
 
+			ShapeOperatorInfo *opInfo = palloc0(sizeof(ShapeOperatorInfo));
+			opInfo->queryStage = QueryStage_RUNTIME;
+
 			/* Only Validate the shapeOperator */
-			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType);
+			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType, opInfo);
 
 			Expr *geoWithinFuncExpr = CreateFuncExprForSimpleQueryOperator(
 				operatorDocIterator, context, operator, path);
@@ -1798,7 +1801,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 			const ShapeOperator *shapeOperator = GetShapeOperatorByValue(value,
 																		 &shapesValue);
 
-			if (shapeOperator->shape != GeospatialShapeOperator_GEOMETRY)
+			if (shapeOperator->op != GeospatialShapeOperator_GEOMETRY)
 			{
 				/* In mongo $centerSphere with $geoIntersects does not throw error but it should
 				 * https://jira.mongodb.org/browse/SERVER-30390
@@ -1813,8 +1816,10 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 								"$geoIntersect not supported with provided geometry.")));
 			}
 
+			ShapeOperatorInfo *opInfo = NULL;
+
 			/* Validate the query at planning */
-			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType);
+			shapeOperator->getShapeDatum(&shapesValue, operator->operatorType, opInfo);
 
 			Expr *geoIntersectsFuncExpr = CreateFuncExprForSimpleQueryOperator(
 				operatorDocIterator, context, operator, path);

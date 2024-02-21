@@ -17,6 +17,7 @@
 #include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "planner/mongo_query_operator.h"
+#include "geospatial/bson_geospatial_shape_operators.h"
 #include "metadata/metadata_cache.h"
 
 /* Default min and max bounds for 2d index */
@@ -94,7 +95,8 @@ typedef struct CommonBsonGeospatialState
 } CommonBsonGeospatialState;
 
 
-typedef bool (*GeospatialQueryMatcherFunc)(FmgrInfo *, Datum, Datum);
+typedef bool (*GeospatialQueryMatcherFunc)(FmgrInfo *, Datum, Datum, const
+										   ShapeOperatorInfo *);
 
 /*
  * Runtime query matcher for comapring the resulting geometry/geography from
@@ -133,6 +135,9 @@ typedef struct ProcessCommonGeospatialState
 	RuntimeQueryMatcherInfo runtimeMatcher;
 
 	GeospatialErrorContext *errorCtxt;
+
+	/* Carry shape-specific info, for e.g., radius for $center and $centerSphere */
+	ShapeOperatorInfo *opInfo;
 
 	/* ========== OUT VARIABLES ============ */
 
