@@ -157,4 +157,8 @@ LongOperationTracker::~LongOperationTracker() {
   }
 }
 
+void LongOperationTracker::Swap(LongOperationTracker* rhs) {
+  tracked_operation_.swap(rhs->tracked_operation_);
+}
+
 } // namespace yb
