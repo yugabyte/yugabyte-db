@@ -1609,6 +1609,8 @@
       "headerTitle": "Releases",
       "tag": "Tag",
       "tags": {
+        "LINUX": "Linux",
+        "KUBERNETES": "Kubernetes",
         "x86_64": "VM x86",
         "aarch64": "VM ARM",
         "kubernetes": "Kubernetes"
@@ -1620,8 +1622,11 @@
       "type": {
         "STS": "STS",
         "LTS": "LTS",
-        "Preview": "Preview"
+        "PREVIEW (DEFAULT)": "PREVIEW"
       },
+      "fetchMetadata": "Fetch Metadata",
+      "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
+      "genericError": "Failed to fetch list of releases",
       "newRelease": "New Release",
       "architectureLabel": "Architecture",
       "addRelease": "Add Release",
@@ -1657,6 +1662,15 @@
       "inUse": "In Use",
       "inUseUniverses": "In-Use Universes",
       "notInUse": "Not in Use",
+      "reviewReleaseMetadataSection": {
+        "viewReleaseDetails": "View Release Details",
+        "version": "VERSION",
+        "deploymentType": "DEPLOYMENT TYPE",
+        "architecture": "ARCHITECTURE",
+        "releaseSupport": "RELEASE SUPPORT",
+        "releaseDate": "RELEASE DATE",
+        "unableFetchRelease": "Unable to fetch release details.Provide the following information"
+      },
       "editArchitectureModal": {
         "uploadDBInstaller": "Upload Database Installer(Linux) or helm chart (Kubernetes)",
         "supportedFileFormat": "Supported file type: tar.gz",
@@ -1666,14 +1680,7 @@
         "signature": "Signature"
       },
       "addReleaseModal": {
-        "viewReleaseDetails": "View Release Details",
-        "unableFetchRelease": "Unable to fetch release details.Provide the following information",
-        "addReleaseTag": "Add a release tag (optional)",
-        "version": "VERSION",
-        "deploymentType": "DEPLOYMENT TYPE",
-        "architecture": "ARCHITECTURE",
-        "releaseSupport": "RELEASE SUPPORT",
-        "releaseDate": "RELEASE DATE"
+        "addReleaseTag": "Add a release tag (optional)"
       },
       "disableReleaseModal": {
         "disableMessage": "Are you sure you want to disable the release {{release_version}}?",

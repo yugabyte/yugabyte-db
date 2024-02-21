@@ -36,7 +36,6 @@ import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
-import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
@@ -292,7 +291,6 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile} />
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
-        <Route path="/releases_list" component={ReleaseList} />
         <Route path="/admin" component={Administration}>
           <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />
