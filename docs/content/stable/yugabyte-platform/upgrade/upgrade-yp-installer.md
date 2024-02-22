@@ -44,6 +44,7 @@ Download and extract the YBA Installer by entering the following commands:
 $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
 $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
 $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+$ umask 022
 ```
 
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
