@@ -321,7 +321,7 @@ Now, imagine there's a major outage in the US East region, making the region una
         -c 'select * from yb_servers()'
     ```
 
-    The output should be as follows:
+    After a short delay, the output should be as follows:
 
     ```output
         host   | port | num_connections | node_type | cloud |   region    |     zone      | public_ip  |               uuid

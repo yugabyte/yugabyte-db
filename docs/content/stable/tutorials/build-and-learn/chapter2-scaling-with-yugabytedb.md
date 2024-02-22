@@ -108,7 +108,7 @@ Next, open a database connection and run a few SQL requests:
 
 ## Explore YugabyteDB UI
 
-Starting a node with the **yugabyted** tool also activates a YugabyteDB UI process, accessible on port `15433`. To explore various cluster metrics and parameters, connect to the UI from your browser: <http://localhost:15433/>
+Starting a node with the **yugabyted** tool also activates a YugabyteDB UI process, accessible on port `15433`. To explore various cluster metrics and parameters, connect to the UI from your browser at <http://localhost:15433/>.
 
 ![YugabyteDB UI Main Dashboard](/images/tutorials/build-and-learn/chapter2-yugabytedb-ui-main-dashboard.png)
 
@@ -210,7 +210,7 @@ If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable 
 
 `- DB_CONN_INIT_SQL=SET yb_silence_advisory_locks_not_supported_error=true`
 
-The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of lock.
+The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of lock. The version of YugabyteDB is displayed in the UI at <http://localhost:15433/>.
     {{< /warning >}}
 
 1. Start the application:
@@ -224,8 +224,8 @@ This time, the `yugaplus-backend` container connects to YugabyteDB, which listen
 Upon establishing a successful connection, the backend uses Flyway to execute database migrations:
 
 ```output
-2024-02-21T19:10:03.140Z INFO 1 --- [ main] o.f.c.i.s.DefaultSqlScriptExecutor : DB: making create index for table "flyway_schema_history" nonconcurrent
-.DbMigrate      : Current version of schema "public": << Empty Schema >>
+2024-02-12T17:10:03.140Z  INFO 1 --- [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: making create index for table "flyway_schema_history" nonconcurrent
+2024-02-12T17:10:03.143Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": << Empty Schema >>
 2024-02-12T17:10:03.143Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1 - enable pgvector"
 2024-02-12T17:10:07.745Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.1 - create movie table"
 2024-02-12T17:10:07.794Z  INFO 1 --- [           main] o.f.c.i.s.DefaultSqlScriptExecutor       : DB: table "movie" does not exist, skipping
