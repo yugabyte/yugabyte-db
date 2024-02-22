@@ -2,7 +2,7 @@
 title: Tolerating outages
 headerTitle: "Chapter 3: Tolerating outages with YugabyteDB"
 linkTitle: Tolerating outages
-description: Make the YugaPlus service highly-available by using the smart driver and deploying YugabyteDB across several data centers. 
+description: Make the YugaPlus service highly-available by using the smart driver and deploying YugabyteDB across several data centers.
 menu:
   stable:
     identifier: chapter3-tolerating-outages
@@ -46,14 +46,14 @@ To see how this works, let's simulate an outage by stopping the first database n
     (1 row)
     ```
 
-2. Stop the node and remove its container:
+1. Stop the node and remove its container:
 
     ```shell
     docker stop yugabytedb-node1
     docker rm yugabytedb-node1
     ```
 
-3. Query the total number of movies one more time by sending the same request but to the second node (`yugabytedb-node2`)
+1. Query the total number of movies one more time by sending the same request but to the second node (`yugabytedb-node2`)
 
     ```shell
     docker exec -it yugabytedb-node2 bin/ysqlsh -h yugabytedb-node2 \
@@ -69,7 +69,7 @@ To see how this works, let's simulate an outage by stopping the first database n
     (1 row)
     ```
 
-4. Open the second node's monitoring UI that listens on port `15434` on your host operating system: <http://localhost:15434/?tab=tabNodes>
+1. Open the second node's monitoring UI that listens on port `15434` on your host operating system: <http://localhost:15434/?tab=tabNodes>
 
     ![First node is down](/images/tutorials/build-and-learn/chapter3-first-node-down.png)
 
@@ -115,7 +115,7 @@ The backend still tries to connect to the stopped node; it doesn't know how to f
 
 The PostgreSQL JDBC driver allows the specification of multiple database connection endpoints that can be used for fault tolerance and load balancing. However, the list of these connection endpoints is static, meaning that you would need to restart the application whenever you add or remove nodes from the YugabyteDB cluster.
 
-Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the [YugabyteDB JDBC smart driver]()(../../../drivers-orms/java/yugabyte-jdbc/) on the application end.
+Next, you will learn how to tolerate major outages by deploying the database across multiple regions and using the [YugabyteDB JDBC smart driver](../../../drivers-orms/java/yugabyte-jdbc/) on the application end.
 
 ## Deploy a multi-region cluster
 
@@ -135,14 +135,14 @@ Before deploying a multi-region YugabyteDB cluster, ensure to remove any existin
     docker rm yugabytedb-node3
     ```
 
-2. Recreate the directory that serves as a volume for the YugabyteDB nodes:
+1. Recreate the directory that serves as a volume for the YugabyteDB nodes:
 
     ```shell
     rm -r ~/yugabyte-volume
     mkdir ~/yugabyte-volume
     ```
 
-3. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
+1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
 
 The **yugabyted** tool lets you deploy and configure multi-region YugabyteDB clusters on your local machine. This is useful for emulating a multi-region cluster configuration locally for development and testing.
 
@@ -162,7 +162,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
 
     The format for the `--cloud_location` parameter is `cloud_name.region_name.zone_name`. You can specify any cloud, region, or zone name to align with your real production deployment.
 
-2. Wait for the first node to finish the initialization and start two more nodes in the US West and Central locations respectively:
+1. Wait for the first node to finish the initialization and start two more nodes in the US West and Central locations respectively:
 
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done
@@ -184,7 +184,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
             --fault_tolerance=region
     ```
 
-3. Configure the data placement constraint of the cluster:
+1. Configure the data placement constraint of the cluster:
 
     ```shell
     docker exec -it yugabytedb-node1 \
@@ -200,7 +200,7 @@ Use **yugabyted** to deploy a YugabyteDB cluster across US East, Central, and We
     +---------------------------------------------------------------------------------------------------+
     ```
 
-4. Confirm that the nodes discovered each other and formed a single multi-region cluster:
+1. Confirm that the nodes discovered each other and formed a single multi-region cluster:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -263,7 +263,7 @@ Bring back the application using the smart driver:
     * The `DB_URL` parameter now uses the `jdbc:yugabytedb:...` schema instead `jdbc:postgresql:...`. This is necessary to get the smart driver loaded and used at runtime.
     * The `DB_DRIVER_CLASS_NAME` specifies the name of the smart driver's class.
 
-2. Start the application:
+1. Start the application:
 
     ```shell
     docker-compose up
@@ -314,7 +314,7 @@ Now, imagine there's a major outage in the US East region, making the region una
     docker rm yugabytedb-node1
     ```
 
-2. Make sure the other two nodes from different regions are still available:
+1. Make sure the other two nodes from different regions are still available:
 
     ```shell
     docker exec -it yugabytedb-node2 bin/ysqlsh -h yugabytedb-node2 \
@@ -332,7 +332,7 @@ Now, imagine there's a major outage in the US East region, making the region una
     (2 rows)
     ```
 
-3. Search for movie recommendations one more time using the [YugaPlus UI](http://localhost:3000/).
+1. Search for movie recommendations one more time using the [YugaPlus UI](http://localhost:3000/).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -376,7 +376,7 @@ Finally, assuming that the US East region is restored after the outage:
             --fault_tolerance=region
     ```
 
-2. Make sure the node has joined the cluster:
+1. Make sure the node has joined the cluster:
 
     ```shell
     while ! docker exec -it yugabytedb-node1 postgres/bin/pg_isready -U yugabyte -h yugabytedb-node1; do sleep 1; done

@@ -36,27 +36,27 @@ Follow these steps to deploy a free YugabyteDB Managed instance:
 
 1. Create a YugabyteDB Managed account: <https://cloud.yugabyte.com/signup>
 
-2. Begin creating the free cluster by clicking on the **Create a Free cluster** button.
+1. Begin creating the free cluster by clicking on the **Create a Free cluster** button.
 
     ![YugatebyDB Managed Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
 
-3. Choose the **Sandbox** cluster option:
+1. Choose the **Sandbox** cluster option:
 
     ![YugatebyDB Managed Sandbox Cluster](/images/tutorials/build-and-learn/chapter5-choose-sandbox.png)
 
-4. Select a preferred cloud provider and region (note, Microsoft Azure is available only for paid clusters):
+1. Select a preferred cloud provider and region (note, Microsoft Azure is available only for paid clusters):
 
     ![YugatebyDB Managed Select Cloud](/images/tutorials/build-and-learn/chapter5-select-cloud.png)
 
-5. Click on the **Add Current IP Address** button to add the address of your machine (where you run the YugaPlus application) to the IP Allow list:
+1. Click on the **Add Current IP Address** button to add the address of your machine (where you run the YugaPlus application) to the IP Allow list:
 
     ![YugatebyDB Managed Add Address](/images/tutorials/build-and-learn/chapter5-add-your-address.png)
 
-6. **Make sure to download** the file with your cluster credentials:
+1. **Make sure to download** the file with your cluster credentials:
 
     ![YugatebyDB Managed Download Credentials](/images/tutorials/build-and-learn/chapter5-download-credentials.png)
 
-7. Wait while the cluster is being created:
+1. Wait while the cluster is being created:
 
     ![YugatebyDB Managed Cluster Creation](/images/tutorials/build-and-learn/chapter5-cluster-creation-process.png)
 
@@ -70,20 +70,20 @@ First, rebuild the YugaPlus backend image to remove one of the database migratio
 
 1. Use `Ctrl+C` or run `{yugaplus-project-dir}/docker-compose stop` to stop the YugaPlus application containers.
 
-2. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase. The YugabyteDB Managed sandbox instance can't be used for the geo-partitioning use case that explored in chapter 4.
+1. Rename the `V2__create_geo_partitioned_user_library.sql` file to `skip_create_geo_partitioned_user_library.sql` making sure it's not applied during the database migration phase. The YugabyteDB Managed sandbox instance can't be used for the geo-partitioning use case that explored in chapter 4.
 
     ```shell
     cd {yugaplus-project-dir}/backend/src/main/resources/db/migration/
     mv V2__create_geo_partitioned_user_library.sql skip_create_geo_partitioned_user_library.sql
     ```
 
-3. Navigate to the YugaPlus project dir:
+1. Navigate to the YugaPlus project dir:
 
     ```shell
     cd {yugaplus-project-dir}
     ```
 
-4. Rebuild the Docker images:
+1. Rebuild the Docker images:
 
     ```shell
     docker-compose build
@@ -95,7 +95,7 @@ Next, start the application connecting to your YugabyteDB Managed cluster:
 
     ![YugatebyDB Managed Public Address](/images/tutorials/build-and-learn/chapter5-public-address.png)
 
-2. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
+1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
 
     ```yaml
     - DB_URL=jdbc:yugabytedb://${YOUR_YBM_PUBLIC_ADDRESS}:5433/yugabyte?sslmode=require
@@ -106,7 +106,7 @@ Next, start the application connecting to your YugabyteDB Managed cluster:
     * `${YOUR_YBM_PUBLIC_ADDRESS}` - is the public address of your YugabyteDB Managed instance.
     * `${YOUR_YBM_USER}` and `${YOUR_YBM_PASSWORD}` - your database credentials from the file that you downloaded during the cluster configuration.
 
-3. Start the application:
+1. Start the application:
 
     ```shell
     docker-compose up
@@ -126,7 +126,7 @@ With the YugaPlus backend operational and successfully connected to your Yugabyt
 
 1. Go to the [YugaPlus UI](http://localhost:3000/).
 
-2. Ask for movie recommendations:
+1. Ask for movie recommendations:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

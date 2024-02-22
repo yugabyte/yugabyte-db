@@ -41,14 +41,14 @@ To begin, start a single-node YugabyteDB cluster in Docker:
     mkdir ~/yugabyte-volume
     ```
 
-2. Pull the latest YugabyteDB docker image:
+1. Pull the latest YugabyteDB docker image:
 
     ```shell
     docker rmi yugabytedb/yugabyte:latest
     docker pull yugabytedb/yugabyte:latest
     ```
 
-3. Start the first database node:
+1. Start the first database node:
 
     ```shell
     docker run -d --name yugabytedb-node1 --net yugaplus-network \
@@ -78,13 +78,13 @@ Next, open a database connection and run a few SQL requests:
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1
     ```
 
-2. Run the `\d` command making sure the database has no relations:
+1. Run the `\d` command making sure the database has no relations:
 
     ```sql
     \d
     ```
 
-3. Execute the `yb_servers()` database function to see the state of the cluster:
+1. Execute the `yb_servers()` database function to see the state of the cluster:
 
     ```sql
     select * from yb_servers();
@@ -99,10 +99,10 @@ Next, open a database connection and run a few SQL requests:
      (1 row)
     ```
 
-4. Lastly, close the database session and exit the container:
+1. Lastly, close the database session and exit the container:
 
     ```shell
-    \q 
+    \q
     exit
     ```
 
@@ -128,7 +128,7 @@ Use the **yugabyted** tool to scale the cluster by adding two more nodes:
         bin/yugabyted start --join=yugabytedb-node1 --base_dir=/home/yugabyte/yb_data --background=false
     ```
 
-2. Start the third node:
+1. Start the third node:
 
     ```shell
     docker run -d --name yugabytedb-node3 --net yugaplus-network \
@@ -197,7 +197,7 @@ All you need to do is to restart the application containers with YugabyteDB-spec
 
 1. Use `Ctrl+C` or `{yugaplus-project-dir}/docker-compose stop` to stop the application containers.
 
-2. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
+1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following connectivity settings:
 
     ```yaml
     - DB_URL=jdbc:postgresql://yugabytedb-node1:5433/yugabyte
@@ -213,7 +213,7 @@ If you use YugabyteDB 2.20.1 or later, then set the `DB_CONN_INIT_SQL` variable 
 The application uses Flyway to apply database migrations on startup. Flyway will try to acquire the [PostgreSQL advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) that are [not presently supported](https://github.com/yugabyte/yugabyte-db/issues/3642) by YugabyteDB. You can use Flyway with YugabyteDB even without this type of lock.
     {{< /warning >}}
 
-3. Start the application:
+1. Start the application:
 
     ```shell
     docker-compose up
@@ -224,6 +224,7 @@ This time, the `yugaplus-backend` container connects to YugabyteDB, which listen
 Upon establishing a successful connection, the backend uses Flyway to execute database migrations:
 
 ```output
+2024-02-21T19:10:03.140Z INFO 1 --- [ main] o.f.c.i.s.DefaultSqlScriptExecutor : DB: making create index for table "flyway_schema_history" nonconcurrent
 .DbMigrate      : Current version of schema "public": << Empty Schema >>
 2024-02-12T17:10:03.143Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1 - enable pgvector"
 2024-02-12T17:10:07.745Z  INFO 1 --- [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1.1 - create movie table"

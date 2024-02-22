@@ -43,13 +43,13 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
     mkdir ~/postgres-volume
     ```
 
-2. Create a custom Docker network that will be used by PostgreSQL and other containers throughout this tutorial:
+1. Create a custom Docker network that will be used by PostgreSQL and other containers throughout this tutorial:
 
     ```shell
     docker network create yugaplus-network
     ```
 
-3. Start a PostgreSQL container using the latest version of the image with pgvector:
+1. Start a PostgreSQL container using the latest version of the image with pgvector:
 
     ```shell
     docker run --name postgres --net yugaplus-network \
@@ -59,13 +59,13 @@ Follow these steps to start a PostgreSQL instance with pgvector and enable the e
         -d ankane/pgvector:latest
     ```
 
-4. Check the logs to ensure the container is up and running and PostgreSQL has initialized successfully:
+1. Check the logs to ensure the container is up and running and PostgreSQL has initialized successfully:
 
     ```shell
     docker container logs postgres
     ```
 
-5. Wait for PostgreSQL to finish the initialization and then connect to the container enabling the pgvector extension:
+1. Wait for PostgreSQL to finish the initialization and then connect to the container enabling the pgvector extension:
 
     ```shell
     ! while ! docker exec -it postgres pg_isready -U postgres; do sleep 1; done
@@ -87,9 +87,9 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
     git clone https://github.com/YugabyteDB-Samples/yugaplus-build-and-learn-tutorial.git
     ```
 
-2. (Optional) [Create](<https://platform.openai.com>) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
+1. (Optional) [Create](<https://platform.openai.com>) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
 
-3. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
+1. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
 
     ```yaml
     - OPENAI_API_KEY=your-openai-key
@@ -103,7 +103,7 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
     cd yugaplus-build-and-learn-tutorial
     ```
 
-2. Build application images and start the containers:
+1. Build application images and start the containers:
 
     ```shell
     docker-compose up --build

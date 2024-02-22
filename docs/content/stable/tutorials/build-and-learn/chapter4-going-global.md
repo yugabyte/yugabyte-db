@@ -58,18 +58,18 @@ Follow these steps to create a geo-partitioned version of the `user_library` tab
     cd {yugaplus-project-dir}/backend/src/main/resources/db/migration/
     ```
 
-2. In that directory, create a new migration file `V2__create_geo_partitioned_user_library.sql`:
+1. In that directory, create a new migration file `V2__create_geo_partitioned_user_library.sql`:
 
     ```shell
     nano V2__create_geo_partitioned_user_library.sql
     ```
 
-3. Add the following statements to the new migration file and save it:
+1. Add the following statements to the new migration file and save it:
 
     ```sql
-    /* 
+    /*
         Create PostgreSQL tablespaces for the US East, Central and West regions.
-        The region names in the tablespaces definition correspond to the names of the regions 
+        The region names in the tablespaces definition correspond to the names of the regions
         that you selected for the database nodes in the previous chapter of the tutorial.
         As a result, data belonging to a specific tablespace will be stored on database nodes from the same region.
     */
@@ -107,17 +107,17 @@ Follow these steps to create a geo-partitioned version of the `user_library` tab
 
     /*
         Create partitions for each cloud region mapping the values of the "user_location" column
-        to a respective geo-aware tablespace. 
+        to a respective geo-aware tablespace.
     */
-    CREATE TABLE user_library_usa_east PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time, 
+    CREATE TABLE user_library_usa_east PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time,
         user_location, PRIMARY KEY (user_id, movie_id, user_location))
         FOR VALUES IN ('New York', 'Boston') TABLESPACE usa_east_ts;
 
-    CREATE TABLE user_library_usa_central PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time, 
+    CREATE TABLE user_library_usa_central PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time,
         user_location, PRIMARY KEY (user_id, movie_id, user_location))
         FOR VALUES IN ('Chicago', 'Kansas City') TABLESPACE usa_central_ts;
 
-    CREATE TABLE user_library_usa_west PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time, 
+    CREATE TABLE user_library_usa_west PARTITION OF user_library(user_id, movie_id, start_watch_time, added_time,
         user_location, PRIMARY KEY (user_id, movie_id, user_location))
         FOR VALUES IN ('San Francisco', 'Los Angeles') TABLESPACE usa_west_ts;
     ```
@@ -130,9 +130,9 @@ Restart the application using the new migration file:
     cd {yugaplus-project-dir}
     ```
 
-2. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
+1. Use `Ctrl+C` or `docker-compose stop` to stop the YugaPlus application containers.
 
-3. Rebuild the Docker images and start the containers back:
+1. Rebuild the Docker images and start the containers back:
 
     ```shell
     docker-compose up --build
@@ -175,10 +175,10 @@ With the `user_library` table being geo-partitioned, you're ready to experiment 
 
     ![YugaPlus sign in Screen](/images/tutorials/build-and-learn/login-screen.png)
 
-2. After signing in, you'll notice that this user is from **New York City**:
+1. After signing in, you'll notice that this user is from **New York City**:
     ![US East User Library](/images/tutorials/build-and-learn/chapter4-us-east-user-empty-library.png)
 
-3. To further confirm the user's location, execute the following SQL statement:
+1. To further confirm the user's location, execute the following SQL statement:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -209,7 +209,7 @@ Next, proceed to search for movie recommendations and select one of the suggesti
     (0 rows)
     ```
 
-2. Ask for movie recommendations:
+1. Ask for movie recommendations:
 
     <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li>
@@ -235,7 +235,7 @@ Next, proceed to search for movie recommendations and select one of the suggesti
     </div>
     </div>
 
-3. Add one of the movies to the library by clicking on the **Add to Library** button:
+1. Add one of the movies to the library by clicking on the **Add to Library** button:
 
     <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li>
@@ -261,7 +261,7 @@ Next, proceed to search for movie recommendations and select one of the suggesti
     </div>
     </div>
 
-4. Confirm that the movie has been added to the user's library:
+1. Confirm that the movie has been added to the user's library:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
@@ -293,7 +293,7 @@ When you query the `user_library` table directly, the database internally access
     (1 row)
     ```
 
-2. Confirm the record is neither stored nor replicated to the partitions/nodes in the US West and Central locations:
+1. Confirm the record is neither stored nor replicated to the partitions/nodes in the US West and Central locations:
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
