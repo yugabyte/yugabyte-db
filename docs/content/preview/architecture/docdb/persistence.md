@@ -90,7 +90,7 @@ A binary-comparable encoding is used for translating the value for each YCQL typ
 
 ## Packed row format
 
-Packed row format for the YSQL API is [Generally Available](/preview/releases/versioning/#feature-availability) as of 2.20.0 release, while the support for Packed Row feature in the YCQL API is still in Tech Preview (/preview/releases/versioning/#feature-availability).
+Packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0; packed row format for the YCQL API is {{<badge/tp>}}.
 
 A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For example, a row with one primary key `K` and `n` non-key columns , that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
