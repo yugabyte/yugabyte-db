@@ -309,7 +309,7 @@ java -Dnode=<host name> \
     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-2a,aws.us-east-1.us-east-3a
     ```
 -->
-- `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
+- `<path-to-cluster-certificate>` with the path to the [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
 
