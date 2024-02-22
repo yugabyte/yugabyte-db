@@ -9,7 +9,7 @@ menu:
   preview_tutorials:
     identifier: tutorials-ai
     parent: tutorials
-    weight: 7
+    weight: 35
 type: indexpage
 ---
 

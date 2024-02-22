@@ -620,7 +620,7 @@
 
 [[preview_tutorials]]
   name = "Cloud"
-  weight = 6
+  weight = 30
   identifier = "tutorials-cloud"
   parent = "tutorials"
   [preview_tutorials.params]
@@ -628,7 +628,7 @@
 
 [[preview_tutorials]]
   name = "CDC"
-  weight = 8
+  weight = 40
   identifier = "tutorials-cdc"
   parent = "tutorials"
   [preview_tutorials.params]

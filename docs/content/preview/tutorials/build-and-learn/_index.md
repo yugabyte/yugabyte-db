@@ -7,7 +7,7 @@ menu:
   preview_tutorials:
     identifier: tutorials-build-and-learn
     parent: tutorials
-    weight: 1
+    weight: 20
 type: indexpage
 ---
 
