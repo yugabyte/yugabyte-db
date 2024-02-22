@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-You can add a new index to an existing table using the YSQL [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is enabled by default. Using this feature, you can build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
+You can add a new index to an existing table using the YSQL [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics) statement. YugabyteDB supports [online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is enabled by default. Using this feature, you can build indexes on tables that already have data, without affecting other concurrent writes. YugabyteDB also supports the [CREATE INDEX NONCONCURRENTLY](../../../../api/ysql/the-sql-language/statements/ddl_create_index/#nonconcurrently) statement to disable online index backfill.
 
 ## Tracking index creation
 
@@ -51,8 +51,8 @@ The following example demonstrates the possible phases (initializing, backfillin
 1. On a separate parallel YSQL connection on the same node, select from the view to see the progress of the command in a repeated fashion with `\watch 1` as follows:
 
     ```sql
-    SELECT tbl.relname as tblname, idx.relname as indexname, command, phase, tuples_total, tuples_done 
-    FROM pg_stat_progress_create_index 
+    SELECT tbl.relname as tblname, idx.relname as indexname, command, phase, tuples_total, tuples_done
+    FROM pg_stat_progress_create_index
     INNER JOIN pg_class as tbl on tbl.oid = relid
     INNER JOIN pg_class as idx on idx.oid = index_relid
     where tbl.relname = 'test';
@@ -98,7 +98,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 ## Memory usage
 
-Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per row, the no.of write operations batched together and the no.of parallel backfills. You can view the approximate memory usage by exuting the following SQL statement via `ysqlsh`.
+Backfilling consumes some amount of memory. The memory consumption is directly proportional to the data size per-row, the number of write operations batched together, and the number of parallel backfills. You can view the approximate memory usage by executing the following SQL statement via `ysqlsh`.
 
 ```sql
 SELECT
