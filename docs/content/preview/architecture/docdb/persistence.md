@@ -136,7 +136,7 @@ The packed row feature for the YSQL API works across all cross features like bac
 
 * [#21131](https://github.com/yugabyte/yugabyte-db/issues/21131) As of 2.20, new universes created in 2.20+ version will get Packed Row for YSQL is enabled by default. However, if a universe that is on a version lower than 2.20, is upgraded to 2.20, the Packed Row feature for YSQL API will not be enabled. This is because of a known limitation with XCluster universes. The target of XCluster setup might not be able to interpret the Packed Row unless it is upgraded first etc. The team is hardening this limitation as part of this issue.
 
-* The packed row feature for the YCQL API is still in Tech Preview (/preview/releases/versioning/#feature-availability) in 2.20.0 release. While there are no known limitations, the team is hardeing the feature for YCQL API.
+The packed row feature for the YCQL API is {{<badge/tp>}}. There are no known limitations.
 
 ## Data expiration in YCQL
 
