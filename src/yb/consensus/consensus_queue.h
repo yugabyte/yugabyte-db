@@ -45,8 +45,9 @@
 #include "yb/common/placement_info.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log_cache.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -414,6 +415,8 @@ class PeerMessageQueue {
   }
 
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
+
+  std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() const;
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);

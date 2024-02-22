@@ -65,6 +65,7 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       TabletHealthManager,
       (AreNodesSafeToTakeDown)
+      (GetMasterHeartbeatDelays)
   )
 
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
