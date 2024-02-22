@@ -30,6 +30,8 @@ public class EnvProxySelectorTest extends UniverseControllerTestBase {
   private static final String MY_HTTP_PROXY = "http://sbapat.proxy.yugabyte.com:1234";
   private static final String MY_HTTPS_PROXY = "https://sbapat.proxy.yugabyte.com:1234";
 
+  private static final EnvProxySelector envProxySelector = new EnvProxySelector();
+
   @Test
   public void testNoProxySetup() throws URISyntaxException {
     EnvProxySelector envProxySelector =
@@ -40,9 +42,8 @@ public class EnvProxySelectorTest extends UniverseControllerTestBase {
     assertNoProxy(envProxySelector, "https://oidc.provider.com:345");
   }
 
-  private void assertNoProxy(EnvProxySelector envProxySelector, String urlStr)
-      throws URISyntaxException {
-    assertEquals(ImmutableList.of(Proxy.NO_PROXY), envProxySelector.select(new URI(urlStr)));
+  private void assertNoProxy(ProxySelector proxySelector, String urlStr) throws URISyntaxException {
+    assertEquals(ImmutableList.of(Proxy.NO_PROXY), proxySelector.select(new URI(urlStr)));
   }
 
   @Test
@@ -111,25 +112,24 @@ public class EnvProxySelectorTest extends UniverseControllerTestBase {
 
   @Test
   public void testIllegalArgForNull() {
-    assertFailsWithIAE(new EnvProxySelector(), null);
+    assertFailsWithIAE(null);
   }
 
   @Test
   public void testIllegalArgForNoHost() throws Exception {
-    final ProxySelector selector = new EnvProxySelector();
-    assertFailsWithIAE(selector, new URI("http", "/test", null));
-    assertFailsWithIAE(selector, new URI("https", "/test2", null));
-    assertFailsWithIAE(selector, new URI("ftp", "/test3", null));
+    assertFailsWithIAE(new URI("http", "/test", null));
+    assertFailsWithIAE(new URI("https", "/test2", null));
+    assertFailsWithIAE(new URI("ftp", "/test3", null));
   }
 
   @Test
   public void testIllegalArgForNoScheme() throws Exception {
-    assertFailsWithIAE(new EnvProxySelector(), new URI(null, "/test", null));
+    assertFailsWithIAE(new URI(null, "/test", null));
   }
 
-  private static void assertFailsWithIAE(final ProxySelector selector, final URI uri) {
+  private static void assertFailsWithIAE(final URI uri) {
     try {
-      selector.select(uri);
+      envProxySelector.select(uri);
       Assert.fail("select() was expected to fail for URI " + uri);
     } catch (IllegalArgumentException iae) {
       // expected
