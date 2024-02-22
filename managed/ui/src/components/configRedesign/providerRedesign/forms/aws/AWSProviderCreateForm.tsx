@@ -685,7 +685,7 @@ const constructProviderPayload = async (
     formValues.skipKeyValidateAndUpload
   );
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   return {
     code: ProviderCode.AWS,
