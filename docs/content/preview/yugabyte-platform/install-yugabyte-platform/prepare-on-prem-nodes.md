@@ -91,7 +91,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YBA to function as expected.
   {{< /tip >}}
 
-- Verify that Python 3 is installed.
+- Verify that Python 3.6 or later is installed.
 
     If you are using Python v3.11 or later, install the selinux python package as follows:
 

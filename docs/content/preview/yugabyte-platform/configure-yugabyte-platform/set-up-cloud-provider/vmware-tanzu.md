@@ -58,7 +58,7 @@ To create a TKG provider, click **Create Kubernetes Config**. For more informati
 
 Set the **Kubernetes Provider Type** to VMWare Tanzu.
 
-For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#kubernetes-provider-settings).
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#provider-settings).
 
 To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 

@@ -26,7 +26,7 @@ To create, provision, and add nodes to your on-premises provider, you will perfo
 
 ### Stage 1: Prepare your infrastructure
 
-- Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Prepare your network](../../../install-yugabyte-platform/prepare-on-prem-nodes/).
+- Have your network administrator set up firewalls to open the ports required for YBA and the nodes to communicate. Refer to [Prepare ports](../../../install-yugabyte-platform/prepare-on-prem-nodes/).
 - Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
   - Locate the VMs in the regions and availability zones where you will be deploying universes.
   - Install a YugabyteDB-supported Linux OS on the VMs.
