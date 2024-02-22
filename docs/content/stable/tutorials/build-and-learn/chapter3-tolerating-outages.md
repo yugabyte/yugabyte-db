@@ -275,14 +275,14 @@ After the data loading is complete, open the [YugaPlus UI](http://localhost:3000
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+    <a href="#full-text-search1" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
        role="tab" aria-controls="full-text-search" aria-selected="true">
       <img src="/icons/search.svg" alt="full-text search">
       Full-Text Search
     </a>
   </li>
   <li >
-    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+    <a href="#similarity-search1" class="nav-link" id="similarity-search-tab" data-toggle="tab"
        role="tab" aria-controls="similarity-search" aria-selected="false">
       <img src="/icons/openai-logomark.svg" alt="vector similarity search">
       Vector Similarity Search
@@ -291,10 +291,10 @@ After the data loading is complete, open the [YugaPlus UI](http://localhost:3000
 </ul>
 
 <div class="tab-content">
-  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search1" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter3-full-text-search.md" %}}
   </div>
-  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  <div id="similarity-search1" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
   {{% includeMarkdown "includes/chapter3-similarity-search.md" %}}
   </div>
 </div>
@@ -336,14 +336,14 @@ Now, imagine there's a major outage in the US East region, making the region una
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
+    <a href="#full-text-search2" class="nav-link active" id="full-text-search-tab" data-toggle="tab"
        role="tab" aria-controls="full-text-search" aria-selected="true">
       <img src="/icons/search.svg" alt="full-text search">
       Full-Text Search
     </a>
   </li>
   <li >
-    <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab"
+    <a href="#similarity-search2" class="nav-link" id="similarity-search-tab" data-toggle="tab"
        role="tab" aria-controls="similarity-search" aria-selected="false">
       <img src="/icons/openai-logomark.svg" alt="vector similarity search">
       Vector Similarity Search
@@ -352,10 +352,10 @@ Now, imagine there's a major outage in the US East region, making the region una
 </ul>
 
 <div class="tab-content">
-  <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
+  <div id="full-text-search2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
   {{% includeMarkdown "includes/chapter3-second-full-text-search.md" %}}
   </div>
-  <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+  <div id="similarity-search2" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
   {{% includeMarkdown "includes/chapter3-second-similarity-search.md" %}}
   </div>
 </div>

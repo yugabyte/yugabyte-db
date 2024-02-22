@@ -213,13 +213,13 @@ Next, proceed to search for movie recommendations and select one of the suggesti
 
     <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li>
-      <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab" role="tab" aria-controls="full-text-search" aria-selected="true">
+      <a href="#full-text-search1" class="nav-link active" id="full-text-search-tab" data-toggle="tab" role="tab" aria-controls="full-text-search" aria-selected="true">
        <img src="/icons/search.svg" alt="full-text search">
         Full-Text Search
       </a>
     </li>
     <li>
-      <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab" role="tab" aria-controls="similarity-search" aria-selected="false">
+      <a href="#similarity-search1" class="nav-link" id="similarity-search-tab" data-toggle="tab" role="tab" aria-controls="similarity-search" aria-selected="false">
       <img src="/icons/openai-logomark.svg" alt="vector similarity search">
         Vector Similarity Search
       </a>
@@ -227,10 +227,10 @@ Next, proceed to search for movie recommendations and select one of the suggesti
     </ul>
 
     <div class="tab-content">
-    <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
+    <div id="full-text-search1" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
     {{% includeMarkdown "includes/chapter4-us-east-full-text-search.md" %}}
     </div>
-    <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+    <div id="similarity-search1" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
     {{% includeMarkdown "includes/chapter4-us-east-similarity-search.md" %}}
     </div>
     </div>
@@ -239,13 +239,13 @@ Next, proceed to search for movie recommendations and select one of the suggesti
 
     <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li>
-      <a href="#full-text-search" class="nav-link active" id="full-text-search-tab" data-toggle="tab" role="tab" aria-controls="full-text-search" aria-selected="true">
+      <a href="#full-text-search2" class="nav-link active" id="full-text-search-tab" data-toggle="tab" role="tab" aria-controls="full-text-search" aria-selected="true">
        <img src="/icons/search.svg" alt="full-text search">
         Full-Text Search
       </a>
     </li>
     <li>
-       <a href="#similarity-search" class="nav-link" id="similarity-search-tab" data-toggle="tab" role="tab" aria-controls="similarity-search" aria-selected="false">
+       <a href="#similarity-search2" class="nav-link" id="similarity-search-tab" data-toggle="tab" role="tab" aria-controls="similarity-search" aria-selected="false">
        <img src="/icons/openai-logomark.svg" alt="vector similarity search">
         Vector Similarity Search
       </a>
@@ -253,10 +253,10 @@ Next, proceed to search for movie recommendations and select one of the suggesti
     </ul>
 
     <div class="tab-content">
-    <div id="full-text-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
+    <div id="full-text-search2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="full-text-search-tab">
     {{% includeMarkdown "includes/chapter4-us-east-add-movie-full-text-search.md" %}}
     </div>
-    <div id="similarity-search" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
+    <div id="similarity-search2" class="tab-pane fade" role="tabpanel" aria-labelledby="similarity-search-tab">
     {{% includeMarkdown "includes/chapter4-us-east-add-movie-similarity-search.md" %}}
     </div>
     </div>
