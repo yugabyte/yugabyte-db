@@ -59,7 +59,7 @@ Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, 
 
 When the command takes a long time to be processed, a compaction may have occurred and have deleted some rows at the snapshot the dump was started on. For large backups, it is recommended to use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/), which are more efficient and fast.
 
-If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag in YB-TServer and retry.
+If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag on the master to a higher value. The total time necessary for this command depends on the amount of metadata in your environment, thus you might need to tune this flag a couple of times. You can start by setting this flag to 3600 seconds and iterating from there. Note: Ideally, you don't want to leave this flag at a really high value, as that can have an adverse effect on the runtime of regular metadata queries (eg DDLs, new connection establishment, metadata cache refreshes).
 
 ## Not able to perform operations using yb-admin after enabling encryption in transit
 
