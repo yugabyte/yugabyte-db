@@ -165,6 +165,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             name="name"
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
+            disabled={isEditMode}
           />
         </div>
         {providerType !== ProviderCode.AWS && (

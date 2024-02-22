@@ -921,7 +921,7 @@ const constructProviderPayload = async (
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,

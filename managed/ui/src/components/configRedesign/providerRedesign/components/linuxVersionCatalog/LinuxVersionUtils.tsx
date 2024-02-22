@@ -133,7 +133,7 @@ export const getImageBundleUsedByUniverse = (universeDetails: UniverseDetails, p
   return curLinuxImgBundle ?? null;
 };
 
-export const constructImageBundlePayload = (formValues: any) => {
+export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
   const imageBundles = [...formValues.imageBundles];
 
   imageBundles.forEach((img) => {
@@ -141,7 +141,8 @@ export const constructImageBundlePayload = (formValues: any) => {
     const sshPortOverride = (img as any).sshPortOverride;
 
     formValues.regions.forEach((region: CloudVendorRegionField) => {
-      if (!has(img.details.regions, region.code)) {
+      // Only AWS supports region specific AMI
+      if (isAWS && !has(img.details.regions, region.code)) {
         img.details.regions[region.code] = {};
       }
 
