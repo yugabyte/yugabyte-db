@@ -1294,7 +1294,7 @@ class PgClientServiceImpl::Impl {
 
   void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
     for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
+      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
@@ -1302,7 +1302,7 @@ class PgClientServiceImpl::Impl {
 
   void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
     for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
+      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
