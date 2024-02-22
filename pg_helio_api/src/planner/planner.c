@@ -44,6 +44,8 @@
 #include "opclass/helio_bson_text_gin.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/query_utils.h"
+#include "api_hooks.h"
+#include "query/helio_bson_compare.h"
 
 
 typedef enum MongoQueryFlag
@@ -75,8 +77,8 @@ static bool ReplaceMongoCollectionFunctionWalker(Node *node,
 												 ReplaceMongoCollectionContext *context);
 static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams);
 static bytea * TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte);
-static bool IsRTEForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
-									uint64 *collectionId);
+static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
+										 uint64 *collectionId);
 
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 
@@ -181,6 +183,102 @@ HelioApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 
 
 /*
+ * Extracts Operator information from a given RestrictInfo
+ * gets the AttrNumber, Operator, and Const if and only if
+ * the RestrictInfo is an OpExpr of the form
+ * "Var Op Const"
+ */
+inline static bool
+TryExtractDataFromRestrictInfo(RestrictInfo *rinfo, AttrNumber *leftAttr, Oid *opNo,
+							   Const **rightConst)
+{
+	*leftAttr = InvalidAttrNumber;
+	*opNo = InvalidOid;
+	*rightConst = NULL;
+	if (!IsA(rinfo->clause, OpExpr))
+	{
+		return false;
+	}
+
+	OpExpr *opExpr = (OpExpr *) rinfo->clause;
+	if (list_length(opExpr->args) != 2)
+	{
+		return false;
+	}
+
+	Expr *leftExpr = linitial(opExpr->args);
+	Expr *rightExpr = lsecond(opExpr->args);
+	if (!IsA(leftExpr, Var) || !IsA(rightExpr, Const))
+	{
+		return false;
+	}
+
+	*leftAttr = castNode(Var, leftExpr)->varattno;
+	*opNo = opExpr->opno;
+	*rightConst = castNode(Const, rightExpr);
+
+	return !(*rightConst)->constisnull;
+}
+
+
+/*
+ * Given a primary key lookup query, trims the restrictInfo based on the lookup
+ */
+static void
+TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
+{
+	RestrictInfo *objectIdFilter = NULL;
+	AttrNumber objectAttr = InvalidAttrNumber;
+	Const *rightConst = NULL;
+	Oid opNo = InvalidOid;
+	pgbsonelement queryElement = { 0 };
+	bson_value_t objectIdColumnFilter = { 0 };
+
+	ListCell *cell;
+	foreach(cell, primaryKeyPath->indexclauses)
+	{
+		IndexClause *iclause = lfirst_node(IndexClause, cell);
+		if (iclause->indexcol == 1 && list_length(iclause->indexquals) > 0)
+		{
+			objectIdFilter = linitial(iclause->indexquals);
+
+			if (TryExtractDataFromRestrictInfo(objectIdFilter, &objectAttr, &opNo,
+											   &rightConst) &&
+				opNo == BsonEqualOperatorId() &&
+				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+														rightConst->constvalue),
+													&queryElement))
+			{
+				objectIdColumnFilter = queryElement.bsonValue;
+			}
+		}
+	}
+
+	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD)
+	{
+		return;
+	}
+
+	foreach(cell, restrictInfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
+		if (TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst) &&
+			objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
+			opNo == BsonEqualMatchRuntimeOperatorId() &&
+			TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+													rightConst->constvalue),
+												&queryElement) &&
+			queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0 &&
+			BsonValueEquals(&objectIdColumnFilter, &queryElement.bsonValue))
+		{
+			cell->ptr_value = objectIdFilter;
+			return;
+		}
+	}
+}
+
+
+/*
  * Given that our RUM index cost is 0, currently, the planner may prefer putting in
  * the RUM index over other indexes that may be available. This is bad for primary key
  * lookup scenarios. Consequently, in cases where we have the primary key available
@@ -192,40 +290,55 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 {
 	RestrictInfo *shardKeyFilter = NULL;
 	RestrictInfo *objectIdFilter = NULL;
+	int32_t docObjectIdFilterEqualsIndex = -1;
+	bson_value_t docObjectIdFilter = { 0 };
+	bson_value_t objectIdColumnFilter = { 0 };
+	AttrNumber objectAttr = InvalidAttrNumber;
+	Const *rightConst = NULL;
+	Oid opNo = InvalidOid;
+	pgbsonelement queryElement = { 0 };
 
 	ListCell *cell;
 	foreach(cell, restrictInfo)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
-
 		if (IsA(rinfo->clause, OpExpr))
 		{
-			OpExpr *opExpr = (OpExpr *) rinfo->clause;
-			if (list_length(opExpr->args) != 2)
+			if (!TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst))
 			{
 				continue;
 			}
 
-			Expr *leftExpr = linitial(opExpr->args);
-			Expr *rightExpr = lsecond(opExpr->args);
-			if (!IsA(leftExpr, Var))
-			{
-				continue;
-			}
-
-			Var *leftVar = (Var *) leftExpr;
-			if (leftVar->varattno == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
-				opExpr->opno == BigintEqualOperatorId() &&
-				IsA(rightExpr, Const))
+			if (objectAttr == MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+				opNo == BigintEqualOperatorId())
 			{
 				shardKeyFilter = rinfo;
+				continue;
 			}
 
-			if (leftVar->varattno == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
-				opExpr->opno == BsonEqualOperatorId() &&
-				IsA(rightExpr, Const))
+			if (objectAttr == MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+				opNo == BsonEqualOperatorId())
 			{
 				objectIdFilter = rinfo;
+				if (TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+															rightConst->constvalue),
+														&queryElement))
+				{
+					objectIdColumnFilter = queryElement.bsonValue;
+				}
+
+				continue;
+			}
+
+			if (objectAttr == MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
+				opNo == BsonEqualMatchRuntimeOperatorId() &&
+				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+														rightConst->constvalue),
+													&queryElement) &&
+				queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0)
+			{
+				docObjectIdFilterEqualsIndex = list_cell_number(restrictInfo, cell);
+				docObjectIdFilter = queryElement.bsonValue;
 			}
 		}
 		else if (IsA(rinfo->clause, ScalarArrayOpExpr))
@@ -296,6 +409,17 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 				path->path.startup_cost = 0;
 				path->path.total_cost = 0;
 				add_path(rel, (Path *) path);
+
+				if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
+					docObjectIdFilter.value_type != BSON_TYPE_EOD &&
+					BsonValueEquals(&objectIdColumnFilter, &docObjectIdFilter))
+				{
+					/* We can swap out the docId with the objectId */
+					list_nth_cell(restrictInfo, docObjectIdFilterEqualsIndex)->ptr_value =
+						objectIdFilter;
+				}
+
+				return;
 			}
 		}
 	}
@@ -308,12 +432,17 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 {
 	bool isMongoDataNamespace = false;
 	uint64 collectionId = 0;
-	bool isShardQuery = !IsRTEForMongoCollection(rte, &isMongoDataNamespace,
-												 &collectionId);
+	bool isShardQuery = IsRTEShardForMongoCollection(rte, &isMongoDataNamespace,
+													 &collectionId);
 
 	if (!isMongoDataNamespace)
 	{
 		/* Skip looking for queries not pertaining to mongo data tables */
+		return;
+	}
+
+	if (!isShardQuery)
+	{
 		return;
 	}
 
@@ -322,7 +451,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		.hasVectorSearchQuery = false,
 		.hasTextIndexQuery = false,
 		.indexOptionsForText = { 0 },
-		.hasPrimaryKeyLookup = false,
+		.primaryKeyLookupPath = NULL,
 		.inputData = {
 			.collectionId = collectionId,
 			.isRuntimeTextScan = false,
@@ -341,17 +470,18 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	/* If the query is operating on the shard of a distributed table
 	 * (or a normal non mongo-table), then we swap this out with the operators
 	 */
-	if (isShardQuery)
+	if (indexContext.primaryKeyLookupPath != NULL)
 	{
-		if (!indexContext.hasPrimaryKeyLookup)
-		{
-			AddPointLookupQuery(rel->baserestrictinfo, root, rel);
-		}
-
-		rel->baserestrictinfo =
-			ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
-																&indexContext);
+		TrimPrimaryKeyQuals(rel->baserestrictinfo, indexContext.primaryKeyLookupPath);
 	}
+	else
+	{
+		AddPointLookupQuery(rel->baserestrictinfo, root, rel);
+	}
+
+	rel->baserestrictinfo =
+		ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
+															&indexContext);
 
 	if (indexContext.hasTextIndexQuery &&
 		indexContext.indexOptionsForText.indexOptions == NULL)
@@ -1032,9 +1162,9 @@ TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte)
 /*
  * Returns true if the relation of RTE pointed to
  * is a Mongo table base collection. e.g.
- * for ApiDataSchemaName.documents_1 -> true
+ * for ApiDataSchemaName.documents_1 -> false (if sharding is enabled)
  * but
- * ApiDataSchemaName.documents_1_1034 -> false
+ * ApiDataSchemaName.documents_1_1034 -> true
  *
  * This is because we need to substitute the runtime expression
  * with the index expression in the planner to avoid re-evaluating
@@ -1045,8 +1175,8 @@ TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte)
  * For more details see bson_query_index_selection_sharded_tests.sql
  */
 static bool
-IsRTEForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
-						uint64 *collectionId)
+IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
+							 uint64 *collectionId)
 {
 	if (rte->rtekind != RTE_RELATION ||
 		rte->relkind != RELKIND_RELATION)
@@ -1070,22 +1200,6 @@ IsRTEForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 		return false;
 	}
 
-	/* It's definitely a documents query - it's a shard query if there's a documents_<num>_<num>
-	 * So treat it as such if there's 2 '_'.
-	 * This is a hack but need to find a better way to recognize
-	 * a worker query.
-	 * Note that this logic is a simpler form of the RelationIsAKnownShard
-	 * function in Citus. However, that function does extract the shard_id
-	 * and does a Scan on the pg_dist table as well to determine if it's really
-	 * a shard. However, this is too expensive for the hotpath of every query.
-	 * Consequently this simple check *should* be sufficient in the hot path.
-	 *
-	 * TODO: Could we do something like IsCitusTableType where we cache the results of
-	 * this? Ideally we could map this to something in the Mongo Collection Cache. However
-	 * the inverse lookup if it's not in the cache is not easily done in the query path.
-	 */
-	char *endPointer = strchr(&relName[10], '_');
-
 	/* We use strtoull since it returns the first character that didn't match
 	 * We expect this to return the '_' character when it's a collection shard
 	 * like ApiDataSchemaName.documents_1_111 and the parsed value will be 1.
@@ -1094,11 +1208,11 @@ IsRTEForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 	 */
 	char *numEndPointer = NULL;
 	uint64 parsedCollectionId = strtoull(&relName[10], &numEndPointer, 10);
-	if (numEndPointer == endPointer ||
-		numEndPointer == NULL ||
-		*numEndPointer == '\0')
+	if (IsShardTableForMongoTable(relName, numEndPointer))
 	{
 		*collectionId = parsedCollectionId;
+		return true;
 	}
-	return endPointer == NULL;
+
+	return false;
 }

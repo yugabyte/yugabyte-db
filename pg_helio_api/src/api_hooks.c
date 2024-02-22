@@ -29,6 +29,7 @@ PostProcessShardCollection_HookType post_process_shard_collection_hook = NULL;
 PostProcessCollectionDrop_HookType post_process_drop_collection_hook = NULL;
 ModifyTableColumnNames_HookType modify_table_column_names_hook = NULL;
 RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook = NULL;
+IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
 
 IsUpdateTrackingEnabled_HookType is_update_tracking_enabled_hook = NULL;
 
@@ -124,6 +125,24 @@ RunMultiValueQueryWithNestedDistribution(const char *query, bool readOnly, int
 		ExtensionExecuteMultiValueQueryViaSPI(query, readOnly, expectedSPIOK, datums,
 											  isNull, numValues);
 	}
+}
+
+
+/*
+ * Whether or not the the base tables have sharding with distribution (true if DistributePostgreTable
+ * is run).
+ * the documents table name and the substring where the collectionId was found is provided as an input.
+ */
+bool
+IsShardTableForMongoTable(const char *relName, const char *numEndPointer)
+{
+	if (is_shard_table_for_mongo_table_hook != NULL)
+	{
+		return is_shard_table_for_mongo_table_hook(relName, numEndPointer);
+	}
+
+	/* Without distribution all documents_ tables are shard tables */
+	return true;
 }
 
 

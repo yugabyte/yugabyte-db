@@ -115,6 +115,11 @@ typedef void (*RunQueryWithNestedDistribution_HookType)(const char *query, bool
 														numValues);
 extern RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook;
 
+typedef bool (*IsShardTableForMongoTable_HookType)(const char *relName, const
+												   char *numEndPointer);
+
+extern IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook;
+
 
 /*
  * Hook for enabling a private feature flag for update tracking.

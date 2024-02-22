@@ -663,7 +663,7 @@ ValidateCursorCustomScanPlan(Plan *plan)
 		default:
 		{
 			/* Log the notice in server/client logs */
-			elog(NOTICE,
+			elog(LOG,
 				 "Unsupported combination of query with streaming cursors, found %d",
 				 plan->type);
 

@@ -672,15 +672,6 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
@@ -704,15 +695,6 @@ NOTICE:  using bson_query_match implementation
 
 -- delete second row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
                                       delete                                       
@@ -778,15 +760,6 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
@@ -809,11 +782,6 @@ rollback;
 -- delete 1 is supported in the multiple identical _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":6}]},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
                                       delete                                       
@@ -866,16 +834,6 @@ rollback;
 begin;
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a": 11, "_id":6},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)

@@ -53,6 +53,14 @@ void RunMultiValueQueryWithNestedDistribution(const char *query, bool readOnly, 
 											  Datum *datums, bool *isNull, int numValues);
 
 
+/*
+ * Whether or not the the base tables have sharding with distribution (true if DistributePostgreTable
+ * is run).
+ * the documents table name and the substring where the collectionId was found is provided as an input.
+ */
+bool IsShardTableForMongoTable(const char *relName, const char *numEndPointer);
+
+
 /* Section: Create Table Extension points */
 
 /*

@@ -509,61 +509,57 @@ BEGIN;
 ------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6002 collection
    Recheck Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
-   Filter: (shard_key_value = '6002'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6002 collection
    Recheck Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
-   Filter: (shard_key_value = '6002'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6002 collection
    Recheck Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
-   Filter: (shard_key_value = '6002'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6002 collection
    Recheck Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
-   Filter: (shard_key_value = '6002'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
-(5 rows)
+(4 rows)
 
   -- cannot use idx_1
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Seq Scan on documents_6002 collection
-   Filter: ((document #= '{ "b.d" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+   Filter: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
-                                                        QUERY PLAN                                                        
---------------------------------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Seq Scan on documents_6002 collection
-   Filter: ((document #= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+   Filter: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Seq Scan on documents_6002 collection
-   Filter: ((document #= '{ "e" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+   Filter: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
 COMMIT;
@@ -601,31 +597,31 @@ BEGIN;
   set local enable_seqscan TO OFF;
   -- cannot use idx_1
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Seq Scan on documents_6003 collection
-   Filter: ((document #= '{ "a.b" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Seq Scan on documents_6003 collection
-   Filter: ((document #= '{ "a" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
-                                                        QUERY PLAN                                                        
---------------------------------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Seq Scan on documents_6003 collection
-   Filter: ((document #= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
-                                                         QUERY PLAN                                                         
-----------------------------------------------------------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Seq Scan on documents_6003 collection
-   Filter: ((document #= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   -- can use idx_1
@@ -634,40 +630,36 @@ BEGIN;
 ------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
-   Filter: (shard_key_value = '6003'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
-   Filter: (shard_key_value = '6003'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
-   Filter: (shard_key_value = '6003'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
-(5 rows)
+(4 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
-   Filter: (shard_key_value = '6003'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
-(5 rows)
+(4 rows)
 
 COMMIT;
 SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 1}}');
@@ -692,21 +684,21 @@ BEGIN;
   set local enable_seqscan TO OFF;
   -- can use idx_1
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"b.d": { "$eq": 1 } }, {"a.k": {"$eq": 1}}]}, "projection": { "a": 1 } }');
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
-   Filter: ((document #= '{ "a.k" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a.k" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (5 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"a.k": { "$eq": 1 } }, {"b.d": {"$eq": 1}}]}, "projection": { "a": 1 } }');
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
-   Filter: ((document #= '{ "a.k" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   Filter: (document @= '{ "a.k" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (5 rows)
@@ -735,32 +727,30 @@ NOTICE:  using bson_query_match implementation
 -----------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
-   Filter: (shard_key_value = '6003'::bigint)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
-(5 rows)
+(4 rows)
 
   -- cannot use idx_1 due to filter on "a.z.r" in "$or"
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }');
-                                                                                                                           QUERY PLAN                                                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                 QUERY PLAN                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on documents_6003 collection
-   Filter: ((shard_key_value = '6003'::bigint) AND ((document #= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bsonquery) OR (document #= '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::bsonquery)))
+   Filter: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::bson))
 (2 rows)
 
   -- can use idx_1 since none of the quals in "$or" are excluded
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"k": 5}]}, "projection": { "a": 1 } }');
-                                                                                                              QUERY PLAN                                                                                                               
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "k" : { "$numberInt" : "5" } }'::bson))
-   Filter: ((shard_key_value = '6003'::bigint) AND ((document #= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bsonquery) OR (document #= '{ "k" : { "$numberInt" : "5" } }'::bsonquery)))
    ->  BitmapOr
          ->  Bitmap Index Scan on idx_1
                Index Cond: (document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
          ->  Bitmap Index Scan on idx_1
                Index Cond: (document @= '{ "k" : { "$numberInt" : "5" } }'::bson)
-(8 rows)
+(7 rows)
 
 COMMIT;
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -797,11 +787,11 @@ BEGIN;
   set local enable_seqscan TO OFF;
   -- can use idx_1
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"d.e.f": {"$eq": 1}, "_id": {"$eq": 0}}, "projection": { "a": 1 } }');
-                                                                                 QUERY PLAN                                                                                 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "d.e.f" : { "$numberInt" : "1" } }'::bson)
-   Filter: ((document #= '{ "_id" : { "$numberInt" : "0" } }'::bsonquery) AND (object_id = '{ "" : { "$numberInt" : "0" } }'::bson) AND (shard_key_value = '6003'::bigint))
+   Filter: ((document @= '{ "_id" : { "$numberInt" : "0" } }'::bson) AND (object_id = '{ "" : { "$numberInt" : "0" } }'::bson))
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "d.e.f" : { "$numberInt" : "1" } }'::bson)
 (5 rows)

@@ -50,7 +50,7 @@ typedef struct ReplaceExtensionFunctionContext
 	bool hasVectorSearchQuery;
 
 	/* Whether or not the index paths already has a primary key lookup */
-	bool hasPrimaryKeyLookup;
+	IndexPath *primaryKeyLookupPath;
 
 	/* The input data context for the call */
 	ReplaceFunctionContextInput inputData;

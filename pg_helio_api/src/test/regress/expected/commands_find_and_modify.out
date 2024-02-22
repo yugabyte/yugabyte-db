@@ -472,7 +472,6 @@ SELECT helio_api.shard_collection('fam','retryable_update', '{"a":"hashed"}', fa
 
 -- test with upsert
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_update", "query": {"_id": 2, "a": 100}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"a": 0}}', 'xact-1');
-NOTICE:  using bson_query_match implementation
                                                                                                                                 find_and_modify                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""2"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""2"" }, ""b"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)

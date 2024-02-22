@@ -743,7 +743,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		if (IsBtreePrimaryKeyIndex(indexPath->indexinfo) &&
 			list_length(indexPath->indexclauses) > 1)
 		{
-			context->hasPrimaryKeyLookup = true;
+			context->primaryKeyLookupPath = indexPath;
 		}
 
 		if (hasVectorSearch)
