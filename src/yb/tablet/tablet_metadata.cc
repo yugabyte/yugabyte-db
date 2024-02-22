@@ -1736,18 +1736,28 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
         NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
+  LOG_IF_WITH_PREFIX(FATAL, cotable_id != (*res)->cotable_id) << "Cotable id mismatch: "
+      << cotable_id.ToHexString() << " vs " << (*res)->cotable_id.ToHexString();
   return TableInfo::Packing(*res, schema_version, history_cutoff);
 }
 
 Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
     ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
-  auto it = kv_store_.colocation_to_table.find(colocation_id);
-  if (it == kv_store_.colocation_to_table.end()) {
-    return STATUS_FORMAT(
-        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
-        colocation_id, raft_group_id_);
+  TableInfoPtr table_info;
+  {
+    std::lock_guard lock(data_mutex_);
+    auto it = kv_store_.colocation_to_table.find(colocation_id);
+    if (it == kv_store_.colocation_to_table.end()) {
+      return STATUS_FORMAT(
+          NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
+          colocation_id, raft_group_id_);
+    }
+    table_info = it->second;
   }
-  return TableInfo::Packing(it->second, schema_version, history_cutoff);
+  LOG_IF_WITH_PREFIX(FATAL, colocation_id != table_info->schema().colocation_id())
+      << "Colocation id mismatch: " << colocation_id << " vs "
+      << table_info->schema().colocation_id();
+  return TableInfo::Packing(table_info, schema_version, history_cutoff);
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
