@@ -50,6 +50,8 @@ RUN rm -rf /var/lib/apt/lists/* \
     && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 
 ENV LANG en_US.utf8
+# declare installed PG version
+ENV PG_VERSION=15
 
 RUN useradd -ms /bin/bash heliodb -G sudo
 RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask

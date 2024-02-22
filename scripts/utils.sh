@@ -31,13 +31,24 @@ function GetPostgresPath()
   fi
 }
 
+function GetPGCTL()
+{
+  local pgVersion=${PG_VERSION:-15}
+  echo ${pgctlPath:-$(GetPostgresPath $pgVersion)/pg_ctl}
+}
+
+function GetInitDB()
+{
+  local pgVersion=${PG_VERSION:-15}
+  echo $(GetPostgresPath $pgVersion)/initdb
+}
+
 function StopServer()
 {
   local _directory=$1
   local _extraOptions=${2:-""}
-  local _pgctlPath=${pgctlPath:-pg_ctl}
 
-  $_pgctlPath stop -D $_directory $_extraOptions || true;
+  $(GetPGCTL) stop -D $_directory $_extraOptions || true;
   echo "Stopped all PG instances on $_directory";
 }
 
@@ -46,10 +57,10 @@ function StartServer()
   local _directory=$1
   local _port=$2
   local _logPath=${3:-$_directory/pglog.log}
-  local _pgctlPath=${pgctlPath:-pg_ctl}
+  local _pgctlPath=$(GetPGCTL)
 
   echo "Starting postgres in $_directory"
-  echo "Calling: pg_ctl start -D $_directory -o \"-p $_port -l $_logPath\""
+  echo "Calling: $_pgctlPath start -D $_directory -o \"-p $_port -l $_logPath\""
   $_pgctlPath start -D $_directory -o "-p $_port" -l $_logPath
 }
 
@@ -79,10 +90,10 @@ function InitDatabaseExtended()
   
   echo "Deleting directory $_directory"
   rm -rf $_directory
-  mkdir $_directory
+  mkdir -p $_directory
 
   echo "Calling initdb for $_directory"
-  initdb -D $_directory
+  $(GetInitDB) -D $_directory
   SetupPostgresConfigurations $_directory
 }
 
