@@ -498,7 +498,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
 Status BackendsCatalogVersionJob::LaunchTS(
     TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends, epoch);
+      shared_from_this(), ts_uuid, num_lagging_backends);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -714,12 +714,10 @@ std::string BackendsCatalogVersionJob::LogPrefix() const {
 BackendsCatalogVersionTS::BackendsCatalogVersionTS(
     std::shared_ptr<BackendsCatalogVersionJob> job,
     const std::string& ts_uuid,
-    int prev_num_lagging_backends, LeaderEpoch epoch)
+    int prev_num_lagging_backends)
     : RetryingTSRpcTask(job->master(),
                         job->threadpool(),
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(job->master(), ts_uuid)),
-                        nullptr /* table */,
-                        std::move(epoch),
                         nullptr /* async_task_throttler */),
       job_(job),
       prev_num_lagging_backends_(prev_num_lagging_backends) {

@@ -116,6 +116,14 @@ class ClientMasterRpcBase : public rpc::Rpc {
     return master_encryption_proxy();
   }
 
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy() {
+    return client_data_->master_test_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterTestProxy*) {
+    return master_test_proxy();
+  }
+
 
   virtual void CallRemoteMethod() = 0;
 

@@ -372,8 +372,7 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   BackendsCatalogVersionTS(
       std::shared_ptr<BackendsCatalogVersionJob> job,
       const std::string& ts_uuid,
-      int prev_num_lagging_backends,
-      LeaderEpoch epoch);
+      int prev_num_lagging_backends);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackendsCatalogVersionTs;

@@ -22,7 +22,7 @@ namespace master {
 
 // Send the request to the specified Tablet Server.
 // Keeps retrying until we get an "ok" response.
-class AsyncSnapshotTransferTask : public RetrySpecificTSRpcTask {
+class AsyncSnapshotTransferTask : public RetrySpecificTSRpcTaskWithTable {
  public:
   AsyncSnapshotTransferTask(
       Master* master, ThreadPool* callback_pool, SnapshotTransferManager* task_manager,

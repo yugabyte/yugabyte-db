@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
@@ -660,6 +661,9 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
       proxy_cache_.get(), leader_addr_);
 
   master_replication_proxy_ = std::make_unique<master::MasterReplicationProxy>(
+      proxy_cache_.get(), leader_addr_);
+
+  master_test_proxy_ = std::make_unique<master::MasterTestProxy>(
       proxy_cache_.get(), leader_addr_);
 }
 

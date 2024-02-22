@@ -1,0 +1,39 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/master/master_types.proto";
+import "yb/rpc/service.proto";
+
+message TestRetryRequestPB {
+  // UUID of server this request is addressed to.
+  optional string dest_uuid = 1;
+
+  // See TestRetry RPC method description below.
+  required int32 num_retries = 2;
+}
+
+message TestRetryResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+service MasterTest {
+  option (yb.rpc.custom_service_name) = "yb.master.MasterService";
+
+  // Returns TryAgain error until specified number of calls is done.
+  rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
+}

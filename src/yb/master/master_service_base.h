@@ -17,6 +17,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/master/master_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/strongly_typed_bool.h"
@@ -117,6 +118,7 @@ class MasterServiceBase {
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);
   XClusterManager* handler(XClusterManager*);
+  TestAsyncRpcManager* handler(TestAsyncRpcManager*);
 
   Master* server_;
 

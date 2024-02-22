@@ -39,7 +39,7 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      bool is_compaction,
                                      bool regular_only,
                                      LeaderEpoch epoch)
-: RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table, std::move(epoch),
+: RetrySpecificTSRpcTaskWithTable(master, callback_pool, ts_uuid, table, std::move(epoch),
                              /* async_task_throttler */ nullptr),
       tablet_ids_(tablet_ids),
       flush_id_(flush_id),
