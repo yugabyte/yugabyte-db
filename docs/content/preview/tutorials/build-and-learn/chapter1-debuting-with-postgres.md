@@ -87,7 +87,7 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
     git clone https://github.com/YugabyteDB-Samples/yugaplus-build-and-learn-tutorial.git
     ```
 
-1. (Optional) [Create](<https://platform.openai.com>) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
+1. (Optional) [Create](https://platform.openai.com) an OpenAI API key. The application requires an OpenAI embedding model for vector similarity search. If you opt not to use OpenAI, the application will default to a less advanced full-text search mode.
 
 1. Set your OpenAI API in the `{yugaplus-project-dir}/docker-compose.yaml` file by updating the `OPENAI_API_KEY` variable:
 
