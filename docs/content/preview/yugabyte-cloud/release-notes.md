@@ -33,6 +33,8 @@ On this page:
 
 - Support for Okta [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their Okta identities.
 
+    Blog: [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
+
 **Database**
 
 - Innovation track updated to 2.18.5.0.
