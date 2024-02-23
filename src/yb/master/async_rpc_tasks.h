@@ -76,6 +76,8 @@ class Master;
 class TableInfo;
 class TabletInfo;
 
+YB_STRONGLY_TYPED_BOOL(AddPendingDelete);
+
 // Interface used by RetryingTSRpcTask to pick the tablet server to
 // send the next RPC to.
 class TSPicker {
@@ -577,6 +579,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
 
   std::string description() const override;
 
+  Status BeforeSubmitToTaskPool() override;
+
+  Status OnSubmitFailure() override;
+
   void set_hide_only(bool value) {
     hide_only_ = value;
   }
@@ -585,9 +591,9 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
     keep_data_ = value;
   }
 
- protected:
   TabletId tablet_id() const override { return tablet_id_; }
 
+ protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
@@ -599,6 +605,9 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
   tserver::DeleteTabletResponsePB resp_;
   bool hide_only_ = false;
   bool keep_data_ = false;
+
+ private:
+  Status SetPendingDelete(AddPendingDelete add_pending_delete);
 };
 
 // Send the "Alter Table" with the latest table schema to the leader replica

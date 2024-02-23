@@ -910,6 +910,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> nodeAgentInstallPath =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.install_path",
+          ScopeType.GLOBAL,
+          "Node Agent Server Installation Path",
+          "Installation path for node agent",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> waitForProviderTasksTimeoutMs =
       new ConfKeyInfo<>(
           "yb.edit_provider.new.wait_for_tasks_timeout_ms",
@@ -1168,6 +1176,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the option to view new releases page",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> replicationFrequency =
+      new ConfKeyInfo<>(
+          "yb.ha.replication_frequency",
+          ScopeType.GLOBAL,
+          "Replication frequency",
+          "Replication frequency",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.disableHostnameVerification",

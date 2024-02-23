@@ -439,7 +439,8 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
-YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
@@ -508,6 +509,15 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle);
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
+
+// Allocate block of inserts to the same table.
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle);
+
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_relfilenode_oid,
                          bool is_region_local,

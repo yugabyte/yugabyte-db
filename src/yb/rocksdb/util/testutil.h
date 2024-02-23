@@ -795,6 +795,10 @@ class TestUserFrontier : public UserFrontier {
 
   void ResetFilter() override {}
 
+  uint64_t GetHybridTimeAsUInt64() const override {
+    return 0;
+  }
+
  private:
   uint64_t value_ = 0;
 };

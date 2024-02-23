@@ -58,14 +58,15 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       validationErrorsMap.put(
           CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
           "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
-      throwMultipleBeanValidatorError(validationErrorsMap, "storageConfigValidation");
+      throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
     }
 
     Storage storage = null;
     try {
       storage = factory.createGcpStorage(gcsData);
     } catch (IOException ex) {
-      throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+      throwBeanConfigDataValidatorError(
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
     }
 
     validateGCSUrl(
@@ -76,7 +77,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     if (gcsData.regionLocations != null) {
       for (RegionLocations location : gcsData.regionLocations) {
         if (StringUtils.isEmpty(location.region)) {
-          throwBeanValidatorError(
+          throwBeanConfigDataValidatorError(
               CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
         }
         validateUrl(CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
@@ -97,13 +98,13 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     // processed.
     if (gsUriPath.length() < 5 || !GCS_URL_SCHEMES.contains(protocol)) {
       String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
-      throwBeanValidatorError(fieldName, exceptionMsg);
+      throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
     } else {
       CloudLocationInfo locationInfo = gcpUtil.getCloudLocationInfo(region, gcsData, gsUriPath);
       try {
         gcpUtil.validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
       } catch (StorageException exp) {
-        throwBeanValidatorError(fieldName, exp.getMessage());
+        throwBeanConfigDataValidatorError(fieldName, exp.getMessage());
       }
     }
   }

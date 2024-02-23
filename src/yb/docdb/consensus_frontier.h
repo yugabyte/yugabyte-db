@@ -132,6 +132,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     max_value_level_ttl_expiration_time_ = ht;
   }
 
+  uint64_t GetHybridTimeAsUInt64() const override {
+    return hybrid_time_.ToUint64();
+  }
+
+
  private:
   OpId op_id_;
   HybridTime hybrid_time_;

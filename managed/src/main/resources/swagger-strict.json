@@ -15047,6 +15047,11 @@
           "example" : "POST",
           "type" : "string"
         },
+        "requestJson" : {
+          "description" : "User request JSON object",
+          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+          "type" : "object"
+        },
         "requestUri" : {
           "description" : "URI for HTTP request that resulted in this error",
           "example" : "/customers/8918921-af3782-633de/universe/8173ab-fd2453/create",

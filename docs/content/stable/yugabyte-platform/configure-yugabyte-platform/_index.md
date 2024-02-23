@@ -16,66 +16,30 @@ After YugabytDB Anywhere (YBA) has been installed, the next step is to create pr
 
 When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe.
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Overview</div>
-      </div>
-      <div class="body">
-        Configuration process at a glance.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Node prerequisites"
+    body="Operating systems and architectures supported by YBA for deploying YugabyteDB universes."
+    href="supported-os-and-arch/"
+    icon="/images/section_icons/deploy/manual-deployment.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="supported-os-and-arch/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Node prerequisites</div>
-      </div>
-      <div class="body">
-        Operating systems and architectures supported by YBA for deploying YugabyteDB universes.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Create admin user"
+    body="Admin user account registration and setup."
+    href="create-admin-user/"
+    icon="/images/section_icons/index/admin.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-admin-user/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
-        <div class="title">Create admin user</div>
-      </div>
-      <div class="body">
-        Admin user account registration and setup.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Configure providers"
+    body="Create provider configurations for deploying universes."
+    href="set-up-cloud-provider/"
+    icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="set-up-cloud-provider/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Configure cloud providers</div>
-      </div>
-      <div class="body">
-        Create AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu, and On-premises providers.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Configure alerts"
+    body="Create health check and alerts for issues that may affect deployment."
+    href="set-up-alerts-health-check/"
+    icon="/images/section_icons/deploy/manual-deployment.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="set-up-alerts-health-check/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Configure alerts</div>
-      </div>
-      <div class="body">
-        Health check and alerts for issues that may affect deployment.
-      </div>
-    </a>
-  </div>
-
-</div>
+{{</index/block>}}

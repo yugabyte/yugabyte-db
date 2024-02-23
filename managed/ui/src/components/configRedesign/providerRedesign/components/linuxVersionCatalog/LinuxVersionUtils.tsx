@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { find } from 'lodash';
+import { find, has } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
@@ -133,16 +133,19 @@ export const getImageBundleUsedByUniverse = (universeDetails: UniverseDetails, p
   return curLinuxImgBundle ?? null;
 };
 
-export const constructImageBundlePayload = (formValues: any) => {
+export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
   const imageBundles = [...formValues.imageBundles];
 
   imageBundles.forEach((img) => {
     const sshUserOverride = (img as any).sshUserOverride;
     const sshPortOverride = (img as any).sshPortOverride;
 
-    if (!sshPortOverride && !sshUserOverride) return;
-
     formValues.regions.forEach((region: CloudVendorRegionField) => {
+      // Only AWS supports region specific AMI
+      if (isAWS && !has(img.details.regions, region.code)) {
+        img.details.regions[region.code] = {};
+      }
+
       if (sshUserOverride) {
         img.details.regions[region.code]['sshUserOverride'] = sshUserOverride;
       }

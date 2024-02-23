@@ -324,11 +324,10 @@ public class PlatformReplicationManager {
                             // backup.
                             instancesToSync.forEach(
                                 instance -> {
-                                  if (replicationHelper.syncToRemoteInstance(instance)) {
-                                    instance.updateLastBackup();
-                                  } else {
+                                  instance.updateLastBackup();
+                                  if (!replicationHelper.syncToRemoteInstance(instance)) {
                                     log.error(
-                                        "Error syncing backup to remote instance {}",
+                                        "Error syncing config to remote instance {}",
                                         instance.getAddress());
                                   }
                                 });

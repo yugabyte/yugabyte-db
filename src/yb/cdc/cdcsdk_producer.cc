@@ -271,6 +271,37 @@ bool IsInsertOrUpdate(const RowMessage& row_message) {
          (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE);
 }
 
+Result<bool> ShouldPopulateNewInsertRecord(
+    const bool& end_of_intents, const docdb::IntentKeyValueForCDC& next_intent,
+    const Slice& current_primary_key, const HybridTime& current_hybrid_time,
+    const bool& end_of_transaction) {
+  if (!end_of_intents) {
+    Slice next_key(next_intent.key_buf);
+    const auto next_key_size =
+        VERIFY_RESULT(dockv::DocKey::EncodedSize(next_key, dockv::DocKeyPart::kWholeDocKey));
+
+    dockv::KeyEntryValue next_column_id;
+    boost::optional<dockv::KeyEntryValue> next_column_id_opt;
+    Slice next_key_column = next_key.WithoutPrefix(next_key_size);
+    if (!next_key_column.empty()) {
+      RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&next_key_column, &next_column_id));
+      next_column_id_opt = next_column_id;
+    }
+
+    dockv::SubDocKey next_decoded_key;
+    Slice next_sub_doc_key = next_key;
+    RETURN_NOT_OK(
+        next_decoded_key.DecodeFrom(&next_sub_doc_key, dockv::HybridTimeRequired::kFalse));
+
+    Slice next_primary_key(next_key.data(), next_key_size);
+
+    return (current_primary_key != next_primary_key) ||
+           (current_hybrid_time != next_intent.intent_ht.hybrid_time());
+  } else {
+    return end_of_transaction;
+  }
+}
+
 void MakeNewProtoRecord(
     const docdb::IntentKeyValueForCDC& intent, const OpId& op_id, const RowMessage& row_message,
     const Schema& schema, size_t col_count, CDCSDKProtoRecordPB* proto_record,
@@ -650,7 +681,8 @@ Status PopulateCDCSDKIntentRecord(
     IntraTxnWriteId* write_id,
     std::string* reverse_index_key,
     const uint64_t& commit_time,
-    client::YBClient* client) {
+    client::YBClient* client,
+    const bool& end_of_transaction) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   bool colocated = tablet->metadata()->colocated();
@@ -679,7 +711,8 @@ Status PopulateCDCSDKIntentRecord(
   bool new_cdc_record_needed = false;
   dockv::SubDocKey prev_decoded_key;
 
-  for (const auto& intent : intents) {
+  for (size_t i = 0; i < intents.size(); i++) {
+    const docdb::IntentKeyValueForCDC& intent = intents[i];
     Slice key(intent.key_buf);
     const auto key_size =
         VERIFY_RESULT(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
@@ -902,8 +935,19 @@ Status PopulateCDCSDKIntentRecord(
       }
     }
     row_message->set_table(table_name);
+
+    // Get the next intent to see if it should go into a new record.
+    bool is_last_intent = (i == intents.size() -1);
+    docdb::IntentKeyValueForCDC next_intent;
+    if (!is_last_intent) {
+      next_intent = intents[i + 1];
+    }
+    bool populate_new_record = VERIFY_RESULT(ShouldPopulateNewInsertRecord(
+        is_last_intent, next_intent, primary_key, intent.intent_ht.hybrid_time(),
+        end_of_transaction));
+
     if (FLAGS_enable_single_record_update) {
-      if ((row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
+      if ((row_message->op() == RowMessage_Op_INSERT && populate_new_record) ||
           (row_message->op() == RowMessage_Op_DELETE)) {
         MakeNewProtoRecord(
             intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
@@ -914,7 +958,7 @@ Status PopulateCDCSDKIntentRecord(
         prev_decoded_key = decoded_key;
       }
     } else {
-      if ((row_message->op() == RowMessage_Op_INSERT && col_count == schema.num_columns()) ||
+      if ((row_message->op() == RowMessage_Op_INSERT && populate_new_record) ||
           (row_message->op() == RowMessage_Op_UPDATE ||
            row_message->op() == RowMessage_Op_DELETE)) {
         if ((metadata.GetRecordType() != cdc::CDCRecordType::CHANGE) &&
@@ -957,7 +1001,8 @@ Status PopulateCDCSDKIntentRecord(
   }
 
   if (FLAGS_enable_single_record_update && proto_record.IsInitialized() &&
-      row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE) {
+      row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE &&
+      end_of_transaction) {
     row_message->set_table(table_name);
     if (metadata.GetRecordType() != cdc::CDCRecordType::CHANGE) {
       VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
@@ -1558,15 +1603,17 @@ Status ProcessIntents(
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
 
+  bool end_of_transaction = (stream_state->key.empty()) && (stream_state->write_id == 0);
+
   // Need to populate the CDCSDKRecords
   if (!keyValueIntents->empty()) {
     RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
         op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
         composite_atts_map, cached_schema_details, resp, consumption, &write_id, &reverse_index_key,
-        commit_time, client));
+        commit_time, client, end_of_transaction));
   }
 
-  if (stream_state->key.empty() && stream_state->write_id == 0) {
+  if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
       FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
     }
@@ -2327,8 +2374,8 @@ Status GetChangesForCDCSDK(
           last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
     } else {
       pending_intents = true;
-      VLOG(1) << "Couldn't stream all records with this GetChanges call for transaction: "
-              << transaction_id.ToString() << ", tablet_id: " << tablet_id
+      VLOG(1) << "Couldn't stream all records with this GetChanges call for tablet_id: "
+              << tablet_id << ", transaction_id: " << transaction_id.ToString()
               << ", commit_time: " << commit_timestamp
               << ". The remaining records will be streamed in susequent GetChanges calls.";
       SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
@@ -2507,9 +2554,9 @@ Status GetChangesForCDCSDK(
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
                 VLOG(1)
-                    << "Couldn't stream all records with this GetChanges call for transaction: "
-                    << txn_id.ToString() << ", tablet_id: " << tablet_id << ", op_id" << op_id
-                    << ", commit_time: " << *commit_timestamp
+                    << "Couldn't stream all records with this GetChanges call for tablet_id: "
+                    << tablet_id << ", transaction_id: " << txn_id.ToString()
+                    << ", op_id: " << op_id << ", commit_time: " << *commit_timestamp
                     << ". The remaining records will be streamed in susequent GetChanges calls.";
                 SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
               } else {
