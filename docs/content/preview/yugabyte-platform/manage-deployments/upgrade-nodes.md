@@ -1,7 +1,7 @@
 ---
 title: Apply operating system upgrades and patches to universe nodes
-headerTitle: Upgrade and patch Linux operating system
-linkTitle: Upgrade and patch OS
+headerTitle: Upgrade and patch the Linux operating system
+linkTitle: Upgrade node OS
 description: Apply operating system upgrades and patches to universe nodes.
 headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
