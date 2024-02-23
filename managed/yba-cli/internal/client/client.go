@@ -7,7 +7,6 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -128,35 +127,6 @@ func ParseURL(host string) (*url.URL, error) {
 		return nil, fmt.Errorf("could not parse YBA url (%s): %w", host, err)
 	}
 	return endpoint, err
-}
-
-// GetAppVersion fetches YugabyteDB Anywhere version
-func (a *AuthAPIClient) GetAppVersion() ybaclient.SessionManagementApiApiAppVersionRequest {
-	return a.APIClient.SessionManagementApi.AppVersion(a.ctx)
-}
-
-// GetSessionInfo fetches YugabyteDB Anywhere session info
-func (a *AuthAPIClient) GetSessionInfo() (
-	ybaclient.SessionManagementApiApiGetSessionInfoRequest) {
-	return a.APIClient.SessionManagementApi.GetSessionInfo(a.ctx)
-}
-
-// GetCustomerUUID fetches YugabyteDB Anywhere customer UUID
-func (a *AuthAPIClient) GetCustomerUUID() error {
-	r, response, err := a.GetSessionInfo().Execute()
-	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"GetCustomerUUID", "Get Session Info")
-		logrus.Errorf("%s", errMessage.Error())
-		return errMessage
-	}
-	if !r.HasCustomerUUID() {
-		err := "could not retrieve Customer UUID"
-		logrus.Errorf(err)
-		return errors.New(err)
-	}
-	a.CustomerUUID = *r.CustomerUUID
-	return nil
 }
 
 // GetCustomerTaskStatus fetches the customer task status
