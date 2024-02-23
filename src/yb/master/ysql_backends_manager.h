@@ -377,6 +377,7 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   }
   std::string type_name() const override { return "Backends Catalog Version of TS"; }
   std::string description() const override;
+  MonoTime ComputeDeadline() override;
 
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;

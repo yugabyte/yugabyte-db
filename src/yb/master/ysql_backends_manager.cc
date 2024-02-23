@@ -36,7 +36,10 @@
 
 using namespace std::chrono_literals;
 
-DECLARE_int32(master_ts_rpc_timeout_ms);
+DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
+    60 * 1000, // 60s
+    "WaitForYsqlBackendsCatalogVersion master-to-tserver RPC timeout.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms, advanced);
 
 DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 2m
     "Expiration time in seconds for a YSQL BackendsCatalogVersionJob. Recommended to set several"
@@ -720,6 +723,12 @@ BackendsCatalogVersionTS::BackendsCatalogVersionTS(
 
 std::string BackendsCatalogVersionTS::description() const {
   return "BackendsCatalogVersionTS RPC";
+}
+
+MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
+  MonoTime timeout = MonoTime::Now() + MonoDelta::FromMilliseconds(
+      FLAGS_wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms);
+  return MonoTime::Earliest(timeout, deadline_);
 }
 
 TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {

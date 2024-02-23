@@ -63,7 +63,8 @@ class PgBackendsTest : public LibPqTestBase {
         options->extra_master_flags.end(),
         {
           Format("--catalog_manager_bg_task_wait_ms=$0", kCatalogManagerBgTaskWaitMs),
-          Format("--master_ts_rpc_timeout_ms=$0", kMasterTsRpcTimeoutSec * 1000),
+          Format("--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
+                 kMasterTserverRpcTimeoutMs * 1000),
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
@@ -141,7 +142,7 @@ class PgBackendsTest : public LibPqTestBase {
   std::unique_ptr<client::YBClient> client_;
   std::unique_ptr<PGConn> conn_;
   static constexpr int kCatalogManagerBgTaskWaitMs = 1000;
-  static constexpr int kMasterTsRpcTimeoutSec = 30;
+  static constexpr int kMasterTserverRpcTimeoutMs = 30;
 };
 
 // Requests on already-satisfied versions should create jobs that finish quickly.
@@ -379,7 +380,7 @@ TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
     Result<int> res = client_->WaitForYsqlBackendsCatalogVersion(
         "yugabyte",
         cat_ver,
-        MonoDelta::FromSeconds(kMasterTsRpcTimeoutSec) + 5s /* timeout */);
+        MonoDelta::FromSeconds(kMasterTserverRpcTimeoutMs) + 5s /* timeout */);
     ASSERT_NOK(res);
     Status s = res.status();
     ASSERT_TRUE(s.IsCombined()) << s;
@@ -978,7 +979,7 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
         "yugabyte",
         cat_ver,
         MonoDelta::FromSeconds(kTsDeadSec / 2 + kMarginSec
-                               + kMasterTsRpcTimeoutSec) /* timeout */));
+                               + kMasterTserverRpcTimeoutMs) /* timeout */));
   SCHECK_EQ(0, num_backends, IllegalState, "unexpected num backends");
 
   if (keep_alive) {

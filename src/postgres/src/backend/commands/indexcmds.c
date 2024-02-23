@@ -3089,20 +3089,35 @@ YbWaitForBackendsCatalogVersion()
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
 									   yb_wait_for_backends_catalog_version_timeout))
-			ereport(ERROR,
-					(errmsg("timed out waiting for postgres backends to catch"
-							" up"),
-					 errdetail("%d backends on database %u are still behind"
-							   " catalog version %" PRIu64 ".",
-							   num_lagging_backends,
-							   MyDatabaseId,
-							   YbGetCatalogCacheVersion()),
-					 errhint("Run the following query on all tservers to find"
-							 " the lagging backends: SELECT * FROM"
-							 " pg_stat_activity WHERE catalog_version < %"
-							 PRIu64 " AND datid = %u;",
-							 YbGetCatalogCacheVersion(),
-							 MyDatabaseId)));
+		{
+			if (num_lagging_backends > 0)
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("%d backends on database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   num_lagging_backends,
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion()),
+						 errhint("Run the following query on all tservers to find"
+								 " the lagging backends: SELECT * FROM"
+								 " pg_stat_activity WHERE catalog_version < %"
+								 PRIu64 " AND datid = %u;",
+								 YbGetCatalogCacheVersion(),
+								 MyDatabaseId)));
+			else
+			{
+				Assert(num_lagging_backends == -1);
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("Failed to determine how many backends on"
+								   " database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion())));
+			}
+		}
 
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
 														 YbGetCatalogCacheVersion(),
