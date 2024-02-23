@@ -1095,6 +1095,11 @@
         }
       }
     },
+    "cdc": {
+      "emptyContainerTitle": "Replication Slots",
+      "emptyContainerSubtitle": "Use Change Data Capture (CDC) replication slots to capture and emit database change events.",
+      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots"
+    },
     "metric": {
       "tooltip": {
         "viewInPrometheus": "View this metric in Prometheus"
