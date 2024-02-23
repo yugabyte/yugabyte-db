@@ -1,9 +1,9 @@
 ---
 title: Apply operating system upgrades and patches to universe nodes
-headerTitle: Patch nodes
-linkTitle: Patch nodes
+headerTitle: Upgrade and patch Linux operating system
+linkTitle: Upgrade and patch OS
 description: Apply operating system upgrades and patches to universe nodes.
-headcontent: Perform maintenance on universe nodes
+headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
   preview_yugabyte-platform:
     identifier: upgrade-nodes
@@ -16,9 +16,11 @@ If a virtual machine or a physical server in a universe requires operating syste
 
 ## Prerequisites
 
-- Increase the WAL log retention time, as the time between stop and start will most likely be more than 15 minutes. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
+If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
 
 ## Patch nodes
+
+Typically, the following sequence will be automated using scripts that call the YBA REST APIs.
 
 For each node in the universe, use the following general procedure:
 
@@ -35,9 +37,16 @@ For each node in the universe, use the following general procedure:
     --data-raw '{"nodeAction":"STOP"}'
     ```
 
+    Check the return status to confirm that the node is stopped.
+
 1. Perform the steps to update or patch the Linux OS.
 
-    Ensure that the node retains its IP addresses after the inline patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
+    Ensure that the node retains its IP addresses after the patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
+
+    Two common ways to patch or upgrade the OS of VMs include the following:
+
+    - Inline patching - where you modify the Linux OS binaries in place (for example, yum).
+    - Boot disk replacement - this is typically used with a hypervisor or public cloud. You create a separate new VM with a virtual disk containing the new Linux OS patch or upgrade, disconnect the virtual disk from the new VM, and use it to replace the DB node's boot disk.
 
 1. Start the processes for the node.
 
@@ -50,4 +59,6 @@ For each node in the universe, use the following general procedure:
     --data-raw '{"nodeAction":"START"}'
     ```
 
-1. Make sure all nodes in the universe are running correctly.
+    Check the return status to confirm that the node is started.
+
+When finished, you can confirm all nodes in the universe are running correctly in YBA by navigating to the universe **Nodes** tab.
