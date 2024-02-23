@@ -23,7 +23,7 @@ type: indexpage
     icon="/images/section_icons/develop/ecosystem/amazon-msk.png">}}
 
   {{<index/item
-    title="Azure Event Hub"
+    title="Azure Event Hubs"
     body="Connect to Azure Event Hubs and ingest data into Azure Synapse Analytics for analysis."
     href="cdc-azure-event-hub/"
     icon="/images/section_icons/develop/ecosystem/azure-event-hub.png">}}

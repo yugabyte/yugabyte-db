@@ -103,7 +103,7 @@ Next, start the application connecting to your YugabyteDB Managed cluster:
     - DB_PASSWORD=${YOUR_YBM_PASSWORD}
     ```
 
-    * `${YOUR_YBM_PUBLIC_ADDRESS}` - is the public address of your YugabyteDB Managed instance.
+    * `${YOUR_YBM_PUBLIC_ADDRESS}` - is the public address (host) of your YugabyteDB Managed instance.
     * `${YOUR_YBM_USER}` and `${YOUR_YBM_PASSWORD}` - your database credentials from the file that you downloaded during the cluster configuration.
 
 1. Start the application:
