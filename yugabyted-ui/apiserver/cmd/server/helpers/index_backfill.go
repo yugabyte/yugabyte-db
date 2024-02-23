@@ -3,6 +3,7 @@ package helpers
 import (
     "context"
     "fmt"
+    "net/url"
     "regexp"
 
     "github.com/jackc/pgx/v4/pgxpool"
@@ -104,12 +105,11 @@ func (h *HelperContainer) GetCompletedIndexBackFillInfo() IndexBackFillInfoFutur
         IndexBackFillInfo: []map[string]interface{}{},
         Error:             nil,
     }
-    urls, err := h.BuildMasterURLs("/tasks")
-    if err != nil {
-        completedIndexBackFillInfoFuture.Error = err
-        return completedIndexBackFillInfoFuture
-    }
-    body, err := h.AttemptGetRequests(urls, true)
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "tasks", // path
+        url.Values{}, // params
+        false, // expectJson
+    )
     if err != nil {
         completedIndexBackFillInfoFuture.Error = err
         return completedIndexBackFillInfoFuture
