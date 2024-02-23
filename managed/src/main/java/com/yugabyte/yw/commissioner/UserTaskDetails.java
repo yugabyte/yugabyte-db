@@ -260,7 +260,11 @@ public class UserTaskDetails {
     // Manage Otel Collector.
     ManageOtelCollector,
 
-    ValidatingNode
+    // Validating nodes.
+    ValidatingNode,
+
+    // OS Patching.
+    OSPatching
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -608,6 +612,10 @@ public class UserTaskDetails {
       case ValidatingNode:
         title = "Validating node status";
         description = "Validating node's current state before proceeding";
+        break;
+      case OSPatching:
+        title = "OS Patching";
+        description = "Performing OS Patching on the universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
