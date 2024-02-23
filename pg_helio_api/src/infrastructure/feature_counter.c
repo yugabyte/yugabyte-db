@@ -32,6 +32,7 @@ static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 static void StoreAllFeatureCounterStats(Tuplestorestate *tupleStore, TupleDesc
 										tupleDescriptor, bool resetStatsAfterRead);
+static void PopulateFeatureCounters(FeatureCounter *aggregatedFeatureCounter);
 
 static Tuplestorestate * SetupFeatureCounterTuplestore(FunctionCallInfo fcinfo,
 													   TupleDesc *tupleDescriptor);
@@ -353,6 +354,67 @@ SharedFeatureCounterShmemInit(void)
 }
 
 
+const char *
+GetFeatureCountersAsString(void)
+{
+	FeatureCounter aggregatedFeatureCounter;
+	PopulateFeatureCounters(&aggregatedFeatureCounter);
+
+	/* Format: [{"match":1},{"sort":1}] */
+	StringInfo stringInfo = makeStringInfo();
+	appendStringInfo(stringInfo, "[");
+	const char *separator = "";
+	bool hasValues = false;
+	for (int i = 0; i < MAX_FEATURE_COUNT; i++)
+	{
+		if (aggregatedFeatureCounter[i] == 0)
+		{
+			continue;
+		}
+
+		appendStringInfo(stringInfo, "%s{ \"%s\": %d }", separator, FeatureMapping[i],
+						 aggregatedFeatureCounter[i]);
+		separator = ", ";
+		hasValues = true;
+	}
+	appendStringInfo(stringInfo, "]");
+
+	return hasValues ? stringInfo->data : NULL;
+}
+
+
+/*
+ * Resets feature counter state.
+ */
+void
+ResetFeatureCounters(void)
+{
+	/*
+	 *  Some usage metrics might be lost between reading the stats for all the backend processes and resetting the stats.
+	 *  However, we are okay with this as we aim to minimize the lock time.
+	 */
+	size_t feature_counter_shmem_size = mul_size(sizeof(FeatureCounter), MaxBackends);
+	pg_write_barrier();
+	MemSet(FeatureCounterBackendArray, 0, feature_counter_shmem_size);
+}
+
+
+static void
+PopulateFeatureCounters(FeatureCounter *aggregatedFeatureCounter)
+{
+	MemSet(*aggregatedFeatureCounter, 0, sizeof(FeatureCounter));
+
+	pg_memory_barrier();
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		for (int j = 0; j < MAX_FEATURE_COUNT; j++)
+		{
+			(*aggregatedFeatureCounter)[j] += FeatureCounterBackendArray[i][j];
+		}
+	}
+}
+
+
 /*
  *  This method iterate over all the feature usage counts for each backend process
  *  and aggregate them. The aggregated feature counts then are returned as a set of
@@ -368,26 +430,11 @@ StoreAllFeatureCounterStats(Tuplestorestate *tupleStore, TupleDesc tupleDescript
 	bool isNulls[FEATURE_COUNTER_STATS_COLUMNS] = { 0 };
 
 	FeatureCounter aggregatedFeatureCounter;
-	MemSet(aggregatedFeatureCounter, 0, sizeof(FeatureCounter));
-
-	pg_memory_barrier();
-	for (int i = 0; i < MaxBackends; i++)
-	{
-		for (int j = 0; j < MAX_FEATURE_COUNT; j++)
-		{
-			aggregatedFeatureCounter[j] += FeatureCounterBackendArray[i][j];
-		}
-	}
+	PopulateFeatureCounters(&aggregatedFeatureCounter);
 
 	if (resetStatsAfterRead)
 	{
-		/*
-		 *  Some usage metrics might be lost between reading the stats for all the backend processes and resetting the stats.
-		 *  However, we are okay with this as we aim to minimize the lock time.
-		 */
-		size_t feature_counter_shmem_size = mul_size(sizeof(FeatureCounter), MaxBackends);
-		pg_write_barrier();
-		MemSet(FeatureCounterBackendArray, 0, feature_counter_shmem_size);
+		ResetFeatureCounters();
 	}
 
 	for (int i = 0; i < MAX_FEATURE_COUNT; i++)

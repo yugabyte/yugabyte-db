@@ -246,6 +246,8 @@ typedef int FeatureCounter[MAX_FEATURE_COUNT];
 extern void InitializeSharedFeatureCounter(void);
 extern size_t SharedFeatureCounterShmemSize(void);
 extern void SharedFeatureCounterShmemInit(void);
+extern const char * GetFeatureCountersAsString(void);
+extern void ResetFeatureCounters(void);
 extern FeatureCounter *FeatureCounterBackendArray;
 
 /*
