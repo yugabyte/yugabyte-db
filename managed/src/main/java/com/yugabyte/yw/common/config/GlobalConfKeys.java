@@ -1271,4 +1271,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Which role to use incase group memberships are not found",
           ConfDataType.UserRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> enableReleasesRedesign =
+      new ConfKeyInfo<>(
+          "yb.releases.use_redesign",
+          ScopeType.GLOBAL,
+          "Use new releases",
+          "Enable the new releases design",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
