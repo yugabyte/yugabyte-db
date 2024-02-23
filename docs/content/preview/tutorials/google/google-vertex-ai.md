@@ -6,7 +6,7 @@ description: Build scalable generative AI applications with Google Vertex AI and
 image: /images/tutorials/google/icons/Google-Vertex-AI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Google Vertex AI applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-google-vertex-ai
     parent: tutorials-google
     weight: 40
