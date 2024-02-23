@@ -183,3 +183,7 @@ You are redirected to sign in to your IdP to test the connection. After the test
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+## Learn more
+
+- [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
