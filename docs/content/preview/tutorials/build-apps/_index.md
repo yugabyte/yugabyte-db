@@ -4,7 +4,6 @@ headerTitle: Hello world
 linkTitle: Hello world
 description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
-image: /images/section_icons/develop/api-icon.png
 aliases:
   - /preview/quick-start/build-apps/
 menu:
