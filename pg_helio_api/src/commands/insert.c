@@ -71,9 +71,6 @@ typedef struct BatchInsertionResult
 	List *writeErrors;
 } BatchInsertionResult;
 
-
-AttrNumber MongoDataCreationTimeVarAttrNumber = (AttrNumber) 4;
-
 PG_FUNCTION_INFO_V1(command_insert);
 PG_FUNCTION_INFO_V1(command_insert_one);
 
@@ -1192,7 +1189,13 @@ CreateInsertQuery(MongoCollection *collection, List *valuesLists)
 	List *colNames = list_make4(makeString("shard_key_value"), makeString("object_id"),
 								makeString("document"),
 								makeString("creation_time"));
-	colNames = ModifyTableColumnNames(colNames);
+
+	/* If "creation_time" is the fifth column, then we should include "change_description" in the RTE. */
+	if (collection->mongoDataCreationTimeVarAttrNumber == 5)
+	{
+		colNames = ModifyTableColumnNames(colNames);
+	}
+
 	rte->rtekind = RTE_RELATION;
 	rte->relid = collection->relationId;
 
@@ -1243,7 +1246,7 @@ CreateInsertQuery(MongoCollection *collection, List *valuesLists)
 		makeTargetEntry((Expr *) makeVar(2, 3, BYTEAOID, -1, InvalidOid, 0),
 						MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false),
 		makeTargetEntry((Expr *) makeVar(2, 4, TIMESTAMPTZOID, -1, InvalidOid, 0),
-						MongoDataCreationTimeVarAttrNumber, "creation_time",
+						collection->mongoDataCreationTimeVarAttrNumber, "creation_time",
 						false)
 		);
 

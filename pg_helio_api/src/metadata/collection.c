@@ -27,6 +27,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "utils/version_utils.h"
 
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
@@ -114,6 +115,7 @@ static bool GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 													 MongoCollection *collection);
 static Oid GetRelationIdForCollectionTableName(char *collectionTableName,
 											   LOCKMODE lockMode);
+static AttrNumber GetMongoDataCreationTimeVarAttrNumber(const char *pgTableName);
 static MongoCollection * GetMongoCollectionByNameDatumCore(Datum databaseNameDatum,
 														   Datum collectionNameDatum,
 														   LOCKMODE lockMode);
@@ -552,6 +554,11 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 		collection.viewDefinition = CopyPgbsonIntoMemoryContext(collection.viewDefinition,
 																CollectionsCacheContext);
 	}
+	else
+	{
+		collection.mongoDataCreationTimeVarAttrNumber =
+			GetMongoDataCreationTimeVarAttrNumber(collection.tableName);
+	}
 
 	/* collection exists, so write a name -> collection cache entry */
 	entryByName =
@@ -862,6 +869,31 @@ GetRelationIdForCollectionTableName(char *collectionTableName, LOCKMODE lockMode
 	RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, collectionTableName, -1);
 
 	return RangeVarGetRelid(rangeVar, lockMode, missingOK);
+}
+
+
+/*
+ * GetMongoDataCreationTimeVarAttrNumber returns the attribute number of creation_time column.
+ */
+static AttrNumber
+GetMongoDataCreationTimeVarAttrNumber(const char *pgTableName)
+{
+	StringInfo cmdStr = makeStringInfo();
+	appendStringInfo(cmdStr,
+					 "SELECT attnum from pg_attribute where attrelid = '%s.%s'::regclass AND attname = 'creation_time'",
+					 ApiDataSchemaName, pgTableName);
+	bool isNull = true;
+	bool readOnly = true;
+	Datum resultDatum = ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT,
+													&isNull);
+
+	if (isNull)
+	{
+		/* If collection doesn't exist, we'll arrive here */
+		return (AttrNumber) 4;
+	}
+
+	return DatumGetUInt16(resultDatum);
 }
 
 

@@ -12,6 +12,7 @@
 #define MONGO_COLLECTIONS_H
 
 #include <storage/lockdefs.h>
+#include <access/attnum.h>
 
 #include "io/helio_bson_core.h"
 
@@ -70,6 +71,9 @@ typedef struct
 
 	/* View definition if applicable */
 	pgbson *viewDefinition;
+
+	/* creation_time column attribute number */
+	AttrNumber mongoDataCreationTimeVarAttrNumber;
 } MongoCollection;
 
 

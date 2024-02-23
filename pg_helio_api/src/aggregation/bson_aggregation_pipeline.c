@@ -3580,7 +3580,8 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		rte->rtekind = RTE_FUNCTION;
 		rte->relid = InvalidOid;
 
-		rte->alias = rte->eref = makeAlias(collectionAlias, colNames);
+		rte->alias = makeAlias(collectionAlias, NIL);
+		rte->eref = makeAlias(collectionAlias, colNames);
 		rte->lateral = false;
 		rte->inFromCl = true;
 		rte->functions = NIL;
@@ -3605,7 +3606,8 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		rte->rtekind = RTE_RELATION;
 		rte->relid = collection->relationId;
 
-		rte->alias = rte->eref = makeAlias(collectionAlias, colNames);
+		rte->alias = makeAlias(collectionAlias, NIL);
+		rte->eref = makeAlias(collectionAlias, colNames);
 		rte->lateral = false;
 		rte->inFromCl = true;
 		rte->relkind = RELKIND_RELATION;

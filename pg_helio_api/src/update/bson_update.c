@@ -80,8 +80,7 @@ static void BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *update
 									bool buildSourceDocOnUpsert);
 
 static pgbson * BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
-									   BsonUpdateMetadata *metadata,
-									   pgbson **updateDescription);
+									   BsonUpdateMetadata *metadata);
 
 static pgbson * ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
 									   bool isUpsert);
@@ -154,6 +153,9 @@ PG_FUNCTION_INFO_V1(bson_update_returned_value);
  * { "": <update|replace|pipeline> }.
  * The third argument is the query spec used to form this update. This is the document
  * that is generally passed to the @@ operator and is of the form { "$and": [ { "a": 1}, { "b": 1 }]}
+ * TODO : i) Remove buildUpdateDesc 5th input argument
+ * ii) Remove updateDesc return value
+ * As both of above were used in older change_stream implementation and not getting used anywhere now.
  */
 Datum
 bson_update_document(PG_FUNCTION_ARGS)
@@ -169,7 +171,7 @@ bson_update_document(PG_FUNCTION_ARGS)
 	pgbson *updateSpec = PG_GETARG_PGBSON(1);
 	pgbson *querySpec = PG_GETARG_PGBSON(2);
 	pgbson *arrayFilters = PG_GETARG_MAYBE_NULL_PGBSON(3);
-	bool buildUpdateDesc = PG_GETARG_BOOL(4);
+
 
 	/* an empty document is treated as an upsert. */
 	bool buildSourceDocOnUpsert = IsPgbsonEmptyDocument(sourceDocument);
@@ -210,29 +212,13 @@ bson_update_document(PG_FUNCTION_ARGS)
 		elog(ERROR, "incorrect number of output arguments");
 	}
 
-	/* build updateDesc if requested */
-	pgbson *updateDesc = NULL;
-	pgbson *document = BsonUpdateDocumentCore(sourceDocument, updateSpec, metadata,
-											  buildUpdateDesc ? &updateDesc : NULL);
+	pgbson *document = BsonUpdateDocumentCore(sourceDocument, updateSpec, metadata);
 
 	if (document != NULL)
 	{
 		LastBsonUpdateReturnedNewValue = true;
 		values[0] = PointerGetDatum(document);
-
-		if (updateDesc != NULL)
-		{
-			values[1] = PointerGetDatum(updateDesc);
-		}
-		else
-		{
-			/*
-			 * Change streams is not enabled or updateDesc is not needed for this
-			 * update operation. For example, updateDesc is not built for replace
-			 * type of updates.
-			 */
-			nulls[1] = true;
-		}
+		nulls[1] = true;
 	}
 	else
 	{
@@ -289,7 +275,7 @@ BsonUpdateDocument(pgbson *sourceDocument, pgbson *updateSpec,
 
 	BuildBsonUpdateMetadata(&metadata, updateSpec, querySpec, arrayFilters,
 							buildSourceDocOnUpsert);
-	return BsonUpdateDocumentCore(sourceDocument, updateSpec, &metadata, NULL);
+	return BsonUpdateDocumentCore(sourceDocument, updateSpec, &metadata);
 }
 
 
@@ -305,8 +291,7 @@ BsonUpdateDocument(pgbson *sourceDocument, pgbson *updateSpec,
  */
 pgbson *
 BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
-					   BsonUpdateMetadata *updateMetadata,
-					   pgbson **updateDescription)
+					   BsonUpdateMetadata *updateMetadata)
 {
 	bson_iter_t sourceDocumentIterator;
 	PgbsonInitIterator(sourceDocument, &sourceDocumentIterator);
@@ -337,30 +322,10 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
 
 		case UpdateType_Operator:
 		{
-			if (updateDescription != NULL && create_update_tracker_hook != NULL)
-			{
-				BsonUpdateTracker *updateTracker = create_update_tracker_hook();
-				document = ProcessUpdateOperatorWithState(sourceDocument,
-														  updateMetadata->operatorState,
-														  isUpsert,
-														  updateTracker);
-
-				/*
-				 * Don't build updateDescription unnecessarily if document is NULL
-				 * because it means that update was a no-op.
-				 */
-				if (document && build_update_description_hook != NULL)
-				{
-					*updateDescription = build_update_description_hook(updateTracker);
-				}
-			}
-			else
-			{
-				document = ProcessUpdateOperatorWithState(sourceDocument,
-														  updateMetadata->operatorState,
-														  isUpsert,
-														  NULL);
-			}
+			document = ProcessUpdateOperatorWithState(sourceDocument,
+													  updateMetadata->operatorState,
+													  isUpsert,
+													  NULL);
 
 			break;
 		}

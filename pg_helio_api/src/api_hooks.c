@@ -31,22 +31,6 @@ ModifyTableColumnNames_HookType modify_table_column_names_hook = NULL;
 RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook = NULL;
 IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
 
-IsUpdateTrackingEnabled_HookType is_update_tracking_enabled_hook = NULL;
-
-
-/* Internal hook for update tracking */
-bool
-IsUpdateTrackingEnabled(uint64 collection, const char **updateColumn,
-						const char **updateValue)
-{
-	if (is_update_tracking_enabled_hook != NULL)
-	{
-		return is_update_tracking_enabled_hook(collection, updateColumn, updateValue);
-	}
-
-	return false;
-}
-
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -239,7 +223,7 @@ PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
 List *
 ModifyTableColumnNames(List *inputColumnNames)
 {
-	if (modify_create_table_schema_hook != NULL)
+	if (modify_table_column_names_hook != NULL)
 	{
 		return modify_table_column_names_hook(inputColumnNames);
 	}

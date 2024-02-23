@@ -128,9 +128,6 @@ typedef struct
 
 	/* updated value of the document */
 	pgbson *updatedDocument;
-
-	/* document describing the changes */
-	pgbson *updatedDescDocument;
 } UpdateCandidate;
 
 
@@ -253,8 +250,7 @@ static bool SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbso
 								  UpdateCandidate *updateCandidate,
 								  bool getOriginalDocument);
 static bool UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash,
-								ItemPointer tid, pgbson *updatedDocument,
-								pgbson *updateDescDocument);
+								ItemPointer tid, pgbson *updatedDocument);
 static bool DeleteDocumentByTID(uint64 collectionId, int64 shardKeyHash,
 								ItemPointer tid);
 static void UpdateOneObjectId(MongoCollection *collection,
@@ -1033,7 +1029,6 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
 
-	bool buildUpdateDesc = false;
 	StringInfoData updateQuery;
 	int argCount = 3;
 	Oid argTypes[5];
@@ -1042,11 +1037,6 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 
 	UpdateAllMatchingDocsResult result;
 	memset(&result, 0, sizeof(UpdateAllMatchingDocsResult));
-
-	const char *changeColumn = NULL;
-	const char *changeOutput = NULL;
-	buildUpdateDesc = IsUpdateTrackingEnabled(collectionId, &changeColumn,
-											  &changeOutput);
 
 	SPI_connect();
 	initStringInfo(&updateQuery);
@@ -1072,29 +1062,17 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	 *
 	 */
 	appendStringInfo(&updateQuery,
-					 "WITH u AS (UPDATE %s.documents_" UINT64_FORMAT,
-					 ApiDataSchemaName, collectionId);
-
-	if (buildUpdateDesc)
-	{
-		appendStringInfo(&updateQuery, " SET (document, %s) = ", changeColumn);
-		appendStringInfo(&updateQuery, " (SELECT COALESCE(newDocument, document), %s",
-						 changeOutput);
-	}
-	else
-	{
-		appendStringInfo(&updateQuery,
-						 " SET document = (SELECT COALESCE(newDocument, document)");
-	}
-
-	appendStringInfo(&updateQuery,
+					 "WITH u AS (UPDATE %s.documents_" UINT64_FORMAT
+					 " SET document = (SELECT COALESCE(newDocument, document)"
 					 " FROM %s.bson_update_document(document, $2::%s, "
 					 "$1::%s, $3::%s, %s)) WHERE document OPERATOR(%s.@@) $1::%s ",
+					 ApiDataSchemaName, collectionId,
 					 ApiInternalSchemaName,
 					 FullBsonTypeName, FullBsonTypeName, FullBsonTypeName,
-					 buildUpdateDesc ? "true" : "false",
+					 "false",
 					 ApiCatalogSchemaName,
 					 FullBsonTypeName);
+
 
 	if (hasShardKeyValueFilter)
 	{
@@ -1745,8 +1723,7 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 				 */
 				result->isRowUpdated =
 					UpdateDocumentByTID(collectionId, shardKeyHash, updateCandidate.tid,
-										updateCandidate.updatedDocument,
-										updateCandidate.updatedDescDocument);
+										updateCandidate.updatedDocument);
 
 				result->reinsertDocument = NULL;
 			}
@@ -1825,8 +1802,6 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 	memset(argNulls, 'n', argCount);
 	bool foundDocument = false;
 	int varArgsOffset = 4;
-	bool buildUpdateDesc = false;
-	buildUpdateDesc = IsUpdateTrackingEnabled(collectionId, NULL, NULL);
 
 	SPI_connect();
 
@@ -1838,7 +1813,7 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 					 "document OPERATOR(%s.@@) $2::%s",
 					 ApiInternalSchemaName, FullBsonTypeName, FullBsonTypeName,
 					 FullBsonTypeName,
-					 buildUpdateDesc ? "true" : "false", ApiDataSchemaName, collectionId,
+					 "false", ApiDataSchemaName, collectionId,
 					 ApiCatalogSchemaName, FullBsonTypeName);
 
 	if (objectIdFilter != NULL)
@@ -1971,22 +1946,6 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 				(pgbson *) DatumGetPointer(updatedDocumentDatum);
 		}
 
-		/* Extract the second column of the returned record */
-		Datum updatedDescDatum = heap_getattr(&tupleValue, 2, tupleDescriptor, &isNull);
-		if (isNull)
-		{
-			updateCandidate->updatedDescDocument = NULL;
-		}
-		else
-		{
-			typeLength = -1;
-			updatedDescDatum = SPI_datumTransfer(updatedDescDatum, typeByValue,
-												 typeLength);
-
-			updateCandidate->updatedDescDocument =
-				(pgbson *) DatumGetPointer(updatedDescDatum);
-		}
-
 		ReleaseTupleDesc(tupleDescriptor);
 
 		columnNumber = 4;
@@ -2023,34 +1982,25 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
  */
 static bool
 UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid,
-					pgbson *updatedDocument, pgbson *updateDescDocument)
+					pgbson *updatedDocument)
 {
 	StringInfoData updateQuery;
 	int argCount = 3;
-	Oid argTypes[4];
-	Datum argValues[4];
+	Oid argTypes[3];
+	Datum argValues[3];
 
 	/* whitespace means not null, n means null */
-	char argNulls[4] = { ' ', ' ', ' ', ' ' };
+	char argNulls[3] = { ' ', ' ', ' ' };
 
 	SPI_connect();
 
 	initStringInfo(&updateQuery);
 	appendStringInfo(&updateQuery,
 					 "UPDATE %s.documents_" UINT64_FORMAT
-					 " SET document = $3::%s",
+					 " SET document = $3::%s"
+					 " WHERE ctid = $2 AND shard_key_value = $1",
 					 ApiDataSchemaName, collectionId,
 					 FullBsonTypeName);
-
-	if (updateDescDocument)
-	{
-		appendStringInfo(&updateQuery,
-						 " ,change_description = ($4::%s, true)", FullBsonTypeName);
-		argCount++;
-	}
-
-	appendStringInfo(&updateQuery,
-					 " WHERE ctid = $2 AND shard_key_value = $1");
 
 	argTypes[0] = INT8OID;
 	argValues[0] = Int64GetDatum(shardKeyHash);
@@ -2061,17 +2011,6 @@ UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid,
 	/* we use bytea because bson may not have the same OID on all nodes */
 	argTypes[2] = BYTEAOID;
 	argValues[2] = PointerGetDatum(CastPgbsonToBytea(updatedDocument));
-
-	argTypes[3] = BYTEAOID;
-	if (updateDescDocument)
-	{
-		argValues[3] = PointerGetDatum(CastPgbsonToBytea(updateDescDocument));
-	}
-	else
-	{
-		argValues[3] = 0;
-		argNulls[3] = 'n';
-	}
 
 	bool readOnly = false;
 	long maxTupleCount = 0;

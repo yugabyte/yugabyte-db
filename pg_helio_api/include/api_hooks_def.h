@@ -122,15 +122,6 @@ extern IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook;
 
 
 /*
- * Hook for enabling a private feature flag for update tracking.
- */
-typedef bool (*IsUpdateTrackingEnabled_HookType)(uint64 collectionId,
-												 const char **updateTrackingColumn,
-												 const char **updateTrackingCommand);
-extern IsUpdateTrackingEnabled_HookType is_update_tracking_enabled_hook;
-
-
-/*
  * Hook for creating an update tracker if tracking is enabled.
  */
 typedef BsonUpdateTracker *(*CreateBsonUpdateTracker_HookType)(void);

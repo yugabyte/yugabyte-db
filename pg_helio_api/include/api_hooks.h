@@ -102,12 +102,4 @@ void PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
  */
 List * ModifyTableColumnNames(List *tableColumns);
 
-
-/*
- * Private: Feature flag for update tracking.
- */
-bool IsUpdateTrackingEnabled(uint64 collectionId,
-							 const char **updateTrackingColumn,
-							 const char **updateTrackingCommand);
-
 #endif
