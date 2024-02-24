@@ -141,6 +141,9 @@
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
+[[redirects]]
+  from = "/stable/explore/indexes-constraints/*"
+  to = "/stable/explore/ysql-language-features/indexes-constraints/:splat"
 
 [[redirects]]
   from = "/preview/explore/json-support/jsonb-ysql/"
@@ -655,6 +658,19 @@
 [[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.16/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.18/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.14/explore/indexes-constraints/"
   force = true
 
 [[redirects]]
