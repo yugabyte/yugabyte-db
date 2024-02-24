@@ -4,8 +4,8 @@ headerTitle: Functions for creating date-time values
 linkTitle: Creating date-time values
 description: The semantics of the functions for creating date-time values. [YSQL]
 menu:
-  preview:
-    identifier: creating-date-time values
+  v2.18:
+    identifier: creating-date-time-values
     parent: date-time-functions
     weight: 10
 type: docs

@@ -130,11 +130,11 @@ Testing the packed row feature with different configurations showed significant 
 
 ### Limitations
 
-The packed row feature for the YSQL API works across all cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
+The packed row feature for the YSQL API works across all features, including backup and restore, schema changes, and so on, subject to the following known limitations which are currently under development:
 
 * [#20638](https://github.com/yugabyte/yugabyte-db/issues/20638) Colocated and Packed Row - There is an issue with aggressive garbage collection of the schema versions that are stored in DocDB, in order to interpret Packed Row data. This issue is limited to the colocated table setting, and manifests in certain flavors of compactions. Because this results in non-recoverable errors for colocated workloads, you can set the `ysql_enable_packed_row_for_colocated_table` flag to false, to avoid the issue in v2.20.1.
 
-* [#21131](https://github.com/yugabyte/yugabyte-db/issues/21131) As of 2.20, new universes created in 2.20+ version will get Packed Row for YSQL is enabled by default. However, if a universe that is on a version lower than 2.20, is upgraded to 2.20, the Packed Row feature for YSQL API will not be enabled. This is because of a known limitation with XCluster universes. The target of XCluster setup might not be able to interpret the Packed Row unless it is upgraded first etc. The team is hardening this limitation as part of this issue.
+* [#21131](https://github.com/yugabyte/yugabyte-db/issues/21131) Packed row is enabled by default for YSQL in universes created in v2.20.0 and later. However, if you upgrade a universe to v2.20 from an earlier version, packed row for YSQL is not automatically enabled. This is due to a known limitation with xCluster universes, where the target universe might not be able to interpret the packed row unless it is upgraded first.
 
 The packed row feature for the YCQL API is {{<badge/tp>}}. There are no known limitations.
 
