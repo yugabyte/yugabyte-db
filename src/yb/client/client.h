@@ -625,7 +625,8 @@ class YBClient {
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
-      CoarseTimePoint deadline = CoarseTimePoint());
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      uint64_t *consistent_snapshot_time = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(

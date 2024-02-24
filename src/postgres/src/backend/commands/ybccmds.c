@@ -1832,7 +1832,8 @@ YBCValidatePlacement(const char *placement_info)
 
 void
 YBCCreateReplicationSlot(const char *slot_name,
-						 CRSSnapshotAction snapshot_action)
+						 CRSSnapshotAction snapshot_action,
+						 uint64_t *consistent_snapshot_time)
 {
 	YBCPgStatement handle;
 
@@ -1855,7 +1856,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 												 repl_slot_snapshot_action,
 												 &handle));
 
-	YBCStatus status = YBCPgExecCreateReplicationSlot(handle);
+	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 	if (YBCStatusIsAlreadyPresent(status))
 	{
 		YBCFreeStatus(status);

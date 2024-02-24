@@ -2222,7 +2222,8 @@ Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
   return Status::OK();
 }
 
-Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicationSlot(
+    PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");

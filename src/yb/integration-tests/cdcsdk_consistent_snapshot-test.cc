@@ -108,6 +108,14 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsq
       false /* use_replication_slot */, false /* enable_replication_commands */);
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
+  ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+      true /* verify_snapshot_name */));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
+      true /* verify_snapshot_name */));
+}
+
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
     std::string sync_point, std::string expected_error) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.

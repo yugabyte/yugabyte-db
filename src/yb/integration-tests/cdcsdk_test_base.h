@@ -215,13 +215,16 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT);
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      bool verify_snapshot_name = false);
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
+
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
 
   Result<master::ListCDCStreamsResponsePB> ListDBStreams();
 

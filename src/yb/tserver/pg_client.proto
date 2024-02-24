@@ -219,6 +219,7 @@ message PgCreateReplicationSlotRequestPB {
 message PgCreateReplicationSlotResponsePB {
   AppStatusPB status = 1;
   bytes stream_id = 2;
+  uint64 cdcsdk_consistent_snapshot_time = 3;
 }
 
 message PgCreateSequencesDataTableResponsePB {

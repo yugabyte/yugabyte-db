@@ -725,12 +725,14 @@ Status PgClientSession::CreateReplicationSlot(
     }
   }
 
+  uint64_t consistent_snapshot_time;
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
-      snapshot_option, context->GetClientDeadline()));
+      snapshot_option, context->GetClientDeadline(), &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
+  resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
 }
 

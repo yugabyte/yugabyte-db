@@ -1924,8 +1924,17 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                                      handle));
 }
 
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecCreateReplicationSlot(handle));
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time) {
+  const auto result = pgapi->ExecCreateReplicationSlot(handle);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  if (consistent_snapshot_time) {
+    *consistent_snapshot_time = result->cdcsdk_consistent_snapshot_time();
+  }
+  return YBCStatusOK();
 }
 
 YBCStatus YBCPgListReplicationSlots(

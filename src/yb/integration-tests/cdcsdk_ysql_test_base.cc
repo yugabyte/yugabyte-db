@@ -2482,24 +2482,6 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return stream_table_ids;
   }
 
-  Result<master::GetCDCStreamResponsePB> CDCSDKYsqlTest::GetCDCStream(
-      const xrepl::StreamId& db_stream_id) {
-    master::GetCDCStreamRequestPB get_req;
-    master::GetCDCStreamResponsePB get_resp;
-    get_req.set_stream_id(db_stream_id.ToString());
-
-    RpcController get_rpc;
-    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    master::MasterReplicationProxy master_proxy_(
-        &test_client()->proxy_cache(),
-        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
-
-    return get_resp;
-  }
-
   uint32_t CDCSDKYsqlTest::GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,

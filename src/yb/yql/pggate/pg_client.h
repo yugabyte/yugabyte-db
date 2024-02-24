@@ -54,7 +54,7 @@ struct DdlMode {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
-    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
@@ -224,6 +224,9 @@ class PgClient {
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
+
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 

@@ -778,7 +778,8 @@ YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
                                         YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time);
 
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
