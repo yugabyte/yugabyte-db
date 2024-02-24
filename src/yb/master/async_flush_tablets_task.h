@@ -45,12 +45,14 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTaskWithTable {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
 
   const std::vector<TabletId> tablet_ids_;
   const FlushRequestId flush_id_;
   tserver::FlushTabletsResponsePB resp_;
   bool is_compaction_ = false;
   bool regular_only_ = false;
+  bool response_handling_ = false;
 };
 
 } // namespace master

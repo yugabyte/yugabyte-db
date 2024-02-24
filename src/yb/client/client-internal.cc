@@ -1198,6 +1198,9 @@ Status YBClient::Data::IsFlushTableInProgress(YBClient* client,
       &master::MasterAdminProxy::IsFlushTablesDoneAsync));
 
   *flush_in_progress = !resp.done();
+  if (!resp.success()) {
+    return STATUS_FORMAT(InternalError, "Flush operation for id: $0 failed", flush_id);
+  }
   return Status::OK();
 }
 
