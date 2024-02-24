@@ -226,7 +226,8 @@ ReplicationSlotValidateName(const char *name, int elevel)
 void
 ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency persistency,
-					  CRSSnapshotAction yb_snapshot_action)
+					  CRSSnapshotAction yb_snapshot_action,
+					  uint64_t *yb_consistent_snapshot_time)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -242,7 +243,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateReplicationSlot(name, yb_snapshot_action);
+		YBCCreateReplicationSlot(name, yb_snapshot_action, yb_consistent_snapshot_time);
 		return;
 	}
 

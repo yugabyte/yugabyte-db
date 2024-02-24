@@ -73,7 +73,7 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(NameStr(*name), false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT,
-						  CRS_NOEXPORT_SNAPSHOT);
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	values[0] = NameGetDatum(&MyReplicationSlot->data.name);
 	nulls[0] = false;
@@ -177,7 +177,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	 */
 	ReplicationSlotCreate(NameStr(*name), true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-						  CRS_NOEXPORT_SNAPSHOT);
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	memset(nulls, 0, sizeof(nulls));
 

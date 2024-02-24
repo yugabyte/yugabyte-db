@@ -886,7 +886,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		ReplicationSlotCreate(cmd->slotname, false,
 							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
-							  snapshot_action);
+							  snapshot_action, NULL);
 	}
 	else
 	{
@@ -908,7 +908,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			ReplicationSlotCreate(cmd->slotname, true,
 								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-								  snapshot_action);
+								  snapshot_action, NULL);
 		}
 	}
 
@@ -983,8 +983,20 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 							 	 "issues/19263. React with thumbs up to raise"
 								 " its priority")));
 
+			/*
+			 * 23 digits is an upper bound for the decimal representation of a uint64
+			 */
+			char consistent_snapshot_time_string[24];
+			uint64_t consistent_snapshot_time;
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
-								  snapshot_action);
+								  snapshot_action, &consistent_snapshot_time);
+
+			if (snapshot_action == CRS_USE_SNAPSHOT)
+			{
+				snprintf(consistent_snapshot_time_string, sizeof(consistent_snapshot_time_string),
+						 "%llu", (unsigned long long)consistent_snapshot_time);
+				snapshot_name = pstrdup(consistent_snapshot_time_string);
+			}
 
 			/*
 			 * Signal that we don't need the timeout mechanism. We're just

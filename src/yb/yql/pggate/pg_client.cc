@@ -905,6 +905,15 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgCreateReplicationSlotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(proxy_->CreateReplicationSlot(*req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
@@ -1208,6 +1217,11 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_
 
 Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
+}
+
+Result<tserver::PgCreateReplicationSlotResponsePB> PgClient::CreateReplicationSlot(
+    tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->CreateReplicationSlot(req, deadline);
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
