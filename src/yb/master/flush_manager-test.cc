@@ -27,6 +27,8 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/status.h"
 
 using std::string;
@@ -83,6 +85,32 @@ TEST_F(FlushManagerTest, VerifyFlush) {
   EXPECT_GT(ASSERT_RESULT(GetMaxOpId(index->id())), baseline_index_op_id);
 }
 
+TEST_F(FlushManagerTest, TestRpcFailureSingleTserverDown) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(
+      session.ExecuteQuery("CREATE TABLE IF NOT EXISTS t (key INT PRIMARY KEY, value INT) WITH "
+                           "tablets = 1"));
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  auto table = ASSERT_RESULT(client_->OpenTable(table_name));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t(key, value) VALUES (1, 2)"));
+
+  auto tablet_peers = ListTableTabletPeers(cluster_.get(), table->id());
+
+  size_t leader_idx;
+  tserver::MiniTabletServer* leader_mini_tserver =
+      GetLeaderForTablet(cluster_.get(), tablet_peers[0]->tablet_id(), &leader_idx);
+
+  LOG(INFO) << "TServer which will be shutdown = " << leader_mini_tserver->ToString();
+  cluster_->mini_tablet_server(leader_idx)->Shutdown();
+
+  auto status = client_->FlushTables({table->id()}, true, 30, false);
+  ASSERT_NOK(status);
+  ASSERT_EQ(status.code(), Status::kInternalError);
+
+  // Restarting node.
+  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
+}
 
 } // namespace master
 } // namespace yb
