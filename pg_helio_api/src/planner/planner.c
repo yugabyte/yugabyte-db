@@ -51,7 +51,6 @@
 typedef enum MongoQueryFlag
 {
 	HAS_QUERY_OPERATOR = 1 << 0,
-	HAS_ORDER_BY_OPERATOR = 1 << 1,
 	HAS_MONGO_COLLECTION_RTE = 1 << 2,
 	HAS_CURSOR_STATE_PARAM = 1 << 3,
 	HAS_CURSOR_FUNC = 1 << 4,
@@ -111,9 +110,8 @@ HelioApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 			parse = (Query *) ExpandAggregationFunction(parse, boundParams);
 		}
 
-		/* replace the @@ and |-<> operators and inject shard_key_value filters */
+		/* replace the @@ operators and inject shard_key_value filters */
 		if (queryFlags & HAS_QUERY_OPERATOR ||
-			queryFlags & HAS_ORDER_BY_OPERATOR ||
 			queryFlags & HAS_MONGO_COLLECTION_RTE)
 		{
 			parse = (Query *) ReplaceBsonQueryOperators(parse, boundParams);
@@ -257,6 +255,13 @@ TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
 	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD)
 	{
 		return;
+	}
+
+	/* Deterministically pick the primary key for $in/$eq similar to the path below */
+	if (opNo == BsonEqualOperatorId() || IsA(objectIdFilter->clause, ScalarArrayOpExpr))
+	{
+		primaryKeyPath->path.startup_cost = 0;
+		primaryKeyPath->path.total_cost = 0;
 	}
 
 	foreach(cell, restrictInfo)
@@ -631,10 +636,6 @@ MongoQueryFlagsWalker(Node *node, int *queryFlags)
 		if (opExpr->opno == BsonQueryOperatorId())
 		{
 			*queryFlags |= HAS_QUERY_OPERATOR;
-		}
-		else if (opExpr->opno == BsonOrderByQueryOperatorId())
-		{
-			*queryFlags |= HAS_ORDER_BY_OPERATOR;
 		}
 
 		return false;

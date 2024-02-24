@@ -265,7 +265,7 @@ ValidateMatchForOrderbyQuals(IndexPath *path)
 
 		/* Validate that it's a supported operator */
 		OpExpr *opQual = (OpExpr *) orderQual;
-		if (opQual->opno != BsonOrderByQueryOperatorId())
+		if (opQual->opfuncid != BsonOrderByFunctionOid())
 		{
 			return false;
 		}

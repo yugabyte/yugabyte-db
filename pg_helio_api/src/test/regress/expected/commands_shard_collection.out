@@ -18,11 +18,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
 -----------------------------------------------------------------------
  Index Scan using _id_ on documents_5000 collection
    Index Cond: (shard_key_value = '5000'::bigint)
-   Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+   Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
 (3 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}';
-NOTICE:  using bson_query_match implementation
                       document                      
 ----------------------------------------------------
  { "_id" : "1", "value" : { "$numberInt" : "11" } }
@@ -132,10 +131,6 @@ SELECT helio_api.insert_one('db','reshard','{"_id":"4", "novalue": 0}');
 (1 row)
 
 SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$exists":false}}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -149,11 +144,6 @@ SELECT helio_api.insert_one('db','reshard','{"_id":"5", "value": {"hello":"world
 (1 row)
 
 SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"hello":"world"}}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -191,16 +181,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+         Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                       document                      
 ----------------------------------------------------
  { "_id" : "1", "value" : { "$numberInt" : "11" } }
@@ -219,16 +203,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "value" : { "$numberLong" : "134311"} }'::bson)
+         Filter: (document @= '{ "value" : { "$numberLong" : "134311"} }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                         document                        
 --------------------------------------------------------
  { "_id" : "2", "value" : { "$numberLong" : "134311"} }
@@ -245,16 +223,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "value" : { "$numberInt" : "134311" } }'::bson)
+         Filter: (document @= '{ "value" : { "$numberInt" : "134311" } }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                         document                        
 --------------------------------------------------------
  { "_id" : "2", "value" : { "$numberLong" : "134311"} }
@@ -272,16 +244,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "value" : { "$numberInt" : "15" } }'::bson)
+         Filter: (document @= '{ "value" : { "$numberInt" : "15" } }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                         document                         
 ---------------------------------------------------------
  { "_id" : "6", "value" : { "$numberDouble" : "15.0" } }
@@ -302,19 +268,16 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------------------------------------------------------------------
- Seq Scan on documents_5000 collection
-   Filter: (document @@ '{ "$and" : [ { "value" : { "$eq" : { "$numberInt" : "11" } } }, { "_id" : { "$eq" : "1" } } ] }'::bson)
-(2 rows)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5000 collection
+   Recheck Cond: (document @= '{ "_id" : "1" }'::bson)
+   Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (document @= '{ "_id" : "1" }'::bson)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                       document                      
 ----------------------------------------------------
  { "_id" : "1", "value" : { "$numberInt" : "11" } }
@@ -327,19 +290,16 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Seq Scan on documents_5000 collection
-   Filter: (document @@ '{ "value" : { "$numberInt" : "11" }, "_id" : "1" }'::bson)
-(2 rows)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5000 collection
+   Recheck Cond: (document @= '{ "_id" : "1" }'::bson)
+   Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (document @= '{ "_id" : "1" }'::bson)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                       document                      
 ----------------------------------------------------
  { "_id" : "1", "value" : { "$numberInt" : "11" } }
@@ -395,16 +355,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+         Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                       document                      
 ----------------------------------------------------
  { "_id" : "1", "value" : { "$numberInt" : "11" } }
@@ -426,12 +380,6 @@ SELECT count(*) FROM helio_api.collection('db','reshard') WHERE false;
 (1 row)
 
 SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$exists":1}}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      5
@@ -468,17 +416,10 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a
  Sort
    Sort Key: ((collection.document -> 'id'::text))
    ->  Seq Scan on documents_5000 collection
-         Filter: (document @@ '{ "a.b" : { "$numberInt" : "22" } }'::bson)
+         Filter: (document @= '{ "a.b" : { "$numberInt" : "22" } }'::bson)
 (4 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a.b":22}' ORDER BY document->'id';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                          document                          
 -----------------------------------------------------------
  { "_id" : "10", "a" : { "b" : { "$numberInt" : "22" } } }

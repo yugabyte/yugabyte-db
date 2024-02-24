@@ -704,18 +704,12 @@ BEGIN;
 (5 rows)
 
   SELECT COUNT(*)=1 FROM helio_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(helio_api_catalog.@@) '{"b.d": 1, "a.k": 1}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  ?column? 
 ----------
  t
 (1 row)
 
   SELECT COUNT(*)=1 FROM helio_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(helio_api_catalog.@@) '{"a.k": 1, "b.d": 1}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  ?column? 
 ----------
  t

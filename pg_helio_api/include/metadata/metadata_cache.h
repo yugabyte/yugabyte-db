@@ -125,7 +125,6 @@ Oid ApiCatalogCollectionIdSequenceId(void);
 Oid ApiCatalogCollectionIndexIdSequenceId(void);
 
 /* order by */
-Oid BsonOrderByQueryOperatorId(void);
 Oid BsonOrderByFunctionOid(void);
 
 /* Postgres internal functions */

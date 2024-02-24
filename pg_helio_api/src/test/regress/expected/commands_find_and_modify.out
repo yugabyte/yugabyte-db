@@ -133,36 +133,24 @@ NOTICE:  using bson_query_match implementation
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 5}, "sort": {"b": 1}, "update": 1, "update": {"a": 20}, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                          find_and_modify                                                                                                         
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""5"" }, ""b"" : { ""$numberInt"" : ""5"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": {"a": 1}, "fields": {"_id": 0, "b": 0}, "upsert": 0, "new": false}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                       find_and_modify                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" }, ""updatedExisting"" : false }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": "", "sort": {"b": 1}, "update": {"a": 1}, "fields": {"_id": 0, "b": 0}, "upsert": false, "new": true}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                       find_and_modify                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" }, ""updatedExisting"" : false }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": {"_id": 40, "a": 30}, "fields": {"b": 1, "_id": 0}, "upsert": true}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                             find_and_modify                                                                                             
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""40"" } }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -171,10 +159,6 @@ NOTICE:  using bson_query_match implementation
   -- using update operators / aggregation pipeline --
   -- multiple $inc, so only takes the last one into the account
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": { "$gte": 15 } }, "sort": {"a": 1}, "update": {"$set": {"z": 5}, "$inc": {"z": 5}, "$inc": {"a": 10}}, "upsert": false, "new": true, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                          find_and_modify                                                                                                          
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""30"" }, ""z"" : { ""$numberInt"" : ""5"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -182,32 +166,18 @@ NOTICE:  using bson_query_match implementation
 
   -- multiple $set/$inc but provided via a single document, so applies all
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 1000 }, "update": {"$set": {"_id": 1000, "p": 10, "r": 20}, "$inc": {"s": 30, "t": 40}}, "upsert": true, "new": true, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                                                                                                           find_and_modify                                                                                                                                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""1000"" } }, ""value"" : { ""a"" : { ""$numberInt"" : ""1000"" }, ""p"" : { ""$numberInt"" : ""10"" }, ""r"" : { ""$numberInt"" : ""20"" }, ""s"" : { ""$numberInt"" : ""30"" }, ""t"" : { ""$numberInt"" : ""40"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"z": { "$exists": false } }, "sort": {"a": 1}, "update": [{"$set": {"a": -10}}, {"$addFields": {"z": 7}}], "upsert": false, "new": true, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                                             find_and_modify                                                                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""-10"" }, ""b"" : { ""$numberInt"" : ""6"" }, ""z"" : { ""$numberInt"" : ""7"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 2000 }, "update": [ {"$set": {"p": 40, "_id": 2000, "r": 50}}, {"$unset": "p"}, {"$set": {"r": 70}}], "new": true, "fields": {"_id": 0}, "upsert": 1}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                                                   find_and_modify                                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""2000"" } }, ""value"" : { ""a"" : { ""$numberInt"" : ""2000"" }, ""r"" : { ""$numberInt"" : ""70"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -216,27 +186,17 @@ NOTICE:  using bson_query_match implementation
 ROLLBACK;
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": {"_id": 40, "a": [ 30 ]}, "fields": {"b": 1, "_id": 0}, "upsert": true}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                             find_and_modify                                                                                             
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : false, ""upserted"" : { ""$numberInt"" : ""40"" } }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": { "$set": { "a.$[a]": 10 }}, "fields": {"b": 1, "_id": 0}, "upsert": true, "arrayFilters": [ { "a": 30 } ]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
 ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, helio_core.bson) does not exist
 CONTEXT:  SQL statement " SELECT o_is_row_updated, o_is_retry, o_reinsert_document,         o_upserted_object_id, o_result_document, o_update_skipped FROM helio_api_internal.update_one($1,$2,$3::helio_core.bson, $4::helio_core.bson, $5::helio_core.bson,$6,$7::helio_core.bson, $8,$9::helio_core.bson,$10::helio_core.bson,$11)"
 ROLLBACK;
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": { "$gte": 15 } }, "sort": {}, "update": {"$set": {"z": 5}, "$inc": {"z": 5}, "$inc": {"a": 10}}, "upsert": false, "new": true, "fields": {}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                       find_and_modify                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" }, ""updatedExisting"" : false }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -254,22 +214,18 @@ NOTICE:  using bson_query_match implementation
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 5}, "remove": true, "sort": {"b": 1}, "fields": {"_id": 0, "b": 1}, "upsert": null}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                          find_and_modify                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""b"" : { ""$numberInt"" : ""5"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "remove": true, "sort": {"b": 1}, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
                                                         find_and_modify                                                        
 -------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" } }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "remove": true, "sort": {}, "fields": {}}');
-NOTICE:  using bson_query_match implementation
                                                         find_and_modify                                                        
 -------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" } }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -322,7 +278,6 @@ SELECT 1 FROM helio_api.insert_one('fam', 'sharded_collection', '{"b":9,"a": nul
 
 -- update the shard key
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"a": 10}, "update": {"$set": {"a": 1000}}, "fields": {"_id": 0}, "new": true}');
-NOTICE:  using bson_query_match implementation
                                                                                                           find_and_modify                                                                                                           
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""1000"" }, ""b"" : { ""$numberInt"" : ""7"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -330,7 +285,6 @@ NOTICE:  using bson_query_match implementation
 
 -- update a field other than the shard key
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"a": 20}, "update": {"$set": {"b": -1}}, "fields": {"_id": 0}, "new": true}');
-NOTICE:  using bson_query_match implementation
                                                                                                           find_and_modify                                                                                                          
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""20"" }, ""b"" : { ""$numberInt"" : ""-1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -345,8 +299,6 @@ SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection",
 
 -- test "null" shard key: i) shard key is really equal to null
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"a": null}, "update": {"$set": {"b": -3}}, "fields": {"_id": 0}, "sort": {"b": -1}, "new": true}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                               find_and_modify                                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""b"" : { ""$numberInt"" : ""-3"" }, ""a"" : null }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -356,8 +308,6 @@ NOTICE:  using bson_query_match implementation
 -- should update the document having {"b": 8} even if it doesn't specify "a" field at all
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"a": null}, "update": {"$set": {"b": -4}}, "fields": {"_id": 0}, "sort": {"b": -1}, "new": false}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                        find_and_modify                                                                                       
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""b"" : { ""$numberInt"" : ""8"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -367,8 +317,6 @@ ROLLBACK;
 -- test "null" shard key: iii) shard key is not set
 -- should update the document having {"b": -3}
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"a": null}, "update": {"b": -4}, "fields": {"_id": 0}, "sort": {"b": 1}, "new": false}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                               find_and_modify                                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""b"" : { ""$numberInt"" : ""-3"" }, ""a"" : null }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -379,7 +327,6 @@ NOTICE:  using bson_query_match implementation
 --SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": null, "update": {"a": 10}}');
 --SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"b": -2}, "remove": true}');
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"b": -2, "a": -1}, "remove": true}');
-NOTICE:  using bson_query_match implementation
                                                                                                                 find_and_modify                                                                                                                
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""100"" }, ""a"" : { ""$numberInt"" : ""-1"" }, ""b"" : { ""$numberInt"" : ""-2"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -387,8 +334,6 @@ NOTICE:  using bson_query_match implementation
 
 -- should match the document having {"b": -4} even if it doesn't specify "a" field at all
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "sharded_collection", "query": {"b": -4, "a": null}, "remove": true, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                          find_and_modify                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""b"" : { ""$numberInt"" : ""-4"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -411,11 +356,7 @@ NOTICE:  creating collection
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "no_match", "update": { "$set": { "a": 1 }, "$unset": {"a": 1 } }}');
 ERROR:  Updating the path 'a' would create a conflict at 'a'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "no_match", "query": {"$a": 1}, "update": { "$set": { "a": 1 } } }');
-                                                                      find_and_modify                                                                       
-------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""0"" }, ""updatedExisting"" : false }, ""value"" : null, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
-(1 row)
-
+ERROR:  unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 \set VERBOSITY DEFAULT
 -- test retryable update
 SELECT 1 FROM helio_api.insert_one('fam', 'retryable_update', '{"_id": 1, "a": 1, "b": 1}');
@@ -426,7 +367,6 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_update", "query": {"a": 1}, "update": {"$inc": {"b": 1}}, "new": false}', 'xact-1');
-NOTICE:  using bson_query_match implementation
                                                                                                                             find_and_modify                                                                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -446,7 +386,6 @@ SELECT document FROM helio_api.collection('fam', 'retryable_update') ORDER BY do
 
 -- third call is considered a new try
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_update", "query": {"a": 1}, "update": {"$inc": {"b": 1}}, "new": true, "fields": {"a": 0}}', 'xact-1');
-NOTICE:  using bson_query_match implementation
                                                                                                           find_and_modify                                                                                                          
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""3"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -527,7 +466,6 @@ SELECT 1 FROM helio_api.insert_one('fam', 'retryable_delete', '{"_id": 2, "a": 1
 (1 row)
 
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_delete", "query": {"a": 1}, "remove": true}', 'xact-11');
-NOTICE:  using bson_query_match implementation
                                                                                                               find_and_modify                                                                                                              
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -547,7 +485,6 @@ SELECT document FROM helio_api.collection('fam', 'retryable_delete') ORDER BY do
 
 -- third call is considered a new try
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_delete", "query": {"a": 1}, "remove": true, "fields": {"b": 0}}', 'xact-11');
-NOTICE:  using bson_query_match implementation
                                                                                             find_and_modify                                                                                            
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""2"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -584,7 +521,6 @@ SELECT helio_api.shard_collection('fam','retryable_delete_sharded', '{"a":"hashe
 (1 row)
 
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_delete_sharded", "query": {"a": 1}, "remove": true, "fields": {"b": 0}}', 'xact-14');
-NOTICE:  using bson_query_match implementation
                                                                                             find_and_modify                                                                                            
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -604,7 +540,6 @@ SELECT document FROM helio_api.collection('fam', 'retryable_delete_sharded') ORD
 
 -- third call is considered a new try
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_delete_sharded", "query": {"a": 1}, "remove": true}', 'xact-14');
-NOTICE:  using bson_query_match implementation
                                                                                                               find_and_modify                                                                                                              
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""_id"" : { ""$numberInt"" : ""2"" }, ""a"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""1"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)
@@ -648,7 +583,6 @@ SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_delete_dne
 (1 row)
 
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "retryable_update", "query": {"a": 1}, "update": {"$inc": {"b": 1}}, "new": true, "fields": {"a": 0}}', 'xact-20');
-NOTICE:  using bson_query_match implementation
                                                                                                           find_and_modify                                                                                                          
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""_id"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""4"" } }, ""ok"" : { ""$numberInt"" : ""1"" } }",t)

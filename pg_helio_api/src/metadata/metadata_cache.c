@@ -177,9 +177,6 @@ typedef struct HelioApiOidCacheData
 	/* OID of the owner of the current extension */
 	Oid HelioApiExtensionOwner;
 
-	/* OID of the bson_orderby operator */
-	Oid BsonOrderByQueryOperatorId;
-
 	/* OID of the bson_orderby function */
 	Oid BsonOrderByFunctionId;
 
@@ -2631,17 +2628,6 @@ MongoCatalogCollectionsTypeOid(void)
 
 
 /*
- * BsonOrderByQueryOperatorId returns the OID of the <bson> |-<> <bson> operator.
- */
-Oid
-BsonOrderByQueryOperatorId(void)
-{
-	return GetBinaryOperatorId(&Cache.BsonOrderByQueryOperatorId,
-							   BsonTypeId(), "|-<>", BsonTypeId());
-}
-
-
-/*
  * BsonOrderByFunctionId returns the OID of the bson_orderby(<bson>, <bson>) function.
  */
 Oid
@@ -3161,7 +3147,7 @@ PostgisGeographyExpandFunctionId(void)
 
 
 /*
- * VectorOrderByQueryOperatorId returns the OID of the <bson> |-<> <bson> operator.
+ * VectorOrderByQueryOperatorId returns the OID of the <bson> |-<>| <bson> operator.
  */
 Oid
 VectorOrderByQueryOperatorId(void)

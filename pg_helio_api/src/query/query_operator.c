@@ -30,6 +30,7 @@
 #include <lib/stringinfo.h>
 #include <metadata/metadata_cache.h>
 #include <math.h>
+#include <nodes/supportnodes.h>
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
@@ -200,6 +201,7 @@ IsDoubleAFixedInteger(double value)
 /* --------------------------------------------------------- */
 PG_FUNCTION_INFO_V1(bson_query_match);
 PG_FUNCTION_INFO_V1(bson_true_match);
+PG_FUNCTION_INFO_V1(query_match_support);
 
 
 /*
@@ -258,6 +260,64 @@ Datum
 bson_true_match(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_BOOL(true);
+}
+
+
+/*
+ * Is a support function for the query match function to expand it into the individual clauses.
+ */
+Datum
+query_match_support(PG_FUNCTION_ARGS)
+{
+	Node *supportRequest = (Node *) PG_GETARG_POINTER(0);
+	if (IsA(supportRequest, SupportRequestSimplify))
+	{
+		/* Try to convert operator/function call to index conditions */
+		SupportRequestSimplify *req =
+			(SupportRequestSimplify *) supportRequest;
+		FuncExpr *funcExpr = req->fcall;
+
+		if (funcExpr->funcid == BsonQueryMatchFunctionId() &&
+			list_length(funcExpr->args) == 2)
+		{
+			Expr *firstArg = linitial(funcExpr->args);
+			Expr *secondArg = lsecond(funcExpr->args);
+
+			if (!IsA(secondArg, Const))
+			{
+				PG_RETURN_POINTER(NULL);
+			}
+
+			Const *constValue = (Const *) secondArg;
+			if (constValue->constisnull)
+			{
+				PG_RETURN_POINTER(NULL);
+			}
+
+			pgbson *queryDocument = (pgbson *) DatumGetPointer(constValue->constvalue);
+
+			/* open the Mongo query document */
+			bson_iter_t queryDocIter;
+			PgbsonInitIterator(queryDocument, &queryDocIter);
+
+			BsonQueryOperatorContext context = { 0 };
+			context.documentExpr = firstArg;
+			context.inputType = MongoQueryOperatorInputType_Bson;
+			context.simplifyOperators = true;
+			context.coerceOperatorExprIfApplicable = true;
+			context.requiredFilterPathNameHashSet = NULL;
+
+			/* convert the Mongo query to a list of Postgres quals */
+			List *quals = CreateQualsFromQueryDocIterator(&queryDocIter, &context);
+
+			if (quals != NIL)
+			{
+				PG_RETURN_POINTER(make_ands_explicit(quals));
+			}
+		}
+	}
+
+	PG_RETURN_POINTER(NULL);
 }
 
 
@@ -2754,8 +2814,7 @@ ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby)
 
 /*
  * ProcessOrderByClause handles order by clauses, e.g.,
- *  case 1. bson order by operator (|-<>)
- *  case 2. bson order by operator (|=<>|) used for vector search
+ *  case 1. bson order by operator (|=<>|) used for vector search
  * and rewrites them with the appropriate order by.
  * Rewrite case 1: The rewrite is based on whether it's an order by asc or desc. If any arguments replaced were parameterized values,
  *   the parameter is added to a "BsonTrue" function and a list of those quals are returned by this function.
@@ -2787,39 +2846,8 @@ ProcessOrderByClause(List *sortClause,
 		{
 			OpExpr *sortExpr = (OpExpr *) tle->expr;
 
-			/* if the order by is on the bson order by operator (|-<>) */
-			if (sortExpr->opno == BsonOrderByQueryOperatorId())
-			{
-				/* operator always has 2 arguments */
-				Assert(list_length(sortExpr->args) == 2);
-
-				Node *orderbyNodeParam = lsecond(sortExpr->args);
-				Node *orderbyNode = EvaluateBoundParameters(orderbyNodeParam,
-															boundParams);
-
-				if (!IsA(orderbyNode, Const))
-				{
-					continue;
-				}
-
-				/* parse the bson to determine the actual ordering. */
-				Const *orderByConst = (Const *) orderbyNode;
-				pgbson *orderingValue = (pgbson *) DatumGetPgBson(
-					orderByConst->constvalue);
-				bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(
-					orderingValue);
-				if (isAscending)
-				{
-					/* order by is ASC, convert to order by min and set NULLs first (undefined comes first) */
-					orderingClause->sortop = BsonLessThanOperatorId();
-				}
-				else
-				{
-					/* order by is DESC, convert to order by max and set NULLs last (undefined comes last) */
-					orderingClause->sortop = BsonGreaterThanOperatorId();
-				}
-			}
-			else if (sortExpr->opno == VectorOrderByQueryOperatorId())
+			/* if the order by is on the bson order by operator (|-<>|) */
+			if (sortExpr->opno == VectorOrderByQueryOperatorId())
 			{
 				Assert(list_length(sortExpr->args) == 2);
 				RewriteVectorSimilaritySearchOrderBy(sortExpr, tle, orderingClause,

@@ -132,16 +132,6 @@ rollback;
 -- delete some
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":3}},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""3"" } }",t)
@@ -157,16 +147,6 @@ rollback;
 -- arbitrary limit type works in Mongo
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":3}},"limit":{"hello":"world"}}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""3"" } }",t)
@@ -188,7 +168,6 @@ select helio_api.delete('db', '{"delete":"notexists", "deletes":[{"q":{},"limit"
 
 -- query syntax errors are added the response
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$ltr":5}},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
                                                                                                                    delete                                                                                                                    
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
@@ -197,17 +176,6 @@ NOTICE:  using bson_query_match implementation
 -- when ordered, expect only first delete to be executed
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                                                                                        delete                                                                                                                                                                        
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
@@ -222,16 +190,6 @@ select count(*) from helio_api.collection('db', 'removeme');
 rollback;
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}],"ordered":true}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
 NOTICE:  using bson_query_match implementation
                                                                                                                                                                        delete                                                                                                                                                                        
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -321,22 +279,12 @@ rollback;
 -- delete 1 is supported in the _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -346,22 +294,12 @@ rollback;
 -- delete 1 is supported in the multiple identical _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":6}]},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -371,32 +309,12 @@ rollback;
 -- delete 1 is supported in the multiple distinct _id case (but a noop)
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -407,22 +325,12 @@ rollback;
 begin;
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
@@ -440,38 +348,18 @@ select helio_api.shard_collection('db', 'removeme', '{"a":"hashed"}', false);
 -- make sure we get the expected results after sharding a collection
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$lte":5}},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""5"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":1}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":10}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -502,15 +390,6 @@ NOTICE:  using bson_query_match implementation
 
 reset citus.log_remote_commands;
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":5}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -540,15 +419,6 @@ NOTICE:  using bson_query_match implementation
 
 reset citus.log_remote_commands;
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":5}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -578,11 +448,6 @@ select count(*) from helio_api.collection('db', 'removeme');
 
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
@@ -590,15 +455,6 @@ NOTICE:  using bson_query_match implementation
 
 reset citus.log_remote_commands;
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":5}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -614,11 +470,6 @@ rollback;
 -- delete 1 with shard key filters is retryable
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":1}]}', NULL, 'xact-2');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
@@ -669,25 +520,12 @@ select 1 from helio_api.insert_one('db', 'removeme', '{"a":11,"_id":10}');
 
 -- delete first row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -695,23 +533,12 @@ NOTICE:  using bson_query_match implementation
 
 -- delete second row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -725,15 +552,6 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":10}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -757,9 +575,6 @@ select 1 from helio_api.insert_one('db', 'removeme', '{"a":11,"_id":10}');
 
 -- delete first row where _id = 10
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":10},"limit":1}]}', NULL, 'xact-4');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
@@ -782,23 +597,12 @@ rollback;
 -- delete 1 is supported in the multiple identical _id case
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":6}]},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -814,16 +618,6 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"_id":6}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      1
@@ -856,26 +650,12 @@ select count(*) from helio_api.collection('db', 'removeme');
 (1 row)
 
 select helio_api.delete('db', '{"delete":"removeme"}', '{ "":[{"q":{"a":{"$eq":5}},"limit":1}] }');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                       delete                                       
 -----------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 select count(*) from helio_api.collection('db', 'removeme') where document @@ '{"a":5}';
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  count 
 -------
      0
@@ -933,9 +713,6 @@ FROM test_sort_returning,
         p_return_fields=>'{"a": 0}'::bson,
         p_transaction_id=>null::text
      ) AS result;
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  o_is_row_deleted |                    o_result_deleted_document                     
 ------------------+------------------------------------------------------------------
  t                | { "_id" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "5" } }
@@ -957,8 +734,6 @@ BEGIN;
             p_return_fields=>null::bson,
             p_transaction_id=>null::text
          ) AS result;
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  o_is_row_deleted |                                   o_result_deleted_document                                    
 ------------------+------------------------------------------------------------------------------------------------
  t                | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
@@ -980,8 +755,6 @@ FROM test_sort_returning,
         p_return_fields=>null::bson,
         p_transaction_id=>null::text
      ) AS result;
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
  o_is_row_deleted |                                   o_result_deleted_document                                    
 ------------------+------------------------------------------------------------------------------------------------
  t                | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
@@ -1057,9 +830,9 @@ SELECT helio_api.delete(
         "ordered": true
      }'
 );
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                                                                                                                                                       delete                                                                                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
 -- ii) ordered=false
@@ -1077,8 +850,8 @@ SELECT helio_api.delete(
         "ordered": false
      }'
 );
-                                      delete                                       
------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+                                                                                                                                                                                                                                                                                             delete                                                                                                                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
 (1 row)
 
