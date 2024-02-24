@@ -2236,9 +2236,33 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlot
   return pg_session_->ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlot(slot_name);
+}
+
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return pg_session_->GetReplicationSlotStatus(slot_name);
+}
+
+Result<cdc::GetTabletListToPollForCDCResponsePB> PgApiImpl::GetTabletListToPollForCDC(
+    const std::string& stream_id, const PgObjectId& table_id) {
+  return pg_session_->pg_client().GetTabletListToPollForCDC(table_id, stream_id);
+}
+
+Result<cdc::SetCDCCheckpointResponsePB> PgApiImpl::SetCDCTabletCheckpoint(
+    const std::string& stream_id, const std::string& tablet_id,
+    const YBCPgCDCSDKCheckpoint *checkpoint,
+    uint64_t safe_time, bool is_initial_checkpoint) {
+  return pg_session_->pg_client().SetCDCTabletCheckpoint(
+      stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint);
+}
+
+Result<cdc::GetChangesResponsePB> PgApiImpl::GetCDCChanges(
+    const std::string& stream_id, const std::string& tablet_id,
+    const YBCPgCDCSDKCheckpoint *checkpoint) {
+  return pg_session_->pg_client().GetCDCChanges(stream_id, tablet_id, checkpoint);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
