@@ -1887,32 +1887,68 @@ YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 }
 
 void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot)
+{
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
+
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgGetReplicationSlot(slot_name, replication_slot), error_message);
+}
+
+void
 YBCGetReplicationSlotStatus(const char *slot_name,
 							bool *active)
 {
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active),
-		&not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
+
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgGetReplicationSlotStatus(slot_name, active), error_message);
 }
 
 void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
 
 	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
 											   &handle));
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgExecDropReplicationSlot(handle), error_message);
+}
 
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(YBCPgExecDropReplicationSlot(handle),
-								 &not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+void
+YBCGetTabletListToPollForStreamAndTable(const char *stream_id,
+										Oid relation_id,
+										YBCPgTabletCheckpoint **tablet_checkpoints,
+										size_t *numtablets)
+{
+	HandleYBStatus(YBCPgGetTabletListToPollForStreamAndTable(
+		stream_id, MyDatabaseId, relation_id, tablet_checkpoints, numtablets));
+}
+
+void
+YBCSetCDCTabletCheckpoint(const char *stream_id, const char *tablet_id,
+						  const YBCPgCDCSDKCheckpoint *checkpoint,
+						  uint64_t safe_time, bool is_initial_checkpoint)
+{
+	HandleYBStatus(YBCPgSetCDCTabletCheckpoint(
+		stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint));
+}
+
+void
+YBCGetCDCChanges(const char *stream_id,
+				 const char *tablet_id,
+				 const YBCPgCDCSDKCheckpoint *checkpoint,
+				 YBCPgChangeRecordBatch **record_batch)
+{
+	HandleYBStatus(
+		YBCPgGetCDCChanges(stream_id, tablet_id, checkpoint, record_batch));
 }

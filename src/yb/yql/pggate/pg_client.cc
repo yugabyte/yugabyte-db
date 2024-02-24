@@ -13,6 +13,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
@@ -235,6 +236,8 @@ class PgClient::Impl : public BigDataFetcher {
     LOG(INFO) << "Using TServer host_port: " << host_port;
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
+    local_cdc_service_proxy_ = std::make_unique<cdc::CDCServiceProxy>(
+        proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
 
     if (!session_id) {
       auto future = create_session_promise_.get_future();
@@ -256,6 +259,7 @@ class PgClient::Impl : public BigDataFetcher {
   void Shutdown() {
     heartbeat_poller_.Shutdown();
     proxy_ = nullptr;
+    local_cdc_service_proxy_ = nullptr;
   }
 
   uint64_t SessionID() { return session_id_; }
@@ -923,6 +927,18 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name) {
+    tserver::PgGetReplicationSlotRequestPB req;
+    req.set_replication_slot_name(slot_name.ToString());
+
+    tserver::PgGetReplicationSlotResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetReplicationSlot(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name) {
     tserver::PgGetReplicationSlotStatusRequestPB req;
@@ -945,6 +961,72 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
+      const PgObjectId& table_id, const std::string& stream_id) {
+    cdc::GetTabletListToPollForCDCRequestPB req;
+
+    auto table_info = req.mutable_table_info();
+    table_info->set_stream_id(stream_id);
+    table_info->set_table_id(table_id.GetYbTableId());
+
+    cdc::GetTabletListToPollForCDCResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->GetTabletListToPollForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint,
+      uint64_t safe_time, bool is_initial_checkpoint) {
+    cdc::SetCDCCheckpointRequestPB req;
+
+    req.set_stream_id(stream_id);
+    req.set_tablet_id(tablet_id);
+    req.set_initial_checkpoint(is_initial_checkpoint);
+    req.set_cdc_sdk_safe_time(safe_time);
+    req.mutable_checkpoint()->mutable_op_id()->set_term(checkpoint->term);
+    req.mutable_checkpoint()->mutable_op_id()->set_index(checkpoint->index);
+
+    cdc::SetCDCCheckpointResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->SetCDCCheckpoint(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetChangesResponsePB> GetCDCChanges(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint) {
+    cdc::GetChangesRequestPB req;
+
+    req.set_stream_id(stream_id);
+    req.set_tablet_id(tablet_id);
+    req.set_cdcsdk_request_source(cdc::CDCSDKRequestSource::WALSENDER);
+
+    // TODO: Revisit. The else clause isn't needed very likely.
+    auto req_checkpoint = req.mutable_from_cdc_sdk_checkpoint();
+    if (checkpoint) {
+      req_checkpoint->set_index(checkpoint->index);
+      req_checkpoint->set_term(checkpoint->term);
+      req_checkpoint->set_key(checkpoint->key);
+      req_checkpoint->set_write_id(checkpoint->write_id);
+    } else {
+      req_checkpoint->set_index(0);
+      req_checkpoint->set_term(0);
+      req_checkpoint->set_key("");
+      req_checkpoint->set_write_id(0);
+      req_checkpoint->set_snapshot_time(0);
+    }
+
+    cdc::GetChangesResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->GetChanges(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -976,6 +1058,8 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
+  std::unique_ptr<cdc::CDCServiceProxy> local_cdc_service_proxy_;
+
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;
 
@@ -1228,6 +1312,11 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots
   return impl_->ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return impl_->GetReplicationSlot(slot_name);
+}
+
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlotStatus(slot_name);
@@ -1235,6 +1324,25 @@ Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSl
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
   return impl_->ActiveSessionHistory();
+}
+
+Result<cdc::GetTabletListToPollForCDCResponsePB> PgClient::GetTabletListToPollForCDC(
+    const PgObjectId& table_id, const std::string& stream_id) {
+  return impl_->GetTabletListToPollForCDC(table_id, stream_id);
+}
+
+Result<cdc::SetCDCCheckpointResponsePB> PgClient::SetCDCTabletCheckpoint(
+    const std::string& stream_id, const std::string& tablet_id,
+    const YBCPgCDCSDKCheckpoint* checkpoint,
+    uint64_t safe_time, bool is_initial_checkpoint) {
+  return impl_->SetCDCTabletCheckpoint(
+      stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint);
+}
+
+Result<cdc::GetChangesResponsePB> PgClient::GetCDCChanges(
+    const std::string& stream_id, const std::string& tablet_id,
+    const YBCPgCDCSDKCheckpoint* checkpoint) {
+  return impl_->GetCDCChanges(stream_id, tablet_id, checkpoint);
 }
 
 void PerformExchangeFuture::wait() const {

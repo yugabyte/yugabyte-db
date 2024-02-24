@@ -119,6 +119,11 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * Guc variable that enables replication slot consumption.
+ */
+extern bool yb_enable_replication_slot_consumption;
+
+/*
  * GUC variable that enables ALTER TABLE rewrite operations.
  */
 extern bool yb_enable_alter_table_rewrite;

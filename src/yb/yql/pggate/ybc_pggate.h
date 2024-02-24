@@ -784,12 +784,32 @@ YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
 
+YBCStatus YBCPgGetReplicationSlot(
+    const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
+
 YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
                                         bool *active);
 
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
+
+YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
+                                                    const YBCPgOid database_oid,
+                                                    const YBCPgOid table_oid,
+                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
+                                                    size_t *numtablets);
+
+YBCStatus YBCPgSetCDCTabletCheckpoint(const char *stream_id,
+                                      const char *tablet_id,
+                                      const YBCPgCDCSDKCheckpoint *checkpoint,
+                                      uint64_t safe_time,
+                                      bool is_initial_checkpoint);
+
+YBCStatus YBCPgGetCDCChanges(const char *stream_id,
+                             const char *tablet_id,
+                             const YBCPgCDCSDKCheckpoint *checkpoint,
+                             YBCPgChangeRecordBatch **record_batch);
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);

@@ -20,6 +20,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
@@ -230,10 +231,25 @@ class PgClient {
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name);
+
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
 
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
+      const PgObjectId& table_id, const std::string& stream_id);
+
+  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint,
+      uint64_t safe_time, bool is_initial_checkpoint);
+
+  Result<cdc::GetChangesResponsePB> GetCDCChanges(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

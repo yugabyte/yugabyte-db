@@ -7658,7 +7658,7 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
   ASSERT_OK(conn.Execute("create publication pub for all tables;"));
 
   ASSERT_OK(conn.FetchFormat(
-      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       "test_replication_slot_create_with_view"));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));

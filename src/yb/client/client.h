@@ -666,9 +666,7 @@ class YBClient {
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
       std::optional<uint64_t>* stream_creation_time = nullptr);
 
-  Status GetCDCStream(
-      const ReplicationSlotName& replication_slot_name,
-      xrepl::StreamId* stream_id);
+  Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
