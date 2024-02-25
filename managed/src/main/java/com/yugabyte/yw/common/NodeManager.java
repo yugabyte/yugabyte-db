@@ -1931,14 +1931,11 @@ public class NodeManager extends DevopsBase {
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
           }
-          // gcp uses machine_image for ansible preprovision.yml
-          if (cloudType.equals(Common.CloudType.gcp)) {
-            String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
-            if (ybImage != null && !ybImage.isEmpty()) {
-              commandArgs.add("--machine_image");
-              commandArgs.add(ybImage);
-            }
+          String ybImage =
+              Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
+          if (ybImage != null && !ybImage.isEmpty()) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(ybImage);
           }
 
           if (confGetter.getGlobalConf(GlobalConfKeys.installLocalesDbNodes)) {
