@@ -56,13 +56,27 @@ typedef struct ReplaceExtensionFunctionContext
 	ReplaceFunctionContextInput inputData;
 } ReplaceExtensionFunctionContext;
 
+/* Type of the parent node in the query plan of a query for $in optimization. This is not
+ * intended for general use */
+typedef enum PlanParentType
+{
+	/* Don't perform $in rewrite when parent is invalid */
+	PARENTTYPE_INVALID = 0,
+
+	/* Perform rewrite, but the rewritten BitmapORPath needs to be wrapped in a BitMapHeapPath*/
+	PARENTTYPE_NONE,
+
+	/* Peform rewrite into a BitmapORPath*/
+	PARENTTYPE_BITMAPHEAP
+}PlanParentType;
+
 extern bool EnableInQueryOptimization;
 
 List * ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
 														   ReplaceExtensionFunctionContext
 														   *context);
 void ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
-											  List *pathsList, bool hasValidParent,
+											  List *pathsList, PlanParentType parentType,
 											  ReplaceExtensionFunctionContext *context);
 
 

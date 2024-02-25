@@ -468,8 +468,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	 * Replace all function operators that haven't been transformed in indexed
 	 * paths into OpExpr clauses.
 	 */
-	bool hasValidParent = true;
-	ReplaceExtensionFunctionOperatorsInPaths(root, rel, rel->pathlist, hasValidParent,
+	ReplaceExtensionFunctionOperatorsInPaths(root, rel, rel->pathlist, PARENTTYPE_NONE,
 											 &indexContext);
 
 	/* If the query is operating on the shard of a distributed table

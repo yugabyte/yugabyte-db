@@ -38,7 +38,7 @@
 /* --------------------------------------------------------- */
 static Expr * HandleSupportRequestCondition(SupportRequestIndexCondition *req);
 static Path * ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel,
-												 Path *path, bool hasValidParent,
+												 Path *path, PlanParentType parentType,
 												 ReplaceExtensionFunctionContext *context);
 static Expr * ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 													   ReplaceExtensionFunctionContext *
@@ -203,7 +203,7 @@ ReplaceExtensionFunctionOperatorsInRestrictionPaths(List *restrictInfo,
  */
 void
 ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
-										 List *pathsList, bool hasValidParent,
+										 List *pathsList, PlanParentType parentType,
 										 ReplaceExtensionFunctionContext *context)
 {
 	if (list_length(pathsList) < 1)
@@ -215,7 +215,7 @@ ReplaceExtensionFunctionOperatorsInPaths(PlannerInfo *root, RelOptInfo *rel,
 	foreach(cell, pathsList)
 	{
 		Path *path = (Path *) lfirst(cell);
-		lfirst(cell) = ReplaceFunctionOperatorsInPlanPath(root, rel, path, hasValidParent,
+		lfirst(cell) = ReplaceFunctionOperatorsInPlanPath(root, rel, path, parentType,
 														  context);
 	}
 }
@@ -544,13 +544,14 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 /* ``` */
 static Path *
 OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *path,
-									bool hasValidParent)
+									PlanParentType parentType)
 {
 	IndexPath *indexPath = (IndexPath *) path;
 
 	/* 1. Only do the rewrite for RUM Index
 	 * 2. Not supporting nested BitmapOr*/
-	if (indexPath->indexinfo->relam != RumIndexAmId() || !hasValidParent)
+	if (indexPath->indexinfo->relam != RumIndexAmId() || parentType ==
+		PARENTTYPE_INVALID || list_length(indexPath->indexclauses) == 1)
 	{
 		return path;
 	}
@@ -600,7 +601,7 @@ OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *pa
 	Assert(inQueryBson.bsonValue.value_type == BSON_TYPE_ARRAY);
 	bson_iter_t arrayIter;
 	BsonValueInitIterator(&inQueryBson.bsonValue, &arrayIter);
-	List *orPaths = NULL;
+	List *orPaths = NIL;
 	IndexPath *newIndexPath = NULL;
 
 	while (bson_iter_next(&arrayIter))
@@ -672,6 +673,11 @@ OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *pa
 		orPaths = lappend(orPaths, newIndexPath);
 	}
 
+	if (list_length(orPaths) == 0)
+	{
+		return path;
+	}
+
 	Path *reWrittenPath = NULL;
 	if (list_length(orPaths) == 1)
 	{
@@ -682,11 +688,20 @@ OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *pa
 		reWrittenPath = (Path *) create_bitmap_or_path(root, rel, orPaths);
 	}
 
-	BitmapHeapPath *bitmapHeapPath = create_bitmap_heap_path(root, rel, reWrittenPath,
-															 rel->lateral_relids, 1.0,
-															 0);
-
-	return (Path *) bitmapHeapPath;
+	if (parentType == PARENTTYPE_BITMAPHEAP)
+	{
+		return reWrittenPath;
+	}
+	else if (parentType == PARENTTYPE_NONE)
+	{
+		return (Path *) create_bitmap_heap_path(root, rel, reWrittenPath,
+												rel->lateral_relids, 1.0,
+												0);
+	}
+	else
+	{
+		return path;
+	}
 }
 
 
@@ -700,7 +715,7 @@ OptimizeIndexExpressionsForDollarIn(PlannerInfo *root, RelOptInfo *rel, Path *pa
  */
 static Path *
 ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *path,
-								   bool hasValidParent,
+								   PlanParentType parentType,
 								   ReplaceExtensionFunctionContext *context)
 {
 	check_stack_depth();
@@ -709,26 +724,23 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 	if (IsA(path, BitmapOrPath))
 	{
 		BitmapOrPath *orPath = (BitmapOrPath *) path;
-		hasValidParent = false;
 		ReplaceExtensionFunctionOperatorsInPaths(root, rel, orPath->bitmapquals,
-												 hasValidParent, context);
+												 PARENTTYPE_INVALID, context);
 	}
 	else if (IsA(path, BitmapAndPath))
 	{
 		BitmapAndPath *andPath = (BitmapAndPath *) path;
-		hasValidParent = false;
 		ReplaceExtensionFunctionOperatorsInPaths(root, rel, andPath->bitmapquals,
-												 hasValidParent,
+												 PARENTTYPE_INVALID,
 												 context);
 		path = OptimizeBitmapQualsForBitmapAnd(andPath, context);
 	}
 	else if (IsA(path, BitmapHeapPath))
 	{
 		BitmapHeapPath *heapPath = (BitmapHeapPath *) path;
-		hasValidParent = true;
 		heapPath->bitmapqual = ReplaceFunctionOperatorsInPlanPath(root, rel,
 																  heapPath->bitmapqual,
-																  hasValidParent,
+																  PARENTTYPE_BITMAPHEAP,
 																  context);
 	}
 	else if (IsA(path, IndexPath))
@@ -841,7 +853,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 		if (EnableInQueryOptimization)
 		{
-			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, hasValidParent);
+			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, parentType);
 		}
 	}
 
