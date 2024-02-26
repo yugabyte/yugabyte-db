@@ -842,9 +842,18 @@ public class ReleaseManager {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Could not find versions in response JSON.");
       }
+      boolean isCurrentVersionStable = Util.isStableVersion(currentVersion, false);
+      // Get the latest stable is current is stable and latest preview if current is preview.
       JsonNode latestRelease =
           releases.stream()
               .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
+              // Filter only the latest stable versions if current version is stable, and vice versa
+              // for preview.
+              .filter(
+                  r -> {
+                    boolean isVersionStable = Util.isStableVersion(r.get("name").asText(), false);
+                    return isCurrentVersionStable ? isVersionStable : !isVersionStable;
+                  })
               .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
               .sorted(releaseNameComparator)
               .findFirst()
@@ -1118,6 +1127,10 @@ public class ReleaseManager {
 
   private void validateSoftwareVersionOnCurrentYbaVersion(String ybSoftwareVersion) {
     if (confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion)) {
+      return;
+    }
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
       return;
     }
 

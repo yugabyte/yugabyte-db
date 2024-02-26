@@ -810,6 +810,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipVersionChecks =
+      new ConfKeyInfo<>(
+          "yb.skip_version_checks",
+          ScopeType.GLOBAL,
+          "Skip DB / YBA version comparison checks",
+          "Whether we should skip DB / YBA version comparison checks during upgrades, etc. "
+              + "Gives more flexibilty, but user should be careful when enabling this.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> pgDumpPath =
       new ConfKeyInfo<>(
           "db.default.pg_dump_path",
