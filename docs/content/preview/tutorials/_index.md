@@ -12,7 +12,7 @@ cascade:
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Create a hello world application"
-    description="Build the simplest application in your favorite language using YugabyteDB as a database."
+    description="Build the most basic application in your favorite language using YugabyteDB as a database."
     buttonText="Get Started"
     buttonUrl="build-apps/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
