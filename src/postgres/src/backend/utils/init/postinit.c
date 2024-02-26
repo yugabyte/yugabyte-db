@@ -587,7 +587,7 @@ BaseInit(void)
  * already have a PGPROC struct ... but it's not completely filled in yet.
  *
  * YB extension: session_id. If greater than zero, connect local YbSession
- * to existing YbClientSession instance in TServer, rather than requesting new.
+ * to existing YBClientSession instance in TServer, rather than requesting new.
  * Helpful to initialize background worker backends that need to share state.
  *
  * Note:
