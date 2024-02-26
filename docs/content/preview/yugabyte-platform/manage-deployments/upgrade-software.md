@@ -25,7 +25,10 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 **Impact**
 
-- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to accommodate YBC. This includes setting systemd-specific database service unit files (if used), and configuring TCP ports. Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to accommodate YBC. This includes the following:
+
+  - Setting systemd-specific database service unit files (if used), and configuring TCP ports. Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+  - After upgrading nodes, manually installing YBC on the nodes. Refer to [Upgrade manually-provisioned on-premises universe](#upgrade-manually-provisioned-on-premises-universe).
 
 - Upgrade OS - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
 
@@ -101,11 +104,11 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
 {{< /note >}}
 
-{{< note title="Manually-provisioned on-premises universe upgrades" >}}
+### Upgrade manually-provisioned on-premises universe
 
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YB Controller after the otherwise-automated software upgrade procedure completes. YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
+If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YBC after the otherwise-automated software upgrade procedure completes. YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
 
-To install YB Controller, call the following API after the software upgrade:
+To install YBC, call the following API after the software upgrade:
 
 ```sh
 curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes/<UniverseID>/ybc/install' \
@@ -115,5 +118,3 @@ curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes
 To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
 
 You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<YB-Anywhere-IP-address>/universes/<universeID>`).
-
-{{< /note >}}
