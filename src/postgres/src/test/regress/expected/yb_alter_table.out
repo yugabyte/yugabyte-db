@@ -248,10 +248,10 @@ SELECT * FROM foo WHERE b is null;
 
 -- Test expression pushdown on column with default value.
 EXPLAIN SELECT * FROM foo WHERE d = '01-01-2023';
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
  Seq Scan on foo  (cost=0.00..102.50 rows=1000 width=80)
-   Remote Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
+   Storage Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
 (2 rows)
 
 SELECT * FROM foo WHERE b = 6 ORDER BY a;

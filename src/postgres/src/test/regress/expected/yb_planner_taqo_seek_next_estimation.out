@@ -132,9 +132,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 1
 -- Query Hash: b3c453f75f2bfa75e8934afb1d0a000e
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16);
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
  Seq Scan on t2
-   Remote Filter: ((k1 >= 4) AND (k1 < 14) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
+   Storage Filter: ((k1 >= 4) AND (k1 < 14) AND (k2 = ANY ('{4,8,12,16}'::integer[])))
 (2 rows)
 
 -- Query Hash: c7fd96b45a1a90a438c5c8b51b88bf2f
@@ -244,57 +244,57 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 >= 4 and k1 < 14;
 -- Query Hash: 4772a64709ca191fa2b2096f159e5f3f
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 >= 4 and k2 < 14;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Seq Scan on t2
-   Remote Filter: ((k2 >= 4) AND (k2 < 14))
+   Storage Filter: ((k2 >= 4) AND (k2 < 14))
 (2 rows)
 
 -- Query Hash: 24dc55c74b331ad4fd956ac9b6400d8d
 EXPLAIN (COSTS OFF) SELECT * FROM t3 WHERE k3 >= 4 and k3 < 14;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Seq Scan on t3
-   Remote Filter: ((k3 >= 4) AND (k3 < 14))
+   Storage Filter: ((k3 >= 4) AND (k3 < 14))
 (2 rows)
 
 -- Query Hash: f425b12c4a6d8d734c69e50afeff04ed
 EXPLAIN (COSTS OFF) SELECT * FROM t4 WHERE k4 >= 4 and k4 < 14;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Seq Scan on t4
-   Remote Filter: ((k4 >= 4) AND (k4 < 14))
+   Storage Filter: ((k4 >= 4) AND (k4 < 14))
 (2 rows)
 
 -- Query Hash: 7d901f98ab781317763d9915875de118
 EXPLAIN (COSTS OFF) SELECT * FROM t5 WHERE k5 >= 4 and k5 < 14;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Seq Scan on t5
-   Remote Filter: ((k5 >= 4) AND (k5 < 14))
+   Storage Filter: ((k5 >= 4) AND (k5 < 14))
 (2 rows)
 
 -- Query Hash: b5562a3ef44a737b2846f0975cf9e1c7
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8);
                     QUERY PLAN
---------------------------------------------------
+---------------------------------------------------
  Seq Scan on t1
-   Remote Filter: (k1 = ANY ('{4,8}'::integer[]))
+   Storage Filter: (k1 = ANY ('{4,8}'::integer[]))
 (2 rows)
 
 -- Query Hash: 6a8ead9b8b122eea0e5460236bc6c19b
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12);
-                     QUERY PLAN
------------------------------------------------------
+                      QUERY PLAN
+------------------------------------------------------
  Seq Scan on t1
-   Remote Filter: (k1 = ANY ('{4,8,12}'::integer[]))
+   Storage Filter: (k1 = ANY ('{4,8,12}'::integer[]))
 (2 rows)
 
 -- Query Hash: d7eedc71bffb36fa0152da8c08bf7808
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE k1 IN (4, 8, 12, 16);
                        QUERY PLAN
---------------------------------------------------------
+---------------------------------------------------------
  Seq Scan on t1
-   Remote Filter: (k1 = ANY ('{4,8,12,16}'::integer[]))
+   Storage Filter: (k1 = ANY ('{4,8,12,16}'::integer[]))
 (2 rows)
 
 -- Query Hash: 3a022df927f53a2864f9d95af72fee58
@@ -308,9 +308,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k1 IN (4, 8, 12, 16);
 -- Query Hash: 8c7bf857d9e088af7a4b5c904c5b8610
 EXPLAIN (COSTS OFF) SELECT * FROM t2 WHERE k2 IN (4, 8, 12, 16);
                        QUERY PLAN
---------------------------------------------------------
+---------------------------------------------------------
  Seq Scan on t2
-   Remote Filter: (k2 = ANY ('{4,8,12,16}'::integer[]))
+   Storage Filter: (k2 = ANY ('{4,8,12,16}'::integer[]))
 (2 rows)
 
 -- DROP QUERIES;
