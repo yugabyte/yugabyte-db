@@ -95,7 +95,7 @@ public class SwitchoverDrConfig extends EditDrConfig {
             currentXClusterConfig,
             false /* keepEntry */,
             false /*forceDelete*/,
-            false /*deletePitrConfigs*/);
+            true /*deletePitrConfigs*/);
 
         createXClusterConfigSetStatusTask(
                 switchoverXClusterConfig, XClusterConfigStatusType.Running)
