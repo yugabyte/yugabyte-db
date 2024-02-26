@@ -74,6 +74,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -122,6 +123,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags

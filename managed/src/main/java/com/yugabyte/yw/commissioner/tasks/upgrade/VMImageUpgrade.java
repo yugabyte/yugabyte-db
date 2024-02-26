@@ -207,6 +207,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createCheckGlibcTask(
+              new ArrayList<>(universe.getNodes()),
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createConfigureServerTasks(
               nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

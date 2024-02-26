@@ -2013,6 +2013,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
               createLocaleCheckTask(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+              createCheckGlibcTask(
+                  filteredNodes,
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
             });
 
     return isNextFallThrough;
