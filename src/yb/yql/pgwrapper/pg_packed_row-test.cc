@@ -481,6 +481,52 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedPackRowDisabled)) {
   CheckNumRecords(cluster_.get(), 1);
 }
 
+// Concurrent CREATE TABLE + INSERT + COMPACTION.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  static const auto kRetryableErrors = {
+      "Try again",
+      "Snapshot too old",
+      "Restart read required at"
+  };
+  const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
+    while (true) {
+      const auto s = conn.ExecuteFormat(stmt);
+      if (s.ok()) {
+        break;
+      }
+      ASSERT_TRUE(HasSubstring(s.ToString(), kRetryableErrors)) << s;
+    }
+  };
+  TestThreadHolder thread_holder;
+  const auto kNumWorkers = 5;
+  const auto kTablesPerWoker = 10;
+  const auto kRowsPerTable = 100;
+  for (int i = 0; i < kNumWorkers; i++) {
+    thread_holder.AddThreadFunctor([i, this, &retry_until_success] {
+      auto connection = ASSERT_RESULT(Connect());
+      connection = ASSERT_RESULT(ConnectToDB("test"));
+      for (int k = 0; k < kTablesPerWoker; k++) {
+        auto tbl = i * kTablesPerWoker + k;
+        retry_until_success(
+            connection, Format("CREATE TABLE t$0 (c int) WITH (colocated = true)", tbl));
+        for (int j = 0; j < kRowsPerTable; j++) {
+          retry_until_success(connection, Format("INSERT INTO t$0 (c) VALUES ($1)", tbl, j));
+        }
+        ASSERT_OK(cluster_->CompactTablets());
+      }
+    });
+  }
+  thread_holder.JoinAll();
+  // Check tables and rows.
+  for (int i = 0; i < kNumWorkers * kTablesPerWoker; i++) {
+    auto row = ASSERT_RESULT(conn.FetchAllAsString(Format("SELECT count(*) FROM t$0", i)));
+    ASSERT_EQ(row, std::to_string(kRowsPerTable));
+  }
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGSERIAL PRIMARY KEY, value TEXT)"));
