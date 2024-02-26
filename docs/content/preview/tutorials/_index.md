@@ -3,7 +3,7 @@ title: Tutorials for developing with YugabyteDB
 headerTitle: Tutorials
 linkTitle: Tutorials
 description: How to develop applications with YugabyteDB using your preferred environment, software and programming language.
-headcontent: Step-by-step guides for building scalable and fault tolerant applications with YugabyteDB using your favorite programming language, software, and services
+headcontent: Step-by-step guides for building scalable and fault tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks
 type: indexpage
 cascade:
   unversioned: true
@@ -12,7 +12,7 @@ cascade:
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Create a hello world application"
-    description="Learn how to connect applications to YugabyteDB using available drivers and ORMs for your favorite programming language."
+    description="Build the simplest application in your favorite language using YugabyteDB as a database."
     buttonText="Get Started"
     buttonUrl="build-apps/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
@@ -20,7 +20,7 @@ cascade:
 
   {{< sections/bottom-image-box
     title="Build and learn"
-    description="Learn the essential capabilities of YugabyteDB by deploying and scaling an application from single-node PostgreSQL to multi-region YugabyteDB."
+    description="Learn the essential capabilities of YugabyteDB by building a movie recommendations service that starts with a single-server PostgreSQL instance and scales to a multi-region YugabyteDB cluster."
     buttonText="Get Started"
     buttonUrl="build-and-learn/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
