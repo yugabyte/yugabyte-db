@@ -1972,7 +1972,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // First, check tserver's catalog version.
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
-  SCOPED_WAIT_STATUS(WaitForYsqlBackendsCatalogVersion);
+  SCOPED_WAIT_STATUS(WaitForYSQLBackendsCatalogVersion);
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
