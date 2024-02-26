@@ -845,7 +845,7 @@ ParseDatePartOperatorArgument(const bson_value_t *operatorValue, const char *ope
 
 			/* regular argument, try to get the date and timezone. */
 			do {
-				const char *key = bson_iter_key(&documentIter);
+				key = bson_iter_key(&documentIter);
 				if (strcmp(key, "date") == 0)
 				{
 					isDateSpecified = true;

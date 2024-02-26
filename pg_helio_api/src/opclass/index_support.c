@@ -345,8 +345,8 @@ ExtractAndSetSearchParamterFromWrapFunction(IndexPath *indexPath,
 				if (expr->funcid == ApiBsonSearchParamFunctionId())
 				{
 					Const *bsonConst = (Const *) lsecond(expr->args);
-					context->queryDataForVectorSearch.SearchParamBson = PointerGetDatum(
-						bsonConst->constvalue);
+					context->queryDataForVectorSearch.SearchParamBson =
+						bsonConst->constvalue;
 					break;
 				}
 			}
@@ -782,10 +782,9 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 			Const *vectorConst = (Const *) lsecond(sortExpr->args);
 
-			context->queryDataForVectorSearch.VectorPathName = PointerGetDatum(
-				vectorPathConst->constvalue);
-			context->queryDataForVectorSearch.QueryVector = PointerGetDatum(
-				vectorConst->constvalue);
+			context->queryDataForVectorSearch.VectorPathName =
+				vectorPathConst->constvalue;
+			context->queryDataForVectorSearch.QueryVector = vectorConst->constvalue;
 			context->queryDataForVectorSearch.SimilaritySearchOpOid = sortExpr->opno;
 			context->queryDataForVectorSearch.VectorAccessMethodOid =
 				indexPath->indexinfo->relam;

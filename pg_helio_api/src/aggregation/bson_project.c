@@ -1303,14 +1303,14 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 				else
 				{
 					/* Treat as LeafField */
-					StringView path = {
+					StringView pathInner = {
 						.string = child->field.string,
 						.length = child->field.length
 					};
 
 					EvaluateAggregationExpressionDataToWriter(&leafNode->base.fieldData,
 															  projectDocState->
-															  parentDocument, path,
+															  parentDocument, pathInner,
 															  writer, variableContext,
 															  isNullOnEmpty);
 				}
@@ -1321,7 +1321,7 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 
 			case NodeType_LeafField:
 			{
-				StringView path = {
+				StringView pathInner = {
 					.string = child->field.string,
 					.length = child->field.length
 				};
@@ -1329,7 +1329,8 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 				const BsonLeafPathNode *leafNode = CastAsLeafNode(child);
 				EvaluateAggregationExpressionDataToWriter(&leafNode->fieldData,
 														  projectDocState->parentDocument,
-														  path, writer, variableContext,
+														  pathInner, writer,
+														  variableContext,
 														  isNullOnEmpty);
 				*fieldHandledBitmapSet = bms_add_member(*fieldHandledBitmapSet, index);
 				return;

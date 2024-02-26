@@ -719,7 +719,7 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 	entries = (Datum *) palloc(sizeof(Datum) * 2);
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&filterElement,
 														&termMetadata).indexTermVal);
-	entries[1] = PointerGetDatum(GenerateRootTerm());
+	entries[1] = GenerateRootTerm();
 
 	*partialMatch = palloc0(sizeof(bool) * 2);
 	(*partialMatch)[0] = true;
@@ -992,10 +992,10 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 			{
 				bool inArrayContextInner = false;
 				bool isArrayTermInner = false;
-				bool isCheckForArrayTermsWithNestedDocument = false;
+				bool isCheckForArrayTermsWithNestedDocumentInner = false;
 				GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
 								  inArrayContextInner, isArrayTermInner,
-								  context, isCheckForArrayTermsWithNestedDocument);
+								  context, isCheckForArrayTermsWithNestedDocumentInner);
 			}
 		}
 
@@ -1017,10 +1017,11 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 				{
 					bool inArrayContextInner = true;
 					bool isArrayTermInner = false;
-					bool isCheckForArrayTermsWithNestedDocument = false;
+					bool isCheckForArrayTermsWithNestedDocumentInner = false;
 					GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
 									  inArrayContextInner, isArrayTermInner,
-									  context, isCheckForArrayTermsWithNestedDocument);
+									  context,
+									  isCheckForArrayTermsWithNestedDocumentInner);
 				}
 
 				/*
@@ -1034,10 +1035,11 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 				{
 					bool inArrayContextInner = true;
 					bool isArrayTermInner = true;
-					bool isCheckForArrayTermsWithNestedDocument = inArrayContext;
+					bool isCheckForArrayTermsWithNestedDocumentInner = inArrayContext;
 					GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
 									  inArrayContextInner, isArrayTermInner,
-									  context, isCheckForArrayTermsWithNestedDocument);
+									  context,
+									  isCheckForArrayTermsWithNestedDocumentInner);
 				}
 			}
 		}

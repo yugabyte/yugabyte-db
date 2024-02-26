@@ -11,10 +11,10 @@
 #ifndef TYPE_CACHE_H
 #define TYPE_CACHE_H
 
-extern char *CoreSchemaName;
+extern PGDLLIMPORT char *CoreSchemaName;
 
 /* types */
-Oid BsonTypeId(void);
-Oid BsonQueryTypeId(void);
+PGDLLEXPORT Oid BsonTypeId(void);
+PGDLLEXPORT Oid BsonQueryTypeId(void);
 
 #endif

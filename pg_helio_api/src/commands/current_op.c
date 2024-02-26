@@ -1317,7 +1317,7 @@ WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity, pgbson_writer *wr
 
 	Oid argTypes[2] = { INT8OID, INT8OID };
 	Datum argValues[2] = {
-		PointerGetDatum(activity->stat_pid), Int64GetDatum(activity->global_pid)
+		Int64GetDatum(activity->stat_pid), Int64GetDatum(activity->global_pid)
 	};
 	char argNulls[2] = { ' ', ' ' };
 	bool readOnly = true;

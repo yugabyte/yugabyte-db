@@ -16,6 +16,10 @@
 #define PG_BSON_H
 
 #include <bson.h>
+
+#if PG_VERSION_NUM >= 160000
+#include <varatt.h>
+#endif
 #include <nodes/pg_list.h>
 
 /*

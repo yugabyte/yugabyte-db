@@ -446,7 +446,6 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 	if (isEmptyTableScan)
 	{
 		/* Special case, if it's an empty table scan, just strip the continuation and return */
-		ListCell *cell;
 		foreach(cell, rel->baserestrictinfo)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);

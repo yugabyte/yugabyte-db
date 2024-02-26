@@ -278,7 +278,7 @@ static pgbson *
 GetShardKeyAndDocument(HeapTupleHeader input, int64_t *shardKey)
 {
 	/* Extract data about the row. */
-	HeapTupleHeader tupleHeader = DatumGetHeapTupleHeader(input);
+	HeapTupleHeader tupleHeader = input;
 
 	bool isNull;
 	Datum shardKeyDatum = GetAttributeByNum(tupleHeader, 1, &isNull);

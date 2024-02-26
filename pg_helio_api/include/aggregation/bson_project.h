@@ -15,7 +15,7 @@
 #include "io/helio_bson_core.h"
 #include "aggregation/bson_projection_tree.h"
 
-extern const StringView IdFieldStringView;
+extern PGDLLIMPORT const StringView IdFieldStringView;
 
 /* Forward declare the pointer type ( no need to expose the struct layout) */
 typedef struct BsonProjectionQueryState BsonProjectionQueryState;

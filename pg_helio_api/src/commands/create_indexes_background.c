@@ -913,13 +913,13 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 	{
 		bool uniqueIndexOnly = true;
 		bool skipCheckCollectionCreate = true;
-		CreateIndexesResult result = create_indexes_non_concurrently(dbNameDatum,
-																	 createIndexesArg,
-																	 skipCheckCollectionCreate,
-																	 uniqueIndexOnly);
-		if (!result.ok)
+		CreateIndexesResult resultInner = create_indexes_non_concurrently(dbNameDatum,
+																		  createIndexesArg,
+																		  skipCheckCollectionCreate,
+																		  uniqueIndexOnly);
+		if (!resultInner.ok)
 		{
-			return result;
+			return resultInner;
 		}
 	}
 	return result;

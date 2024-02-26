@@ -229,7 +229,7 @@ InitApiConfigurations(char *prefix)
 		psprintf("%s.enable_create_collection_on_insert", prefix),
 		gettext_noop("Create a collection when inserting into a non-existent collection"),
 		NULL, &EnableCreateCollectionOnInsert, true,
-		PGC_USERSET, GUC_NO_SHOW_ALL, NULL, NULL, NULL);
+		PGC_USERSET, GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enable_extended_index_filters", prefix),
@@ -237,7 +237,7 @@ InitApiConfigurations(char *prefix)
 					 "that Mongo doesn't allow using in \"partialFilterExpression\" "
 					 "document but postgres could potentially allow."),
 		NULL, &EnableExtendedIndexFilters, DEFAULT_ENABLE_EXTENDED_INDEX_FILTERS,
-		PGC_USERSET, GUC_NO_SHOW_ALL, NULL, NULL, NULL);
+		PGC_USERSET, GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
 		psprintf("%s.query_plan_cache_size", prefix),
@@ -261,7 +261,7 @@ InitApiConfigurations(char *prefix)
 		&NextCollectionId,
 		DEFAULT_NEXT_COLLECTION_ID, DEFAULT_NEXT_COLLECTION_ID, INT_MAX,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
@@ -278,7 +278,7 @@ InitApiConfigurations(char *prefix)
 		&NextCollectionIndexId,
 		DEFAULT_NEXT_COLLECTION_INDEX_ID, DEFAULT_NEXT_COLLECTION_INDEX_ID, INT_MAX,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
@@ -384,7 +384,7 @@ InitApiConfigurations(char *prefix)
 		&CollStatsCountPolicyThreshold,
 		DEFAULT_COLL_STATS_COUNT_POLICY_THRESHOLD, 1, INT_MAX - 1,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -392,7 +392,7 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Simulates a database recovery state and throws an error for read-write operations."),
 		NULL, &SimulateRecoveryState, DEFAULT_SIMULATE_RECOVERY_STATE,
-		PGC_USERSET, GUC_NO_SHOW_ALL, NULL, NULL, NULL);
+		PGC_USERSET, GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE, NULL, NULL, NULL);
 
 	/* Added variable for testing cursor continuations */
 	DefineCustomIntVariable(
@@ -402,7 +402,7 @@ InitApiConfigurations(char *prefix)
 		NULL, &MaxWorkerCursorSize,
 		DEFAULT_MAX_WORKER_CURSOR_SIZE, 1, BSON_MAX_ALLOWED_SIZE,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 	DefineCustomIntVariable(
 		psprintf("%s.batchWriteSubTransactionCount", prefix),
@@ -410,7 +410,7 @@ InitApiConfigurations(char *prefix)
 		NULL, &BatchWriteSubTransactionCount,
 		DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT, 1, INT_MAX,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -495,7 +495,7 @@ InitApiConfigurations(char *prefix)
 		NULL, &IndexQueueEvictionIntervalInSec,
 		DEFAULT_INDEX_BUILD_EVICTION_INTERVAL_IN_SEC, 1, INT_MAX,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -512,7 +512,7 @@ InitApiConfigurations(char *prefix)
 		NULL, &IndexTruncationLimitOverride,
 		DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE, 1, INT_MAX,
 		PGC_USERSET,
-		GUC_NO_SHOW_ALL,
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
 
 	DefineCustomRealVariable(

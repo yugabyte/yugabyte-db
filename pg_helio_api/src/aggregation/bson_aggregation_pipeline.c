@@ -37,6 +37,7 @@
 #include <utils/lsyscache.h>
 #include <utils/numeric.h>
 #include <nodes/supportnodes.h>
+#include <parser/parse_relation.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -1248,7 +1249,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		int64_t intValue = BsonValueAsInt64(&limit);
 		if (intValue < 0)
 		{
-			limit.value.v_int64 = Abs(intValue);
+			limit.value.v_int64 = labs(intValue);
 			limit.value_type = BSON_TYPE_INT64;
 		}
 		else if (intValue == 0)
@@ -1369,7 +1370,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 		int64_t intValue = BsonValueAsInt64(&limit);
 		if (intValue < 0)
 		{
-			limit.value.v_int64 = Abs(intValue);
+			limit.value.v_int64 = labs(intValue);
 			limit.value_type = BSON_TYPE_INT64;
 		}
 		else if (intValue == 0)
@@ -3586,7 +3587,11 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		rte->inFromCl = true;
 		rte->functions = NIL;
 		rte->inh = false;
+#if PG_VERSION_NUM >= 160000
+		rte->perminfoindex = 0;
+#else
 		rte->requiredPerms = ACL_SELECT;
+#endif
 		rte->rellockmode = AccessShareLock;
 
 		/* Now create the rtfunc*/
@@ -3613,7 +3618,12 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		rte->relkind = RELKIND_RELATION;
 		rte->functions = NIL;
 		rte->inh = true;
+#if PG_VERSION_NUM >= 160000
+		RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+		permInfo->requiredPerms = ACL_SELECT;
+#else
 		rte->requiredPerms = ACL_SELECT;
+#endif
 		rte->rellockmode = AccessShareLock;
 	}
 

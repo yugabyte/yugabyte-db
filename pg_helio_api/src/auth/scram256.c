@@ -16,6 +16,7 @@
 #include "common/base64.h" /* Postgres base64 encode / decode functions */
 #include "common/hmac.h"   /* Postgres hmac functions */
 #include "utils/varlena.h" /* Postgres variable-length builtIn types functions*/
+#include "server/common/cryptohash.h"
 
 /* Including Postgresql headers for test helper functions.*/
 #include "common/saslprep.h" /* Postgres SASLprep normalization functions */
@@ -44,6 +45,11 @@
 
 #define AUTH_ERR_PARSE_SHADOW_PASSWORD_FAILED -1
 #define AUTH_ERR_SALTED_PASSWORD_GEN_FAILED -2
+
+#if PG_VERSION_NUM < 160000
+#define SCRAM_MAX_KEY_LEN SCRAM_KEY_LEN
+#define SCRAM_SHA_256_KEY_LEN SCRAM_KEY_LEN
+#endif
 
 
 /*
@@ -96,11 +102,13 @@ typedef struct ScramState
 	char *userName;             /* User name or Role used for authentication */
 	int iterations;             /* Iterations count for SCRAM authentication */
 	char *encodedSalt;
-	uint8 storedKey[SCRAM_KEY_LEN];  /* H(ClientSignature ^ ClientProof) */
-	uint8 serverKey[SCRAM_KEY_LEN];  /* Used for Server Final Message */
+	pg_cryptohash_type hashType;
+	int keyLength;
+	uint8 storedKey[SCRAM_MAX_KEY_LEN];  /* H(ClientSignature ^ ClientProof) */
+	uint8 serverKey[SCRAM_MAX_KEY_LEN];  /* Used for Server Final Message */
 	char *authMessage; /* Client First message bare + Server First message
 	                    + Client Final message without Proof */
-	char decodedClientProof[SCRAM_KEY_LEN];
+	char decodedClientProof[SCRAM_MAX_KEY_LEN];
 } ScramState;
 
 /* ------------------------------------------------------------------------- */
@@ -148,10 +156,14 @@ static pgbson * BuildResponseMsgForClientProofGeneratorForTest(
 	ClientProofGeneratorResult *result);
 
 /* wrappers around SCRAM functions to handle API changes across PostgreSQL version */
-static bool ScramClientKey(const uint8 *saltedPassword, uint8 *clientKey);
-static bool ScramServerKey(const uint8 *saltedPassword, uint8 *serverKey);
-static bool ScramHash(const uint8 *clientKey, int keyLength, uint8 *clientStoredKey);
-static bool ScramSaltedPassword(const char *password, const char *decodedSalt,
+static bool ScramClientKey(ScramState *state, const uint8 *saltedPassword,
+						   uint8 *clientKey);
+static bool ScramServerKey(ScramState *state, const uint8 *saltedPassword,
+						   uint8 *serverKey);
+static bool ScramHash(ScramState *state, const uint8 *clientKey, int keyLength,
+					  uint8 *clientStoredKey);
+static bool ScramSaltedPassword(ScramState *state, const char *password, const
+								char *decodedSalt,
 								int decodedLength, int iterations, uint8 *saltedPassword);
 
 
@@ -263,6 +275,9 @@ command_authenticate_with_scram_sha256(PG_FUNCTION_ARGS)
 	 */
 	scramState.authMessage = text_to_cstring(PG_GETARG_TEXT_P(1));
 
+	scramState.keyLength = SCRAM_SHA_256_KEY_LEN;
+	scramState.hashType = PG_SHA256;
+
 	/* Client proof given by compute gateway which is used for
 	 * deriving the Store Key and need to validate that against the stored
 	 * key contained in the shadow password from Postgresql */
@@ -278,14 +293,14 @@ command_authenticate_with_scram_sha256(PG_FUNCTION_ARGS)
 	/* Decode the Client Proof sent by the compute gateway. This is currently
 	 * in Base64*/
 	if (pg_b64_decode(proof, strlen(proof), clientProof,
-					  clientProofLen) != SCRAM_KEY_LEN)
+					  clientProofLen) != scramState.keyLength)
 	{
 		ereport(LOG, (errmsg("Malformed SCRAM message.")));
 		PG_RETURN_POINTER(BuildResponseMsgForAuthRequest(&authResult));
 	}
 
 	/* Copy decoded Client Proof */
-	memcpy(scramState.decodedClientProof, clientProof, SCRAM_KEY_LEN);
+	memcpy(scramState.decodedClientProof, clientProof, scramState.keyLength);
 	pfree(clientProof);
 
 	if (!ParseScramShadowPassword(&scramState))
@@ -323,9 +338,9 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 {
 	int i;
 	int encodedLen;
-	uint8 clientKey[SCRAM_KEY_LEN];
-	uint8 saltedPassword[SCRAM_KEY_LEN];
-	uint8 clientSignature[SCRAM_KEY_LEN];
+	uint8 clientKey[SCRAM_MAX_KEY_LEN];
+	uint8 saltedPassword[SCRAM_MAX_KEY_LEN];
+	uint8 clientSignature[SCRAM_MAX_KEY_LEN];
 	pg_hmac_ctx *ctx;
 	ScramState scramState;
 	ClientProofGeneratorResult result;
@@ -348,6 +363,8 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 
 	/* Capture the User Name as char*. PLPGSQL sends it as TEXT */
 	scramState.userName = text_to_cstring(PG_GETARG_TEXT_P(0));
+	scramState.keyLength = SCRAM_SHA_256_KEY_LEN;
+	scramState.hashType = PG_SHA256;
 
 	if (GenerateSaltedPasswordForTest(&scramState,
 									  text_to_cstring(PG_GETARG_TEXT_P(1)),
@@ -357,7 +374,7 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 	}
 
 	/* ClientKey = HMAC(saltedPassword, "Client Key") */
-	if (!ScramClientKey(saltedPassword, clientKey))
+	if (!ScramClientKey(&scramState, saltedPassword, clientKey))
 	{
 		PG_RETURN_POINTER(BuildResponseMsgForClientProofGeneratorForTest(&result));
 	}
@@ -370,10 +387,10 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 	}
 
 	/* ClientSignature = HMAC(StoredKey, AuthMessage) */
-	ctx = pg_hmac_create(PG_SHA256);
+	ctx = pg_hmac_create(scramState.hashType);
 
 	/* calculate ClientSignature */
-	if (pg_hmac_init(ctx, scramState.storedKey, SCRAM_KEY_LEN) < 0 ||
+	if (pg_hmac_init(ctx, scramState.storedKey, scramState.keyLength) < 0 ||
 		pg_hmac_update(ctx,
 					   (uint8 *) scramState.authMessage,
 					   strlen(scramState.authMessage)) < 0 ||
@@ -387,17 +404,17 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 	pg_hmac_free(ctx);
 
 	/* ClientProof = ClientKey ^ ClientSignature */
-	for (i = 0; i < SCRAM_KEY_LEN; i++)
+	for (i = 0; i < scramState.keyLength; i++)
 	{
 		scramState.decodedClientProof[i] = clientKey[i] ^ clientSignature[i];
 	}
 
 	/* Encode Client Proof */
-	encodedLen = pg_b64_enc_len(SCRAM_KEY_LEN);
+	encodedLen = pg_b64_enc_len(scramState.keyLength);
 	result.encodedClientProof = palloc0(encodedLen + 1);
 
 	encodedLen = pg_b64_encode((const char *) scramState.decodedClientProof,
-							   SCRAM_KEY_LEN, result.encodedClientProof,
+							   scramState.keyLength, result.encodedClientProof,
 							   encodedLen);
 
 	if (encodedLen < 0)
@@ -431,7 +448,7 @@ command_generate_auth_message_client_proof_for_test(PG_FUNCTION_ARGS)
 Datum
 command_generate_server_signature_for_test(PG_FUNCTION_ARGS)
 {
-	uint8 saltedPassword[SCRAM_KEY_LEN];
+	uint8 saltedPassword[SCRAM_MAX_KEY_LEN];
 	ScramState scramState;
 	ScramAuthResult result;
 
@@ -458,7 +475,7 @@ command_generate_server_signature_for_test(PG_FUNCTION_ARGS)
 	}
 
 	/* ServerKey = HMAC(SaltedPassword, "Server Key") */
-	if (!ScramServerKey(saltedPassword, scramState.serverKey))
+	if (!ScramServerKey(&scramState, saltedPassword, scramState.serverKey))
 	{
 		PG_RETURN_POINTER(BuildResponseMsgForAuthRequest(&result));
 	}
@@ -495,11 +512,21 @@ ParseScramShadowPassword(ScramState *scramState)
 	}
 
 	/* Parse the shadow password, get Stored and encoded salt */
+#if PG_VERSION_NUM >= 160000
+	return parse_scram_secret((const char *) shadowPass,
+							  &(scramState->iterations),
+							  &(scramState->hashType),
+							  &(scramState->keyLength),
+							  &(scramState->encodedSalt),
+							  scramState->storedKey,
+							  scramState->serverKey);
+#else
 	return parse_scram_secret((const char *) shadowPass,
 							  &(scramState->iterations),
 							  &(scramState->encodedSalt),
 							  scramState->storedKey,
 							  scramState->serverKey);
+#endif
 }
 
 
@@ -582,7 +609,7 @@ GenerateSaltedPasswordForTest(ScramState *scramState,
 		password = prepPassword;
 	}
 
-	if (!ScramSaltedPassword(password, decodedSalt, decodedLen,
+	if (!ScramSaltedPassword(scramState, password, decodedSalt, decodedLen,
 							 scramState->iterations, saltedPassword))
 	{
 		return AUTH_ERR_SALTED_PASSWORD_GEN_FAILED;
@@ -600,19 +627,20 @@ GenerateSaltedPasswordForTest(ScramState *scramState,
 static bool
 VerifyClientProof(ScramState *state)
 {
-	uint8 clientSignature[SCRAM_KEY_LEN];
-	uint8 clientKey[SCRAM_KEY_LEN];
-	uint8 clientStoredKey[SCRAM_KEY_LEN];
-	pg_hmac_ctx *ctx = pg_hmac_create(PG_SHA256);
+	uint8 clientSignature[SCRAM_MAX_KEY_LEN];
+	uint8 clientKey[SCRAM_MAX_KEY_LEN];
+	uint8 clientStoredKey[SCRAM_MAX_KEY_LEN];
+	pg_hmac_ctx *ctx = pg_hmac_create(state->hashType);
 	int i;
 
 	/* Calculate ClientSignature */
-	if (pg_hmac_init(ctx, state->storedKey, SCRAM_KEY_LEN) < 0 ||
+	if (pg_hmac_init(ctx, state->storedKey, state->keyLength) < 0 ||
 		pg_hmac_update(ctx,
 					   (uint8 *) state->authMessage,
 					   strlen(state->authMessage)) < 0 ||
 		pg_hmac_final(ctx, clientSignature, sizeof(clientSignature)) < 0)
 	{
+		pg_hmac_free(ctx);
 		ereport(LOG, (errmsg("Client Signature derivation failed.")));
 		return false;
 	}
@@ -620,19 +648,19 @@ VerifyClientProof(ScramState *state)
 	pg_hmac_free(ctx);
 
 	/* Extract the ClientKey that the client calculated from the proof */
-	for (i = 0; i < SCRAM_KEY_LEN; i++)
+	for (i = 0; i < state->keyLength; i++)
 	{
 		clientKey[i] = state->decodedClientProof[i] ^ clientSignature[i];
 	}
 
 	/* Hash it one more time, and compare with StoredKey */
-	if (!ScramHash(clientKey, SCRAM_KEY_LEN, clientStoredKey))
+	if (!ScramHash(state, clientKey, state->keyLength, clientStoredKey))
 	{
 		return false;
 	}
 
 	/* H(ClientSignature ^ ClientProof) = StoredKey */
-	if (memcmp(clientStoredKey, state->storedKey, SCRAM_KEY_LEN) != 0)
+	if (memcmp(clientStoredKey, state->storedKey, state->keyLength) != 0)
 	{
 		ereport(LOG, (errmsg("Client proof verification failed.")));
 		return false;
@@ -648,30 +676,31 @@ VerifyClientProof(ScramState *state)
 static char *
 BuildServerFinalMessage(ScramState *state)
 {
-	uint8 serverSignature[SCRAM_KEY_LEN];
+	uint8 serverSignature[SCRAM_MAX_KEY_LEN];
 	char *serverSignatureBase64 = "";
 	int siglen;
-	pg_hmac_ctx *ctx = pg_hmac_create(PG_SHA256);
+	pg_hmac_ctx *ctx = pg_hmac_create(state->hashType);
 
 	/* calculate ServerSignature */
-	if (pg_hmac_init(ctx, state->serverKey, SCRAM_KEY_LEN) < 0 ||
+	if (pg_hmac_init(ctx, state->serverKey, state->keyLength) < 0 ||
 		pg_hmac_update(ctx,
 					   (uint8 *) state->authMessage,
 					   strlen(state->authMessage)) < 0 ||
 		pg_hmac_final(ctx, serverSignature, sizeof(serverSignature)) < 0)
 	{
+		pg_hmac_free(ctx);
 		return serverSignatureBase64;
 	}
 
 	pg_hmac_free(ctx);
 
 	/* 3 bytes will be converted to 4 */
-	siglen = pg_b64_enc_len(SCRAM_KEY_LEN);
+	siglen = pg_b64_enc_len(state->keyLength);
 
 	/* don't forget the zero-terminator */
 	serverSignatureBase64 = palloc0(siglen + 1);
 	siglen = pg_b64_encode((const char *) serverSignature,
-						   SCRAM_KEY_LEN, serverSignatureBase64,
+						   state->keyLength, serverSignatureBase64,
 						   siglen);
 
 	siglen = (siglen < 0) ? 0 : siglen;
@@ -747,9 +776,18 @@ BuildResponseMsgForClientProofGeneratorForTest(ClientProofGeneratorResult *resul
  * for different postgres versions.
  */
 static bool
-ScramClientKey(const uint8 *saltedPassword, uint8 *clientKey)
+ScramClientKey(ScramState *state, const uint8 *saltedPassword, uint8 *clientKey)
 {
-#if (PG_VERSION_NUM >= 150000)
+#if (PG_VERSION_NUM >= 160000)
+	const char *errorString = NULL;
+	if (scram_ClientKey(saltedPassword, state->hashType, state->keyLength, clientKey,
+						&errorString) < 0)
+	{
+		ereport(LOG, (errmsg("Client Key derivation failed: %s", errorString)));
+		return false;
+	}
+
+#elif (PG_VERSION_NUM >= 150000)
 	const char *errorString = NULL;
 	if (scram_ClientKey(saltedPassword, clientKey, &errorString) < 0)
 	{
@@ -773,9 +811,17 @@ ScramClientKey(const uint8 *saltedPassword, uint8 *clientKey)
  * for different postgres versions.
  */
 static bool
-ScramServerKey(const uint8 *saltedPassword, uint8 *serverKey)
+ScramServerKey(ScramState *state, const uint8 *saltedPassword, uint8 *serverKey)
 {
-#if (PG_VERSION_NUM >= 150000)
+#if (PG_VERSION_NUM >= 160000)
+	const char *errorString = NULL;
+	if (scram_ServerKey(saltedPassword, state->hashType, state->keyLength, serverKey,
+						&errorString) < 0)
+	{
+		ereport(LOG, (errmsg("Server Key derivation failed: %s", errorString)));
+		return false;
+	}
+#elif (PG_VERSION_NUM >= 150000)
 	const char *errorString = NULL;
 	if (scram_ServerKey(saltedPassword, serverKey, &errorString) < 0)
 	{
@@ -799,9 +845,18 @@ ScramServerKey(const uint8 *saltedPassword, uint8 *serverKey)
  * for different postgres versions.
  */
 static bool
-ScramHash(const uint8 *clientKey, int keyLength, uint8 *clientStoredKey)
+ScramHash(ScramState *state, const uint8 *clientKey, int keyLength,
+		  uint8 *clientStoredKey)
 {
-#if (PG_VERSION_NUM >= 150000)
+#if PG_VERSION_NUM >= 160000
+	const char *errorString = NULL;
+	if (scram_H(clientKey, state->hashType, state->keyLength, clientStoredKey,
+				&errorString) < 0)
+	{
+		ereport(LOG, (errmsg("Hashing of client key failed: %s", errorString)));
+		return false;
+	}
+#elif PG_VERSION_NUM >= 150000
 	const char *errorString = NULL;
 	if (scram_H(clientKey, keyLength, clientStoredKey, &errorString) < 0)
 	{
@@ -825,10 +880,18 @@ ScramHash(const uint8 *clientKey, int keyLength, uint8 *clientStoredKey)
  * reporting for different postgres versions.
  */
 static bool
-ScramSaltedPassword(const char *password, const char *decodedSalt,
+ScramSaltedPassword(ScramState *state, const char *password, const char *decodedSalt,
 					int decodedLength, int iterations, uint8 *saltedPassword)
 {
-#if (PG_VERSION_NUM >= 150000)
+#if PG_VERSION_NUM >= 160000
+	const char *errorString = NULL;
+	if (scram_SaltedPassword(password, state->hashType, state->keyLength, decodedSalt,
+							 decodedLength, iterations, saltedPassword, &errorString) < 0)
+	{
+		ereport(LOG, (errmsg("get salted password failed: %s", errorString)));
+		return false;
+	}
+#elif (PG_VERSION_NUM >= 150000)
 	const char *errorString = NULL;
 	if (scram_SaltedPassword(password, decodedSalt, decodedLength,
 							 iterations, saltedPassword, &errorString) < 0)

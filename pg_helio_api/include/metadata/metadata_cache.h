@@ -11,15 +11,16 @@
 #ifndef METADATA_CACHE_H
 #define METADATA_CACHE_H
 
+#include "utils/type_cache.h"
 
-extern char *ApiDataSchemaName;
-extern char *ApiAdminRole;
-extern char *ApiSchemaName;
-extern char *ApiInternalSchemaName;
-extern char *ExtensionObjectPrefix;
-extern char *CoreSchemaName;
-extern char *FullBsonTypeName;
-extern char *ApiCatalogSchemaName;
+extern PGDLLIMPORT char *ApiDataSchemaName;
+extern PGDLLIMPORT char *ApiAdminRole;
+extern PGDLLIMPORT char *ApiSchemaName;
+extern PGDLLIMPORT char *ApiInternalSchemaName;
+extern PGDLLIMPORT char *ExtensionObjectPrefix;
+extern PGDLLIMPORT char *CoreSchemaName;
+extern PGDLLIMPORT char *FullBsonTypeName;
+extern PGDLLIMPORT char *ApiCatalogSchemaName;
 
 extern MemoryContext HelioApiMetadataCacheContext;
 
@@ -113,7 +114,6 @@ Oid BsonGreaterThanEqualOperatorId(void);
 Oid BsonLessThanEqualOperatorId(void);
 
 /* types */
-Oid BsonTypeId(void);
 Oid BsonQueryTypeId(void);
 Oid VectorTypeId(void);
 Oid IndexSpecTypeId(void);

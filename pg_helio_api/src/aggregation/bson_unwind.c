@@ -163,7 +163,7 @@ bson_distinct_unwind(PG_FUNCTION_ARGS)
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 	pgbson *document = PG_GETARG_PGBSON(0);
-	char *path = TextDatumGetCString(PG_GETARG_TEXT_P(1));
+	char *path = text_to_cstring(PG_GETARG_TEXT_P(1));
 
 	bson_iter_t documentIterator;
 	PgbsonInitIterator(document, &documentIterator);
@@ -201,7 +201,7 @@ bson_lookup_unwind(PG_FUNCTION_ARGS)
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 	pgbson *document = PG_GETARG_PGBSON(0);
-	char *path = TextDatumGetCString(PG_GETARG_TEXT_P(1));
+	char *path = text_to_cstring(PG_GETARG_TEXT_P(1));
 
 	bson_iter_t documentIterator;
 	if (PgbsonInitIteratorAtPath(document, path, &documentIterator))

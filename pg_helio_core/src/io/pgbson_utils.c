@@ -37,7 +37,7 @@
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-const StringView IdFieldStringView = { .string = "_id", .length = 3 };
+PGDLLEXPORT const StringView IdFieldStringView = { .string = "_id", .length = 3 };
 
 /* arithmetic functions */
 static void AddDoubleToValue(bson_value_t *current, double value);
@@ -900,7 +900,7 @@ TraverseBsonCore(bson_iter_t *documentIterator, const StringView *traversePath,
 			{
 				/* Comparisons only work on the same sort order type. */
 				BsonIterToPgbsonElement(&nestedIterator, &documentFieldElement);
-				bool shouldContinue = executionFunctions->VisitArrayField(
+				shouldContinue = executionFunctions->VisitArrayField(
 					&documentFieldElement, traversePath, arrayIndex, state);
 				if (!shouldContinue)
 				{

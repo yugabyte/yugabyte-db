@@ -20,6 +20,7 @@
 #include <commands/portalcmds.h>
 #include <utils/snapmgr.h>
 #include <catalog/pg_class.h>
+#include <parser/parse_relation.h>
 
 #include "access/xact.h"
 #include "executor/spi.h"
@@ -1205,7 +1206,13 @@ CreateInsertQuery(MongoCollection *collection, List *valuesLists)
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_INSERT;
+#else
 	rte->requiredPerms = ACL_INSERT;
+#endif
+
 	rte->rellockmode = RowExclusiveLock;
 	query->rtable = lappend(query->rtable, rte);
 	query->resultRelation = 1;

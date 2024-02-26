@@ -17,7 +17,7 @@
 
 #include "utils/type_cache.h"
 
-char *CoreSchemaName = "helio_core";
+PGDLLEXPORT char *CoreSchemaName = "helio_core";
 
 
 /*
@@ -53,7 +53,7 @@ static void InvalidateOidCaches(Datum arg, int cacheid, uint32 hashvalue);
 /*
  * BsonTypeId returns the OID of the bson type.
  */
-Oid
+PGDLLEXPORT Oid
 BsonTypeId(void)
 {
 	InitializeOidCaches();
@@ -73,7 +73,7 @@ BsonTypeId(void)
 /*
  * BsonQueryTypeId returns the OID of the bsonquery type.
  */
-Oid
+PGDLLEXPORT Oid
 BsonQueryTypeId(void)
 {
 	InitializeOidCaches();

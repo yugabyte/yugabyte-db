@@ -48,6 +48,12 @@ PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
+ifeq ($(ALLOW_DEFAULT_VISIBILITY),yes)
+override LDFLAGS_SL += -fvisibility=default
+override CFLAGS += -fvisibility=default
+override CXXFLAGS += -fvisibility=default
+endif
+
 clean-sql:
 	rm -rf .deps/ build/
 

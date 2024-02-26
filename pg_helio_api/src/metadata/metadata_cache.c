@@ -81,15 +81,15 @@ static CacheValidityValue CacheValidity = CACHE_INVALID;
 /* session-level memory context in which we keep all cached bytes */
 MemoryContext HelioApiMetadataCacheContext = NULL;
 
-char *ApiDataSchemaName = "helio_data";
-char *ApiAdminRole = "helio_admin_role";
-char *ApiSchemaName = "helio_api";
-char *ApiInternalSchemaName = "helio_api_internal";
-char *ExtensionObjectPrefix = "helio";
-char *FullBsonTypeName = "helio_core.bson";
-char *ApiExtensionName = "pg_helio_api";
-char *ApiCatalogSchemaName = "helio_api_catalog";
-char *ApiGucPrefix = "helio_api";
+PGDLLEXPORT char *ApiDataSchemaName = "helio_data";
+PGDLLEXPORT char *ApiAdminRole = "helio_admin_role";
+PGDLLEXPORT char *ApiSchemaName = "helio_api";
+PGDLLEXPORT char *ApiInternalSchemaName = "helio_api_internal";
+PGDLLEXPORT char *ExtensionObjectPrefix = "helio";
+PGDLLEXPORT char *FullBsonTypeName = "helio_core.bson";
+PGDLLEXPORT char *ApiExtensionName = "pg_helio_api";
+PGDLLEXPORT char *ApiCatalogSchemaName = "helio_api_catalog";
+PGDLLEXPORT char *ApiGucPrefix = "helio_api";
 
 typedef struct HelioApiOidCacheData
 {
@@ -794,6 +794,20 @@ InvalidateHelioApiCache(Datum argument, Oid relationId)
 
 
 /*
+ * Helper method abstracting typename parsing across PG Versions
+ */
+inline static TypeName *
+ParseTypeNameCore(const char *typeName)
+{
+#if PG_VERSION_NUM >= 160000
+	return typeStringToTypeName(typeName, NULL);
+#else
+	return typeStringToTypeName(typeName);
+#endif
+}
+
+
+/*
  * IsHelioApiExtensionActive returns whether the current extension exists and is
  * usable (not being altered, no pg_upgrade in progress).
  */
@@ -928,29 +942,29 @@ ApiCreateIndexesProcedureId(void)
 		objectWithArgs->objname = list_make2(makeString(ApiSchemaName),
 											 makeString("create_indexes"));
 
-		objectWithArgs->objargs = list_make4(typeStringToTypeName("text"),
-											 typeStringToTypeName(FullBsonTypeName),
-											 typeStringToTypeName(FullBsonTypeName),
-											 typeStringToTypeName("boolean"));
+		objectWithArgs->objargs = list_make4(ParseTypeNameCore("text"),
+											 ParseTypeNameCore(FullBsonTypeName),
+											 ParseTypeNameCore(FullBsonTypeName),
+											 ParseTypeNameCore("boolean"));
 
 		FunctionParameter *inDatabaseNameParam = makeNode(FunctionParameter);
 		inDatabaseNameParam->name = "p_database_name";
-		inDatabaseNameParam->argType = typeStringToTypeName("text");
+		inDatabaseNameParam->argType = ParseTypeNameCore("text");
 		inDatabaseNameParam->mode = FUNC_PARAM_IN;
 
 		FunctionParameter *inBsonArgParam = makeNode(FunctionParameter);
 		inBsonArgParam->name = "p_arg";
-		inBsonArgParam->argType = typeStringToTypeName(FullBsonTypeName);
+		inBsonArgParam->argType = ParseTypeNameCore(FullBsonTypeName);
 		inBsonArgParam->mode = FUNC_PARAM_IN;
 
 		FunctionParameter *outBsonResultParam = makeNode(FunctionParameter);
 		outBsonResultParam->name = "retval";
-		outBsonResultParam->argType = typeStringToTypeName(FullBsonTypeName);
+		outBsonResultParam->argType = ParseTypeNameCore(FullBsonTypeName);
 		outBsonResultParam->mode = FUNC_PARAM_INOUT;
 
 		FunctionParameter *outOkResultParam = makeNode(FunctionParameter);
 		outOkResultParam->name = "ok";
-		outOkResultParam->argType = typeStringToTypeName("boolean");
+		outOkResultParam->argType = ParseTypeNameCore("boolean");
 		outOkResultParam->mode = FUNC_PARAM_INOUT;
 
 		objectWithArgs->objfuncargs = list_make4(inDatabaseNameParam, inBsonArgParam,
@@ -981,29 +995,29 @@ ApiReIndexProcedureId(void)
 		objectWithArgs->objname = list_make2(makeString(ApiSchemaName),
 											 makeString("re_index"));
 
-		objectWithArgs->objargs = list_make4(typeStringToTypeName("text"),
-											 typeStringToTypeName("text"),
-											 typeStringToTypeName(FullBsonTypeName),
-											 typeStringToTypeName("boolean"));
+		objectWithArgs->objargs = list_make4(ParseTypeNameCore("text"),
+											 ParseTypeNameCore("text"),
+											 ParseTypeNameCore(FullBsonTypeName),
+											 ParseTypeNameCore("boolean"));
 
 		FunctionParameter *inDatabaseNameParam = makeNode(FunctionParameter);
 		inDatabaseNameParam->name = "p_database_name";
-		inDatabaseNameParam->argType = typeStringToTypeName("text");
+		inDatabaseNameParam->argType = ParseTypeNameCore("text");
 		inDatabaseNameParam->mode = FUNC_PARAM_IN;
 
 		FunctionParameter *inBsonArgParam = makeNode(FunctionParameter);
 		inBsonArgParam->name = "p_collection_name";
-		inBsonArgParam->argType = typeStringToTypeName("text");
+		inBsonArgParam->argType = ParseTypeNameCore("text");
 		inBsonArgParam->mode = FUNC_PARAM_IN;
 
 		FunctionParameter *outBsonResultParam = makeNode(FunctionParameter);
 		outBsonResultParam->name = "retval";
-		outBsonResultParam->argType = typeStringToTypeName(FullBsonTypeName);
+		outBsonResultParam->argType = ParseTypeNameCore(FullBsonTypeName);
 		outBsonResultParam->mode = FUNC_PARAM_INOUT;
 
 		FunctionParameter *outOkResultParam = makeNode(FunctionParameter);
 		outOkResultParam->name = "ok";
-		outOkResultParam->argType = typeStringToTypeName("boolean");
+		outOkResultParam->argType = ParseTypeNameCore("boolean");
 		outOkResultParam->mode = FUNC_PARAM_INOUT;
 
 		objectWithArgs->objfuncargs = list_make4(inDatabaseNameParam, inBsonArgParam,

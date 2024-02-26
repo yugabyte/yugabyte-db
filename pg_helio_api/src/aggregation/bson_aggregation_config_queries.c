@@ -19,6 +19,7 @@
 #include <nodes/params.h>
 #include <utils/builtins.h>
 #include <catalog/namespace.h>
+#include <parser/parse_relation.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -122,12 +123,17 @@ GenerateDatabasesQuery(AggregationPipelineBuildContext *context)
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
-	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
 	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collections", -1);
 	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_SELECT;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
 	query->rtable = list_make1(rte);
 
 	/* Now register the RTE in the "FROM" clause with a single filter on shard_key not null */
@@ -202,12 +208,17 @@ GenerateCollectionsQuery(AggregationPipelineBuildContext *context)
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
-	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
 	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collections", -1);
 	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_SELECT;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
 	query->rtable = list_make1(rte);
 
 	/* Now register the RTE in the "FROM" clause with a single filter on shard_key not null */
@@ -281,12 +292,17 @@ GenerateChunksQuery(AggregationPipelineBuildContext *context)
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
-	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
 	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collections", -1);
 	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_SELECT;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
 	query->rtable = list_make1(rte);
 
 	/* Now register the RTE in the "FROM" clause with a single filter on shard_key not null */

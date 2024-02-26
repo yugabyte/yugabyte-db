@@ -30,7 +30,7 @@
 #define BSON_MAX_ALLOWED_SIZE_INTERMEDIATE (100 * 1024 * 1024)
 
 /* StringView that represents the _id field */
-extern const StringView IdFieldStringView;
+extern PGDLLIMPORT const StringView IdFieldStringView;
 
 
 /*

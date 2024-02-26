@@ -10,12 +10,16 @@
  */
 
 #include "utils/string_view.h"
+
+#if PG_VERSION_NUM >= 160000
+#include <varatt.h>
+#endif
 #include <common/hashfn.h>
 
 /*
  * Initializes a StringView from a null terminated C string
  */
-StringView
+PGDLLEXPORT StringView
 CreateStringViewFromString(const char *string)
 {
 	StringView s =
@@ -30,7 +34,7 @@ CreateStringViewFromString(const char *string)
 /*
  * Initializes a StringView from a  C string upto a length
  */
-StringView
+PGDLLEXPORT StringView
 CreateStringViewFromStringWithLength(const char *string, uint32_t length)
 {
 	StringView s =
@@ -45,7 +49,7 @@ CreateStringViewFromStringWithLength(const char *string, uint32_t length)
 /*
  * Initializes a StringView from a text
  */
-StringView
+PGDLLEXPORT StringView
 CreateStringViewFromText(const text *string)
 {
 	StringView s =
@@ -60,7 +64,7 @@ CreateStringViewFromText(const text *string)
 /*
  * Creates a new Null terminated C string from the given string view.
  */
-char *
+PGDLLEXPORT char *
 CreateStringFromStringView(const StringView *string)
 {
 	return pnstrdup(string->string, string->length);
@@ -70,7 +74,7 @@ CreateStringFromStringView(const StringView *string)
 /*
  * Compares two string view entries based on their length and contents.
  */
-int32_t
+PGDLLEXPORT int32_t
 CompareStringView(const StringView *left, const StringView *right)
 {
 	uint32_t minLength = left->length > right->length ? right->length : left->length;
@@ -90,7 +94,7 @@ CompareStringView(const StringView *left, const StringView *right)
 /*
  * Hashes a string view based on its contents
  */
-uint32_t
+PGDLLEXPORT uint32_t
 HashStringView(const StringView *view)
 {
 	return hash_bytes((const unsigned char *) view->string,
@@ -106,7 +110,7 @@ HashStringView(const StringView *view)
  *
  * If the character is not found, returns an empty StringView.
  */
-StringView
+PGDLLEXPORT StringView
 StringViewFindPrefix(const StringView *view, char upToCharacter)
 {
 	StringView result = { 0 };
@@ -129,7 +133,7 @@ StringViewFindPrefix(const StringView *view, char upToCharacter)
  *
  * If the character is not found, returns an empty StringView.
  */
-StringView
+PGDLLEXPORT StringView
 StringViewFindSuffix(const StringView *view, char upToCharacter)
 {
 	StringView result = { 0 };
@@ -153,7 +157,7 @@ StringViewFindSuffix(const StringView *view, char upToCharacter)
  * Requires offset to be less than the source's length.
  * e.g. given a string "a.b.c" and an offset 2, returns "b.c".
  */
-StringView
+PGDLLEXPORT StringView
 StringViewSubstring(const StringView *source, uint32_t offset)
 {
 	if (offset > source->length)
@@ -177,7 +181,7 @@ StringViewSubstring(const StringView *source, uint32_t offset)
  * string and may or may not be null terminated.
  * Returns -1 if the path is not a valid positive integer.
  */
-int32_t
+PGDLLEXPORT int32_t
 StringViewToPositiveInteger(const StringView *view)
 {
 	if (view == NULL || view->length == 0)
@@ -210,7 +214,7 @@ StringViewToPositiveInteger(const StringView *view)
  * This counts the characters that take multiple bytes to store (e.g. unicode chars)
  * as single character.
  */
-uint32_t
+PGDLLEXPORT uint32_t
 StringViewMultiByteCharStrlen(const StringView *view)
 {
 	uint32_t len = 0;

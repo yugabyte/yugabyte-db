@@ -31,6 +31,7 @@
 #include <utils/lsyscache.h>
 #include <utils/syscache.h>
 #include <executor/spi.h>
+#include <parser/parse_relation.h>
 
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
@@ -64,6 +65,9 @@ typedef struct ReplaceMongoCollectionContext
 
 	/* the bound parameters associated with the request */
 	ParamListInfo boundParams;
+
+	/* The query associated with this context */
+	Query *query;
 } ReplaceMongoCollectionContext;
 
 
@@ -407,7 +411,7 @@ AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
 				bool partialPath = false;
 				IndexPath *path = create_index_path(root, indexInfo, clauses, orderbys,
 													orderbyCols, pathKeys,
-													NoMovementScanDirection, indexOnly,
+													ForwardScanDirection, indexOnly,
 													outerRelids,
 													loopCount, partialPath);
 				path->indextotalcost = 0;
@@ -733,7 +737,8 @@ ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundParams,
 	ReplaceMongoCollectionContext context =
 	{
 		.boundParams = boundParams,
-		.isNonExistentCollection = false
+		.isNonExistentCollection = false,
+		.query = query
 	};
 	ReplaceMongoCollectionFunctionWalker((Node *) query, &context);
 	*isNonExistentCollection = context.isNonExistentCollection;
@@ -798,7 +803,14 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 				rte->relkind = RELKIND_RELATION;
 				rte->functions = NIL;
 				rte->inh = true;
+#if PG_VERSION_NUM >= 160000
+
+				RTEPermissionInfo *permInfo = addRTEPermissionInfo(
+					&context->query->rteperminfos, rte);
+				permInfo->requiredPerms = ACL_SELECT;
+#else
 				rte->requiredPerms = ACL_SELECT;
+#endif
 				rte->rellockmode = AccessShareLock;
 
 				/* 2. Perform Function-specific actions */
@@ -825,8 +837,13 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 	}
 	else if (IsA(node, Query))
 	{
-		return query_tree_walker((Query *) node, ReplaceMongoCollectionFunctionWalker,
-								 context, QTW_EXAMINE_RTES_BEFORE);
+		Query *originalQuery = context->query;
+		context->query = (Query *) node;
+		bool result = query_tree_walker((Query *) node,
+										ReplaceMongoCollectionFunctionWalker,
+										context, QTW_EXAMINE_RTES_BEFORE);
+		context->query = originalQuery;
+		return result;
 	}
 
 	return expression_tree_walker(node, ReplaceMongoCollectionFunctionWalker,

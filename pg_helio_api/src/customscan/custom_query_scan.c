@@ -210,7 +210,7 @@ AddExtensionQueryScanForVectorQuery(PlannerInfo *root, RelOptInfo *rel,
 
 		if (rel->partial_pathlist != NIL)
 		{
-			bool failIfNotFound = false;
+			failIfNotFound = false;
 			rel->partial_pathlist = AddCustomPathForVectorCore(root,
 															   rel->partial_pathlist, rel,
 															   inputState,

@@ -191,7 +191,7 @@ command_bson_query_to_tsquery(PG_FUNCTION_ARGS)
 	Oid languageOid = InvalidOid;
 	if (!PG_ARGISNULL(1))
 	{
-		char *language = TextDatumGetCString(PG_GETARG_TEXT_P(1));
+		char *language = text_to_cstring(PG_GETARG_TEXT_PP(1));
 		StringView languageView = { .string = language, .length = strlen(language) };
 
 		bool isCreateIndex = false;
@@ -1404,9 +1404,9 @@ GenerateTsVectorWithOptions(pgbson *document,
 
 			/* Set up the weight. see tsvector_setweight (this does this inline) */
 			WordEntry *entry = ARRPTR(vector);
-			int i = vector->size;
+			int iInner = vector->size;
 			int j = 0;
-			while (i--)
+			while (iInner--)
 			{
 				if ((j = POSDATALEN(vector, entry)) != 0)
 				{

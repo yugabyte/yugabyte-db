@@ -150,7 +150,7 @@ Datum
 bson_json_to_bson(PG_FUNCTION_ARGS)
 {
 	text *jsonText = PG_GETARG_TEXT_P(0);
-	const char *jsonString = TextDatumGetCString(jsonText);
+	const char *jsonString = text_to_cstring(jsonText);
 	pgbson *bson = PgbsonInitFromJson(jsonString);
 	PG_RETURN_POINTER(bson);
 }
@@ -205,7 +205,7 @@ Datum
 bson_get_value(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
-	char *path = TextDatumGetCString(PG_GETARG_TEXT_P(1));
+	char *path = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	bson_iter_t pathIterator;
 
 	if (PgbsonInitIteratorAtPath(document, path, &pathIterator))
@@ -229,8 +229,8 @@ bson_get_value(PG_FUNCTION_ARGS)
 Datum
 bson_get_value_text(PG_FUNCTION_ARGS)
 {
-	pgbson *document = PG_GETARG_PGBSON(0);
-	char *path = TextDatumGetCString(PG_GETARG_TEXT_P(1));
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+	char *path = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	bson_iter_t pathIterator;
 
 	if (PgbsonInitIteratorAtPath(document, path, &pathIterator))

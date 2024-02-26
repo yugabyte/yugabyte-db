@@ -1112,12 +1112,16 @@ MakeLookupJoinRte(List *joinVars, List *colNames, List *joinLeftCols, List *join
 	joinRte->inh = false;           /* never true for joins */
 	joinRte->inFromCl = true;
 
+#if PG_VERSION_NUM >= 160000
+	joinRte->perminfoindex = 0;
+#else
 	joinRte->requiredPerms = 0;
 	joinRte->checkAsUser = InvalidOid;
 	joinRte->selectedCols = NULL;
 	joinRte->insertedCols = NULL;
 	joinRte->updatedCols = NULL;
 	joinRte->extraUpdatedCols = NULL;
+#endif
 	return joinRte;
 }
 

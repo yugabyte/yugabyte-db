@@ -17,6 +17,9 @@ SKIP_API_SCHEMA=yes
 CORE_SCHEMA_NAME=helio_core
 EXTENSION_OBJECT_PREFIX=helio
 
+# TODO: Need to remove this with PG16 and expose only valid exports
+ALLOW_DEFAULT_VISIBILITY=yes
+
 # compilation configuration
 MODULE_big = $(EXTENSION)
 include $(OSS_SRC_DIR)/Makefile.cflags
@@ -39,6 +42,12 @@ EXTRA_CLEAN += build/ .deps/
 PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+
+ifeq ($(ALLOW_DEFAULT_VISIBILITY),yes)
+override LDFLAGS_SL += -fvisibility=default
+override CFLAGS += -fvisibility=default
+override CXXFLAGS += -fvisibility=default
+endif
 
 clean-sql:
 	rm -rf .deps/ build/

@@ -36,6 +36,7 @@
 #include <utils/array.h>
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
+#include <parser/parse_relation.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -262,7 +263,11 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 	rte->inFromCl = true;
 	rte->functions = NIL;
 	rte->inh = false;
+#if PG_VERSION_NUM >= 160000
+	rte->perminfoindex = 0;
+#else
 	rte->requiredPerms = ACL_SELECT;
+#endif
 	rte->rellockmode = AccessShareLock;
 
 	/* Now create the rtfunc*/
@@ -364,12 +369,17 @@ GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionNa
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
-	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
 	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collection_indexes", -1);
 	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_SELECT;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
 	query->rtable = list_make1(rte);
 
 	/* Register the RTE in the "FROM" clause and add where clause
@@ -473,12 +483,17 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
 	rte->inh = true;
-	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
 	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collections", -1);
 	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
+#if PG_VERSION_NUM >= 160000
+	RTEPermissionInfo *permInfo = addRTEPermissionInfo(&query->rteperminfos, rte);
+	permInfo->requiredPerms = ACL_SELECT;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
 	query->rtable = list_make1(rte);
 
 	/* Now register the RTE in the "FROM" clause with a single filter on the database_name */
@@ -601,7 +616,11 @@ BuildSingleFunctionQuery(Oid queryFunctionOid, List *queryArgs, bool isMultiRow)
 	rte->inFromCl = true;
 	rte->functions = NIL;
 	rte->inh = false;
+#if PG_VERSION_NUM >= 160000
+	rte->perminfoindex = 0;
+#else
 	rte->requiredPerms = ACL_SELECT;
+#endif
 	rte->rellockmode = AccessShareLock;
 
 	/* Now create the rtfunc*/
