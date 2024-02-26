@@ -19,7 +19,7 @@ Before starting the upgrade, review the following major changes to YugabyteDB. D
 
 ### Upgrading to v2.16.0
 
-The YB Controller (YBC) service was introduced for all universes (except Kubernetes).
+The YB Controller (YBC) service was introduced for all universes (except Kubernetes), and is required for YugabyteDB Anywhere 2.16.0 and later.
 
 YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 
@@ -98,7 +98,7 @@ You can perform a rolling upgrade on a live universe deployment as follows:
 
 For information on how rolling upgrades are performed in YugabyteDB, see [Upgrade a deployment](../../../manage/upgrade-deployment/).
 
-{{< note title="Note" >}}
+{{< note title="Downgrading" >}}
 
 Currently, you cannot downgrade a universe to an older YugabyteDB release. For assistance with downgrades, contact Yugabyte Support.
 
@@ -106,7 +106,7 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
 ### Upgrade manually-provisioned on-premises universe
 
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YBC after the otherwise-automated software upgrade procedure completes. YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
+If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YBC after the otherwise-automated software upgrade procedure completes.
 
 To install YBC, call the following API after the software upgrade:
 
