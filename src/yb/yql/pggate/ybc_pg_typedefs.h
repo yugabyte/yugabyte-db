@@ -630,7 +630,7 @@ typedef struct AshSample {
   char aux_info[16];
 
   // 32-bit wait event code of the sample.
-  uint32_t wait_event_code;
+  uint32_t encoded_wait_event_code;
 
   // If a certain number of samples are available and we capture a portion of
   // them, the sample weight is the reciprocal of the captured portion or 1,

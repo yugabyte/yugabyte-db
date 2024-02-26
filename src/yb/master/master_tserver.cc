@@ -183,7 +183,7 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
-rpc::Messenger* MasterTabletServer::GetMessenger(tserver::ServerType type) const {
+rpc::Messenger* MasterTabletServer::GetMessenger(ash::Component component) const {
   LOG(FATAL) << "Unexpected call of GetMessenger()";
   return nullptr;
 }

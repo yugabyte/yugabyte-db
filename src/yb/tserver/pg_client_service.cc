@@ -1232,17 +1232,32 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  bool ShouldIgnoreCall(
+      const PgActiveSessionHistoryRequestPB& req, const rpc::RpcCallInProgressPB& call) {
+    return (
+        !call.has_wait_state() ||
+        // Ignore log-appenders which are just Idle
+        call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+        // Ignore ActiveSessionHistory/Perform calls, if desired.
+        (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
+         call.wait_state().aux_info().has_method() &&
+         (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
+          call.wait_state().aux_info().method() == "Perform")));
+  }
+
   void GetRpcsWaitStates(
-      const PgActiveSessionHistoryRequestPB& req, ServerType type, tserver::WaitStatesPB* resp) {
-    auto* messenger = tablet_server_.GetMessenger(type);
+      const PgActiveSessionHistoryRequestPB& req, ash::Component component,
+      tserver::WaitStatesPB* resp) {
+    auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
-      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(type);
+      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
       return;
     }
 
+    resp->set_component(yb::to_underlying(component));
+
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
-
     dump_req.set_include_traces(false);
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
@@ -1254,13 +1269,7 @@ class PgClientServiceImpl::Impl {
     size_t ignored_calls_no_wait_state = 0;
     for (const auto& conns : dump_resp.inbound_connections()) {
       for (const auto& call : conns.calls_in_flight()) {
-        if (!call.has_wait_state() ||
-            // Ignore log-appenders which are just Idle
-            call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
-            // Ignore ActiveSessionHistory calls, if desired.
-            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
-             call.wait_state().aux_info().has_method() &&
-             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+        if (ShouldIgnoreCall(req, call)) {
           ignored_calls++;
           if (!call.has_wait_state()) {
             ignored_calls_no_wait_state++;
@@ -1272,10 +1281,7 @@ class PgClientServiceImpl::Impl {
     }
     if (dump_resp.has_local_calls()) {
       for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
-        if (!call.has_wait_state() ||
-            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
-             call.wait_state().aux_info().has_method() &&
-             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+        if (ShouldIgnoreCall(req, call)) {
           ignored_calls++;
           if (!call.has_wait_state()) {
             ignored_calls_no_wait_state++;
@@ -1285,7 +1291,7 @@ class PgClientServiceImpl::Impl {
         resp->add_wait_states()->CopyFrom(call.wait_state());
       }
     }
-    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
+    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls_no_wait_state > 0)
         << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
         << " without wait state";
     VLOG(2) << __PRETTY_FUNCTION__
@@ -1293,6 +1299,7 @@ class PgClientServiceImpl::Impl {
   }
 
   void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+    resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
@@ -1301,6 +1308,7 @@ class PgClientServiceImpl::Impl {
   }
 
   void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
+    resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
       if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
@@ -1312,7 +1320,7 @@ class PgClientServiceImpl::Impl {
       const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
       rpc::RpcContext* context) {
     if (req.fetch_tserver_states()) {
-      GetRpcsWaitStates(req, ServerType::TServer, resp->mutable_tserver_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
@@ -1321,7 +1329,7 @@ class PgClientServiceImpl::Impl {
       AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
-      GetRpcsWaitStates(req, ServerType::CQLServer, resp->mutable_cql_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
     }
     return Status::OK();
   }

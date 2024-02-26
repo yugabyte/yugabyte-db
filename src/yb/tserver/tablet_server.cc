@@ -1372,15 +1372,18 @@ void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
   cql_server_.store(server);
 }
 
-rpc::Messenger* TabletServer::GetMessenger(ServerType server_type) const {
-  switch (server_type) {
-    case ServerType::TServer:
+rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
+  switch (component) {
+    case ash::Component::kYSQL:
+    case ash::Component::kMaster:
+      return nullptr;
+    case ash::Component::kTServer:
       return messenger();
-    case ServerType::CQLServer:
+    case ash::Component::kYCQL:
       auto cql_server = cql_server_.load();
       return (cql_server ? cql_server->messenger() : nullptr);
   }
-  FATAL_INVALID_ENUM_VALUE(ServerType, server_type);
+  FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
 }  // namespace yb::tserver
