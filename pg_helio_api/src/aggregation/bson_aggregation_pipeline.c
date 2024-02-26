@@ -4031,19 +4031,33 @@ void
 ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData)
 {
 	EnsureTopLevelFieldType("cursor", iterator, BSON_TYPE_DOCUMENT);
-	pgbsonelement cursorElement = { 0 };
-
-	if (TryGetBsonValueToPgbsonElement(bson_iter_value(iterator), &cursorElement))
+	bson_iter_t cursorDocIter;
+	if (!bson_iter_recurse(iterator, &cursorDocIter))
 	{
-		if (strcmp(cursorElement.path, "batchSize") == 0)
+		return;
+	}
+
+	while (bson_iter_next(&cursorDocIter))
+	{
+		const char *path = bson_iter_key(&cursorDocIter);
+		const bson_value_t *value = bson_iter_value(&cursorDocIter);
+		if (strcmp(path, "batchSize") == 0)
 		{
-			SetBatchSize("cursor.batchSize", &cursorElement.bsonValue, queryData);
+			SetBatchSize("cursor.batchSize", value, queryData);
+		}
+		else if (strcmp(path, "singleBatch") == 0)
+		{
+			EnsureTopLevelFieldType("cursor.singleBatch", &cursorDocIter, BSON_TYPE_BOOL);
+			if (value->value.v_bool)
+			{
+				queryData->isSingleBatch = true;
+			}
 		}
 		else
 		{
 			ereport(ERROR, (errcode(MongoFailedToParse),
 							errmsg("Unrecognized field: %s",
-								   cursorElement.path)));
+								   path)));
 		}
 	}
 }
