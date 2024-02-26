@@ -19,7 +19,7 @@ YugabyteDB inherits the architecture of creating one backend process for every c
 However, these products have some limitations such as the following:
 
 - Both Odyssey and PgBouncer do not support SET statements in the transaction pooling mode.
-- Deploying PgBouncer or Odyssey require additional deployment and configuration steps.
+- Deploying PgBouncer or Odyssey requires additional deployment and configuration steps.
 
 YugabyteDB therefore includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other pooling solutions but without this limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
