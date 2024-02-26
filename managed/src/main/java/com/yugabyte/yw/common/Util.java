@@ -130,6 +130,8 @@ public class Util {
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
+  public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
+
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
