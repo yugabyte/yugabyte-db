@@ -67,6 +67,8 @@ DR further allows for the role of each universe to switch during planned switcho
 
     To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
 
+- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported.
+
 ## xCluster DR vs xCluster replication
 
 xCluster refers to all YugabyteDB deployments with two or more universes, and has two major flavors:
