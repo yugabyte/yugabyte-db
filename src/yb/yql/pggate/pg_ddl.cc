@@ -464,7 +464,7 @@ PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_sess
   }
 }
 
-Status PgCreateReplicationSlot::Exec() {
+Result<tserver::PgCreateReplicationSlotResponsePB> PgCreateReplicationSlot::Exec() {
   return pg_session_->pg_client().CreateReplicationSlot(&req_, DdlDeadline());
 }
 

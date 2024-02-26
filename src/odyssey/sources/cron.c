@@ -10,6 +10,7 @@
 #include <odyssey.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
@@ -90,7 +91,6 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		instance->yb_stats[index].query_rate = avg->count_query;
 		instance->yb_stats[index].transaction_rate = avg->count_tx;
 		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;
-		instance->yb_stats[index].last_updated_time = machine_time_us();
 		od_route_unlock(route);
 	}
 
@@ -175,6 +175,13 @@ static inline void od_cron_stat(od_cron_t *cron)
 	od_router_t *router = cron->global->router;
 	od_instance_t *instance = cron->global->instance;
 	od_worker_pool_t *worker_pool = cron->global->worker_pool;
+
+	/* Update last updated timestamp */
+	if (instance->yb_stats != NULL) {
+		struct timespec t;
+		clock_gettime(CLOCK_REALTIME, &t);
+		instance->yb_stats[0].last_updated_timestamp = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+	}
 
 	if (instance->config.log_stats) {
 		/* system worker stats */

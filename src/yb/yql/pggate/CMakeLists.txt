@@ -63,6 +63,7 @@ ADD_YB_LIBRARY(yb_pggate_flags
 
 set(PGGATE_LIBS
     consensus_error
+    cdc_service_proto
     yb_ash
     yb_util
     yb_common

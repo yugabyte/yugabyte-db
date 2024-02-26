@@ -1743,8 +1743,8 @@ void CDCServiceImpl::GetChanges(
 
     status = GetChangesForCDCSDK(
         stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker, enum_map,
-        composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp, &cached_schema_details,
-        &last_streamed_op_id, req->safe_hybrid_time(),
+        composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
+        &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
         consistent_snapshot_time,
         req->wal_segment_index(),
         &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
@@ -1772,10 +1772,9 @@ void CDCServiceImpl::GetChanges(
       resp->clear_cdc_sdk_proto_records();
       status = GetChangesForCDCSDK(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
-          enum_map, composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
-          &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
-          consistent_snapshot_time,
-          req->wal_segment_index(), &last_readable_index,
+          enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
+          &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
+          consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
           tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
     }
     // This specific error indicates that a tablet split occured on the tablet.

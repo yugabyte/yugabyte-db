@@ -103,7 +103,7 @@ While UDTs (user-defined types) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-You configure packed row format using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
+As of v2.20.0, Packed Row for YSQL is enabled by default for new universes. If your universe is upgraded from v2.18.x and lower, you configure packed row format using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 

@@ -1044,6 +1044,7 @@ Status CatalogManager::CreateNewXReplStream(
       LOG(INFO) << "Consistent Snapshot Time for stream " << stream->StreamId().ToString()
                 << " is: " << consistent_snapshot_time
                 << " = " << cs_hybrid_time;
+      resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
 
       // Save the consistent_snapshot_time in the SysCDCStreamEntryPB catalog
       auto l = stream->LockForWrite();
