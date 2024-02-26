@@ -1103,13 +1103,23 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetReplicationSlot(
+      const PgGetReplicationSlotRequestPB& req, PgGetReplicationSlotResponsePB* resp,
+      rpc::RpcContext* context) {
+    LOG_WITH_FUNC(INFO) << "Start with req: " << req.DebugString();
+    auto stream =
+        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    stream.ToPB(resp->mutable_replication_slot_info());
+    return Status::OK();
+  }
+
   Status GetReplicationSlotStatus(
       const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
       rpc::RpcContext* context) {
     // Get the stream_id for the replication slot.
-    xrepl::StreamId stream_id = xrepl::StreamId::Nil();
-    RETURN_NOT_OK(
-        client().GetCDCStream(ReplicationSlotName(req.replication_slot_name()), &stream_id));
+    auto stream =
+        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
 
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;

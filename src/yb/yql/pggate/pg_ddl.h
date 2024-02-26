@@ -321,7 +321,7 @@ class PgCreateReplicationSlot : public PgDdl {
                           PgOid database_oid,
                           YBCPgReplicationSlotSnapshotAction snapshot_action);
 
-  Status Exec();
+  Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 
   virtual ~PgCreateReplicationSlot();
 

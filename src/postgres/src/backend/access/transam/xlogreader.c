@@ -27,6 +27,9 @@
 
 #ifndef FRONTEND
 #include "utils/memutils.h"
+
+/* YB includes. */
+#include "pg_yb_utils.h"
 #endif
 
 static bool allocate_recordbuf(XLogReaderState *state, uint32 reclength);
@@ -109,6 +112,11 @@ XLogReaderAllocate(int wal_segment_size, XLogPageReadCB pagereadfunc,
 		return NULL;
 	}
 	state->errormsg_buf[0] = '\0';
+
+#ifndef FRONTEND
+	if (IsYugaByteEnabled())
+		state->yb_virtual_wal_record = NULL;
+#endif
 
 	/*
 	 * Allocate an initial readRecordBuf of minimal size, which can later be
@@ -1030,6 +1038,12 @@ ResetDecoder(XLogReaderState *state)
 		state->blocks[block_id].apply_image = false;
 	}
 	state->max_block_id = -1;
+}
+
+void
+YBResetDecoder(XLogReaderState *state)
+{
+	ResetDecoder(state);
 }
 
 /*

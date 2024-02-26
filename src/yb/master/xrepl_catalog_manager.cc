@@ -1044,6 +1044,7 @@ Status CatalogManager::CreateNewXReplStream(
       LOG(INFO) << "Consistent Snapshot Time for stream " << stream->StreamId().ToString()
                 << " is: " << consistent_snapshot_time
                 << " = " << cs_hybrid_time;
+      resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
 
       // Save the consistent_snapshot_time in the SysCDCStreamEntryPB catalog
       auto l = stream->LockForWrite();
@@ -1473,7 +1474,7 @@ Status CatalogManager::DeleteCDCStream(
 Result<std::optional<CDCStreamInfoPtr>> CatalogManager::GetStreamIfValidForDelete(
     const xrepl::StreamId& stream_id, bool force_delete) {
   auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
+  if (stream == nullptr || stream->LockForRead()->started_deleting()) {
     return std::nullopt;
   }
 
@@ -4391,10 +4392,13 @@ Status CatalogManager::DeleteUniverseReplication(
 
       DeleteCDCStreamResponsePB delete_cdc_stream_resp;
       // Set force_delete=true since we are deleting active xCluster streams.
+      // Since we are deleting universe replication, we should be ok with
+      // streams not existing on the other side, so we pass in ignore_errors
+      bool ignore_missing_streams = false;
       auto s = xcluster_rpc->client()->DeleteCDCStream(
           streams,
           true, /* force_delete */
-          ignore_errors /* ignore_errors */,
+          true /* ignore_errors */,
           &delete_cdc_stream_resp);
 
       if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
@@ -4410,12 +4414,13 @@ Status CatalogManager::DeleteUniverseReplication(
 
         if (s.ok()) {
           // Returned but did not find some streams, so still need to warn the user about those.
+          ignore_missing_streams = true;
           s = STATUS(NotFound, message);
         } else {
           s = s.CloneAndPrepend(message);
         }
       }
-      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, ignore_errors, resp));
+      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, ignore_errors | ignore_missing_streams, resp));
     }
   }
 

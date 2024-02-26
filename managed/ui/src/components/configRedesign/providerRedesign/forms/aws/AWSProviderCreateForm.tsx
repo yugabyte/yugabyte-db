@@ -582,7 +582,7 @@ export const AWSProviderCreateForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -685,7 +685,7 @@ const constructProviderPayload = async (
     formValues.skipKeyValidateAndUpload
   );
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   return {
     code: ProviderCode.AWS,

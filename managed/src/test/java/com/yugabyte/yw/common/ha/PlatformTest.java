@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApi;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
@@ -120,6 +121,7 @@ public class PlatformTest extends FakeDBApplication {
         Paths.get(
             app.config().getString(AppConfigHelper.YB_STORAGE_PATH),
             PlatformReplicationHelper.BACKUP_DIR);
+    Util.setYbaVersion("1.0.0.0-b1");
   }
 
   @After

@@ -199,10 +199,11 @@ bool		report_per_command = false;	/* report per-command latencies, retries
 										 * (failures without retrying) */
 int			main_pid;			/* main process id used in log filename */
 uint32		batch_size = 1024;	/* Batch size used for a transaction */
-int             yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
-char            *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
-bool            yb_metrics_arg_set = false; /* Is any metrics server arg set? */
-struct          WebserverWrapper *yb_metrics_webserver = NULL;
+int     yb_metrics_bind_port = 8080; /* Port used by the metrics webserver */
+char    *yb_metrics_bind_address = "localhost"; /* Bind address used by the metrics webserver */
+bool    yb_metrics_arg_set = false; /* Is any metrics server arg set? */
+struct  WebserverWrapper *yb_metrics_webserver = NULL;
+char    *yb_connection_init_sql; /* Connection init sql */
 
 /*
  * There're different types of restrictions for deciding that the current failed
@@ -3420,6 +3421,14 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 						break;
 					}
+					else                                                             
+					{                                                                
+						// Connection init sql                                   
+						if (yb_connection_init_sql != NULL) {                       
+							executeStatement(st->con,
+									 yb_connection_init_sql);  
+						}                                                        
+					}
 					INSTR_TIME_SET_CURRENT(now);
 					INSTR_TIME_ACCUM_DIFF(thread->conn_time, now, start);
 
@@ -5730,6 +5739,7 @@ main(int argc, char **argv)
 		{"batch-size", required_argument, NULL, 11},
 		{"yb-metrics-bind-address", required_argument, NULL, 12},
 		{"yb-metrics-bind-port", required_argument, NULL, 13},
+		{"yb-connection-init-sql", required_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -6147,6 +6157,9 @@ main(int argc, char **argv)
 					yb_metrics_bind_port = (uint32) yb_metrics_bind_port_arg;
 				}
 				yb_metrics_arg_set = true;
+				break;
+			case 14:                                /* yb-connection-init-sql */                
+				yb_connection_init_sql = pg_strdup(optarg);                                 
 				break;
 			default:
 				ereport(ELEVEL_FATAL,
@@ -6679,6 +6692,12 @@ threadRun(void *arg)
 		{
 			if ((state[i].con = doConnect()) == NULL)
 				goto done;
+			else                                                                             
+			{                                                                                
+				if (yb_connection_init_sql != NULL) {                                       
+					executeStatement(state[i].con, yb_connection_init_sql);             
+				}                                                                        
+			}
 		}
 	}
 

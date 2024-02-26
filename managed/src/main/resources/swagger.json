@@ -14361,7 +14361,7 @@
         },
         "userType" : {
           "description" : "User Type",
-          "enum" : [ "local", "ldap" ],
+          "enum" : [ "local", "ldap", "oidc" ],
           "type" : "string"
         },
         "uuid" : {
@@ -14425,7 +14425,7 @@
         },
         "userType" : {
           "description" : "User Type",
-          "enum" : [ "local", "ldap" ],
+          "enum" : [ "local", "ldap", "oidc" ],
           "type" : "string"
         },
         "uuid" : {
@@ -15174,6 +15174,11 @@
           "description" : "Method for HTTP call that resulted in this error",
           "example" : "POST",
           "type" : "string"
+        },
+        "requestJson" : {
+          "description" : "User request JSON object",
+          "example" : "{ \"foo\" : \"bar\", \"baz\" : [1, 2, 3] }",
+          "type" : "object"
         },
         "requestUri" : {
           "description" : "URI for HTTP request that resulted in this error",

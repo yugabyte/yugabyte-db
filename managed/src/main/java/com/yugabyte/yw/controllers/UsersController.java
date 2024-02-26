@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Users.UserType;
+import static com.yugabyte.yw.common.Util.getRandomPassword;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -42,7 +41,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -60,8 +58,6 @@ import play.mvc.Result;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
-  private static final List<String> specialCharacters =
-      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   @Inject private RuntimeConfGetter confGetter;
 
@@ -173,19 +169,13 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, UserRegisterFormData.class);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
-      byte[] passwordOidc = new byte[16];
-      new Random().nextBytes(passwordOidc);
-      String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
-      // To be consistent with password policy
-      Integer randomInt = new Random().nextInt(26);
-      String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-      String uppercaseLetter = lowercaseLetter.toUpperCase();
-      generatedPassword +=
-          (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
-              + lowercaseLetter
-              + uppercaseLetter
-              + String.valueOf(randomInt));
-      formData.setPassword(generatedPassword); // Password is not used.
+
+      if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Manual user creation not allowed with OIDC setup!");
+      }
+
+      formData.setPassword(getRandomPassword()); // Password is not used.
     }
 
     // Validate password.
@@ -206,8 +196,6 @@ public class UsersController extends AuthenticatedController {
       // Case 1:
       // Check the role field. Original API use case. To be deprecated.
       if (formData.getRole() != null && formData.getRoleResourceDefinitions() == null) {
-        // Get the built-in role UUID by name.
-        Role role = Role.getOrBadRequest(customerUUID, formData.getRole().toString());
         // Create the user.
         user =
             Users.create(
@@ -216,21 +204,7 @@ public class UsersController extends AuthenticatedController {
                 formData.getRole(),
                 customerUUID,
                 false);
-        // Need to define all available resources in resource group as default.
-        ResourceGroup resourceGroup =
-            ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
-        // Create a single role binding for the user.
-        List<RoleBinding> createdRoleBindings =
-            roleBindingUtil.setUserRoleBindings(
-                user.getUuid(),
-                Arrays.asList(new RoleResourceDefinition(role.getRoleUUID(), resourceGroup)),
-                RoleBindingType.Custom);
-
-        LOG.info(
-            "Created user '{}', email '{}', default role bindings '{}'.",
-            user.getUuid(),
-            user.getEmail(),
-            createdRoleBindings.toString());
+        roleBindingUtil.createRoleBindingsForSystemRole(user);
       }
 
       // Case 2:
@@ -381,6 +355,11 @@ public class UsersController extends AuthenticatedController {
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
     if (UserType.ldap == user.getUserType() && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+    }
+    // If OIDC is setup, the IdP should be the single source of truth for users' roles
+    if (user.getUserType().equals(UserType.oidc)
+        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for OIDC user.");
     }
     if (Users.Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");

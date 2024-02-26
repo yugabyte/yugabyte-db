@@ -391,6 +391,7 @@ typedef struct PgGFlagsAccessor {
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
+  const bool*     ysql_enable_db_catalog_version_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -548,6 +549,54 @@ typedef struct PgReplicationSlotDescriptor {
   YBCPgOid database_oid;
   bool active;
 } YBCReplicationSlotDescriptor;
+
+typedef struct PgCDCSDKCheckpoint {
+  int64_t term;
+  int64_t index;
+  const char *key;
+  int32_t write_id;
+} YBCPgCDCSDKCheckpoint;
+
+typedef struct PgTabletLocationsDescriptor {
+  const char *tablet_id;
+} YBCPgTabletLocationsDescriptor;
+
+typedef struct PgTabletCheckpoint {
+  YBCPgTabletLocationsDescriptor *location;
+  YBCPgCDCSDKCheckpoint *checkpoint;
+  YBCPgOid table_oid;
+} YBCPgTabletCheckpoint;
+
+typedef struct PgDatumMessage {
+  const char* column_name;
+  uint64_t column_type;
+  uint64_t datum;
+  bool is_null;
+} YBCPgDatumMessage;
+
+typedef enum PgRowMessageAction {
+  YB_PG_ROW_MESSAGE_ACTION_UNKNOWN = 0,
+  YB_PG_ROW_MESSAGE_ACTION_BEGIN = 1,
+  YB_PG_ROW_MESSAGE_ACTION_COMMIT = 2,
+  YB_PG_ROW_MESSAGE_ACTION_INSERT = 3,
+  YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
+  YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
+  YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+} YBCPgRowMessageAction;
+
+typedef struct PgRowMessage {
+  int col_count;
+  YBCPgDatumMessage* cols;
+  uint64_t commit_time;
+  YBCPgRowMessageAction action;
+} YBCPgRowMessage;
+
+typedef struct PgChangeRecordBatch {
+  int row_count;
+  YBCPgRowMessage* rows;
+  YBCPgCDCSDKCheckpoint* checkpoint;
+  YBCPgOid table_oid;
+} YBCPgChangeRecordBatch;
 
 // A struct to store ASH metadata in PG's procarray
 typedef struct AshMetadata {

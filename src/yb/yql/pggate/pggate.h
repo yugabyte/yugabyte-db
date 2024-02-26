@@ -459,7 +459,7 @@ class PgApiImpl {
                              int n_attr_values,
                              YBCPgExpr *attr_values);
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
-  Status DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
+  Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
@@ -521,11 +521,17 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Insert.
+  Result<PgStatement*> NewInsertBlock(
+      const PgObjectId& table_id,
+      bool is_region_local,
+      YBCPgTransactionSetting transaction_setting);
+
   Status NewInsert(const PgObjectId& table_id,
                    bool is_region_local,
                    PgStatement **handle,
                    YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL,
+                   PgStatement *block_insert_handle = nullptr);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -737,12 +743,28 @@ class PgApiImpl {
                                   const PgOid database_oid,
                                   YBCPgReplicationSlotSnapshotAction snapshot_action,
                                   PgStatement **handle);
-  Status ExecCreateReplicationSlot(PgStatement *handle);
+  Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
+      PgStatement *handle);
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name);
+
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
+
+  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
+      const std::string& stream_id, const PgObjectId& table_id);
+
+  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint *checkpoint,
+      uint64_t safe_time, bool is_initial_checkpoint);
+
+  Result<cdc::GetChangesResponsePB> GetCDCChanges(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint *checkpoint);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
