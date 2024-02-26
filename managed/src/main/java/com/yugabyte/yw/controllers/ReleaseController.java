@@ -101,7 +101,7 @@ public class ReleaseController extends AuthenticatedController {
       releases.forEach(
           (version, metadata) -> {
             releaseManager.addReleaseWithMetadata(version, metadata);
-            gFlagsValidation.addDBMetadataFiles(version, metadata);
+            gFlagsValidation.addDBMetadataFiles(version);
           });
       releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {

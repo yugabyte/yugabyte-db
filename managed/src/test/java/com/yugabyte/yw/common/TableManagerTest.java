@@ -311,7 +311,7 @@ public class TableManagerTest extends FakeDBApplication {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getId());
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
-    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory);
+    ReleaseContainer release = new ReleaseContainer(metadata, mockCloudUtilFactory, mockAppConfig);
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);

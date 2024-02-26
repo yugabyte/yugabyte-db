@@ -92,7 +92,7 @@ public class ReleasesUploadController extends AuthenticatedController {
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "failed to upload file");
     }
-    ReleaseLocalFile.create(uuid, destPath.toString());
+    ReleaseLocalFile.create(uuid, destPath.toString(), true);
     log.info("downloaded file to {}", destPath);
     return new YBPCreateSuccess(uuid).asResult();
   }
