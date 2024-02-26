@@ -46,12 +46,6 @@ $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-li
 $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
 ```
 
-Note that if you are trying to upgrade your YBA installer from version 2.18.4.2 or earlier, run the following command additionally:
-
-```sh
-$ umask 022
-```
-
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh

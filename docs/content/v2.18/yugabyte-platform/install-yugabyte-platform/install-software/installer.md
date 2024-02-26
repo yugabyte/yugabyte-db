@@ -70,6 +70,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18" format="long">}}/yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
     $ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
     $ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
+    $ umask 022
     ```
 
 1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
