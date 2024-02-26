@@ -80,11 +80,11 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 YugabyteDB Anywhere supports _all_ officially supported versions of YugabyteDB.
 
-You can use YBA {{< yb-version version="stable" format="short">}} to deploy the following releases of YugabyteDB:
+You can use YBA {{< yb-version version="stable" format="short">}} to deploy releases from the following release series:
 
-- [v2.14 series](/preview/releases/release-notes/v2.14/)
-- [v2.18 series](/preview/releases/release-notes/v2.18/)
-- [v2.20 series](/preview/releases/release-notes/v2.20/)
+- [v2.14](/preview/releases/release-notes/v2.14/)
+- [v2.18](/preview/releases/release-notes/v2.18/)
+- [v2.20](/preview/releases/release-notes/v2.20/)
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
