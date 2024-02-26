@@ -969,7 +969,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_fetch_flush_and_compaction_states(true);
     req.set_fetch_raft_log_appender_states(true);
     req.set_fetch_cql_states(true);
-    req.set_ignore_ash_calls(true);
+    req.set_ignore_ash_and_perform_calls(true);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));

@@ -315,8 +315,15 @@ uint8_t AshGetTServerClientAddress(const std::string& host, unsigned char* clien
   return AF_INET6;
 }
 
+uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code) {
+  DCHECK_EQ((component >> YB_ASH_COMPONENT_BITS), 0);
+  DCHECK_EQ((code >> YB_ASH_COMPONENT_POSITION), 0);
+  return (component << YB_ASH_COMPONENT_POSITION) | code;
+}
+
 void AshCopyTServerSample(
-    YBCAshSample* cb_sample, const WaitStateInfoPB& tserver_sample, uint64_t sample_time) {
+    YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
+    uint64_t sample_time) {
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
@@ -324,7 +331,8 @@ void AshCopyTServerSample(
   cb_metadata->session_id = tserver_metadata.session_id();
   cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
-  cb_sample->wait_event_code = tserver_sample.wait_status_code();
+  cb_sample->encoded_wait_event_code =
+      AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_status_code());
   cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
   cb_sample->sample_time = sample_time;
 
@@ -351,7 +359,7 @@ void AshCopyTServerSamples(
     YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
     uint64_t sample_time) {
   for (const auto& sample : samples.wait_states()) {
-    AshCopyTServerSample(get_cb_slot_fn(), sample, sample_time);
+    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time);
   }
 }
 

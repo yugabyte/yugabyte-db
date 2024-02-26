@@ -254,7 +254,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
-  rpc::Messenger* GetMessenger(ServerType type) const override;
+  rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server) override;
 

@@ -15,6 +15,8 @@
 
 #include <future>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 
@@ -39,7 +41,6 @@ namespace tserver {
 using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
 
-YB_DEFINE_ENUM(ServerType, (TServer)(CQLServer));
 class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
@@ -83,7 +84,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server) = 0;
 
-  virtual rpc::Messenger* GetMessenger(ServerType type = ServerType::TServer) const = 0;
+  virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
 };
 
 } // namespace tserver

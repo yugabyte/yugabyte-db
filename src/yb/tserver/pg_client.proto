@@ -811,12 +811,13 @@ message PgActiveSessionHistoryRequestPB {
   bool fetch_tserver_states = 1;
   bool fetch_flush_and_compaction_states = 2;
   bool fetch_cql_states = 3;
-  bool ignore_ash_calls = 4;
+  bool ignore_ash_and_perform_calls = 4;
   bool fetch_raft_log_appender_states = 5;
 }
 
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
+  uint32 component = 2;
 }
 
 message PgActiveSessionHistoryResponsePB {
