@@ -8,6 +8,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -62,6 +64,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1103,5 +1106,58 @@ public class Util {
     }
 
     return imageBundleUUID;
+  }
+
+  /**
+   * Get a new JsonNode where each leaf node's value is replaced with an object containing jsonPath
+   * to that node and its value.
+   *
+   * <p>Example:
+   *
+   * <pre>
+   * {
+   *   "zones": ["az-1"]
+   * }
+   * </pre>
+   *
+   * Gets modified to:
+   *
+   * <pre>
+   * {
+   *   "zones": [
+   *     {
+   *       "jsonPath": "$.zones[0]",
+   *       "value": "az-1"
+   *     }
+   *   ]
+   * }
+   * </pre>
+   *
+   * @param node The JsonNode to be processed.
+   * @return A new JsonNode with original JsonNode's leaf nodes replaced.
+   */
+  public static JsonNode addJsonPathToLeafNodes(JsonNode node) {
+    return addJsonPathToLeafNodesInternal("$", node.deepCopy());
+  }
+
+  private static JsonNode addJsonPathToLeafNodesInternal(String path, JsonNode node) {
+    if (node.isValueNode()) {
+      return Json.newObject().put("jsonPath", path).set("value", node);
+    }
+    if (node.isArray()) {
+      for (int index = 0; index < node.size(); index++) {
+        String elementPath = path + "[" + index + "]";
+        ((ArrayNode) node).set(index, addJsonPathToLeafNodesInternal(elementPath, node.get(index)));
+      }
+    }
+    if (node.isObject()) {
+      for (Iterator<Map.Entry<String, JsonNode>> it = node.fields(); it.hasNext(); ) {
+        Map.Entry<String, JsonNode> field = it.next();
+        String fieldPath = path + "." + field.getKey();
+        ((ObjectNode) node)
+            .set(field.getKey(), addJsonPathToLeafNodesInternal(fieldPath, field.getValue()));
+      }
+    }
+    return node;
   }
 }
