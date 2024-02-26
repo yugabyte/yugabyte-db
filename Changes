@@ -6,6 +6,9 @@ Revision history for pgTAP
 
 * Fix bug introduced in v1.3.2 where `col_type_is` throws an error when the
   type isn't in the search path. Thanks to Erik Wienhold for the PR (#332)!
+* Removed the reference to PGUnit from the docs, as the project seems to have
+  disappeared. Also the link to the GitHub repo. Thanks to Vick Khera for the
+  report (#333)!
 
 1.3.2 2024-02-04T18:59:37Z
 --------------------------
