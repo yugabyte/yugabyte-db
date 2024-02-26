@@ -9,58 +9,68 @@ cascade:
   unversioned: true
 ---
 
-### First applications
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="Create a hello world application"
+    description="Learn how to connect applications to YugabyteDB using available drivers and ORMs for your favorite programming language."
+    buttonText="Get Started"
+    buttonUrl="build-apps/"
+    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+  >}}
 
-{{<index/block>}}
-
-  {{<index/item
-    title="Hello world"
-    body="Build a hello world application using your favorite programming language."
-    href="build-apps/"
-    icon="fa-solid fa-rocket">}}
-
-  {{<index/item
+  {{< sections/bottom-image-box
     title="Build and learn"
-    body="Learn how to deploy and scale an application from single-node PostgreSQL to multi-region YugabyteDB."
-    href="build-and-learn/"
-    icon="fa-solid fa-globe">}}
-
-{{</index/block>}}
+    description="Learn the essential capabilities of YugabyteDB by deploying and scaling an application from single-node PostgreSQL to multi-region YugabyteDB."
+    buttonText="Get Started"
+    buttonUrl="build-and-learn/"
+    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+  >}}
+{{< /sections/2-boxes >}}
 
 ### Cloud
 
 Develop cloud-native applications using YugabyteDB and your preferred cloud environment.
 
-{{<index/block>}}
-
-  {{<index/item
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
     title="Azure"
-    body="Build with YugabyteDB on Microsoft Azure."
-    href="azure/"
-    icon="/images/tutorials/azure/azure-logo.png">}}
+    description="Build with YugabyteDB on Microsoft Azure."
+    buttonText="Explore"
+    buttonUrl="azure/"
+    imageAlt="Azure"
+    imageUrl="/images/tutorials/azure/azure-logo.png"
+  >}}
 
-  {{<index/item
+  {{< sections/3-box-card
     title="Google"
-    body="Build with YugabyteDB on Google Cloud."
-    href="google/"
-    icon="/images/tutorials/google/google-cloud-logo.svg">}}
+    description="Build with YugabyteDB on Google Cloud."
+    buttonText="Explore"
+    buttonUrl="google/"
+    imageAlt="GCP"
+    imageUrl="/images/tutorials/google/google-cloud-logo.svg"
+  >}}
 
-{{</index/block>}}
+{{< /sections/3-boxes >}}
 
 ### Other technologies
 
-{{<index/block>}}
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Artificial intelligence"
+    description="Add a scalable and highly-available database to your AI projects."
+    buttonText="Explore"
+    buttonUrl="ai/"
+    imageAlt="AI"
+    imageUrl="/icons/openai-logomark.svg"
+  >}}
 
-  {{<index/item
-    title="AI"
-    body="Add a scalable and highly-available database to your AI projects."
-    href="ai/"
-    icon="fa-solid fa-robot">}}
-
-  {{<index/item
+  {{< sections/3-box-card
     title="Kafka"
-    body="Stream data with different Kafka environments."
-    href="cdc-tutorials/"
-    icon="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">}}
+    description="Stream data with different Kafka environments."
+    buttonText="Explore"
+    buttonUrl="cdc-tutorials/"
+    imageAlt="Kafka"
+    imageUrl="/images/section_icons/develop/ecosystem/apache-kafka-icon.png"
+  >}}
 
-{{</index/block>}}
+{{< /sections/3-boxes >}}
