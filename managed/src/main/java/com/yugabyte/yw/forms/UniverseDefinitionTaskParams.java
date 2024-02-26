@@ -31,13 +31,15 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nonnull;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
@@ -47,6 +49,7 @@ import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
@@ -262,7 +265,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * FULL_MOVE are handled by the same task (EditUniverse), the difference is that for FULL_MOVE ui
    * acts a little different. SMART_RESIZE_NON_RESTART - we don't need any confirmations for that as
    * it is non-restart. SMART_RESIZE - upgrade that handled by ResizeNode task GFLAGS_UPGRADE - for
-   * the case of toggling "enable YSQ" and so on.
+   * the case of toggling "enable YSQL" and so on.
    */
   public enum UpdateOptions {
     UPDATE,
@@ -281,6 +284,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
+  @Slf4j
   public static class Cluster {
 
     public UUID uuid = UUID.randomUUID();
@@ -403,6 +407,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
         userIntent.specificGFlags.validateConsistency();
       }
+      validateProxyConfig(userIntent, nodes);
+    }
+
+    public void validateProxyConfig(UserIntent userIntent, Collection<NodeDetails> nodeDetails) {
+      if (CollectionUtils.isNotEmpty(nodeDetails)) {
+        nodeDetails.stream()
+            .map(nD -> nD.azUuid)
+            .distinct()
+            .forEach(
+                azUUID -> {
+                  ProxyConfig proxyConfig = userIntent.getProxyConfig(azUUID);
+                  if (proxyConfig != null) {
+                    proxyConfig.validate();
+                  }
+                });
+      }
+      if (userIntent.proxyConfig != null) {
+        userIntent.proxyConfig.validate();
+      }
     }
 
     /**
@@ -519,29 +542,28 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     void setPerProcess(Map<UniverseTaskBase.ServerType, T> values);
   }
 
-  // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(
+      description =
+          "WARNING: This is a preview API that could change."
+              + " User intent Properties that can be overriden on per-process basis.")
   @Data
-  public static class OverridenDetails {
+  public static class PerProcessDetails {
     @ApiModelProperty private String instanceType;
     @ApiModelProperty private DeviceInfo deviceInfo;
-    @ApiModelProperty private Integer cgroupSize;
 
-    public void mergeWith(OverridenDetails other) {
+    public <T extends PerProcessDetails> void mergeWith(T other) {
       if (other == null) {
         return;
       }
       if (other.getDeviceInfo() != null) {
-        this.deviceInfo = other.getDeviceInfo();
+        this.setDeviceInfo(other.getDeviceInfo());
       }
       if (other.getInstanceType() != null) {
-        this.instanceType = other.getInstanceType();
-      }
-      if (other.getCgroupSize() != null) {
-        this.cgroupSize = other.getCgroupSize();
+        this.setInstanceType(other.getInstanceType());
       }
     }
 
-    public <T, P extends OverridenDetails> P mergeApply(T val, Function<T, P> extractor) {
+    public <T, P extends PerProcessDetails> P mergeApply(T val, Function<T, P> extractor) {
       P result = null;
       if (val != null) {
         result = extractor.apply(val);
@@ -553,15 +575,59 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(
+      description =
+          "WARNING: This is a preview API that could change."
+              + " User intent Properties that can be overriden")
   @Data
-  public static class AZOverrides extends OverridenDetails
-      implements PerProcessOverrides<OverridenDetails> {
-    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+  public static class OverridenDetails extends PerProcessDetails {
+    @ApiModelProperty private Integer cgroupSize;
+    @ApiModelProperty private ProxyConfig proxyConfig;
+
+    @Override
+    public <T extends PerProcessDetails> void mergeWith(T other) {
+      if (other == null) {
+        return;
+      }
+      super.mergeWith(other);
+      if (other instanceof OverridenDetails) {
+        OverridenDetails oD = (OverridenDetails) other;
+        if (oD.getCgroupSize() != null) {
+          this.setCgroupSize(oD.getCgroupSize());
+        }
+        if (oD.getProxyConfig() != null) {
+          this.setProxyConfig(oD.getProxyConfig());
+        }
+      }
+    }
   }
 
+  @ApiModel(
+      description =
+          "WARNING: This is a preview API that could change."
+              + " Availability zone level overrides")
   @Data
-  public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
-    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+  public static class AZOverrides extends OverridenDetails
+      implements PerProcessOverrides<PerProcessDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, PerProcessDetails> perProcess;
+
+    public boolean allNull() {
+      return Stream.of(
+              this.getCgroupSize(),
+              this.getProxyConfig(),
+              this.getPerProcess(),
+              this.getDeviceInfo(),
+              this.getInstanceType())
+          .allMatch(Objects::isNull);
+    }
+  }
+
+  @ApiModel(
+      description = "WARNING: This is a preview API that could change." + " User Intent overrides")
+  @Data
+  public static class UserIntentOverrides implements PerProcessOverrides<PerProcessDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, PerProcessDetails> perProcess;
     @ApiModelProperty private Map<UUID, AZOverrides> azOverrides;
 
     @JsonIgnore
@@ -572,6 +638,46 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       } catch (JsonProcessingException e) {
         throw new RuntimeException("Failed to clone overrides", e);
       }
+    }
+
+    @JsonIgnore
+    public Map<UUID, ProxyConfig> getAZProxyConfigMap() {
+      if (azOverrides != null) {
+        return azOverrides.entrySet().stream()
+            .filter(e -> e.getValue().getProxyConfig() != null)
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue().getProxyConfig()));
+      }
+      return null;
+    }
+
+    @JsonIgnore
+    public void updateAZOverride(UUID azUUID, Consumer<AZOverrides> azOverridesConsumer) {
+      if (azOverrides == null) {
+        azOverrides = new HashMap<>();
+      }
+      azOverrides.compute(
+          azUUID,
+          (k, v) -> {
+            if (v == null) {
+              v = new AZOverrides();
+            }
+            azOverridesConsumer.accept(v);
+            if (v.allNull()) {
+              v = null;
+            }
+            return v;
+          });
+      if (azOverrides.containsKey(azUUID) && azOverrides.get(azUUID) == null) {
+        azOverrides.remove(azUUID);
+      }
+      if (MapUtils.isEmpty(azOverrides)) {
+        azOverrides = null;
+      }
+    }
+
+    @JsonIgnore
+    public boolean allNull() {
+      return Stream.of(this.getAzOverrides(), this.getPerProcess()).allMatch(Objects::isNull);
     }
   }
 
@@ -610,6 +716,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty public K8SNodeResourceSpec tserverK8SNodeResourceSpec;
 
+    @Data
     public static class K8SNodeResourceSpec {
       // Memory in GiB
       public Double memoryGib = 4.0;
@@ -728,7 +835,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
-    // Instance tags (used for AWS only).
+    // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
     // True if user wants to have dedicated nodes for master and tserver processes.
@@ -744,12 +851,29 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
-    @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. User Intent/Availability zone level"
+                + " overrides")
+    private UserIntentOverrides userIntentOverrides;
 
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     // 0 will not set any cgroup limits.
     // For read replica null or -1 value means use that of from primary cluster.
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
+
+    // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Universe's Proxy Config for DB"
+                + " nodes")
+    private ProxyConfig proxyConfig;
 
     @Override
     public String toString() {
@@ -825,18 +949,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.userIntentOverrides = userIntentOverrides.clone();
       }
       newUserIntent.cgroupSize = cgroupSize;
+      if (proxyConfig != null) {
+        newUserIntent.proxyConfig = proxyConfig.clone();
+      }
       return newUserIntent;
     }
 
+    private OverridenDetails getOverridenDetails(@Nullable UUID azUUID) {
+      return getOverridenDetails(null, azUUID);
+    }
+
     private OverridenDetails getOverridenDetails(
-        @Nonnull UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+        @Nullable UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
       OverridenDetails res = new OverridenDetails(); // Empty
       if (userIntentOverrides != null) {
-        res.mergeApply(userIntentOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+        if (serverType != null) {
+          res.mergeApply(userIntentOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+        }
         if (azUUID != null) {
           AZOverrides azOverrides =
               res.mergeApply(userIntentOverrides.getAzOverrides(), az -> az.get(azUUID));
-          if (azOverrides != null) {
+          if (azOverrides != null && serverType != null) {
             res.mergeApply(azOverrides.getPerProcess(), perProc -> perProc.get(serverType));
           }
         }
@@ -849,8 +982,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public Integer getCGroupSize(UUID azUUID) {
-      OverridenDetails overridenDetails =
-          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
       if (overridenDetails.getCgroupSize() != null) {
         return overridenDetails.getCgroupSize();
       }
@@ -912,6 +1044,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
+    }
+
+    public ProxyConfig getProxyConfig(@Nullable UUID azUUID) {
+      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
+      if (overridenDetails.getProxyConfig() != null) {
+        return overridenDetails.getProxyConfig();
+      }
+      return proxyConfig;
     }
 
     @Override
@@ -1030,6 +1170,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
           || authEnabled
           || enableYSQLAuth;
+    }
+
+    @JsonIgnore
+    public void updateUserIntentOverrides(Consumer<UserIntentOverrides> uIntentOverridesConsumer) {
+      if (userIntentOverrides == null) {
+        userIntentOverrides = new UserIntentOverrides();
+      }
+      uIntentOverridesConsumer.accept(userIntentOverrides);
+      if (userIntentOverrides.allNull()) {
+        userIntentOverrides = null;
+      }
     }
   }
 

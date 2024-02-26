@@ -155,6 +155,10 @@ public class Util {
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
 
+  public static final String HTTP_SCHEME = "http://";
+
+  public static final String HTTPS_SCHEME = "https://";
+
   public static volatile String YBA_VERSION;
 
   public static String getYbaVersion() {
@@ -1029,5 +1033,28 @@ public class Util {
   public static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
+  }
+
+  /**
+   * Validate url string and get URL object
+   *
+   * @param url
+   * @param defaultHttpScheme
+   * @return
+   */
+  public static URL validateAndGetURL(String url, boolean defaultHttpScheme) {
+    String urlString = url;
+    if (!urlString.startsWith(HTTP_SCHEME) && !urlString.startsWith(HTTPS_SCHEME)) {
+      urlString = (defaultHttpScheme ? HTTP_SCHEME : HTTPS_SCHEME) + urlString;
+    }
+    try {
+      URL urlInstance = new URL(urlString);
+      if (StringUtils.isBlank(urlInstance.getHost())) {
+        throw new RuntimeException("Malformed URL: " + urlString);
+      }
+      return urlInstance;
+    } catch (MalformedURLException e) {
+      throw new RuntimeException("Malformed URL: " + urlString);
+    }
   }
 }
