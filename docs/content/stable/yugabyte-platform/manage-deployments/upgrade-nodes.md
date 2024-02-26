@@ -1,0 +1,64 @@
+---
+title: Apply operating system upgrades and patches to universe nodes
+headerTitle: Upgrade and patch the Linux operating system
+linkTitle: Upgrade node OS
+description: Apply operating system upgrades and patches to universe nodes.
+headcontent: Apply operating system upgrades and patches to universe nodes
+menu:
+  stable_yugabyte-platform:
+    identifier: upgrade-nodes
+    parent: manage-deployments
+    weight: 20
+type: docs
+---
+
+If a virtual machine or a physical server in a universe requires operating system (OS) updates or patches, you need to pause node processes before applying updates.
+
+## Prerequisites
+
+If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
+
+## Patch nodes
+
+Typically, the following sequence will be automated using scripts that call the YBA REST APIs.
+
+For each node in the universe, use the following general procedure:
+
+1. Make sure that all nodes in the universe are running correctly.
+
+1. Stop the processes for the node to be patched.
+
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Stop Processes**.
+
+    If using the YBA API, use the following command:
+
+    ```sh
+    curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
+    --data-raw '{"nodeAction":"STOP"}'
+    ```
+
+    Check the return status to confirm that the node is stopped.
+
+1. Perform the steps to update or patch the Linux OS.
+
+    Ensure that the node retains its IP addresses after the patching of the Linux OS. Also ensure that the existing data volumes on the node remain untouched by the OS patching mechanism.
+
+    Two common ways to patch or upgrade the OS of VMs include the following:
+
+    - Inline patching - where you modify the Linux OS binaries in place (for example, yum).
+    - Boot disk replacement - this is typically used with a hypervisor or public cloud. You create a separate new VM with a virtual disk containing the new Linux OS patch or upgrade, disconnect the virtual disk from the new VM, and use it to replace the DB node's boot disk.
+
+1. Start the processes for the node.
+
+    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
+
+    If using the YBA API, use the following command:
+
+    ```shell
+    curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
+    --data-raw '{"nodeAction":"START"}'
+    ```
+
+    Check the return status to confirm that the node is started.
+
+When finished, you can confirm all nodes in the universe are running correctly in YBA by navigating to the universe **Nodes** tab.

@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     identifier: edit-helm-overrides
     parent: manage-deployments
-    weight: 60
+    weight: 85
 type: docs
 ---
 

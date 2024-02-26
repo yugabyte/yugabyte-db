@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
-    weight: 50
+    weight: 60
 type: docs
 ---
 
