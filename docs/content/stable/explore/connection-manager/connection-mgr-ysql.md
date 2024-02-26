@@ -41,7 +41,7 @@ YSQL Connection Manager has the following key features:
 
 - Support for session parameters - YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
 
-- Support for prepared statements - PgBouncer and Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
+- Support for prepared statements - Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
 ## Use YSQL Connection Manager
 
