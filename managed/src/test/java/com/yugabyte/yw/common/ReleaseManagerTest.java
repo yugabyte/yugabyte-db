@@ -279,6 +279,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     List<String> versions = ImmutableList.of("0.0.0.1-b1");
     createDummyReleases(versions, false, false);
     when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
@@ -309,6 +310,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithLinuxOSReleasePath() throws IOException {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.0.1-b1");
     createDummyReleases(versions, false, false, true, true, false, "linux");
@@ -341,6 +343,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithEl8OSReleasePath() throws IOException {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.0.1-b1");
     createDummyReleases(versions, false, false, true, true, false, "el8");
@@ -373,6 +376,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithoutChart() throws IOException {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.0.1-b1");
     createDummyReleases(versions, false, false, true, false, false);
@@ -405,6 +409,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithReleaseAndDockerPath() {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
     when(appConfig.getString("yb.helm.packagePath")).thenReturn(TMP_DOCKER_STORAGE_PATH);
@@ -477,6 +482,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithReleaseAndDockerPathDuplicate() throws IOException {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.0.2-b2");
@@ -512,6 +518,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testLoadReleasesWithAlmaPath() throws IOException {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.0.2-b2");
     createDummyReleases(versions, false, false, false, true, true, "almalinux8");
@@ -581,6 +588,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testAddRelease() {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     ReleaseManager.ReleaseMetadata metadata =
         ReleaseManager.ReleaseMetadata.fromLegacy(
             "0.0.0.1-b1", "/path/to/yyugabyte-0.0.0.1-b1.tar.gz");
@@ -601,6 +609,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testAddReleaseVersionMoreThanYbaVersionDisallowed() {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     ReleaseMetadata metadata = ReleaseMetadata.create("99.99.99.99-b99");
     assertPlatformException(
         () -> releaseManager.addReleaseWithMetadata("99.99.99.99-b99", metadata));
@@ -629,6 +638,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
   public void testAddReleaseWithFullMetadata() {
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.0.1-b1");
     metadata.s3 = new ReleaseMetadata.S3Location();
     metadata.s3.paths = new ReleaseMetadata.PackagePaths();
@@ -797,6 +807,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
         .thenReturn(false);
+    when(confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)).thenReturn(false);
     releaseManager.importLocalReleases();
 
     // Create new release files for 0.0.0.2-b1.

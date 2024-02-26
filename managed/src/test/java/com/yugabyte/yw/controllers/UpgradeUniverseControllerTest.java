@@ -417,7 +417,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     defaultUniverse,
                     p -> {
                       p.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
-                      p.ybSoftwareVersion = "2.16.7.5-b99";
+                      p.ybSoftwareVersion = "2.15.7.5-b99";
                     },
                     SoftwareUpgradeParams.class,
                     "software"));
@@ -692,7 +692,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           runUpgrade(
               defaultUniverse,
               p -> {
-                p.ybSoftwareVersion = "2.20.2.0-b2";
+                p.ybSoftwareVersion = "2.21.0.0-b1";
               },
               SoftwareUpgradeParams.class,
               "software");
@@ -705,7 +705,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                   runUpgrade(
                       defaultUniverse,
                       p -> {
-                        p.ybSoftwareVersion = "2.20.2.0-b2";
+                        p.ybSoftwareVersion = "2.21.0.0-b1";
                       },
                       SoftwareUpgradeParams.class,
                       "software"));
