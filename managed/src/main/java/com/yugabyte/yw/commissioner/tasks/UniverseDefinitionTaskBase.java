@@ -1947,6 +1947,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
+              createCheckGlibcTask(
+                  filteredNodes,
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
             });
 
     return isNextFallThrough;

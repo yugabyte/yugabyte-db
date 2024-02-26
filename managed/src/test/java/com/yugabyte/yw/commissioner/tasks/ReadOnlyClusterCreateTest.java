@@ -106,6 +106,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeStatus,
@@ -120,6 +121,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

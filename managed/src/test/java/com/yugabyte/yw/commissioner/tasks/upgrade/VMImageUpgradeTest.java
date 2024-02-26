@@ -80,6 +80,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
@@ -93,6 +94,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.UpdateNodeDetails);
+
+  private static final List<TaskType> NODE_VALIDATION_TASKS = ImmutableList.of(TaskType.CheckGlibc);
 
   @Override
   @Before
@@ -243,7 +246,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
         assertEquals(type, taskType);
 
-        if (!NON_NODE_TASKS.contains(taskType)) {
+        if (!NON_NODE_TASKS.contains(taskType) && !NODE_VALIDATION_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
@@ -432,7 +435,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
         assertEquals(type, taskType);
 
-        if (!NON_NODE_TASKS.contains(taskType)) {
+        if (!NON_NODE_TASKS.contains(taskType) && !NODE_VALIDATION_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 

@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -70,6 +71,8 @@ public class GFlagsValidation {
 
   public static final String TSERVER_GFLAG_FILE_NAME = "tserver_flags.xml";
 
+  private static final String GLIBC_VERSION_FIELD_NAME = "glibc_version";
+
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
       ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
@@ -79,6 +82,7 @@ public class GFlagsValidation {
           MASTER_GFLAG_FILE_NAME,
           TSERVER_GFLAG_FILE_NAME,
           Util.AUTO_FLAG_FILENAME,
+          Util.DB_VERSION_METADATA_FILENAME,
           YSQL_MIGRATION_FILES_LIST_FILE_NAME);
 
   public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
@@ -363,7 +367,9 @@ public class GFlagsValidation {
   }
 
   private boolean isFlagFile(String fileName) {
-    return fileName.endsWith("flags.xml") || fileName.endsWith(Util.AUTO_FLAG_FILENAME);
+    return fileName.endsWith("flags.xml")
+        || fileName.endsWith(Util.AUTO_FLAG_FILENAME)
+        || fileName.endsWith(Util.DB_VERSION_METADATA_FILENAME);
   }
 
   private boolean isYSQLMigrationFile(String fileName) {
@@ -400,6 +406,35 @@ public class GFlagsValidation {
       YsqlMigrationFilesList data =
           objectMapper.readValue(inputStream, YsqlMigrationFilesList.class);
       return data.ysqlMigrationsFilesList;
+    }
+  }
+
+  public Optional<Double> getGlibcVersion(String version) throws IOException {
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    String filePath =
+        String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
+    File file = new File(filePath);
+    if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+        fetchGFlagFilesFromTarGZipInputStream(
+            inputStream,
+            version,
+            Collections.singletonList(Util.DB_VERSION_METADATA_FILENAME),
+            releasesPath);
+      } catch (Exception e) {
+        LOG.error("Error in extracting version metadata from DB package", e);
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error in extracting version metadata form DB package");
+      }
+    }
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
+      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
+      return Optional.of(Double.parseDouble(glibc.split("_")[1]));
+    } else {
+      return Optional.empty();
     }
   }
 
