@@ -82,6 +82,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
@@ -97,7 +98,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.UpdateNodeDetails);
 
   private static final List<TaskType> NODE_VALIDATION_TASKS =
-      ImmutableList.of(TaskType.CheckLocale);
+      ImmutableList.of(TaskType.CheckLocale, TaskType.CheckGlibc);
 
   @Override
   @Before

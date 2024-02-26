@@ -56,6 +56,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks, // PostNodeProvision
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
