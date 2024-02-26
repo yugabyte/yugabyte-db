@@ -182,8 +182,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	 * including those already upgraded and are operating in per-database
 	 * catalog version mode.
 	 */
-	if (YBCIsEnvVarTrueWithDefault(
-			"FLAGS_ysql_enable_db_catalog_version_mode", false) &&
+	if (*YBCGetGFlags()->ysql_enable_db_catalog_version_mode &&
 		!YBIsDBCatalogVersionMode())
 	{
 		Oid func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();

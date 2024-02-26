@@ -655,7 +655,7 @@ ssl_protocols = tls12,tls13
 In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
 
 ```shell
---ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
 ```
 
 ## Use self-signed and custom CA certificates
