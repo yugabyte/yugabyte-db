@@ -144,6 +144,10 @@ public class Release extends Model {
     return ReleaseArtifact.getForReleaseArchitecture(releaseUUID, arch);
   }
 
+  public ReleaseArtifact getKubernetesArtifact() {
+    return ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
+  }
+
   public void setReleaseTag(String tag) {
     this.releaseTag = tag;
     save();
@@ -168,6 +172,12 @@ public class Release extends Model {
   public boolean delete() {
     try (Transaction transaction = DB.beginTransaction()) {
       for (ReleaseArtifact artifact : getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+          if (!rlf.delete()) {
+            return false;
+          }
+        }
         log.debug("cascading delete to artifact {}", artifact.getArtifactUUID());
         if (!artifact.delete()) {
           return false;

@@ -253,7 +253,7 @@ public class GFlagsValidation {
     return null;
   }
 
-  public void addDBMetadataFiles(String version, ReleaseManager.ReleaseMetadata rm) {
+  public void addDBMetadataFiles(String version) {
     List<String> missingFiles = getMissingFlagFiles(version);
     if (missingFiles.size() == 0) {
       return;

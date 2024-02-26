@@ -227,6 +227,18 @@ public class ReleaseArtifact extends Model {
         .findOne();
   }
 
+  public static ReleaseArtifact getForReleaseKubernetesArtifact(UUID releaseUUID) {
+    return find.query()
+        .where()
+        .eq("release", releaseUUID)
+        .eq("platform", Platform.KUBERNETES)
+        .findOne();
+  }
+
+  public static List<ReleaseArtifact> getForReleaseLocalFile(UUID releaseUUID) {
+    return find.query().where().eq("release", releaseUUID).isNotNull("package_file_id").findList();
+  }
+
   public void setReleaseUUID(UUID releaseUuid) {
     this.releaseUUID = releaseUuid;
     save();

@@ -237,7 +237,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
-    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory);
+    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
