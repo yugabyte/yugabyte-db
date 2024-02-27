@@ -39,12 +39,12 @@
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {

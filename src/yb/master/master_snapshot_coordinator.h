@@ -15,6 +15,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb.pb.h"
@@ -30,7 +31,6 @@
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace master {

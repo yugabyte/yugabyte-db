@@ -20,9 +20,9 @@
 #include "yb/cdc/cdcsdk_unique_record_id.h"
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 
