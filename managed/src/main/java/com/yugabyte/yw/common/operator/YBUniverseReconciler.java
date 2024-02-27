@@ -584,7 +584,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid());
+    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
     // Updating cluster with new userIntent info
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
@@ -680,7 +680,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
     } catch (Exception e) {
       kubernetesStatusUpdater.updateUniverseState(
-          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.CREATING);
+          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
       throw e;
     }
   }
@@ -693,7 +693,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     UserIntent currentUserIntent = universeDetails.getPrimaryCluster().userIntent;
-    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid());
+    UserIntent incomingIntent = createUserIntent(ybUniverse, cust.getUuid(), false);
 
     // Fix non-changeable values to current.
     incomingIntent.accessKeyCode = currentUserIntent.accessKeyCode;
@@ -889,11 +889,14 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       throws Exception {
     log.info("Creating task params");
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID));
+    Cluster cluster =
+        new Cluster(ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID, true));
     taskParams.clusters.add(cluster);
     List<Users> users = Users.getAll(customerUUID);
     if (users.isEmpty()) {
       log.error("Users list is of size 0!");
+      kubernetesStatusUpdater.updateUniverseState(
+          KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
       throw new Exception("Need at least one user");
     } else {
       log.info("Taking first user for customer");
@@ -905,83 +908,90 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return taskParams;
   }
 
-  private UserIntent createUserIntent(YBUniverse ybUniverse, UUID customerUUID) {
-    UserIntent userIntent = new UserIntent();
-    userIntent.universeName = getYbaUniverseName(ybUniverse);
-    ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-    mapper.setSerializationInclusion(Include.NON_NULL);
-    mapper.setSerializationInclusion(Include.NON_EMPTY);
+  private UserIntent createUserIntent(YBUniverse ybUniverse, UUID customerUUID, boolean isCreate) {
     try {
-      userIntent.universeOverrides =
-          mapper.writeValueAsString(ybUniverse.getSpec().getKubernetesOverrides());
+      UserIntent userIntent = new UserIntent();
+      userIntent.universeName = getYbaUniverseName(ybUniverse);
+      ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+      mapper.setSerializationInclusion(Include.NON_NULL);
+      mapper.setSerializationInclusion(Include.NON_EMPTY);
+      try {
+        userIntent.universeOverrides =
+            mapper.writeValueAsString(ybUniverse.getSpec().getKubernetesOverrides());
+      } catch (Exception e) {
+        log.error("Unable to parse universe overrides", e);
+      }
+      Provider provider = getProvider(customerUUID, ybUniverse);
+      userIntent.provider = provider.getUuid().toString();
+      userIntent.providerType = CloudType.kubernetes;
+      userIntent.replicationFactor =
+          ybUniverse.getSpec().getReplicationFactor() != null
+              ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
+              : 0;
+      userIntent.regionList =
+          provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
+      ;
+      if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+        K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
+        userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
+        K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
+        userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
+      }
+      userIntent.numNodes =
+          ybUniverse.getSpec().getNumNodes() != null
+              ? ((int) ybUniverse.getSpec().getNumNodes().longValue())
+              : 0;
+      userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
+      userIntent.accessKeyCode = "";
+
+      userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+      log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
+      log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+
+      userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
+      userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
+      userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
+      userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
+      userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
+      if (ybUniverse.getSpec().getEnableLoadBalancer()) {
+        userIntent.enableExposingService = ExposingServiceState.EXPOSED;
+      } else {
+        userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
+      }
+
+      // Handle Passwords
+      YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
+      if (ysqlPassword != null) {
+        Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
+        String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
+        if (password == null) {
+          log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
+          throw new RuntimeException(
+              "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
+        }
+        userIntent.enableYSQLAuth = true;
+        userIntent.ysqlPassword = password;
+      }
+      YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
+      if (ycqlPassword != null) {
+        Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
+        String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
+        if (password == null) {
+          log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
+          throw new RuntimeException(
+              "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+        }
+        userIntent.enableYCQLAuth = true;
+        userIntent.ycqlPassword = password;
+      }
+      setGFlagsForUserIntent(ybUniverse, userIntent, provider);
+      return userIntent;
     } catch (Exception e) {
-      log.error("Unable to parse universe overrides", e);
+      kubernetesStatusUpdater.updateUniverseState(
+          KubernetesResourceDetails.fromResource(ybUniverse),
+          isCreate ? UniverseState.ERROR_CREATING : UniverseState.ERROR_UPDATING);
+      throw e;
     }
-    Provider provider = getProvider(customerUUID, ybUniverse);
-    userIntent.provider = provider.getUuid().toString();
-    userIntent.providerType = CloudType.kubernetes;
-    userIntent.replicationFactor =
-        ybUniverse.getSpec().getReplicationFactor() != null
-            ? ((int) ybUniverse.getSpec().getReplicationFactor().longValue())
-            : 0;
-    userIntent.regionList =
-        provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
-    ;
-    if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-      K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
-      userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
-      K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
-      userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
-    }
-    userIntent.numNodes =
-        ybUniverse.getSpec().getNumNodes() != null
-            ? ((int) ybUniverse.getSpec().getNumNodes().longValue())
-            : 0;
-    userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
-    userIntent.accessKeyCode = "";
-
-    userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-    log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
-    log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
-
-    userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
-    userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
-    userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
-    userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
-    userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
-    if (ybUniverse.getSpec().getEnableLoadBalancer()) {
-      userIntent.enableExposingService = ExposingServiceState.EXPOSED;
-    } else {
-      userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
-    }
-
-    // Handle Passwords
-    YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
-    if (ysqlPassword != null) {
-      Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-      String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
-      if (password == null) {
-        log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
-        throw new RuntimeException(
-            "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
-      }
-      userIntent.enableYSQLAuth = true;
-      userIntent.ysqlPassword = password;
-    }
-    YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
-    if (ycqlPassword != null) {
-      Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-      String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
-      if (password == null) {
-        log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
-        throw new RuntimeException(
-            "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
-      }
-      userIntent.enableYCQLAuth = true;
-      userIntent.ycqlPassword = password;
-    }
-    setGFlagsForUserIntent(ybUniverse, userIntent, provider);
-    return userIntent;
   }
 
   private boolean checkIfGFlagsChanged(Universe universe, UserIntent oldIntent) {
