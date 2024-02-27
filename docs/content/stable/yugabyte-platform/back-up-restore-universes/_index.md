@@ -9,7 +9,7 @@ menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
-weight: 640
+weight: 650
 type: indexpage
 ---
 
