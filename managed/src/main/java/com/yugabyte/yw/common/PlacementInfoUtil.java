@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -429,11 +430,14 @@ public class PlacementInfoUtil {
     // STEP 3: Remove nodes.
 
     // Removing unnecessary nodes (full/part move or dedicated switch)
+    boolean forceFullMove = isForceFullMove(cluster, universe, clusterOpType);
+    LOG.debug("Force full move: {}", forceFullMove);
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .filter(n -> n.state != NodeState.ToBeRemoved)
         .forEach(
             node -> {
-              if (!Objects.equals(
+              if (forceFullMove
+                  || !Objects.equals(
                       node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
                   || (!cluster.userIntent.dedicatedNodes
                       && node.isMaster
@@ -513,7 +517,7 @@ public class PlacementInfoUtil {
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
     // STEP 5: Sync nodes with placement info
-    configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe);
+    configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe, !forceFullMove);
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
@@ -532,6 +536,48 @@ public class PlacementInfoUtil {
       return rf;
     }
     return Math.max(rf, result);
+  }
+
+  /**
+   * Determines whether a full move operation should be forced for a given cluster and universe.
+   *
+   * @param cluster modified cluster
+   * @param universe current universe state
+   * @param clusterOpType cluster operation being performed
+   * @return {@code true} if a full move operation should be forced, {@code false} otherwise.
+   */
+  private static boolean isForceFullMove(
+      Cluster cluster, Universe universe, ClusterOperationType clusterOpType) {
+    if (clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.EDIT)) {
+      Cluster currentCluster = universe.getUniverseDetails().getPrimaryCluster();
+      DeviceInfo newDeviceInfo = cluster.userIntent.deviceInfo;
+      DeviceInfo currentDeviceInfo = currentCluster.userIntent.deviceInfo;
+      if (!Objects.equals(newDeviceInfo, currentDeviceInfo) && newDeviceInfo != null) {
+        LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
+        return !isOnlyVolumeSizeIncrease(currentDeviceInfo, newDeviceInfo);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Checks if the volume size has increased and no other device information has changed.
+   *
+   * @param oldDeviceInfo The old device information.
+   * @param newDeviceInfo The new device information.
+   * @return True if the volume size has increased and no other device information has changed,
+   *     false otherwise.
+   */
+  private static boolean isOnlyVolumeSizeIncrease(
+      DeviceInfo oldDeviceInfo, DeviceInfo newDeviceInfo) {
+    if (oldDeviceInfo != null && newDeviceInfo != null) {
+      if (newDeviceInfo.volumeSize > oldDeviceInfo.volumeSize) {
+        DeviceInfo oldDeviceInfoCloned = oldDeviceInfo.clone();
+        oldDeviceInfoCloned.volumeSize = newDeviceInfo.volumeSize;
+        return oldDeviceInfoCloned.equals(newDeviceInfo);
+      }
+    }
+    return false;
   }
 
   /**
@@ -1304,9 +1350,13 @@ public class PlacementInfoUtil {
    * @param cluster
    * @param nodes
    * @param universe
+   * @param allowRecoverNodes flag to indicate if recovering node state to other nodes is allowed
    */
   private static void configureNodesUsingPlacementInfo(
-      Cluster cluster, Collection<NodeDetails> nodes, Universe universe) {
+      Cluster cluster,
+      Collection<NodeDetails> nodes,
+      Universe universe,
+      boolean allowRecoverNodes) {
     Collection<NodeDetails> nodesInCluster =
         nodes.stream().filter(n -> n.isInPlacement(cluster.uuid)).collect(Collectors.toSet());
     LinkedHashSet<PlacementIndexes> indexes =
@@ -1333,6 +1383,7 @@ public class PlacementInfoUtil {
                   node ->
                       node.state == NodeState.ToBeRemoved
                           && node.isTserver
+                          && allowRecoverNodes
                           && Objects.equals(
                               node.cloudInfo.instance_type,
                               cluster.userIntent.getInstanceType(node.getAzUuid())),

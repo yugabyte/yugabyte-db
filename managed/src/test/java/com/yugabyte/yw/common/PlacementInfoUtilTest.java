@@ -1091,7 +1091,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
     "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
     "gcp, 0, 10, scratch, m3.medium, false", // ephemeral instance type
-    "aws, 0, 10, m3.medium, c5d.instance, true" // changing to ephemeral is OK
+    "aws, 0, 10, m3.medium, c5d.instance, true", // changing to ephemeral is OK
+    "aws, -1, 0, m3.medium, m3.medium, false", // decrease num of volumes
   })
   @Test
   public void testResizeNodeAvailable(
