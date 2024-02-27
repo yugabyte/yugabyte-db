@@ -641,6 +641,12 @@ DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
 
 DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
                  "Whether to disable setting the catalog version table in perdb mode.");
+DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
+    yb::master::kDelayAfterFailoverSecs,
+    "Amount of time to wait between becoming master leader and relying on all live TServers having "
+    "registered.");
+TAG_FLAG(initial_tserver_registration_duration_secs, advanced);
+
 namespace yb {
 namespace master {
 
@@ -3910,7 +3916,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
   Status s = CanAddPartitionsToTable(num_tablets, placement_info);
-  if (s.ok()) {
+  // Don't check for tablet limits if we potentially don't have information from all the live
+  // TServers.  To make sure we have the needed information, don't check for
+  // FLAGS_initial_tserver_registration_duration_secs after a master leadership change.
+  if (s.ok() && (TimeSinceElectedLeader() >=
+                 MonoDelta::FromSeconds(FLAGS_initial_tserver_registration_duration_secs))) {
     s = CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
   }
   if (!s.ok()) {
@@ -3920,7 +3930,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   const auto [partition_schema, partitions] =
       VERIFY_RESULT(CreatePartitions(schema, num_tablets, colocated, &req, resp));
-
 
   if (!FLAGS_TEST_skip_placement_validation_createtable_api) {
     ValidateReplicationInfoRequestPB validate_req;
