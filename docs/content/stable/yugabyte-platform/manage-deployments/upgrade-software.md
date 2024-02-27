@@ -15,11 +15,15 @@ The YugabyteDB release that is powering a universe can be upgraded to get new fe
 
 ## Before you begin
 
-Before starting the upgrade, review the following major changes to YugabyteDB. Depending on the upgrade you are planning, you may need to make changes to your automation.
+You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade to a more recent version of YugabyteDB, you may first have to [upgrade YugabyteDB Anywhere](../../upgrade/).
 
-### Upgrading to v2.16.0
+In addition, before starting the upgrade, review the following major changes in previous YugabyteDB releases. Depending on the upgrade you are planning, you may need to make changes to your automation.
 
-The YB Controller (YBC) service was introduced for all universes (except Kubernetes), and is required for YugabyteDB Anywhere 2.16.0 and later.
+Changes in these releases are cumulative. For example, to upgrade from v2.14 to v2.20, your automation will need to take into account the changes in v2.16 and v2.18.
+
+### Upgrading from versions earlier than v2.16.0
+
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YugabyteDB Anywhere 2.16.0 and later.
 
 YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 
@@ -34,17 +38,17 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 - Firewall ports - update your firewall rules to allow incoming TCP traffic on port 18018, which is used by YBC, for all nodes in a universe.
 
-### Upgrading to v2.18.0
+### Upgrading from versions earlier than v2.18.0
 
-YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](/#upgrading-to-v2-16-0).
+YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading to 2.16.0](/#upgrading-to-v2-16-0).
 
-### Upgrading to v2.18.2
+### Upgrading from versions earlier than v2.18.2
 
-The Node Agent was introduced for all universes. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Except for Day 0 tasks during initial installation, YBA no longer uses SSH and SCP to manage nodes; instead, YBA connects to the Node agent process listening on port 9000, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](../../../faq/yugabyte-platform/#node-agent).
+The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Except for Day 0 tasks during initial installation, YBA no longer uses SSH and SCP to manage nodes; instead, YBA connects to the Node agent process listening on port 9000, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](../../../faq/yugabyte-platform/#node-agent).
 
 **Impact**
 
-- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to include installing node agent. Refer to [Manually provision on-premises nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
+- On-premises provider - if you use on-premises providers with manually-provisioned nodes, you will need to update your current procedures for manually provisioning instances, to include installing node agent. Refer to [Install node agent](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
 
 - Upgrade OS - for universes created using an on-premises provider with manually-provisioned nodes, if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate node agent.
 

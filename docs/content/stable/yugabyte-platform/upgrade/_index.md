@@ -12,6 +12,8 @@ menu:
 type: indexpage
 ---
 
+Keep YugabyteDB Anywhere up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
+
 You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
@@ -30,30 +32,18 @@ If you are running YugabyteDB Anywhere v2.20.x on a [deprecated OS](../../refere
 
 {{< /note >}}
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-installer/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Upgrade YugabyteDB Anywhere</div>
-      </div>
-      <div class="body">
-        Upgrade your YugabyteDB Anywhere installation.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Upgrade YugabyteDB Anywhere"
+    body="Upgrade your YugabyteDB Anywhere installation."
+    href="upgrade-yp-installer/"
+    icon="/images/section_icons/quick_start/install.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-xcluster-ybadmin/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
-        <div class="title">Synchronize replication after upgrade</div>
-      </div>
-      <div class="body">
-        Synchronize xCluster replication after an upgrade for universes set up using yb-admin.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Synchronize replication after upgrade"
+    body="Synchronize xCluster replication after an upgrade for universes set up using yb-admin."
+    href="upgrade-yp-xcluster-ybadmin/"
+    icon="/images/section_icons/manage/pitr.png">}}
 
-</div>
+{{</index/block>}}
