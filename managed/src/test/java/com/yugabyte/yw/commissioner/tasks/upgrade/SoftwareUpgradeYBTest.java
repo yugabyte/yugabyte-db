@@ -151,25 +151,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse);
 
-    List<String> command2 = new ArrayList<>();
-    command2.add("locale");
-    command2.add("-a");
-    command2.add("|");
-    command2.add("grep");
-    command2.add("-E");
-    command2.add("-q");
-    command2.add("\"en_US.utf8|en_US.UTF-8\"");
-    command2.add("&&");
-    command2.add("echo");
-    command2.add("\"Locale is present\"");
-    command2.add("||");
-    command2.add("echo");
-    command2.add("\"Locale is not present\"");
-    ShellResponse shellResponse2 = new ShellResponse();
-    shellResponse2.message = "Command output:\\nLocale is present";
-    shellResponse2.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command2), any()))
-        .thenReturn(shellResponse2);
+    mockLocaleCheckResponse(mockNodeUniverseManager);
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();

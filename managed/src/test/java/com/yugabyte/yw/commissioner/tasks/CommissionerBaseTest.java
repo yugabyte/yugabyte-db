@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -50,6 +51,7 @@ import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -744,5 +746,27 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     Optional<String>[] resp = response.toArray(new Optional[0]);
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
         .thenReturn(Optional.of(oldVersion), resp);
+  }
+
+  protected void mockLocaleCheckResponse(NodeUniverseManager mockNodeUniverseManager) {
+    List<String> command = new ArrayList<>();
+    command.add("locale");
+    command.add("-a");
+    command.add("|");
+    command.add("grep");
+    command.add("-E");
+    command.add("-q");
+    command.add("\"en_US.utf8|en_US.UTF-8\"");
+    command.add("&&");
+    command.add("echo");
+    command.add("\"Locale is present\"");
+    command.add("||");
+    command.add("echo");
+    command.add("\"Locale is not present\"");
+    ShellResponse shellResponse2 = new ShellResponse();
+    shellResponse2.message = "Command output:\\nLocale is present";
+    shellResponse2.code = 0;
+    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+        .thenReturn(shellResponse2);
   }
 }
