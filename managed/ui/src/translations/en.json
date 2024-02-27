@@ -1098,7 +1098,16 @@
     "cdc": {
       "emptyContainerTitle": "Replication Slots",
       "emptyContainerSubtitle": "Use Change Data Capture (CDC) replication slots to capture and emit database change events.",
-      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots"
+      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots",
+      "name": "Name",
+      "status": "Status",
+      "database": "Database",
+      "currentLag": "Current Lag",
+      "replicationSlots": "Replication Slots",
+      "timeToExpiry": "Time to expiry",
+      "replicationStatus": "Replication slot status",
+      "replicationSlot": "Replication Slot",
+      "autoRefresh": "Auto Refresh"
     },
     "metric": {
       "tooltip": {
