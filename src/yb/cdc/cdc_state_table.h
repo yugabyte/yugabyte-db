@@ -17,7 +17,8 @@
 
 #include "yb/client/table_handle.h"
 
-#include "yb/util/opid.h"
+#include "yb/common/opid.h"
+
 #include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
 

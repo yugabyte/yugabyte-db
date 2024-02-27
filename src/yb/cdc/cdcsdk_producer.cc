@@ -18,6 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
 
@@ -44,7 +45,6 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/logging.h"
-#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 

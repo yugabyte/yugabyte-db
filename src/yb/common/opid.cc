@@ -13,7 +13,7 @@
 //
 //
 
-#include "yb/util/opid.h"
+#include "yb/common/opid.h"
 
 #include <algorithm>
 

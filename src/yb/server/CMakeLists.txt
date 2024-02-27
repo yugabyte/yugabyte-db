@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX server)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # server_common

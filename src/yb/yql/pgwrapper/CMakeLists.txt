@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX pgwrapper)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
@@ -34,7 +33,6 @@ add_dependencies(
   gen_src_yb_tserver_backup_proto
   gen_src_yb_docdb_docdb_proto
   gen_src_yb_dockv_dockv_proto
-  gen_src_yb_util_opid_proto
   gen_src_yb_tablet_metadata_proto
   gen_src_yb_tablet_operations_proto
   gen_src_yb_tablet_tablet_proto

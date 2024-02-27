@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX cqlserver)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # cqlserver_service_proto

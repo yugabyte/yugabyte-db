@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tools)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util boost_program_options)
+set(YB_PCH_DEP_LIBS yb_test_util boost_program_options)
 
 set(LINK_LIBS
   yb_client
