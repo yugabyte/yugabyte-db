@@ -1522,7 +1522,8 @@ class WaitQueue::Impl {
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
-                       TransactionLockInfoManager* lock_info_manager) const {
+                       TransactionLockInfoManager* lock_info_manager,
+                       uint32_t max_txn_locks) const {
     std::vector<WaiterDataPtr> waiters_copy;
     {
       SharedLock l(mutex_);
@@ -1561,12 +1562,14 @@ class WaitQueue::Impl {
       }
       const auto& txn_id = lock_info.id;
       TabletLockInfoPB::WaiterInfoPB* waiter_info = nullptr;
+      uint32 granted_locks_size = 0;
       if (txn_id.IsNil()) {
         waiter_info = lock_info_manager->GetSingleShardLockInfo();
       } else {
         auto* lock_entry = lock_info_manager->GetOrAddTransactionLockInfo(txn_id);
         DCHECK(!lock_entry->has_waiting_locks());
         waiter_info = lock_entry->mutable_waiting_locks();
+        granted_locks_size = lock_entry->granted_locks_size();
       }
 
       waiter_info->set_wait_start_ht(lock_info.wait_start.ToUint64());
@@ -1575,6 +1578,10 @@ class WaitQueue::Impl {
         waiter_info->add_blocking_txn_ids(id.data(), id.size());
       }
       for (auto& [intent_key, intent_data] : lock_info.intents) {
+        if (max_txn_locks && (waiter_info->locks_size() + granted_locks_size >= max_txn_locks)) {
+          waiter_info->set_has_additional_waiting_locks(true);
+          break;
+        }
         ParsedIntent parsed_intent {
           .doc_path = intent_key.AsSlice(),
           .types = intent_data.types,
@@ -1918,9 +1925,11 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
 Status WaitQueue::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                                 uint64_t max_single_shard_waiter_start_time_us,
                                 const TableInfoProvider& table_info_provider,
-                                TransactionLockInfoManager* lock_info_manager) const {
+                                TransactionLockInfoManager* lock_info_manager,
+                                uint32_t max_txn_locks) const {
   return impl_->GetLockStatus(
-      transactions, max_single_shard_waiter_start_time_us, table_info_provider, lock_info_manager);
+      transactions, max_single_shard_waiter_start_time_us, table_info_provider,
+      lock_info_manager, max_txn_locks);
 }
 
 }  // namespace docdb

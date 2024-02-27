@@ -113,7 +113,7 @@ EXPLAIN SELECT * FROM test_scan WHERE j = 1;
                           QUERY PLAN
 --------------------------------------------------------------
  Seq Scan on test_scan  (cost=0.00..102.50 rows=1000 width=8)
-   Remote Filter: (j = 1)
+   Storage Filter: (j = 1)
 (2 rows)
 
 EXPLAIN SELECT j FROM test_scan;

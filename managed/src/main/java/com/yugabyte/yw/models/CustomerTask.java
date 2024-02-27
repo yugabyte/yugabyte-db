@@ -356,7 +356,10 @@ public class CustomerTask extends Model {
     ReprovisionNode,
 
     @EnumValue("Install")
-    Install;
+    Install,
+
+    @EnumValue("UpdateProxyConfig")
+    UpdateProxyConfig;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -515,6 +518,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case UpdateProxyConfig:
+          return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         default:
           return null;
       }
