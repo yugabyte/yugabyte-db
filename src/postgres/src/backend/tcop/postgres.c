@@ -5700,11 +5700,8 @@ PostgresMain(const char *dbname, const char *username)
 										 IdleSessionTimeout);
 				}
 
-#ifdef YB_TODO
-				/* Needs to activate this call */
 				if (IsYugaByteEnabled())
 					yb_pgstat_set_has_catalog_version(false);
-#endif
 			}
 
 			/* Report any recently-changed GUC options */
@@ -5777,10 +5774,7 @@ PostgresMain(const char *dbname, const char *username)
 
 		if (IsYugaByteEnabled())
 		{
-#ifdef YB_TODO
-			/* Needs to activate this call */
 			yb_pgstat_set_has_catalog_version(true);
-#endif
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 			yb_run_with_explain_analyze = false;
