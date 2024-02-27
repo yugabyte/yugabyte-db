@@ -698,7 +698,7 @@ order by a.a;
    Sort Key: a.a
    ->  Seq Scan on public.a
          Output: a.a, (SubPlan 1)
-         Filter: (a.a = ANY ('{1,2}'::integer[]))
+         Remote Filter: (a.a = ANY ('{1,2}'::integer[]))
          SubPlan 1
            ->  Aggregate
                  Output: sum(c.c)

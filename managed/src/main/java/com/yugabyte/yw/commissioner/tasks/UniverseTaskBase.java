@@ -66,7 +66,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
@@ -275,7 +274,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditKubernetesUniverse,
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.CertsRotateKubernetesUpgrade,
-          TaskType.ConfigureDBApisKubernetes,
           TaskType.GFlagsUpgrade,
           TaskType.SoftwareUpgrade,
           TaskType.SoftwareUpgradeYB,
@@ -995,9 +993,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universeDetails.updatingTaskUUID = null;
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               universeDetails.placementModificationTaskUuid = null;
+              // Do not save the transient state in the universe.
+              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
             }
-            // Do not save the transient state in the universe.
-            universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
           }
           universeDetails.updatingTask = null;
           universe.setUniverseDetails(universeDetails);
@@ -1629,6 +1627,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Collection<NodeDetails> nodes, boolean reinstall) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
+    String installPath = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath);
+    if (!new File(installPath).isAbsolute()) {
+      String errMsg = String.format("Node agent installation path %s is invalid", installPath);
+      log.error(errMsg);
+      throw new IllegalArgumentException(errMsg);
+    }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
     Customer customer = Customer.get(universe.getCustomerId());
@@ -1649,7 +1653,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.customerUuid = customer.getUuid();
               params.azUuid = n.azUuid;
               params.setUniverseUUID(universe.getUniverseUUID());
-              params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
+              params.nodeAgentInstallDir = installPath;
               params.nodeAgentPort = serverPort;
               params.reinstall = reinstall;
               InstallNodeAgent task = createTask(InstallNodeAgent.class);
@@ -2279,13 +2283,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param keyspaceName : name of the database/keyspace to delete.
    * @param tableType : Type of the Table YSQL/ YCQL
    */
-  public SubTaskGroup createDeleteKeySpaceTask(String keyspaceName, TableType tableType) {
+  public SubTaskGroup createDeleteKeySpaceTask(
+      String keyspaceName, TableType tableType, boolean ysqlForce) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteKeyspace");
     // Create required params for this subtask.
     DeleteKeyspace.Params params = new DeleteKeyspace.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.setKeyspace(keyspaceName);
     params.backupType = tableType;
+    params.ysqlForce = ysqlForce;
     // Create the task.
     DeleteKeyspace task = createTask(DeleteKeyspace.class);
     // Initialize the task.
@@ -3251,11 +3257,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
+  protected SubTaskGroup createDeletePitrConfigTask(
+      UUID pitrConfigUuid, UUID universeUUID, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeletePitrConfig");
     DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
-    deletePitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    deletePitrConfigParams.setUniverseUUID(universeUUID);
     deletePitrConfigParams.pitrConfigUuid = pitrConfigUuid;
+    deletePitrConfigParams.ignoreErrors = ignoreErrors;
 
     DeletePitrConfig task = createTask(DeletePitrConfig.class);
     task.initialize(deletePitrConfigParams);
@@ -4181,33 +4189,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  // Perform preflight checks on the given node.
-  public void performPreflightCheck(
-      Cluster cluster,
-      NodeDetails currentNode,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA) {
-    if (cluster.userIntent.providerType == com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
-      PreflightNodeCheck.Params preflightTaskParams = new PreflightNodeCheck.Params();
-      UserIntent userIntent = cluster.userIntent;
-      preflightTaskParams.nodeName = currentNode.nodeName;
-      preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-      preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
-      preflightTaskParams.azUuid = currentNode.azUuid;
-      preflightTaskParams.setUniverseUUID(taskParams().getUniverseUUID());
-      preflightTaskParams.rootCA = rootCA;
-      preflightTaskParams.setClientRootCA(clientRootCA);
-      UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
-          preflightTaskParams.communicationPorts, currentNode);
-      preflightTaskParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
-      log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
-      PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
-      task.initialize(preflightTaskParams);
-      task.run();
-    }
-  }
-
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
@@ -4818,7 +4799,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createDeleteXClusterConfigSubtasks(
-      XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
+      XClusterConfig xClusterConfig,
+      boolean keepEntry,
+      boolean forceDelete,
+      boolean deletePitrConfigs) {
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
         && xClusterConfig.getType().equals(ConfigType.Txn)) {
@@ -4835,6 +4819,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Delete bootstrap IDs created by bootstrap universe subtask.
     createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+
+    if (deletePitrConfigs
+        && xClusterConfig.getType().equals(ConfigType.Txn)
+        && xClusterConfig.getTargetUniverseUUID() != null) {
+      List<PitrConfig> pitrConfigs = xClusterConfig.getPitrConfigs();
+      for (PitrConfig pitrConfig : pitrConfigs) {
+        createDeletePitrConfigTask(
+            pitrConfig.getUuid(),
+            xClusterConfig.getTargetUniverseUUID(),
+            forceDelete /* ignoreErrors */);
+      }
+    }
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null

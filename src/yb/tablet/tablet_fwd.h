@@ -45,6 +45,7 @@ typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 typedef std::weak_ptr<TabletPeer> TabletPeerWeakPtr;
 
 class ChangeMetadataOperation;
+class CloneOperation;
 class Operation;
 class OperationFilter;
 class SnapshotCoordinator;

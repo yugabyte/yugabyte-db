@@ -54,6 +54,8 @@ You can also use YBA Installer to migrate an existing YBA software installed via
 
 -> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
 
+-> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
+
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
 ## Prerequisites
@@ -66,6 +68,8 @@ After the installation is complete, you can use YBA Installer to manage your ins
   ```sh
   /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
   ```
+
+  Additionally, add the commands from the [sudo_whitelist](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/sudo_whitelist.txt) to the sudoers file.
 
 ## Quick start
 
@@ -262,7 +266,7 @@ To migrate your installation from Replicated, do the following:
     $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
-    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start. After the migration finishes, YBA is installed.
+    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
 
 1. Validate YBA is up and running with the correct data, including Prometheus.
 
@@ -280,7 +284,7 @@ To migrate your installation from Replicated, do the following:
 
 ### Migration and high availability
 
-If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+If you have YBA [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
 If Replicated is using HTTPS, migrate as follows:
 
@@ -288,7 +292,7 @@ If Replicated is using HTTPS, migrate as follows:
 1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
 1. Migrate and finish the standby instances.
 
-Failovers are only possible only after you finish the migration on both the primary and standby.
+Failovers are only possible after you finish the migration on both the primary and standby.
 
 If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
 
@@ -457,6 +461,7 @@ You can set the following YBA Installer configuration options.
 | :----- | :---------- | :--- |
 | `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
+| `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
 

@@ -207,6 +207,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  TRACE_FUNC();
   SET_WAIT_STATUS(OnCpu_Passive);
   context_->Submit(self.release()->PrepareSubmit(), term_);
   // Any further update to the wait-state for this RPC should happen based on

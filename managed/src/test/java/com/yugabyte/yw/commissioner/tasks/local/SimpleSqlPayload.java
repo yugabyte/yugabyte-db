@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.local;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class SimpleSqlPayload {
+  private static final String TABLE_NAME = "sql_payload_table";
   private AtomicInteger lastId = new AtomicInteger(1);
   private int readThreads;
   private int writeThreads;
@@ -49,8 +51,10 @@ public class SimpleSqlPayload {
 
   public void init() {
     HikariConfig config = new HikariConfig();
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
     String urls =
-        universe.getUniverseDetails().nodeDetailsSet.stream()
+        universe.getNodesInCluster(primaryCluster.uuid).stream()
             .map(n -> n.cloudInfo.private_ip + ":" + n.ysqlServerRpcPort)
             .collect(Collectors.joining(","));
     config.setJdbcUrl("jdbc:postgresql://" + urls + "/" + Util.YUGABYTE_DB);
@@ -105,11 +109,15 @@ public class SimpleSqlPayload {
             try {
               action.call();
             } catch (Exception e) {
-              log.error("Received error", e);
-              errorCount.incrementAndGet();
+              if (!stopped) {
+                log.error("Received error", e);
+                errorCount.incrementAndGet();
+              }
             }
             try {
-              Thread.sleep(new Random().nextLong(timeBetweenRetries));
+              if (!stopped) {
+                Thread.sleep(new Random().nextLong(timeBetweenRetries));
+              }
             } catch (InterruptedException e) {
             }
           }
@@ -120,7 +128,8 @@ public class SimpleSqlPayload {
     try (Connection connection = dataSource.getConnection()) {
       PreparedStatement ps =
           connection.prepareStatement(
-              "CREATE TABLE IF NOT EXISTS some_table"
+              "CREATE TABLE IF NOT EXISTS "
+                  + TABLE_NAME
                   + " (id int, name text, age int, PRIMARY KEY(id, name))");
       ps.execute();
     }
@@ -129,7 +138,8 @@ public class SimpleSqlPayload {
   private boolean readFromTable() throws SQLException {
     try (Connection connection = dataSource.getConnection()) {
       PreparedStatement ps =
-          connection.prepareStatement("select * from some_table order by random() limit 10");
+          connection.prepareStatement(
+              "select * from " + TABLE_NAME + " order by random() limit 10");
       ResultSet resultSet = ps.executeQuery();
       while (resultSet.next()) {
         int id = resultSet.getInt(1);
@@ -143,8 +153,12 @@ public class SimpleSqlPayload {
     try (Connection connection = dataSource.getConnection()) {
       PreparedStatement ps =
           connection.prepareStatement(
-              "delete from some_table where id in "
-                  + "(select id from some_table order by random() limit 5)");
+              "delete from "
+                  + TABLE_NAME
+                  + " where id in "
+                  + "(select id from "
+                  + TABLE_NAME
+                  + " order by random() limit 5)");
       ps.executeUpdate();
     }
     return true;
@@ -152,7 +166,8 @@ public class SimpleSqlPayload {
 
   private boolean insertIntoTable() throws SQLException {
     try (Connection connection = dataSource.getConnection()) {
-      PreparedStatement ps = connection.prepareStatement("insert into some_table values (?, ?)");
+      PreparedStatement ps =
+          connection.prepareStatement("insert into " + TABLE_NAME + " values (?, ?)");
       ps.setInt(1, lastId.incrementAndGet());
       ps.setString(2, "Name" + System.currentTimeMillis());
       ps.executeUpdate();

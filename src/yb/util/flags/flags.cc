@@ -35,6 +35,7 @@
 #include <vector>
 #include <boost/algorithm/string/replace.hpp>
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/flags/flag_tags.h"
 
@@ -184,12 +185,6 @@ DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
 _TAG_FLAG_RUNTIME(vmodule);
 TAG_FLAG(vmodule, advanced);
-namespace yb {
-bool ValidateVmodule(const char* flag_name, const string& new_value);
-void UpdateVmodule();
-}  // namespace yb
-DEFINE_validator(vmodule, &yb::ValidateVmodule);
-REGISTER_CALLBACK(vmodule, "UpdateVmodule", &yb::UpdateVmodule);
 
 DECLARE_bool(symbolize_stacktrace);
 TAG_FLAG(symbolize_stacktrace, stable);
@@ -448,9 +443,101 @@ bool IsPreviewFlagAllowed(const CommandLineFlagInfo& flag_info, const string& ne
   return true;
 }
 
+// Validates that the requested updates to vmodule can be made.
+void ValidateVmodule() {
+  auto requested_settings = strings::Split(FLAGS_vmodule, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
+      LOG(FATAL) << Format(
+          "'$0' is not valid. vmodule should be a comma list of <module_pattern>=<logging_level>",
+          module_value);
+    }
+
+    char* end;
+    errno = 0;
+    const int64 value = strtol(kv[1].c_str(), &end, 10);
+    if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
+      LOG(FATAL) << Format(
+          "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
+          kv[1], kv[0]);
+    }
+  }
+}
+
+void ValidateAndUpdateVmodule() {
+  ValidateVmodule();
+
+  // glog behavior: The first time VLOG is invoked for a file it tries to find a matching pattern in
+  // vmodule list. If found it links to that pattern for the rest of the program lifetime. If not
+  // found it uses the default logging level from FLAGS_v and gets added to a list of files that
+  // don't match any pattern. When SetVLOGLevel is called, all files in this list that match the new
+  // pattern get linked to it, and all linked files will use the new logging level.
+  // Since files are evaluated at the first VLOG call it is possible that files with similar pattern
+  // get linked to different vmodule values if patterns are reordered or removed, which can get
+  // confusing to the user. To avoid this we never remove any pattern from vmodule and always keep
+  // the order of modules the same as it would have been if it was only set once. Ex: If vmodule is
+  // set to "ab=1,a=1" and then changed to "b=2,ab=3" then we will set it to "ab=3,a=0,b=2" and the
+  // behavior will be identical to if it was set to this value from the start.
+
+  static std::mutex vmodule_mtx;
+  static vector<std::pair<string, int>> vmodule_values GUARDED_BY(vmodule_mtx);
+  std::lock_guard l(vmodule_mtx);
+  // Set everything to 0
+  for (auto& module_value : vmodule_values) {
+    module_value.second = 0;
+  }
+
+  // Set to new requested values
+  auto requested_settings = strings::Split(FLAGS_vmodule, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+
+    // Values has been validated in ValidateVmodule
+    const int value = static_cast<int>(strtol(kv[1].c_str(), nullptr /* end ptr */, 10));
+
+    auto it = std::find_if(
+        vmodule_values.begin(), vmodule_values.end(),
+        [&](std::pair<string, int> const& elem) { return elem.first == kv[0]; });
+
+    if (it == vmodule_values.end()) {
+      vmodule_values.push_back({kv[0], value});
+    } else {
+      it->second = value;
+    }
+  }
+
+  std::vector<string> module_values_str;
+  for (auto elem : vmodule_values) {
+    module_values_str.emplace_back(Format("$0=$1", elem.first, elem.second));
+  }
+  std::string set_vmodules = JoinStrings(module_values_str, ",");
+
+  // Directly invoke SetCommandLineOption instead of SetFlagInternal which would result in infinite
+  // recursion.
+  google::SetCommandLineOption("vmodule", set_vmodules.c_str());
+
+  // Now update previously set modules
+  for (auto elem : vmodule_values) {
+    google::SetVLOGLevel(elem.first.c_str(), elem.second);
+  }
+}
+
 }  // anonymous namespace
 
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+  static GoogleOnceType once_register_vmodule_callback = GOOGLE_ONCE_INIT;
+  GoogleOnceInit(&once_register_vmodule_callback, []() {
+    flags_callback_internal::RegisterGlobalFlagUpdateCallback(
+        &FLAGS_vmodule, "ValidateAndUpdateVmodule", &ValidateAndUpdateVmodule);
+  });
+
   {
     std::vector<google::CommandLineFlagInfo> flag_infos;
     google::GetAllFlags(&flag_infos);
@@ -501,7 +588,6 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   if (!FLAGS_tmp_dir.starts_with('/')) {
     LOG(FATAL) << "tmp_dir must be an absolute path, found value to be " << FLAGS_tmp_dir;
   }
-
 }
 
 bool RefreshFlagsFile(const std::string& filename) {
@@ -518,96 +604,6 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   return true;
-}
-
-// Validates that the requested updates to vmodule can be made.
-bool ValidateVmodule(const char* flag_name, const string& new_value) {
-  auto requested_settings = strings::Split(new_value, ",");
-  for (const auto& module_value : requested_settings) {
-    if (module_value.empty()) {
-      continue;
-    }
-    vector<string> kv = strings::Split(module_value, "=");
-    if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
-      LOG(ERROR) << Format(
-          "'$0' is not valid. vmodule should be a comma list of <module_pattern>=<logging_level>",
-          module_value);
-      return false;
-    }
-
-    char* end;
-    errno = 0;
-    const int64 value = strtol(kv[1].c_str(), &end, 10);
-    if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
-      LOG(ERROR) << Format(
-          "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
-          kv[1], kv[0]);
-      return false;
-    }
-  }
-
-  return true;
-}
-
-namespace {
-std::mutex vmodule_mtx;
-vector<std::pair<string, int>> vmodule_values GUARDED_BY(vmodule_mtx);
-}  // namespace
-
-void UpdateVmodule() {
-  // glog behavior: The first time VLOG is invoked for a file it tries to find a matching pattern in
-  // vmodule list. If found it links to that pattern for the rest of the program lifetime. If not
-  // found it uses the default logging level from FLAGS_v and gets added to a list of files that
-  // don't match any pattern. When SetVLOGLevel is called, all files in this list that match the new
-  // pattern get linked to it, and all linked files will use the new logging level.
-  // Since files are evaluated at the first VLOG call it is possible that files with similar pattern
-  // get linked to different vmodule values if patterns are reordered or removed, which can get
-  // confusing to the user. To avoid this we never remove any pattern from vmodule and always keep
-  // the order of modules the same as it would have been if it was only set once. Ex: If vmodule is
-  // set to "ab=1,a=1" and then changed to "b=2,ab=3" then we will set it to "ab=3,a=0,b=2" and the
-  // behavior will be identical to if it was set to this value from the start.
-  std::lock_guard l(vmodule_mtx);
-  // Set everything to 0
-  for (auto& module_value : vmodule_values) {
-    module_value.second = 0;
-  }
-
-  // Set to new requested values
-  auto requested_settings = strings::Split(FLAGS_vmodule, ",");
-  for (const auto& module_value : requested_settings) {
-    if (module_value.empty()) {
-      continue;
-    }
-    vector<string> kv = strings::Split(module_value, "=");
-
-    // Values has been validated in ValidateVmodule
-    const int value = static_cast<int>(strtol(kv[1].c_str(), nullptr /* end ptr */, 10));
-
-    auto it = std::find_if(
-        vmodule_values.begin(), vmodule_values.end(),
-        [&](std::pair<string, int> const& elem) { return elem.first == kv[0]; });
-
-    if (it == vmodule_values.end()) {
-      vmodule_values.push_back({kv[0], value});
-    } else {
-      it->second = value;
-    }
-  }
-
-  std::vector<string> module_values_str;
-  for (auto elem : vmodule_values) {
-    module_values_str.emplace_back(Format("$0=$1", elem.first, elem.second));
-  }
-  std::string set_vmodules = JoinStrings(module_values_str, ",");
-
-  // Directly invoke SetCommandLineOption instead of SetFlagInternal which would result in infinite
-  // recursion.
-  google::SetCommandLineOption("vmodule", set_vmodules.c_str());
-
-  // Now update previously set modules
-  for (auto elem : vmodule_values) {
-    google::SetVLOGLevel(elem.first.c_str(), elem.second);
-  }
 }
 
 namespace flags_internal {

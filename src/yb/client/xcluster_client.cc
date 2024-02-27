@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/master/master_defaults.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
@@ -61,14 +62,16 @@ Status XClusterRemoteClient::Init(
   return Status::OK();
 }
 
-Result<UniverseUuid> XClusterRemoteClient::SetupUniverseReplication(
+Result<UniverseUuid> XClusterRemoteClient::SetupDbScopedUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::vector<HostPort>& source_master_addresses,
-    const std::vector<NamespaceName>& namespace_names, const std::vector<TableId>& source_table_ids,
-    const std::vector<xrepl::StreamId>& bootstrap_ids, Transactional transactional) {
+    const std::vector<NamespaceName>& namespace_names,
+    const std::vector<NamespaceId>& source_namespace_ids,
+    const std::vector<TableId>& source_table_ids,
+    const std::vector<xrepl::StreamId>& bootstrap_ids) {
   master::SetupUniverseReplicationRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
-  req.set_transactional(transactional);
+  req.set_transactional(true);  // Db Scoped replication is always transactional.
 
   HostPortsToPBs(source_master_addresses, req.mutable_producer_master_addresses());
 
@@ -79,6 +82,16 @@ Result<UniverseUuid> XClusterRemoteClient::SetupUniverseReplication(
 
   for (const auto& bootstrap_id : bootstrap_ids) {
     req.add_producer_bootstrap_ids(bootstrap_id.ToString());
+  }
+
+  SCHECK_EQ(
+      namespace_names.size(), source_namespace_ids.size(), InvalidArgument,
+      "Namespace names and IDs count must match");
+  for (const auto& namespace_name : namespace_names) {
+    req.add_namespace_names(namespace_name);
+  }
+  for (const auto& namespace_id : source_namespace_ids) {
+    req.add_producer_namespace_ids(namespace_id);
   }
 
   auto resp = VERIFY_RESULT(yb_client_->SetupUniverseReplication(req));
@@ -96,7 +109,7 @@ Result<UniverseUuid> XClusterRemoteClient::SetupUniverseReplication(
   return UniverseUuid::FromString(resp.universe_uuid());
 }
 
-Result<master::IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDone(
+Result<IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
@@ -106,13 +119,49 @@ Result<master::IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseRepli
     return StatusFromPB(resp.error().status());
   }
 
-  Status status;
   if (resp.has_replication_error()) {
     // IsSetupUniverseReplicationDoneRequestPB will contain an OK status on success.
-    status = StatusFromPB(resp.replication_error());
+    return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
   }
 
-  return master::IsOperationDoneResult(resp.done(), std::move(status));
+  return resp.done() ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
 }
 
+Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+    BootstrapProducerCallback user_callback) {
+  auto callback =
+      [cb = std::move(user_callback)](Result<master::GetXClusterStreamsResponsePB> result) -> void {
+    Status status;
+    if (!result) {
+      status = std::move(result.status());
+    } else if (result->has_error()) {
+      status = StatusFromPB(result->error().status());
+    } else if (result->not_ready()) {
+      status = STATUS_FORMAT(IllegalState, "XCluster stream is not ready");
+    }
+
+    if (!status.ok()) {
+      cb(status);
+      return;
+    }
+    std::vector<TableId> producer_table_ids;
+    std::vector<std::string> stream_ids;
+    for (const auto& table_info : result->table_infos()) {
+      producer_table_ids.emplace_back(table_info.table_id());
+      stream_ids.emplace_back(table_info.xrepl_stream_id());
+    }
+
+    // With Db scoped replication we do not currently return the bootstrap time. For more info check
+    // AddTableToXClusterTargetTask::BootstrapTableCallback.
+    cb(std::make_tuple(std::move(producer_table_ids), std::move(stream_ids), HybridTime::kInvalid));
+  };
+
+  RETURN_NOT_OK(yb_client_->GetXClusterStreams(
+      CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(), replication_group_id,
+      namespace_id, table_names, pg_schema_names, std::move(callback)));
+
+  return Status::OK();
+}
 }  // namespace yb::client

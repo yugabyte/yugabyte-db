@@ -25,6 +25,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
@@ -192,6 +195,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("publication_names parameter missing")));
 
+		if (IsYugaByteEnabled())
+			opt->yb_publication_names = data->publication_names;
+
 		/* Init publication state. */
 		data->publications = NIL;
 		publications_valid = false;
@@ -215,7 +221,8 @@ pgoutput_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	OutputPluginPrepareWrite(ctx, !send_replication_origin);
 	logicalrep_write_begin(ctx->out, txn);
 
-	if (send_replication_origin)
+	/* Skip sending replication origin as it is not applicable for YB. */
+	if (!IsYugaByteEnabled() && send_replication_origin)
 	{
 		char	   *origin;
 

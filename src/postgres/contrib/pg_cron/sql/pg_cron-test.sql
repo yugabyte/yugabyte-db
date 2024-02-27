@@ -1,9 +1,9 @@
 CREATE EXTENSION pg_cron VERSION '1.0';
 SELECT extversion FROM pg_extension WHERE extname='pg_cron';
+-- Test binary compatibility with v1.4 function signature.
 ALTER EXTENSION pg_cron UPDATE TO '1.4';
-SELECT extversion FROM pg_extension WHERE extname='pg_cron';
-
-SET cron.enable_superuser_jobs TO on;
+SELECT cron.unschedule(job_name := 'no_such_job');
+ALTER EXTENSION pg_cron UPDATE;
 
 -- Vacuum every day at 10:00am (GMT)
 SELECT cron.schedule('0 10 * * *', 'VACUUM');
@@ -14,6 +14,19 @@ SELECT cron.unschedule(1);
 
 -- Invalid input: input too long
 SELECT cron.schedule(repeat('a', 1000), '');
+
+-- Invalid input: missing parts
+SELECT cron.schedule('* * * *', 'SELECT 1'); 
+
+-- Invalid input: trailing characters
+SELECT cron.schedule('5 secondc', 'SELECT 1'); 
+SELECT cron.schedule('50 seconds c', 'SELECT 1'); 
+
+-- Invalid input: seconds out of range
+SELECT cron.schedule('-1 seconds', 'SELECT 1'); 
+SELECT cron.schedule('0 seconds', 'SELECT 1'); 
+SELECT cron.schedule('60 seconds', 'SELECT 1'); 
+SELECT cron.schedule('10000000000 seconds', 'SELECT 1'); 
 
 -- Try to update pg_cron on restart
 SELECT cron.schedule('@restar', 'ALTER EXTENSION pg_cron UPDATE');
@@ -105,15 +118,36 @@ SELECT username FROM cron.job where jobid=2;
 SELECT cron.schedule_in_database(job_name:='his vacuum', schedule:='0 11 * * *', command:='VACUUM',database:=current_database(), username:='pgcron_cront');
 SELECT username FROM cron.job where jobid=7;
 
--- Try to schedule a job as superuser when it is not allowed
-SET cron.enable_superuser_jobs TO off;
+-- Override function
+DROP EXTENSION IF EXISTS pg_cron cascade;
+CREATE TABLE test (data text);
+DROP TYPE IF EXISTS current_setting cascade;
+CREATE TYPE current_setting AS ENUM ('cron.database_name');
 
-SELECT cron.schedule(job_name:='disallowed-superuser', schedule:='* * * * *', command:='drop database pg_crondbno');
-SELECT cron.alter_job(7, username := current_user);
+CREATE OR REPLACE FUNCTION public.func1(text, current_setting) RETURNS text
+    LANGUAGE sql volatile AS 'INSERT INTO test(data) VALUES (current_user); SELECT current_database()::text;';
 
--- Scheduling as other users is allowed as superuser
-SELECT cron.schedule_in_database(job_name:='more vacuum', schedule:='0 12 * * *', command:='VACUUM', database:=current_database(), username:='pgcron_cront');
-SELECT cron.alter_job(7, username := 'pgcron_cront');
+CREATE OR REPLACE FUNCTION public.func1(current_setting) RETURNS text
+    LANGUAGE sql volatile AS 'INSERT INTO test(data) VALUES (current_user); SELECT current_database()::text;';
+
+CREATE CAST (current_setting AS text) WITH FUNCTION public.func1(current_setting) AS IMPLICIT;
+
+CREATE EXTENSION pg_cron;
+select * from public.test;
+
+-- valid interval jobs
+SELECT cron.schedule('1 second', 'SELECT 1'); 
+SELECT cron.schedule(' 30 sEcOnDs ', 'SELECT 1'); 
+SELECT cron.schedule('59 seconds', 'SELECT 1'); 
+SELECT cron.schedule('17  seconds ', 'SELECT 1'); 
+SELECT jobid, jobname, schedule, command FROM cron.job ORDER BY jobid;
+
+-- valid last of day job
+SELECT cron.schedule('last-day-of-month-job1', '0 11 $ * *', 'SELECT 1');
+SELECT jobid, jobname, schedule, command FROM cron.job ORDER BY jobid;
+
+-- invalid last of day job
+SELECT cron.schedule('bad-last-dom-job1', '0 11 $foo * *', 'VACUUM FULL');
 
 -- cleaning
 DROP EXTENSION pg_cron;

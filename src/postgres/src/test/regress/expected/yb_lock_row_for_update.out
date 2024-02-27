@@ -40,6 +40,8 @@ INSERT INTO yb_row_locking VALUES(1,1,1,1);
 -- When updating a row in any isolation level it should result in a STRONG_READ (row lock) on the
 -- primary key.
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 UPDATE yb_row_locking SET v1 = 2 WHERE hk = 1 AND rk = 1;
 SELECT * FROM get_lock_status();
  locktype |    relation    |            mode            | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked
@@ -81,6 +83,8 @@ COMMIT;
 -- When a value isn't updated we should not write locks to the intentdb in REPEATABLE READ and READ
 -- COMMITTED.
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 UPDATE yb_row_locking SET v1 = 2 WHERE hk = 2 AND rk = 2;
 SELECT * FROM get_lock_status(); -- no locks
  locktype | relation | mode | granted | is_explicit | hash_cols | range_cols | attnum | has_column_id | multiple_rows_locked

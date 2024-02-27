@@ -20,7 +20,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
 
-DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 0,
+DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 1024/0.7,
     "The maximum number of tablets per GiB of RAM reserved by TServers for tablet overheads the "
     "cluster can support. A non-positive number means no limit.");
 TAG_FLAG(tablet_replicas_per_gib_limit, experimental);
@@ -118,11 +118,18 @@ Status CanCreateTabletReplicas(
   int64_t cluster_limit = ComputeTabletReplicaLimit(cluster_info, limits);
   int64_t new_tablet_count = cluster_info.total_live_replicas + tablet_replicas_to_create;
   if (new_tablet_count > cluster_limit) {
-    return STATUS_FORMAT(
-        InvalidArgument,
+    std::string error_message = Format(
         "The requested number of tablet replicas ($0) would cause the total running tablet replica "
         "count ($1) to exceed the safe system maximum ($2)",
         tablet_replicas_to_create, new_tablet_count, cluster_limit);
+    YB_LOG_EVERY_N_SECS(ERROR, 10) << error_message;
+    return STATUS(InvalidArgument, error_message);
+  } else {
+    VLOG_IF(1, cluster_limit < std::numeric_limits<int64_t>::max())
+        << "Approved an additional " << tablet_replicas_to_create
+        << " tablet replicas, which will increase the total running tablet replica count to "
+        << new_tablet_count << ", which is still below the safe system maximum of "
+        << cluster_limit;
   }
   return Status::OK();
 }

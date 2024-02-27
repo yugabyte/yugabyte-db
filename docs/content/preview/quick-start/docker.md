@@ -176,7 +176,7 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 ## Monitor your cluster
 
-When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](localhost:15433).
+When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](http://localhost:15433).
 
 ![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
 

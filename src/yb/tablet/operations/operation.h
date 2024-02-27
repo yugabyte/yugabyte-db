@@ -71,7 +71,8 @@ YB_DEFINE_ENUM(
     ((kEmpty, consensus::UNKNOWN_OP))
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
     ((kSplit, consensus::SPLIT_OP))
-    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
+    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP))
+    ((kClone, consensus::CLONE_OP)))
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
 YB_STRONGLY_TYPED_BOOL(IsLeaderSide);

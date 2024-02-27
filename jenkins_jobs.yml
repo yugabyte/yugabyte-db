@@ -2,7 +2,7 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang16
+    compiler: clang17
     build_type: asan
     release_artifact: false
 
@@ -17,13 +17,13 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: clang16
+    compiler: clang17
     build_type: release
     build_opts: YB_LINKING_TYPE=full-lto
     release_artifact: true
 
   - os: alma8
-    compiler: clang16
+    compiler: clang17
     build_type: release
     architecture: aarch64
     release_artifact: true
@@ -41,6 +41,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu22.04
-    compiler: clang16
+    compiler: clang17
     build_type: debug
     release_artifact: false

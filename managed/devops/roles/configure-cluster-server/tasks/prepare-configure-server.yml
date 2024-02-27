@@ -154,8 +154,8 @@
 
   - name: Determine system or user scope
     stat:
-      path: /etc/systemd/system/yb-zip_purge_yb_logs.service
-    register: systemd_system
+      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-zip_purge_yb_logs.service"
+    register: user_systemd
 
   - name: Systemd user units
     block:
@@ -213,7 +213,7 @@
         enabled: yes
         scope: user
         daemon_reload: yes
-    when: not systemd_system.stat.exists
+    when: user_systemd.stat.exists
 
   - name: Systemd system units
     block:
@@ -260,7 +260,7 @@
     - name: Run collect_metrics_wrapper.sh (using timer) for collecting metrics
       shell:
         cmd: "sudo systemctl start yb-collect_metrics.timer"
-    when: systemd_system.stat.exists
+    when: not user_systemd.stat.exists
 
   tags: systemd_upgrade
   when: systemd_option

@@ -150,7 +150,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           }
           invalidateQueries();
         };
+
         modalProps.onClose();
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
@@ -231,7 +237,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     Object.keys(formMethods.formState.defaultValues).length === 0
   ) {
     // react-hook-form caches the defaultValues on first render.
-    // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
+    // We need to update the defaultValues with reset() after the API queries are successful.
     formMethods.reset(
       getDefaultFormValues(xClusterConfig, sourceUniverseTables, sourceUniverseNamespaces)
     );
@@ -241,10 +247,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   const onSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES: {
+        setSelectionError(undefined);
         if (formValues.tableUuids.length <= 0) {
           formMethods.setError('tableUuids', {
             type: 'min',
-            message: t('error.validationMinimumTableUuids.title', {
+            message: t('error.validationMinimumNamespaceUuids.title', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             })
           });
@@ -252,10 +259,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           // React-hook-form only allows string error messages.
           // Thus, we need an store these error objects separately.
           setSelectionError({
-            title: t('error.validationMinimumTableUuids.title', {
+            title: t('error.validationMinimumNamespaceUuids.title', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             }),
-            body: t('error.validationMinimumTableUuids.body', {
+            body: t('error.validationMinimumNamespaceUuids.body', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             })
           });
@@ -264,6 +271,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
 
         if (!isTableSelectionValidated) {
           let bootstrapTableUuids: string[] | null = null;
+          const hasSelectionError = false;
 
           try {
             // We pass null as the target universe in the following method because add table does not
@@ -334,12 +342,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
               });
             }
           }
-
-          if (selectionError === undefined) {
+          if (hasSelectionError === false) {
             setIsTableSelectionValidated(true);
           }
           return;
         }
+
         if (bootstrapRequiredTableUUIDs.length > 0) {
           setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
           return;
@@ -354,13 +362,25 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     }
   };
 
-  const setSelectedTableUuids = (tableUuids: string[]) => {
-    setIsTableSelectionValidated(false);
-    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
-  };
   const setSelectedNamespaceUuids = (namespaces: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
     setIsTableSelectionValidated(false);
+    formMethods.clearErrors('namespaceUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
     formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
+  };
+  const setSelectedTableUuids = (tableUuids: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setIsTableSelectionValidated(false);
+    formMethods.clearErrors('tableUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
   const handleBackNavigation = () => {
@@ -469,8 +489,13 @@ const getDefaultFormValues = (
   sourceUniverseTables: YBTable[],
   sourceUniverseNamespace: UniverseNamespace[]
 ): Partial<EditTablesFormValues> => {
+  const sourceUniverseTableUuids = sourceUniverseTables.map((table) =>
+    formatUuidForXCluster(getTableUuid(table))
+  );
   return {
-    tableUuids: xClusterConfig.tables,
+    tableUuids: xClusterConfig.tables.filter((xClusterTableUuid) =>
+      sourceUniverseTableUuids.includes(xClusterTableUuid)
+    ),
     namespaceUuids: getXClusterConfigNamespaces(
       xClusterConfig,
       sourceUniverseTables,

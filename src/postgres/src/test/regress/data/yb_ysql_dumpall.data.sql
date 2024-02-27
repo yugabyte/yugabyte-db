@@ -90,6 +90,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
@@ -133,6 +139,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
@@ -173,6 +185,12 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -245,6 +263,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
@@ -275,7 +299,9 @@ SET row_security = off;
 COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
@@ -289,7 +315,9 @@ CREATE TABLEGROUP grp_with_spc;
 
 ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
@@ -303,7 +331,9 @@ CREATE TABLEGROUP grp_without_spc;
 
 ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 SET default_with_oids = false;
 
@@ -327,7 +357,9 @@ SPLIT INTO 3 TABLETS;
 
 ALTER TABLE public.table1 OWNER TO yugabyte_test;
 
-SET default_tablespace = tsp2;
+\if :use_tablespaces
+    SET default_tablespace = tsp2;
+\endif
 
 --
 -- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -349,7 +381,9 @@ SPLIT INTO 3 TABLETS;
 
 ALTER TABLE public.table2 OWNER TO yugabyte_test;
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: tbl_with_grp_with_spc; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -396,7 +430,9 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 \.
 
 
-SET default_tablespace = tsp2;
+\if :use_tablespaces
+    SET default_tablespace = tsp2;
+\endif
 
 --
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -405,7 +441,9 @@ SET default_tablespace = tsp2;
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1

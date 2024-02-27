@@ -18,9 +18,10 @@
 
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/xcluster_types.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/common/schema.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
@@ -28,6 +29,8 @@
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
+
+class IsOperationDoneResult;
 
 namespace master {
 class MasterReplicationProxy;
@@ -55,15 +58,21 @@ class XClusterRemoteClient {
 
   YB_STRONGLY_TYPED_BOOL(Transactional);
   // This requires flag enable_xcluster_api_v2 to be set.
-  virtual Result<UniverseUuid> SetupUniverseReplication(
+  virtual Result<UniverseUuid> SetupDbScopedUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<HostPort>& source_master_addresses,
       const std::vector<NamespaceName>& namespace_names,
+      const std::vector<NamespaceId>& source_namespace_ids,
       const std::vector<TableId>& source_table_ids,
-      const std::vector<xrepl::StreamId>& bootstrap_ids, Transactional transactional);
+      const std::vector<xrepl::StreamId>& bootstrap_ids);
 
-  virtual Result<master::IsOperationDoneResult> IsSetupUniverseReplicationDone(
+  virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
       const xcluster::ReplicationGroupId& replication_group_id);
+
+  Status GetXClusterTableCheckpointInfos(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      BootstrapProducerCallback user_callback);
 
  private:
   const std::string certs_for_cdc_dir_;

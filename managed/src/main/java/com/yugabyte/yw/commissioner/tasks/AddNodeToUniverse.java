@@ -31,11 +31,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,6 +41,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Retryable
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
+
+  private boolean addMaster;
+  private boolean addTserver;
+  private NodeDetails currentNode;
 
   @Inject
   protected AddNodeToUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -91,35 +92,22 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  private void freezeUniverseInTxn(Universe universe) {
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+  private void configureNodeDetails(Universe universe) {
     Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
     UserIntent userIntent = cluster.userIntent;
-    boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
     Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
-    if (wasDecommissioned
+
+    if (currentNode.state == NodeState.Decommissioned
         && userIntent.providerType.equals(CloudType.onprem)
         && !nodeInstance.isPresent()) {
-      // Reserve a node if it is not assigned yet, and persist the universe details and node
-      // reservation in transaction so that universe is aware of the reservation.
-      Map<UUID, List<String>> onpremAzToNodes =
-          Collections.singletonMap(
-              currentNode.azUuid, Collections.singletonList(currentNode.nodeName));
-
-      Map<String, NodeInstance> nodeMap =
-          NodeInstance.pickNodes(onpremAzToNodes, currentNode.cloudInfo.instance_type);
-      currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
-      currentNode.nodeUuid = currentNode.nodeUuid;
-      // This needs to be set because DB fetch of this universe later can override the
-      // field as the universe details object is transient and not tracked by DB.
-      universe.setUniverseDetails(universe.getUniverseDetails());
-      // Perform preflight check. If it fails, the node must not be in use,
-      // otherwise running it second time can succeed. This check must be
-      // performed only when a new node is picked as Add after Remove can
-      // leave processes that require sudo access.
-      performPreflightCheck(
-          cluster,
-          currentNode,
+      reserveOnPremNodes(cluster, Collections.singleton(currentNode), false /* commit changes */);
+      // Clone the node because isMaster and isTserver are not set yet in currentNode.
+      NodeDetails currentNodeClone = currentNode.clone();
+      currentNodeClone.isMaster = addMaster;
+      currentNodeClone.isTserver = addTserver;
+      createPreflightNodeCheckTasks(
+          Collections.singleton(cluster),
+          Collections.singleton(currentNodeClone),
           EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null,
           EncryptionInTransitUtil.isClientRootCARequired(taskParams())
               ? taskParams().getClientRootCA()
@@ -127,15 +115,29 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
+  private void freezeUniverseInTxn(Universe universe) {
+    NodeDetails universeNode = universe.getNode(taskParams().nodeName);
+    universeNode.nodeUuid = currentNode.nodeUuid;
+    // Confirm the node on hold.
+    commitReservedNodes();
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    currentNode = universe.getNode(taskParams().nodeName);
+    addMaster =
+        areMastersUnderReplicated(currentNode, universe)
+            && (currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.MASTER);
+    addTserver = currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.TSERVER;
     if (currentNode.state != NodeState.Decommissioned) {
       // Validate instance existence and connectivity before changing the state.
       createInstanceExistsCheckTasks(
           universe.getUniverseUUID(), taskParams(), Collections.singletonList(currentNode));
     }
     addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      configureNodeDetails(universe);
+    }
   }
 
   @Override
@@ -145,11 +147,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         getName(),
         taskParams().nodeName,
         taskParams().getUniverseUUID());
-
-    Universe universe =
-        lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    Universe universe = null;
     try {
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
       final NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 
       preTaskActions();
@@ -176,18 +178,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           createCreateNodeTasks(
               universe, nodeSet, true /* ignoreNodeStatus */, null /* param customizer */);
 
-      boolean addMaster =
-          areMastersUnderReplicated(currentNode, universe)
-              && (currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.MASTER);
-      boolean addTServer =
-          currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.TSERVER;
-
       Set<NodeDetails> mastersToAdd = null;
       Set<NodeDetails> tServersToAdd = null;
       if (addMaster) {
         mastersToAdd = nodeSet;
       }
-      if (addTServer) {
+      if (addTserver) {
         tServersToAdd = nodeSet;
       }
       // State checking is disabled as generic callee checks for node to be in ServerSetup
@@ -237,8 +233,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 
-      // Bring up TServers, as needed.
-      if (addTServer) {
+      // Bring up Tservers, as needed.
+      if (addTserver) {
         // Add the tserver process start task.
         createTServerTaskForNode(currentNode, "start")
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -314,7 +310,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      unlockUniverseForUpdate(universe.getUniverseUUID());
+      releaseReservedNodes();
+      if (universe != null) {
+        unlockUniverseForUpdate(universe.getUniverseUUID());
+      }
     }
     log.info("Finished {} task.", getName());
   }

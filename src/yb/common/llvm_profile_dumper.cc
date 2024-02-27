@@ -15,6 +15,8 @@
 
 #include <chrono>
 #include <functional>
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/thread.h"
 
 #if defined(YB_PROFGEN) && defined(__clang__)
@@ -36,7 +38,7 @@ LlvmProfileDumper::~LlvmProfileDumper() {
       std::lock_guard lock(mutex_);
       stop_ = true;
     }
-    cond_variable_.notify_all();
+    YB_PROFILE(cond_variable_.notify_all());
     CHECK_OK(ThreadJoiner(thread_.get()).Join());
   }
 }

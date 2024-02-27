@@ -28,8 +28,9 @@ class PgInsert : public PgDmlWrite {
   PgInsert(PgSession::ScopedRefPtr pg_session,
            const PgObjectId& table_id,
            bool is_region_local,
-           YBCPgTransactionSetting transaction_setting)
-      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting) {}
+           YBCPgTransactionSetting transaction_setting,
+           bool packed)
+      : PgDmlWrite(std::move(pg_session), table_id, is_region_local, transaction_setting, packed) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 

@@ -31,7 +31,6 @@
 //
 
 #include "yb/gutil/map-util.h"
-#include "yb/master/master_defaults.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/result.h"
@@ -44,9 +43,7 @@ Result<std::optional<HybridTime>> XClusterSafeTimeMap::GetSafeTime(
   SharedLock l(xcluster_safe_time_map_mutex_);
   SCHECK(map_initialized_, TryAgain, "XCluster safe time not yet initialized");
   auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);
-  // We store System Namespace safe time for transaction status tables but dont use it for
-  // consistency
-  if (!safe_time || namespace_id == master::kSystemNamespaceId) {
+  if (!safe_time) {
     return std::nullopt;
   }
 

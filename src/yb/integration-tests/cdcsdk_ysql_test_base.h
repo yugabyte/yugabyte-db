@@ -138,6 +138,8 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
+DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_int32(cdcsdk_max_consistent_records);
 
 namespace yb {
 
@@ -180,6 +182,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   struct GetAllPendingChangesResponse {
     vector<CDCSDKProtoRecordPB> records;
+    // The record count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN,
+    // COMMIT in that order.
+    int record_count[8];
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
   };
@@ -470,6 +475,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0);
 
+  Status InitVirtualWAL(const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids);
+
+  Result<GetAllPendingChangesResponse> GetAllPendingChangesFromCdc(
+      const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_records,
+      bool init_virtual_wal);
+
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -495,6 +506,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestGetChanges(
       const uint32_t replication_factor, bool add_tables_without_primary_key = false);
+
+  Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -564,8 +578,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
-  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
-
   uint32_t GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -605,6 +617,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count);
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
+
+  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+
+  void CheckRecordsConsistencyWithWriteId(const std::vector<CDCSDKProtoRecordPB>& records);
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,

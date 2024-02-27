@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -66,6 +67,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
           barrier.reset();
         }
       });
+      final AtomicInteger expectedExceptionsCount = new AtomicInteger(0);
       for (int i = 1; i < count; ++i) {
         final int idx = i;
         threads[i] = new Thread(() -> {
@@ -75,18 +77,23 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
                  item_idx += 2) {
               barrier.await();
               try {
-                // TODO(dmitry): In spite of the fact system catalog is being read in consistent
-                // manner PgSession::table_cache_ may have outdated YBTable object. As a result
-                // an error like 'Invalid argument: Invalid column number 8' might be raised by
-                // the next statement. Github issue #8096 is created for the problem.
                 lstmt.execute(String.format("INSERT INTO t(k) VALUES(%d), (%d)",
                                             idx * 10000000L + item_idx,
                                             idx * 10000000L + item_idx + 1));
-              } catch (Exception e) {
+              } catch (SQLException e) {
                 final String msg = e.getMessage();
-                if (!(msg.contains("Catalog Version Mismatch") ||
-                      msg.contains("Restart read required") ||
-                      msg.contains("schema version mismatch"))) {
+                if (e.getSQLState().equals(SERIALIZATION_FAILURE_PSQL_STATE) ||
+                    msg.contains("Catalog Version Mismatch") ||
+                    msg.contains("Restart read required") ||
+                    msg.contains("schema version mismatch")) {
+                    expectedExceptionsCount.incrementAndGet();
+                } else if (msg.contains("Invalid column number")) {
+                  // TODO(dmitry): In spite of the fact system catalog is being read in consistent
+                  // manner PgSession::table_cache_ may have outdated YBTable object. As a result
+                  // an error like 'Invalid argument: Invalid column number 8' might be raised by
+                  // the next statement. Github issue #8096 is created for the problem.
+                  LOG.warn("Invalid column number error detected", e);
+                } else {
                   LOG.error("Unexpected exception", e);
                   errorsDetected.set(true);
                   return;
@@ -112,6 +119,7 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
       assertFalse(errorsDetected.get());
       Row row = getSingleRow(stmt, "SELECT COUNT(*) FROM t");
       assertGreaterThan(row.getLong(0), 0L);
+      assertGreaterThan(expectedExceptionsCount.get(), 0);
     }
   }
 }

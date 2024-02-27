@@ -10,6 +10,7 @@ import (
 	pb "node-agent/generated/service"
 	"os"
 	"os/user"
+	"path"
 	"reflect"
 	"strconv"
 	"sync"
@@ -40,6 +41,7 @@ const (
 	JwtExpirationTime       = 600 //in seconds
 	NodeAgentDefaultLog     = "node_agent.log"
 	NodeHomeDirectory       = "/home/yugabyte"
+	NodeAgentRegistryPath   = ".yugabyte/node-agent-registry"
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
@@ -82,6 +84,9 @@ const (
 	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
 	NodeAgentLogMaxDaysKey     = "node.log_max_days"
 	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
+
+	// Node agent registry keys.
+	NodeAgentRegistryHomeKey = "node_agent_home"
 
 	// JWT claims.
 	JwtClaimsExpiryKey  = "exp"
@@ -235,9 +240,21 @@ func MustGetHomeDirectory() string {
 		if err != nil {
 			panic(fmt.Sprintf("Unable to fetch the Home Directory - %s", err.Error()))
 		}
-		nodeAgentHome = userHome + nodeAgentDir
+		// Check the registry first.
+		registryPath := path.Join(userHome, NodeAgentRegistryPath)
+		if config, err := ConfigWithName(registryPath); err == nil {
+			nodeAgentHome = config.String(NodeAgentRegistryHomeKey)
+		}
+		if nodeAgentHome == "" {
+			nodeAgentHome = userHome + nodeAgentDir
+		}
 	})
 	return nodeAgentHome
+}
+
+// InstallDir returns the installation directory.
+func InstallDir() string {
+	return path.Dir(path.Clean(MustGetHomeDirectory()))
 }
 
 // Returns the Path to Preflight Checks script

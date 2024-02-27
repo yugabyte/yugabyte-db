@@ -73,7 +73,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
 
-    margin: `${theme.spacing(3)}px 0 ${theme.spacing(2)}px`,
+    marginBottom: theme.spacing(2),
 
     '& $actionButtonContainer': {
       marginLeft: 'auto'
@@ -291,7 +291,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
-    targetUniverse
+    targetUniverse,
+    drConfig.state
   );
   return (
     <>

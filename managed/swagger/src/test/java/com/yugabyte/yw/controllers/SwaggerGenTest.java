@@ -276,7 +276,7 @@ public class SwaggerGenTest extends FakeDBApplication {
     mapperField.set(null, mapper);
 
     Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
-    return sort(contentAsString(result, mat));
+    return sort(contentAsString(result, getApp().asScala().materializer()));
   }
 
   private String expectedFlags() {

@@ -4,7 +4,6 @@ import React, { Component, Fragment } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
-import { Box } from '@material-ui/core';
 import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
@@ -640,13 +639,6 @@ class GraphPanelHeader extends Component {
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
     const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
-    const isDrEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_UI_FEATURE_FLAG
-      )?.value === 'true' &&
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
-      )?.value === 'true';
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -842,13 +834,6 @@ class GraphPanelHeader extends Component {
                     )}
                 </FlexGrow>
               </FlexContainer>
-              {this.props.origin === MetricOrigin.UNIVERSE && isDrEnabled && (
-                <Box marginTop="16px">
-                  <Link to={`/universes/${currentSelectedUniverse.universeUUID}/recovery`}>
-                    <span className="dr-metrics-link">See DR Metrics</span>
-                  </Link>
-                </Box>
-              )}
               {enableNodeComparisonModal ? (
                 <MetricsComparisonModal
                   visible={showModal && visibleModal === 'metricsComparisonModal'}

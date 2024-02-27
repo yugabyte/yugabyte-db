@@ -156,6 +156,12 @@ typedef struct Port
 	bool 		yb_is_auth_passthrough_req;
 
 	/*
+	 * To be used during Authentication Passthrough (authentication of logical connections),
+	 * it identifies whether the logical connection is encrypted.
+	 */
+	bool 		yb_is_ssl_enabled_in_logical_conn;
+
+	/*
 	 * Information that really has no business at all being in struct Port,
 	 * but since it gets used by elog.c in the same way as database_name and
 	 * other members of this struct, we may as well keep it here.

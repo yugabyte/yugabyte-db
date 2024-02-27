@@ -328,10 +328,12 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 	int            natts         = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey         = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
+	MemoryContext  oldctx;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel),
 		&ybc_tabledesc));
+	oldctx = MemoryContextSwitchTo(CacheMemoryContext);
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -352,21 +354,30 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 		}
 	}
 
+	MemoryContextSwitchTo(oldctx);
 	return pkey;
 }
 
 Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
 {
-	return GetTablePrimaryKeyBms(rel,
-								 YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
-								 false /* includeYBSystemColumns */);
+	if (!rel->primary_key_bms) {
+		rel->primary_key_bms = GetTablePrimaryKeyBms(
+			rel,
+			YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
+			false /* includeYBSystemColumns */);
+	}
+	return rel->primary_key_bms;
 }
 
 Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 {
-	return GetTablePrimaryKeyBms(rel,
-								 YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
-								 true /* includeYBSystemColumns */);
+	if (!rel->full_primary_key_bms) {
+		rel->full_primary_key_bms = GetTablePrimaryKeyBms(
+			rel,
+			YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
+			true /* includeYBSystemColumns */);
+	}
+	return rel->full_primary_key_bms;
 }
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
@@ -445,7 +456,7 @@ YBTransactionsEnabled()
 }
 
 bool
-IsYBReadCommitted()
+YBIsReadCommittedSupported()
 {
 	static int cached_value = -1;
 	if (cached_value == -1)
@@ -457,7 +468,13 @@ IsYBReadCommitted()
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
 #endif
 	}
-	return IsYugaByteEnabled() && cached_value &&
+	return cached_value;
+}
+
+bool
+IsYBReadCommitted()
+{
+	return IsYugaByteEnabled() && YBIsReadCommittedSupported() &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
 }
 
@@ -501,16 +518,9 @@ bool
 YBIsDBCatalogVersionMode()
 {
 	static bool cached_is_db_catalog_version_mode = false;
-	static int cached_gflag = -1;
 
 	if (cached_is_db_catalog_version_mode)
 		return true;
-
-	if (cached_gflag == -1)
-	{
-		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_ysql_enable_db_catalog_version_mode", false);
-	}
 
 	/*
 	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
@@ -518,7 +528,7 @@ YBIsDBCatalogVersionMode()
 	 */
 	if (!IsYugaByteEnabled() ||
 		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
-		!cached_gflag)
+		!*YBCGetGFlags()->ysql_enable_db_catalog_version_mode)
 		return false;
 
 	/*
@@ -625,6 +635,9 @@ YBCanEnableDBCatalogVersionMode()
 	if (YBCIsSysTablePrefetchingStarted())
 		return false;
 
+	if (yb_test_stay_in_global_catalog_version_mode)
+		return false;
+
 	/*
 	 * We assume that the table pg_yb_catalog_version has either exactly
 	 * one row in global catalog version mode, or one row per database in
@@ -633,44 +646,7 @@ YBCanEnableDBCatalogVersionMode()
 	 * upgrade, the pg_yb_catalog_version is transactionally updated
 	 * to have one row per database.
 	 */
-	return (YbGetNumberOfDatabases() > 1);
-}
-
-void
-YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode)
-{
-	/*
-	 * When --ysql_enable_db_catalog_version_mode=true, we only need to check
-	 * for incompatible pg_yb_catalog_version and disallow DDLs that increment
-	 * the catalog version. DDLs that do not increment the catalog version are
-	 * fine because there isn't any problem.
-	 */
-	if (!(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
-		return;
-
-	bool db_catalog_version_mode_gflag =
-		YBCIsEnvVarTrueWithDefault("FLAGS_ysql_enable_db_catalog_version_mode",
-								   false);
-	int num_databases = YbGetNumberOfDatabases();
-
-	/*
-	 * Disallow DDL statement when FLAGS_ysql_enable_db_catalog_version_mode
-	 * is on but pg_yb_catalog_version table only has one row. Note that
-	 * the other mismatch (where FLAGS_ysql_enable_db_catalog_version_mode is
-	 * off but pg_yb_catalog_version table has one row per database) is fine
-	 * because we only use the first row (which is for template1) and ignore
-	 * the other rows and therefore table pg_yb_catalog_version is used in the
-	 * global catalog version mode. Also note that due to heart beat delay,
-	 * this rejection is done at best effort.
-	 */
-	if (db_catalog_version_mode_gflag && num_databases == 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("this ddl statement is currently not allowed"),
-				 errdetail("The pg_yb_catalog_version table is not in "
-						   "per-database catalog version mode."),
-				 errhint("Fix pg_yb_catalog_version table to per-database "
-						 "catalog version mode.")));
+	return YbCatalogVersionTableInPerdbMode();
 }
 
 /*
@@ -794,6 +770,20 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 	}
 	*not_found = false;
 	HandleYBStatus(status);
+}
+
+void
+HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+										 const char *message_for_not_found)
+{
+	bool		not_found = false;
+
+	HandleYBStatusIgnoreNotFound(status, &not_found);
+
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("%s", message_for_not_found)));
 }
 
 void
@@ -1321,6 +1311,7 @@ bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
+bool yb_enable_saop_pushdown = true;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1342,6 +1333,8 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool yb_test_fail_table_rewrite_after_creation = false;
+
+bool yb_test_stay_in_global_catalog_version_mode = false;
 
 bool ddl_rollback_enabled = false;
 
@@ -1651,8 +1644,15 @@ YbDdlModeOptional YbGetDdlMode(
 	Node *parsetree = GetActualStmtNode(pstmt);
 	NodeTag node_tag = nodeTag(parsetree);
 
+	/*
+	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
+	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
+	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
+	 * not update the original node tag.
+	 */
 	if (context == PROCESS_UTILITY_TOPLEVEL ||
-		context == PROCESS_UTILITY_QUERY)
+		(context == PROCESS_UTILITY_QUERY &&
+		 ddl_transaction_state.original_node_tag != T_RefreshMatViewStmt))
 	{
 		/*
 		 * The node tag from the top-level or atomic process utility must
@@ -1665,7 +1665,10 @@ YbDdlModeOptional YbGetDdlMode(
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
-			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
+			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
+			   (context == PROCESS_UTILITY_QUERY &&
+				ddl_transaction_state.original_node_tag ==
+				T_RefreshMatViewStmt));
 
 		is_version_increment = false;
 		is_breaking_change = false;
@@ -1855,6 +1858,18 @@ YbDdlModeOptional YbGetDdlMode(
 			break;
 
 		case T_DropStmt:
+		{
+			/*
+			 * If this is a DROP statement that is being executed as part of
+			 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
+			 * tables, and do not need to increment catalog version.
+			 */
+			if (ddl_transaction_state.original_node_tag ==
+				T_RefreshMatViewStmt)
+				is_version_increment = false;
+			is_breaking_change = false;
+			break;
+		}
 		case T_YbDropProfileStmt:
 			is_breaking_change = false;
 			break;
@@ -1992,8 +2007,29 @@ YbDdlModeOptional YbGetDdlMode(
 			break;
 
 		case T_RefreshMatViewStmt:
+		{
+			RefreshMatViewStmt *stmt = castNode(RefreshMatViewStmt, parsetree);
+			is_breaking_change = false;
+			if (stmt->concurrent)
+				/*
+				 * REFRESH MATERIALIZED VIEW CONCURRENTLY does not need
+				 * a catalog version increment as it does not alter any
+				 * metadata. The command only performs data changes.
+				 */
+				is_version_increment = false;
+			else
+				/*
+				 * REFRESH MATERIALIZED VIEW NONCONCURRENTLY needs a catalog
+				 * version increment as it alters the metadata of the
+				 * materialized view (pg_class.relfilenode). It does not need
+				 * to be a breaking change as materialized views are read-only,
+				 * so there is no risk of lost writes. Concurrent SELECTs may
+				 * read stale data from the old matview, or fail if the old
+				 * matview is dropped.
+				 */
+				is_version_increment = true;
 			break;
-
+		}
 		case T_ReindexStmt:
 			/*
 			 * Does not need catalog version increment since only data changes,
@@ -2056,9 +2092,6 @@ YBTxnDdlProcessUtility(
 	const YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
 
 	const bool is_ddl = ddl_mode.has_value;
-
-	if (is_ddl)
-		YBCheckDdlForDBCatalogVersionMode(ddl_mode.value);
 
 	PG_TRY();
 	{
@@ -2382,6 +2415,27 @@ YbTryGetTableProperties(Relation rel)
 	bool not_found = false;
 	HandleYBStatusIgnoreNotFound(YbGetTablePropertiesCommon(rel), &not_found);
 	return not_found ? NULL : rel->yb_table_properties;
+}
+
+YbTableDistribution
+YbGetTableDistribution(Oid relid)
+{
+	YbTableDistribution result;
+	Relation relation = RelationIdGetRelation(relid);
+	if (IsSystemRelation(relation))
+		result = YB_SYSTEM;
+	else
+	{
+		HandleYBStatus(YbGetTablePropertiesCommon(relation));
+		if (relation->yb_table_properties->is_colocated)
+			result = YB_COLOCATED;
+		else if (relation->yb_table_properties->num_hash_key_columns > 0)
+			result = YB_HASH_SHARDED;
+		else
+			result = YB_RANGE_SHARDED;
+	}
+	RelationClose(relation);
+	return result;
 }
 
 Datum
@@ -3990,6 +4044,13 @@ uint32_t YbGetNumberOfDatabases()
 	return num_databases;
 }
 
+bool YbCatalogVersionTableInPerdbMode()
+{
+	bool perdb_mode = false;
+	HandleYBStatus(YBCCatalogVersionTableInPerdbMode(&perdb_mode));
+	return perdb_mode;
+}
+
 static bool yb_is_batched_execution = false;
 
 bool YbIsBatchedExecution()
@@ -4363,4 +4424,13 @@ YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
 	}
 
 	return ordering;
+}
+
+void
+YbGetRedactedQueryString(const char* query, int query_len,
+						 const char** redacted_query, int* redacted_query_len)
+{
+	*redacted_query = pnstrdup(query, query_len);
+	*redacted_query = RedactPasswordIfExists(*redacted_query);
+	*redacted_query_len = strlen(*redacted_query);
 }

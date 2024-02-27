@@ -331,9 +331,9 @@ TEST_P(PgPackedRowTest, SchemaChange) {
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
   ASSERT_OK(cluster_->CompactTablets());
 
-  auto value = ASSERT_RESULT(conn.FetchRow<std::string>(
+  auto value = ASSERT_RESULT(conn.FetchRow<std::optional<std::string>>(
       Format("SELECT v3 FROM t WHERE key = $0", kKey)));
-  ASSERT_EQ(value, "");
+  ASSERT_EQ(value, std::nullopt);
 }
 
 // Check that we GC old schemas. I.e. when there are no more packed rows with this schema version.
@@ -499,6 +499,52 @@ TEST_P(PgPackedRowTest, ColocatedPackRowDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
   ASSERT_OK(cluster_->CompactTablets());
   CheckNumRecords(cluster_.get(), 1);
+}
+
+// Concurrent CREATE TABLE + INSERT + COMPACTION.
+TEST_P(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  static const auto kRetryableErrors = {
+      "Try again",
+      "Snapshot too old",
+      "Restart read required at"
+  };
+  const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
+    while (true) {
+      const auto s = conn.ExecuteFormat(stmt);
+      if (s.ok()) {
+        break;
+      }
+      ASSERT_TRUE(HasSubstring(s.ToString(), kRetryableErrors)) << s;
+    }
+  };
+  TestThreadHolder thread_holder;
+  const auto kNumWorkers = 5;
+  const auto kTablesPerWoker = 10;
+  const auto kRowsPerTable = 100;
+  for (int i = 0; i < kNumWorkers; i++) {
+    thread_holder.AddThreadFunctor([i, this, &retry_until_success] {
+      auto connection = ASSERT_RESULT(Connect());
+      connection = ASSERT_RESULT(ConnectToDB("test"));
+      for (int k = 0; k < kTablesPerWoker; k++) {
+        auto tbl = i * kTablesPerWoker + k;
+        retry_until_success(
+            connection, Format("CREATE TABLE t$0 (c int) WITH (colocated = true)", tbl));
+        for (int j = 0; j < kRowsPerTable; j++) {
+          retry_until_success(connection, Format("INSERT INTO t$0 (c) VALUES ($1)", tbl, j));
+        }
+        ASSERT_OK(cluster_->CompactTablets());
+      }
+    });
+  }
+  thread_holder.JoinAll();
+  // Check tables and rows.
+  for (int i = 0; i < kNumWorkers * kTablesPerWoker; i++) {
+    auto row = ASSERT_RESULT((conn.FetchRow<int64>(Format("SELECT count(*) FROM t$0", i))));
+    ASSERT_EQ(row, kRowsPerTable);
+  }
 }
 
 TEST_P(PgPackedRowTest, CompactAfterTransaction) {

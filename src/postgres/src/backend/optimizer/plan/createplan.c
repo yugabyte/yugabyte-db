@@ -2891,7 +2891,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		index_path = (IndexPath *) projection_path->subpath;
 
-		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
+		Bitmapset *primary_key_attrs = bms_copy(YBGetTablePrimaryKeyBms(relation));
 
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified

@@ -30,6 +30,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
@@ -258,7 +259,7 @@ void PreparerImpl::Run() {
     }
     if (stop_requested_.load(std::memory_order_acquire)) {
       VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";
-      stop_cond_.notify_all();
+      YB_PROFILE(stop_cond_.notify_all());
     }
     VLOG(2) << "Returning from prepare task after inactivity: " << this;
     return;
@@ -283,6 +284,7 @@ bool ShouldApplySeparately(OperationType operation_type) {
     case OperationType::kEmpty: FALLTHROUGH_INTENDED;
     case OperationType::kHistoryCutoff: FALLTHROUGH_INTENDED;
     case OperationType::kChangeAutoFlagsConfig:
+    case OperationType::kClone:
       return true;
 
     case OperationType::kWrite: FALLTHROUGH_INTENDED;

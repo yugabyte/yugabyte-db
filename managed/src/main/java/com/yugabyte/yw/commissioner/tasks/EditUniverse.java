@@ -75,23 +75,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      configureTaskParams(universe);
+    }
   }
 
-  private void freezeUniverseInTxn(Universe universe) {
-    // The universe parameter in this callback has local changes which may be needed by
-    // the methods inside e.g updateInProgress field.
-    // Fetch the task params from the DB to start from fresh on retry.
-    // Otherwise, some operations like name assignment can fail.
-    fetchTaskDetailsFromDB();
-    // TODO Transaction is required mainly because validations are done here.
+  // Configure the task params in memory. These changes are committed in freeze callback.
+  private void configureTaskParams(Universe universe) {
     // Set all the node names.
     setNodeNames(universe);
     // Set non on-prem node UUIDs.
     setCloudNodeUuids(universe);
-    // Update on-prem node UUIDs.
-    updateOnPremNodeUuidsOnTaskParams();
-    // Perform pre-task actions.
-    preTaskActions(universe);
+    // Update on-prem node UUIDs in task params but do not commit yet.
+    updateOnPremNodeUuidsOnTaskParams(false);
     // Select master nodes, if needed. Changes in masters are not automatically
     // applied.
     SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
@@ -110,6 +106,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         n -> {
           n.masterState = MasterState.ToStop;
         });
+    createPreflightNodeCheckTasks(
+        taskParams().clusters,
+        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),
+        null,
+        null);
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    // Perform pre-task actions.
+    preTaskActions(universe);
+    // Confirm the nodes on hold.
+    commitReservedNodes();
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     // Task params contain the exact blueprint of what is desired.
@@ -124,17 +132,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
-    Universe universe =
-        lockAndFreezeUniverseForUpdate(
-            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    Universe universe = null;
     try {
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
                 != universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
       }
-      // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
           taskParams().nodeDetailsSet.stream()
@@ -164,6 +171,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         }
         editCluster(
             universe,
+            clusters,
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
@@ -192,6 +200,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       errorString = t.getMessage();
       throw t;
     } finally {
+      releaseReservedNodes();
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       universe = unlockUniverseForUpdate(errorString);
@@ -212,6 +221,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   private void editCluster(
       Universe universe,
+      List<Cluster> clusters,
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
@@ -234,6 +244,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
+
+    removeMasters.addAll(mastersToStop);
 
     boolean isWaitForLeadersOnPreferred =
         confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
@@ -324,27 +336,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
-    // Ensure all masters are covered in nodes to be removed.
-    if (!removeMasters.isEmpty()) {
-      if (nodesToBeRemoved.isEmpty()) {
-        String errMsg = "If masters are being removed, corresponding nodes need removal too.";
-        log.error(errMsg + " masters: " + nodeNames(removeMasters));
-        throw new IllegalStateException(errMsg);
-      }
-      if (!nodesToBeRemoved.containsAll(removeMasters)) {
-        String errMsg = "If masters are being removed, all those nodes need removal too.";
-        log.error(
-            errMsg
-                + " masters: "
-                + nodeNames(removeMasters)
-                + " , but removing only "
-                + nodeNames(nodesToBeRemoved));
-        throw new IllegalStateException(errMsg);
-      }
-    }
-    removeMasters.addAll(mastersToStop);
-
-    // Creates the primary cluster by first starting the masters.
     if (!newMasters.isEmpty()) {
       if (cluster.clusterType == ClusterType.ASYNC) {
         String errMsg = "Read-only cluster " + cluster.uuid + " should not have masters.";
@@ -365,10 +356,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Make sure clock skew is low enough.
       createWaitForClockSyncTasks(universe, newMasters)
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-      // Start masters. If it is already started, it has no effect.
-      createStartMasterProcessTasks(newMasters);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(nodes);
@@ -381,7 +369,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Make sure clock skew is low enough.
       createWaitForClockSyncTasks(universe, newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
       createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
@@ -390,11 +378,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createStartYbcProcessTasks(
             newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
-    }
-    if (!nodesToProvision.isEmpty()) {
-      // Set the new nodes' state to live.
-      createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Live)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
@@ -433,15 +416,32 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (cluster.clusterType == ClusterType.PRIMARY && isWaitForLeadersOnPreferred) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
-    Set<NodeDetails> allTservers =
-        Stream.concat(newTservers.stream(), liveNodes.stream()).collect(Collectors.toSet());
-    Set<NodeDetails> allMasters =
-        Stream.concat(newMasters.stream(), liveNodes.stream().filter(n -> n.isMaster))
-            .collect(Collectors.toSet());
+    if (!newMasters.isEmpty()) {
+      // Start masters. If it is already started, it has no effect.
+      createStartMasterProcessTasks(newMasters);
+    }
+    if (!nodesToProvision.isEmpty()) {
+      // Set the new nodes' state to live after the processes are running.
+      createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
     // Filter out nodes which are not in the universe.
     Set<NodeDetails> removeUniverseMasters =
         filterUniverseNodes(universe, removeMasters, n -> true);
     if (!newMasters.isEmpty() || !removeUniverseMasters.isEmpty()) {
+      // Update both primary and async clusters such that every master move is reflected in the conf
+      // file. So, even if any tserver restarts in case of full move, all the master addresses are
+      // present.
+      Set<NodeDetails> allLiveTservers =
+          Stream.concat(
+                  newTservers.stream(),
+                  clusters.stream()
+                      .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
+                      .filter(n -> n.state == NodeState.Live && n.isTserver))
+              .collect(Collectors.toSet());
+      Set<NodeDetails> currentLiveMasters =
+          liveNodes.stream().filter(n -> n.isMaster).collect(Collectors.toSet());
       // Now finalize the master quorum change tasks.
       createMoveMastersTasks(
           SubTaskGroupType.ConfigureUniverse,
@@ -455,26 +455,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               createUpdateNodeProcessTasks(Collections.singleton(node), ServerType.MASTER, false)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               // Remove this node from subsequent address update as it's no longer a master.
-              allMasters.remove(node);
+              currentLiveMasters.remove(node);
+            } else {
+              // Include the new master in address update.
+              currentLiveMasters.add(node);
             }
-            // Even masters to be stopped should be updated as they are still masters before all the
-            // masters are moved.
-            createMasterAddressUpdateTask(allMasters, allTservers);
+            createMasterAddressUpdateTask(currentLiveMasters, allLiveTservers);
           });
       if (!mastersToStop.isEmpty()) {
         createStopMasterTasks(mastersToStop)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
       // Do this once after all the master addresses are frozen as this is expensive.
-      createXClusterConfigUpdateMasterAddressesTask();
-    } else if (updateMasters) {
-      // This is for async cluster after the primary masters are moved.
-      // Wait for a master leader to be elected.
-      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      // Change the master addresses in the conf file for all tservers.
-      createMasterAddressUpdateTask(allMasters, allTservers);
-      // Update the master addresses on the target universes whose source universe belongs to
-      // this task.
       createXClusterConfigUpdateMasterAddressesTask();
     }
 

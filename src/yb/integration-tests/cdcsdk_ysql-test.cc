@@ -7264,8 +7264,142 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   }
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT;"));
+
+  // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(1,5),1);"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = 2 where key = 5;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table where key = 1;"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Sleep to ensure that rollback has taken place
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  // Call getChanges to consume the records
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume any remaining records.
+  auto prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithIncompleteRows)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 5;
+
+  // This test checks the behaviour when the intents batch contains incomplete set of rows for the
+  // insert and an update record at the end of the batch. If packed row is enabled a single intent
+  // will have data for all the columns.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 4));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {1, 3, 2, 0, 0, 0, 3, 3};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1,1,1);"));
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 2, col3 = 3 where col1 = 1;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2,2,2,2);"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Call getChanges to consume the records
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume the remaining records.
+  auto prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3,3,3,3);"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 4, col3 = 4 where col1 = 1;"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Call getChanges to consume the records
+  prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume the remaining records.
+  prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 41;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -7277,7 +7411,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
-  // Number of rows is intentionally kept equal to the value of cdc_max_stream_intent_records.
+  // Number of rows is intentionally kept equal to one less then the value of
+  // cdc_max_stream_intent_records.
   const int row_count = 40;
   ASSERT_OK(WriteRowsHelper(0, row_count, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
@@ -7523,7 +7658,7 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
   ASSERT_OK(conn.Execute("create publication pub for all tables;"));
 
   ASSERT_OK(conn.FetchFormat(
-      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       "test_replication_slot_create_with_view"));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));

@@ -30,6 +30,9 @@ public class UserTaskDetails {
     // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
 
+    // Rolling back software upgrade on Yugabyte Clusters.
+    RollingBackSoftware,
+
     // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
     FinalizingUpgrade,
 
@@ -257,7 +260,14 @@ public class UserTaskDetails {
     // Manage Otel Collector.
     ManageOtelCollector,
 
-    ValidatingNode
+    // Validating nodes.
+    ValidatingNode,
+
+    // OS Patching.
+    OSPatching,
+
+    // Update Proxy Config
+    UpdateProxyConfig
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -286,6 +296,10 @@ public class UserTaskDetails {
       case UpgradingSoftware:
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
+        break;
+      case RollingBackSoftware:
+        title = "Rolling back Software";
+        description = "Rolling back software upgrade on existing clusters.";
         break;
       case FinalizingUpgrade:
         title = "Finalizing upgrade";
@@ -601,6 +615,14 @@ public class UserTaskDetails {
       case ValidatingNode:
         title = "Validating node status";
         description = "Validating node's current state before proceeding";
+        break;
+      case OSPatching:
+        title = "OS Patching";
+        description = "Performing OS Patching on the universe nodes";
+        break;
+      case UpdateProxyConfig:
+        title = "Updating Proxy config";
+        description = "Updating Proxy Config for Universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

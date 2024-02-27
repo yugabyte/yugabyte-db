@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SupportBundleUtil;
@@ -225,6 +226,7 @@ public class MainModule extends AbstractModule {
     bind(OperatorStatusUpdaterFactory.class).asEagerSingleton();
     bind(YBInformerFactory.class).asEagerSingleton();
     bind(YBReconcilerFactory.class).asEagerSingleton();
+    bind(ReleasesUtils.class).asEagerSingleton();
 
     requestStaticInjection(CertificateInfo.class);
     requestStaticInjection(HealthCheck.class);

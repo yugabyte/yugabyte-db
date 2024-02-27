@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { Typography } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { useState } from 'react';
@@ -93,7 +92,11 @@ export const EditConfigTargetModal = ({
           invalidateQueries();
         };
 
-        toast.success('success.requestSucess');
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         modalProps.onClose();
         if (redirectUrl) {
           browserHistory.push(redirectUrl);
@@ -105,7 +108,10 @@ export const EditConfigTargetModal = ({
     }
   );
 
-  if (drConfig.primaryUniverseUuid === undefined) {
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
+      ? 'undefinedDrReplicaUniveresUuid'
+      : 'undefinedDrPrimaryUniveresUuid';
     return (
       <YBModal
         title={t('title')}
@@ -113,7 +119,9 @@ export const EditConfigTargetModal = ({
         cancelTestId={`${MODAL_NAME}-CancelButton`}
         {...modalProps}
       >
-        <YBErrorIndicator customErrorMessage="The DR primary universe is not defined for this DR configuration." />
+        <YBErrorIndicator
+          customErrorMessage={t(i18nKey, { keyPrefix: 'clusterDetail.disasterRecovery.error' })}
+        />
       </YBModal>
     );
   }
@@ -176,7 +184,8 @@ export const EditConfigTargetModal = ({
       <FormProvider {...formMethods}>
         <CurrentFormStep
           currentFormStep={currentFormStep}
-          sourceUniverseUUID={drConfig.primaryUniverseUuid}
+          sourceUniverseUuid={drConfig.primaryUniverseUuid}
+          targetUniverseUuid={drConfig.drReplicaUniverseUuid}
           isFormDisabled={isFormDisabled}
           storageConfigUuid={drConfig.bootstrapParams.backupRequestParams.storageConfigUUID}
         />

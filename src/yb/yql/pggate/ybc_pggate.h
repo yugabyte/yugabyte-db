@@ -77,6 +77,10 @@ YBCStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
+// Return true if the pg_yb_catalog_version table has been updated to
+// have one row per database.
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -435,7 +439,8 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
-YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
@@ -504,6 +509,15 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle);
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
+
+// Allocate block of inserts to the same table.
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle);
+
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
@@ -762,11 +776,16 @@ YBCStatus YBCGetTableKeyRanges(
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
+                                        YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time);
 
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
+
+YBCStatus YBCPgGetReplicationSlot(
+    const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
 YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
                                         bool *active);
@@ -774,6 +793,23 @@ YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
+
+YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
+                                                    const YBCPgOid database_oid,
+                                                    const YBCPgOid table_oid,
+                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
+                                                    size_t *numtablets);
+
+YBCStatus YBCPgSetCDCTabletCheckpoint(const char *stream_id,
+                                      const char *tablet_id,
+                                      const YBCPgCDCSDKCheckpoint *checkpoint,
+                                      uint64_t safe_time,
+                                      bool is_initial_checkpoint);
+
+YBCStatus YBCPgGetCDCChanges(const char *stream_id,
+                             const char *tablet_id,
+                             const YBCPgCDCSDKCheckpoint *checkpoint,
+                             YBCPgChangeRecordBatch **record_batch);
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);

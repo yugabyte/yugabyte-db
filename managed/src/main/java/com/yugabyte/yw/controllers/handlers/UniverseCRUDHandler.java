@@ -101,6 +101,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -273,6 +274,16 @@ public class UniverseCRUDHandler {
       }
     }
     return true;
+  }
+
+  private boolean proxyConfigChanged(
+      UserIntent newIntent, UserIntent currentIntent, NodeDetails node) {
+    if (!Objects.equals(
+        newIntent.getProxyConfig(node.getAzUuid()),
+        currentIntent.getProxyConfig(node.getAzUuid()))) {
+      return true;
+    }
+    return false;
   }
 
   private Cluster getClusterFromTaskParams(UniverseConfigureTaskParams taskParams) {
@@ -611,13 +622,13 @@ public class UniverseCRUDHandler {
       UniverseDefinitionTaskParams.UserIntent userIntent =
           taskParams.getPrimaryCluster().userIntent;
 
-      if (taskParams.isEnableYbc()) {
-        Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      if (confGetter.getConfForScope(p, ProviderConfKeys.ybcEnabledForProvider)) {
         if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-          if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
-              && Util.compareYbVersions(
-                      userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
-                  >= 0) {
+          if (Util.compareYbVersions(
+                  userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+              >= 0) {
+            taskParams.setEnableYbc(true);
             taskParams.setYbcSoftwareVersion(
                 StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                     ? taskParams.getYbcSoftwareVersion()
@@ -638,11 +649,15 @@ public class UniverseCRUDHandler {
               "Ybc installation is skipped on VM universe with DB version lower than "
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
+          taskParams.setEnableYbc(true);
           taskParams.setYbcSoftwareVersion(
               StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                   ? taskParams.getYbcSoftwareVersion()
                   : ybcManager.getStableYbcVersion());
         }
+      } else {
+        taskParams.setEnableYbc(false);
+        taskParams.setYbcSoftwareVersion(null);
       }
 
       if (taskParams.isEnableYbc()) {
@@ -2183,7 +2198,8 @@ public class UniverseCRUDHandler {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
-      for (NodeDetails nodeDetails : taskParams.getNodesInCluster(newCluster.uuid)) {
+      Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
+      for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded
             && nodeDetails.state != NodeState.ToBeRemoved) {
           String newInstanceType = newIntent.getInstanceTypeForNode(nodeDetails);
@@ -2260,7 +2276,21 @@ public class UniverseCRUDHandler {
                         + " through EditUniverse: from %s to %s",
                     nodeDetails.nodeName, curIntent.useSystemd, newIntent.useSystemd));
           }
+          if (proxyConfigChanged(newIntent, curIntent, nodeDetails)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change proxy config for existing node %s" + " through EditUniverse",
+                    nodeDetails.nodeName));
+          }
         }
+      }
+      Set<NodeDetails> toBeAdded =
+          nodeDetailsSet.stream()
+              .filter(nD -> nD.state.equals(NodeState.ToBeAdded))
+              .collect(Collectors.toSet());
+      if (CollectionUtils.isNotEmpty(toBeAdded)) {
+        newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
   }

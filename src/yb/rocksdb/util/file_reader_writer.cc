@@ -25,6 +25,8 @@
 
 #include <algorithm>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/histogram.h"
@@ -112,6 +114,7 @@ WritableFileWriter::~WritableFileWriter() {
 }
 
 Status WritableFileWriter::Append(const Slice& data) {
+  SCOPED_WAIT_STATUS(RocksDB_WriteToFile);
   const char* src = data.cdata();
   size_t left = data.size();
   Status s;
@@ -184,6 +187,7 @@ Status WritableFileWriter::Append(const Slice& data) {
 }
 
 Status WritableFileWriter::Close() {
+  SCOPED_WAIT_STATUS(RocksDB_CloseFile);
 
   // Do not quit immediately on failure the file MUST be closed
   Status s;
@@ -333,6 +337,7 @@ Status WritableFileWriter::RangeSync(uint64_t offset, uint64_t nbytes) {
 
 size_t WritableFileWriter::RequestToken(size_t bytes, bool align) {
   if (suspender_ && FLAGS_allow_preempting_compactions) {
+    SCOPED_WAIT_STATUS(RocksDB_PriorityThreadPoolTaskPaused);
     suspender_->PauseIfNecessary();
   }
   yb::IOPriority io_priority;

@@ -4,7 +4,6 @@
         "artifactId": "yugaware",
         "artifactDescription": "Java server stubs for YugayteDB Anywhere",
         "sourceFolder": "/",
-        "templateDir": "src/main/resources/openapi_templates/",
         "apiPackage": "api.v2.controllers",
         "modelPackage": "api.v2.models",
         "configPackage": "resources",

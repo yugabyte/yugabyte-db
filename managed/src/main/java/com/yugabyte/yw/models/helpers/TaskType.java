@@ -409,6 +409,9 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig
           .class),
 
+  DeleteRemnantStreams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteRemnantStreams.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -631,7 +634,9 @@ public enum TaskType {
 
   CheckForClusterServers(CheckClusterConsistency.class),
 
-  CheckLeaderlessTablets(CheckLeaderlessTablets.class);
+  CheckLeaderlessTablets(CheckLeaderlessTablets.class),
+
+  UpdateProxyConfig(com.yugabyte.yw.commissioner.tasks.upgrade.UpdateProxyConfig.class);
 
   private final Class<? extends ITask> taskClass;
 
