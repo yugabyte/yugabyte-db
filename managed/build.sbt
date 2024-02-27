@@ -4,6 +4,7 @@ import play.sbt.PlayInteractionMode
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{FileSystems, Files, Paths}
+import java.io.IOException
 import sbt.complete.Parsers.spaceDelimited
 import sbt.Tests._
 
@@ -102,6 +103,8 @@ lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
+lazy val copyThirdPartyDepsTxt = taskKey[Int](
+  "Copy thirdparty-dependencies.txt from managed/support to managed/src/main/resources")
 lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
@@ -411,6 +414,7 @@ buildDependentArtifacts := {
   openApiProcessClients.value
   generateCrdObjects.value
   generateOssConfig.value
+  copyThirdPartyDepsTxt.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
 }
@@ -455,6 +459,23 @@ downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
   val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
+}
+
+// Copy the managed/support/thirdparty-dependencies.txt to managed/src/main/resources/thirdparty-dependencies.txt
+copyThirdPartyDepsTxt := {
+  ybLog("Copying thirdparty-dependencies.txt from managed/support to managed/src/main/resources")
+  try {
+    Files.copy(
+      (baseDirectory.value / "support/thirdparty-dependencies.txt").toPath,
+      (baseDirectory.value / "src/main/resources/thirdparty-dependencies.txt").toPath,
+      java.nio.file.StandardCopyOption.REPLACE_EXISTING
+    )
+    0 // success in copying the thirdparty-dependencies.txt
+  } catch {
+    case e: IOException =>
+      ybLog("Error while copying support/thirdparty-dependencies.txt. " + e.getMessage)
+      1 // Fail to copy the file
+  }
 }
 
 devSpaceReload := {
