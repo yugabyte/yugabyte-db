@@ -884,8 +884,11 @@ GetMongoDataCreationTimeVarAttrNumber(const char *pgTableName)
 					 ApiDataSchemaName, pgTableName);
 	bool isNull = true;
 	bool readOnly = true;
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally("client_min_messages", "WARNING");
 	Datum resultDatum = ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT,
 													&isNull);
+	RollbackGUCChange(savedGUCLevel);
 
 	if (isNull)
 	{
