@@ -1,123 +1,524 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.CustomerTask;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
-  // Tasks that are CustomerTasks
-  CloudBootstrap(com.yugabyte.yw.commissioner.tasks.CloudBootstrap.class),
+  /* Parent tasks start here. */
+  CloudBootstrap(
+      com.yugabyte.yw.commissioner.tasks.CloudBootstrap.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Provider),
 
-  CloudCleanup(com.yugabyte.yw.commissioner.tasks.CloudCleanup.class),
+  CloudCleanup(
+      com.yugabyte.yw.commissioner.tasks.CloudCleanup.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Provider),
 
-  CreateCassandraTable(com.yugabyte.yw.commissioner.tasks.CreateCassandraTable.class),
+  CreateCassandraTable(
+      com.yugabyte.yw.commissioner.tasks.CreateCassandraTable.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Table),
 
-  CreateUniverse(com.yugabyte.yw.commissioner.tasks.CreateUniverse.class),
+  CreateUniverse(
+      com.yugabyte.yw.commissioner.tasks.CreateUniverse.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Universe),
 
-  ReadOnlyClusterCreate(com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterCreate.class),
+  ReadOnlyClusterCreate(
+      com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterCreate.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Cluster),
 
   ReadOnlyKubernetesClusterDelete(
-      com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete.class),
+      com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Cluster),
 
-  ReadOnlyClusterDelete(com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete.class),
+  ReadOnlyClusterDelete(
+      com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Cluster),
 
-  CreateKubernetesUniverse(com.yugabyte.yw.commissioner.tasks.CreateKubernetesUniverse.class),
+  CreateKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.CreateKubernetesUniverse.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Universe),
 
   ReadOnlyKubernetesClusterCreate(
-      com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterCreate.class),
+      com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterCreate.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Cluster),
 
-  DestroyUniverse(com.yugabyte.yw.commissioner.tasks.DestroyUniverse.class),
+  DestroyUniverse(
+      com.yugabyte.yw.commissioner.tasks.DestroyUniverse.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Universe),
 
-  PauseUniverse(com.yugabyte.yw.commissioner.tasks.PauseUniverse.class),
+  PauseUniverse(
+      com.yugabyte.yw.commissioner.tasks.PauseUniverse.class,
+      CustomerTask.TaskType.Pause,
+      CustomerTask.TargetType.Universe),
 
-  ResumeUniverse(com.yugabyte.yw.commissioner.tasks.ResumeUniverse.class),
+  ResumeUniverse(
+      com.yugabyte.yw.commissioner.tasks.ResumeUniverse.class,
+      CustomerTask.TaskType.Resume,
+      CustomerTask.TargetType.Universe),
 
-  DestroyKubernetesUniverse(com.yugabyte.yw.commissioner.tasks.DestroyKubernetesUniverse.class),
+  DestroyKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.DestroyKubernetesUniverse.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Universe),
 
-  DeleteTable(com.yugabyte.yw.commissioner.tasks.DeleteTable.class),
+  DeleteTable(
+      com.yugabyte.yw.commissioner.tasks.DeleteTable.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Table),
 
-  BackupUniverse(com.yugabyte.yw.commissioner.tasks.BackupUniverse.class),
+  BackupUniverse(
+      com.yugabyte.yw.commissioner.tasks.BackupUniverse.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Backup),
 
-  RestoreBackup(com.yugabyte.yw.commissioner.tasks.RestoreBackup.class),
+  RestoreBackup(
+      com.yugabyte.yw.commissioner.tasks.RestoreBackup.class,
+      CustomerTask.TaskType.Restore,
+      CustomerTask.TargetType.Backup),
 
-  MultiTableBackup(com.yugabyte.yw.commissioner.tasks.MultiTableBackup.class),
+  MultiTableBackup(
+      com.yugabyte.yw.commissioner.tasks.MultiTableBackup.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Backup),
 
-  CreateBackup(com.yugabyte.yw.commissioner.tasks.CreateBackup.class),
+  CreateBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateBackup.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Backup),
 
-  ConfigureDBApis(com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApis.class),
+  ConfigureDBApis(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApis.class,
+      CustomerTask.TaskType.ConfigureDBApis,
+      CustomerTask.TargetType.Universe),
 
   ConfigureDBApisKubernetes(
-      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApisKubernetes.class),
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApisKubernetes.class,
+      CustomerTask.TaskType.ConfigureDBApis,
+      CustomerTask.TargetType.Universe),
 
-  CreatePitrConfig(com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class),
+  CreatePitrConfig(
+      com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class,
+      CustomerTask.TaskType.CreatePitrConfig,
+      CustomerTask.TargetType.Universe),
 
+  // TODO There is no reference for this task.
   RestorePitrConfig(com.yugabyte.yw.commissioner.tasks.RestorePitrConfig.class),
 
-  DeletePitrConfig(com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class),
+  DeletePitrConfig(
+      com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class,
+      CustomerTask.TaskType.DeletePitrConfig,
+      CustomerTask.TargetType.Universe),
 
-  RestoreSnapshotSchedule(com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule.class),
+  RestoreSnapshotSchedule(
+      com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule.class,
+      CustomerTask.TaskType.RestoreSnapshotSchedule,
+      CustomerTask.TargetType.Universe),
 
-  EditUniverse(com.yugabyte.yw.commissioner.tasks.EditUniverse.class),
+  EditUniverse(
+      com.yugabyte.yw.commissioner.tasks.EditUniverse.class,
+      ImmutableSet.of(
+          new Pair<>(CustomerTask.TaskType.Update, CustomerTask.TargetType.Universe),
+          new Pair<>(CustomerTask.TaskType.Update, CustomerTask.TargetType.Cluster))),
 
-  EditKubernetesUniverse(com.yugabyte.yw.commissioner.tasks.EditKubernetesUniverse.class),
+  EditKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.EditKubernetesUniverse.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Universe),
 
-  ExternalScript(com.yugabyte.yw.commissioner.tasks.ExternalScript.class),
+  ExternalScript(
+      com.yugabyte.yw.commissioner.tasks.ExternalScript.class,
+      CustomerTask.TaskType.ExternalScript,
+      CustomerTask.TargetType.Universe),
 
-  @Deprecated
-  KubernetesProvision(com.yugabyte.yw.commissioner.tasks.KubernetesProvision.class),
+  ImportIntoTable(
+      com.yugabyte.yw.commissioner.tasks.ImportIntoTable.class,
+      CustomerTask.TaskType.BulkImportData,
+      CustomerTask.TargetType.Table),
 
-  ImportIntoTable(com.yugabyte.yw.commissioner.tasks.ImportIntoTable.class),
+  RunApiTriggeredHooks(
+      com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks.class,
+      CustomerTask.TaskType.RunApiTriggeredHooks,
+      CustomerTask.TargetType.Universe),
 
-  RunApiTriggeredHooks(com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks.class),
+  AddOnClusterCreate(
+      com.yugabyte.yw.commissioner.tasks.AddOnClusterCreate.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Cluster),
 
-  AddOnClusterCreate(com.yugabyte.yw.commissioner.tasks.AddOnClusterCreate.class),
-
-  AddOnClusterDelete(com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete.class),
+  AddOnClusterDelete(
+      com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Cluster),
 
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse(com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.class),
 
-  UpdateLoadBalancerConfig(com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig.class),
+  UpdateLoadBalancerConfig(
+      com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig.class,
+      CustomerTask.TaskType.UpdateLoadBalancerConfig,
+      CustomerTask.TargetType.Universe),
 
-  RestartUniverse(com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse.class),
+  RestartUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse.class,
+      CustomerTask.TaskType.Restart,
+      CustomerTask.TargetType.Universe),
 
   RestartUniverseKubernetesUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverseKubernetesUpgrade.class),
+      com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverseKubernetesUpgrade.class,
+      CustomerTask.TaskType.Restart,
+      CustomerTask.TargetType.Universe),
 
-  SoftwareUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade.class),
+  SoftwareUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade.class,
+      CustomerTask.TaskType.SoftwareUpgrade,
+      CustomerTask.TargetType.Universe),
 
   SoftwareKubernetesUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade.class),
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade.class,
+      CustomerTask.TaskType.SoftwareUpgrade,
+      CustomerTask.TargetType.Universe),
 
   KubernetesOverridesUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.KubernetesOverridesUpgrade.class),
+      com.yugabyte.yw.commissioner.tasks.upgrade.KubernetesOverridesUpgrade.class,
+      CustomerTask.TaskType.KubernetesOverridesUpgrade,
+      CustomerTask.TargetType.Universe),
 
-  GFlagsUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.GFlagsUpgrade.class),
+  GFlagsUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.GFlagsUpgrade.class,
+      CustomerTask.TaskType.GFlagsUpgrade,
+      CustomerTask.TargetType.Universe),
 
-  GFlagsKubernetesUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.GFlagsKubernetesUpgrade.class),
+  GFlagsKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.GFlagsKubernetesUpgrade.class,
+      CustomerTask.TaskType.GFlagsUpgrade,
+      CustomerTask.TargetType.Universe),
 
-  CertsRotate(com.yugabyte.yw.commissioner.tasks.upgrade.CertsRotate.class),
+  CertsRotate(
+      com.yugabyte.yw.commissioner.tasks.upgrade.CertsRotate.class,
+      CustomerTask.TaskType.CertsRotate,
+      CustomerTask.TargetType.Universe),
 
   CertsRotateKubernetesUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.CertsRotateKubernetesUpgrade.class),
+      com.yugabyte.yw.commissioner.tasks.upgrade.CertsRotateKubernetesUpgrade.class,
+      CustomerTask.TaskType.CertsRotate,
+      CustomerTask.TargetType.Universe),
 
-  TlsToggle(com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggle.class),
+  TlsToggle(
+      com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggle.class,
+      CustomerTask.TaskType.TlsToggle,
+      CustomerTask.TargetType.Universe),
+
+  VMImageUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.VMImageUpgrade.class,
+      CustomerTask.TaskType.VMImageUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  SystemdUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SystemdUpgrade.class,
+      CustomerTask.TaskType.SystemdUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  RebootUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RebootUniverse.class,
+      CustomerTask.TaskType.RebootUniverse,
+      CustomerTask.TargetType.Universe),
+
+  UpgradeKubernetesUniverse(
+      com.yugabyte.yw.commissioner.tasks.UpgradeKubernetesUniverse.class,
+      CustomerTask.TaskType.UpgradeSoftware,
+      CustomerTask.TargetType.Universe),
+
+  DeleteNodeFromUniverse(
+      com.yugabyte.yw.commissioner.tasks.DeleteNodeFromUniverse.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Node),
+
+  StopNodeInUniverse(
+      com.yugabyte.yw.commissioner.tasks.StopNodeInUniverse.class,
+      CustomerTask.TaskType.Stop,
+      CustomerTask.TargetType.Node),
+
+  StartNodeInUniverse(
+      com.yugabyte.yw.commissioner.tasks.StartNodeInUniverse.class,
+      CustomerTask.TaskType.Start,
+      CustomerTask.TargetType.Node),
+
+  AddNodeToUniverse(
+      com.yugabyte.yw.commissioner.tasks.AddNodeToUniverse.class,
+      CustomerTask.TaskType.Add,
+      CustomerTask.TargetType.Node),
+
+  RemoveNodeFromUniverse(
+      com.yugabyte.yw.commissioner.tasks.RemoveNodeFromUniverse.class,
+      CustomerTask.TaskType.Remove,
+      CustomerTask.TargetType.Node),
+
+  RebootNodeInUniverse(
+      com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse.class,
+      CustomerTask.TaskType.Reboot,
+      CustomerTask.TargetType.Node),
+
+  ReleaseInstanceFromUniverse(
+      com.yugabyte.yw.commissioner.tasks.ReleaseInstanceFromUniverse.class,
+      CustomerTask.TaskType.Release,
+      CustomerTask.TargetType.Node),
+
+  RotateAccessKey(
+      com.yugabyte.yw.commissioner.tasks.RotateAccessKey.class,
+      CustomerTask.TaskType.RotateAccessKey,
+      CustomerTask.TargetType.Universe),
+
+  SetUniverseKey(
+      com.yugabyte.yw.commissioner.tasks.SetUniverseKey.class,
+      ImmutableSet.of(
+          new Pair<>(CustomerTask.TaskType.RotateEncryptionKey, CustomerTask.TargetType.MasterKey),
+          new Pair<>(
+              CustomerTask.TaskType.EnableEncryptionAtRest, CustomerTask.TargetType.Universe),
+          new Pair<>(
+              CustomerTask.TaskType.DisableEncryptionAtRest, CustomerTask.TargetType.Universe))),
+
+  CreateAndRotateAccessKey(
+      com.yugabyte.yw.commissioner.tasks.CreateAndRotateAccessKey.class,
+      CustomerTask.TaskType.CreateAndRotateAccessKey,
+      CustomerTask.TargetType.Provider),
+
+  CreateKMSConfig(
+      com.yugabyte.yw.commissioner.tasks.CreateKMSConfig.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.KMSConfiguration),
+
+  EditKMSConfig(
+      com.yugabyte.yw.commissioner.tasks.EditKMSConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.KMSConfiguration),
+
+  DeleteKMSConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteKMSConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.KMSConfiguration),
+
+  UpdateDiskSize(
+      com.yugabyte.yw.commissioner.tasks.UpdateDiskSize.class,
+      CustomerTask.TaskType.UpdateDiskSize,
+      CustomerTask.TargetType.Universe),
+
+  UpdateKubernetesDiskSize(
+      com.yugabyte.yw.commissioner.tasks.UpdateKubernetesDiskSize.class,
+      CustomerTask.TaskType.UpdateDiskSize,
+      CustomerTask.TargetType.Universe),
+
+  StartMasterOnNode(
+      com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class,
+      CustomerTask.TaskType.StartMaster,
+      CustomerTask.TargetType.Node),
+
+  DeleteXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.XClusterConfig),
+
+  SyncXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class,
+      CustomerTask.TaskType.Sync,
+      CustomerTask.TargetType.XClusterConfig),
+
+  CreateSupportBundle(
+      com.yugabyte.yw.commissioner.tasks.CreateSupportBundle.class,
+      CustomerTask.TaskType.CreateSupportBundle,
+      CustomerTask.TargetType.Universe),
+
+  CreateXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.CreateXClusterConfig.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.XClusterConfig),
+
+  EditXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.XClusterConfig),
+
+  RestartXClusterConfig(
+      com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class,
+      CustomerTask.TaskType.Restart,
+      CustomerTask.TargetType.XClusterConfig),
+
+  RestartDrConfig(
+      com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class,
+      CustomerTask.TaskType.Restart,
+      CustomerTask.TargetType.DrConfig),
+
+  SyncDrConfig(
+      com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class,
+      CustomerTask.TaskType.Sync,
+      CustomerTask.TargetType.DrConfig),
+
+  SetTablesDrConfig(
+      com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
+  CreateDrConfig(
+      com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.DrConfig),
+
+  DeleteDrConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.DrConfig),
+
+  FailoverDrConfig(
+      com.yugabyte.yw.commissioner.tasks.FailoverDrConfig.class,
+      CustomerTask.TaskType.Failover,
+      CustomerTask.TargetType.DrConfig),
+
+  SwitchoverDrConfig(
+      com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfig.class,
+      CustomerTask.TaskType.Switchover,
+      CustomerTask.TargetType.DrConfig),
+
+  EditDrConfig(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
+  ReinstallNodeAgent(
+      com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
+      CustomerTask.TaskType.Install,
+      CustomerTask.TargetType.NodeAgent),
+
+  DeleteCustomerConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.CustomerConfiguration),
+
+  DeleteCustomerStorageConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.CustomerConfiguration),
+
+  ResizeNode(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class,
+      CustomerTask.TaskType.ResizeNode,
+      CustomerTask.TargetType.Universe),
+
+  CreateTableSpacesInUniverse(
+      com.yugabyte.yw.commissioner.tasks.CreateTableSpacesInUniverse.class,
+      CustomerTask.TaskType.CreateTableSpaces,
+      CustomerTask.TargetType.Universe),
+
+  ThirdpartySoftwareUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class,
+      CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  InstallYbcSoftware(
+      com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
+      CustomerTask.TaskType.InstallYbcSoftware,
+      CustomerTask.TargetType.Universe),
+
+  UpgradeUniverseYbc(
+      com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class,
+      CustomerTask.TaskType.UpgradeUniverseYbc,
+      CustomerTask.TargetType.Universe),
+
+  UpgradeYbcGFlags(
+      com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class,
+      CustomerTask.TaskType.UpgradeYbcGFlags,
+      CustomerTask.TargetType.Universe),
+
+  DisableYbc(
+      com.yugabyte.yw.commissioner.tasks.DisableYbc.class,
+      CustomerTask.TaskType.DisableYbc,
+      CustomerTask.TargetType.Universe),
+
+  // TODO This has no reference.
+  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class),
+
+  CloudProviderDelete(
+      com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Provider),
+
+  CreateBackupSchedule(
+      com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Schedule),
+
+  CloudProviderEdit(
+      com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.Provider),
+
+  SoftwareUpgradeYB(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class,
+      CustomerTask.TaskType.SoftwareUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  SoftwareKubernetesUpgradeYB(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgradeYB.class,
+      CustomerTask.TaskType.SoftwareUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  FinalizeUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class,
+      CustomerTask.TaskType.FinalizeUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  RollbackUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class,
+      CustomerTask.TaskType.RollbackUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  RollbackKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackKubernetesUpgrade.class,
+      CustomerTask.TaskType.RollbackUpgrade,
+      CustomerTask.TargetType.Universe),
+
+  LdapUniverseSync(
+      com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class,
+      CustomerTask.TaskType.LdapSync,
+      CustomerTask.TargetType.Universe),
+
+  ReprovisionNode(
+      com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class,
+      CustomerTask.TaskType.ReprovisionNode,
+      CustomerTask.TargetType.Node),
+
+  /* Subtasks start here */
+
+  KubernetesCheckVolumeExpansion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
+
+  KubernetesPostExpansionCheckVolume(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
 
   NodeCertReloadTask(com.yugabyte.yw.commissioner.tasks.subtasks.NodeCertReloadTask.class),
 
   UpdateUniverseConfig(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig.class),
-
-  VMImageUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.VMImageUpgrade.class),
-
-  SystemdUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.SystemdUpgrade.class),
-
-  RebootUniverse(com.yugabyte.yw.commissioner.tasks.upgrade.RebootUniverse.class),
 
   CreateRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes.class),
 
@@ -130,79 +531,6 @@ public enum TaskType {
   PersistSystemdUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade.class),
 
   UpdateNodeDetails(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails.class),
-
-  UpgradeKubernetesUniverse(com.yugabyte.yw.commissioner.tasks.UpgradeKubernetesUniverse.class),
-
-  DeleteNodeFromUniverse(com.yugabyte.yw.commissioner.tasks.DeleteNodeFromUniverse.class),
-
-  StopNodeInUniverse(com.yugabyte.yw.commissioner.tasks.StopNodeInUniverse.class),
-
-  StartNodeInUniverse(com.yugabyte.yw.commissioner.tasks.StartNodeInUniverse.class),
-
-  AddNodeToUniverse(com.yugabyte.yw.commissioner.tasks.AddNodeToUniverse.class),
-
-  RemoveNodeFromUniverse(com.yugabyte.yw.commissioner.tasks.RemoveNodeFromUniverse.class),
-
-  RebootNodeInUniverse(com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse.class),
-
-  ReleaseInstanceFromUniverse(com.yugabyte.yw.commissioner.tasks.ReleaseInstanceFromUniverse.class),
-
-  RotateAccessKey(com.yugabyte.yw.commissioner.tasks.RotateAccessKey.class),
-
-  SetUniverseKey(com.yugabyte.yw.commissioner.tasks.SetUniverseKey.class),
-
-  CreateAndRotateAccessKey(com.yugabyte.yw.commissioner.tasks.CreateAndRotateAccessKey.class),
-
-  @Deprecated
-  SetKubernetesUniverseKey(null),
-
-  CreateKMSConfig(com.yugabyte.yw.commissioner.tasks.CreateKMSConfig.class),
-
-  EditKMSConfig(com.yugabyte.yw.commissioner.tasks.EditKMSConfig.class),
-
-  DeleteKMSConfig(com.yugabyte.yw.commissioner.tasks.DeleteKMSConfig.class),
-
-  UpdateDiskSize(com.yugabyte.yw.commissioner.tasks.UpdateDiskSize.class),
-
-  UpdateKubernetesDiskSize(com.yugabyte.yw.commissioner.tasks.UpdateKubernetesDiskSize.class),
-
-  KubernetesCheckVolumeExpansion(
-      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
-
-  KubernetesPostExpansionCheckVolume(
-      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
-
-  StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
-
-  DeleteXClusterConfig(com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class),
-
-  SyncXClusterConfig(com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class),
-
-  CreateSupportBundle(com.yugabyte.yw.commissioner.tasks.CreateSupportBundle.class),
-
-  CreateXClusterConfig(com.yugabyte.yw.commissioner.tasks.CreateXClusterConfig.class),
-
-  EditXClusterConfig(com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class),
-
-  RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
-
-  RestartDrConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
-
-  SyncDrConfig(com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class),
-
-  SetTablesDrConfig(com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class),
-
-  CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
-
-  DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
-
-  FailoverDrConfig(com.yugabyte.yw.commissioner.tasks.FailoverDrConfig.class),
-
-  SwitchoverDrConfig(com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfig.class),
-
-  EditDrConfig(com.yugabyte.yw.commissioner.tasks.EditDrConfig.class),
-
-  ReinstallNodeAgent(com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
@@ -242,10 +570,6 @@ public enum TaskType {
   DeleteBackup(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup.class),
 
   DeleteBackupYb(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb.class),
-
-  DeleteCustomerConfig(com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class),
-
-  DeleteCustomerStorageConfig(com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig.class),
 
   UpdateNodeProcess(com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess.class),
 
@@ -293,6 +617,8 @@ public enum TaskType {
 
   UpdateUniverseYbcDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails.class),
+
+  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
 
   UpdateUniverseYbcGflagsDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
@@ -469,9 +795,6 @@ public enum TaskType {
 
   SetActiveUniverseKeys(com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys.class),
 
-  @Deprecated
-  CopyEncryptionKeyFile(null),
-
   WaitForEncryptionKeyInMemory(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory.class),
 
@@ -515,8 +838,6 @@ public enum TaskType {
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
-  ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
-
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
   CheckSoftwareVersion(
@@ -526,12 +847,7 @@ public enum TaskType {
 
   TransferXClusterCerts(com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts.class),
 
-  CreateTableSpacesInUniverse(com.yugabyte.yw.commissioner.tasks.CreateTableSpacesInUniverse.class),
-
   CreateTableSpaces(com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces.class),
-
-  ThirdpartySoftwareUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -546,20 +862,10 @@ public enum TaskType {
 
   UpgradeYbc(com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc.class),
 
-  InstallYbcSoftware(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class),
-
   InstallYbcSoftwareOnK8s(
       com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
-  UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
-
-  UpgradeYbcGFlags(com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class),
-
-  DisableYbc(com.yugabyte.yw.commissioner.tasks.DisableYbc.class),
-
   InstanceExistCheck(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck.class),
-
-  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class),
 
   DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class),
 
@@ -569,8 +875,6 @@ public enum TaskType {
   InstallNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent.class),
 
   WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
-
-  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class),
 
   CloudImageBundleSetup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup.class),
@@ -587,38 +891,18 @@ public enum TaskType {
   UpdateUniverseCommunicationPorts(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 
-  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
 
-  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
-
-  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
-
-  SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
-
-  SoftwareKubernetesUpgradeYB(
-      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgradeYB.class),
-
-  FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
-
-  RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
-
-  RollbackKubernetesUpgrade(
-      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackKubernetesUpgrade.class),
-
-  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
-
-  LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
-
-  // Tasks belonging to subtasks.ldap classpath
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
   DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
 
-  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
-
-  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class);
 
   private final Class<? extends ITask> taskClass;
+
+  // Customer facing customer task identifiers.
+  private final Set<Pair<CustomerTask.TaskType, CustomerTask.TargetType>> customerTaskIds;
 
   /**
    * Used to fill in an active task metric value for universe. For now only universe related tasks
@@ -712,7 +996,25 @@ public enum TaskType {
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {
+    this(taskClass, null, null);
+  }
+
+  TaskType(
+      Class<? extends ITask> taskClass,
+      CustomerTask.TaskType customerTaskType,
+      CustomerTask.TargetType customerTaskTargetType) {
     this.taskClass = taskClass;
+    this.customerTaskIds =
+        (customerTaskType == null || customerTaskTargetType == null)
+            ? Collections.emptySet()
+            : ImmutableSet.of(new Pair<>(customerTaskType, customerTaskTargetType));
+  }
+
+  TaskType(
+      Class<? extends ITask> taskClass,
+      Set<Pair<CustomerTask.TaskType, CustomerTask.TargetType>> customerTaskIds) {
+    this.taskClass = taskClass;
+    this.customerTaskIds = customerTaskIds == null ? Collections.emptySet() : customerTaskIds;
   }
 
   public static List<TaskType> filteredValues() {
@@ -735,5 +1037,9 @@ public enum TaskType {
 
   public Integer getCode() {
     return TASK_CODES_MAP.getOrDefault(this, 0);
+  }
+
+  public Set<Pair<CustomerTask.TaskType, CustomerTask.TargetType>> getCustomerTaskIds() {
+    return customerTaskIds;
   }
 }

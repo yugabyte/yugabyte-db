@@ -169,7 +169,6 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
@@ -221,6 +220,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Singular;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -244,10 +246,31 @@ import play.libs.Json;
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
 
+  @Builder
+  @Getter
+  public static class AllowedTasks {
+    private boolean restricted;
+    private TaskType lockedTaskType;
+    // Allowed task types.
+    @Singular private Set<TaskType> taskTypes;
+
+    public static AllowedTasks.AllowedTasksBuilder builder() {
+      return new CustomBuilder();
+    }
+
+    private static class CustomBuilder extends AllowedTasks.AllowedTasksBuilder {
+      @Override
+      public CustomBuilder taskTypes(Collection<? extends TaskType> taskTypes) {
+        taskTypes.stream().forEach(t -> super.taskType(t));
+        return this;
+      }
+    }
+  }
+
   // Tasks that modify cluster placement.
   // If one of such tasks is failed, we should not allow starting most of other tasks,
   // until failed task is retried.
-  protected static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
+  private static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
           TaskType.ReadOnlyClusterCreate,
@@ -280,7 +303,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ThirdpartySoftwareUpgrade);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
-  protected static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
+  private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
       ImmutableSet.of(
           TaskType.CreateBackup,
           TaskType.BackupUniverse,
@@ -296,10 +319,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse);
 
-  protected static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
+  private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
+      ImmutableSet.of(TaskType.GFlagsUpgrade, TaskType.RestartUniverse, TaskType.VMImageUpgrade);
+
+  private static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
       ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
 
-  protected static final Set<TaskType> ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS =
+  private static final Set<TaskType> ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS =
       ImmutableSet.of(TaskType.SoftwareKubernetesUpgradeYB, TaskType.SoftwareUpgradeYB);
 
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
@@ -393,6 +419,51 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return (UniverseTaskParams) taskParams;
   }
 
+  /**
+   * Returns the allowed tasks object when the universe is in a frozen failed state.
+   *
+   * @param lockedTaskType the task which froze the universe and failed.
+   * @return the allowed tasks.
+   */
+  public static AllowedTasks getAllowedTasksOnFailure(TaskType lockedTaskType) {
+    AllowedTasks.AllowedTasksBuilder builder =
+        AllowedTasks.builder().lockedTaskType(lockedTaskType);
+    if (PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+      builder.restricted(true);
+      builder.taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN);
+      if (RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(lockedTaskType)) {
+        // Allow only this task.
+        builder.taskType(lockedTaskType);
+      }
+      if (ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(lockedTaskType)) {
+        builder.taskTypes(SOFTWARE_UPGRADE_ROLLBACK_TASKS);
+      }
+    }
+    return builder.build();
+  }
+
+  /**
+   * Returns the allowed task object when the universe is in a frozen failed state.
+   *
+   * @param lockedPlacementModificationTaskUuid the placement modification task UUID.
+   * @return the allowed tasks.
+   */
+  public static AllowedTasks getAllowedTasksOnFailure(UUID lockedPlacementModificationTaskUuid) {
+    if (lockedPlacementModificationTaskUuid == null) {
+      return AllowedTasks.builder().build();
+    }
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(lockedPlacementModificationTaskUuid);
+    if (!optional.isPresent()) {
+      // Just log a message as this should not happen.
+      log.warn("Task info record is not found for {}", lockedPlacementModificationTaskUuid);
+      return AllowedTasks.builder()
+          .restricted(true)
+          .taskTypes(SAFE_TO_RUN_IF_UNIVERSE_BROKEN)
+          .build();
+    }
+    return getAllowedTasksOnFailure(optional.get().getTaskType());
+  }
+
   @Override
   public void validateParams(boolean isFirstTry) {
     TaskType taskType = getTaskExecutor().getTaskType(getClass());
@@ -407,21 +478,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               universe -> {
                 if (isFirstTry) {
                   UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-                  if (universeDetails.placementModificationTaskUuid != null
-                      && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)) {
-                    // Support rollbacks during software upgrade if previous failed task was
-                    // software upgrade.
-                    boolean isRollback =
-                        isRollbackTask(universe, universeDetails.placementModificationTaskUuid);
-                    if (!isRollback) {
-                      String msg =
-                          String.format(
-                              "Universe %s placement update failed - can't run %s task until"
-                                  + " placement update succeeds",
-                              universe.getUniverseUUID(), taskType.name());
-                      log.error(msg);
-                      throw new RuntimeException(msg);
-                    }
+                  AllowedTasks allowedTasks =
+                      getAllowedTasksOnFailure(universeDetails.placementModificationTaskUuid);
+                  boolean isSafeToRun =
+                      !allowedTasks.isRestricted()
+                          || allowedTasks.getTaskTypes().contains(taskType);
+                  if (!isSafeToRun) {
+                    String msg =
+                        String.format(
+                            "Universe %s placement update failed - can't run %s task until"
+                                + " placement update succeeds",
+                            universe.getUniverseUUID(), taskType.name());
+                    log.error(msg);
+                    throw new RuntimeException(msg);
                   }
                 }
                 validateUniverseState(universe);
@@ -531,26 +600,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             log.error(msg);
             throw new RuntimeException(msg);
           }
-        } else {
+        } else if (universeDetails.placementModificationTaskUuid != null) {
           // If we're in the middle of placement modification task (failed and waiting to be
-          // retried)
-          // only allow subset of safe to execute tasks
-          if (universeDetails.placementModificationTaskUuid != null
-              && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
-            // support rollbacks during software upgrade if previous failed task was software
-            // upgrade.
-            boolean isRollback =
-                isRollbackTask(universe, universeDetails.placementModificationTaskUuid);
-            if (!isRollback) {
-              String msg =
-                  "Universe "
-                      + universe.getUniverseUUID()
-                      + " placement update failed - can't run "
-                      + owner.name()
-                      + " task until placement update succeeds";
-              log.error(msg);
-              throw new RuntimeException(msg);
-            }
+          // retried), only allow subset of safe to execute tasks.
+          AllowedTasks allowedTasks =
+              getAllowedTasksOnFailure(universeDetails.placementModificationTaskUuid);
+          boolean isSafeToRun =
+              !allowedTasks.isRestricted() || allowedTasks.getTaskTypes().contains(owner);
+          if (!isSafeToRun) {
+            String msg =
+                "Universe "
+                    + universe.getUniverseUUID()
+                    + " placement update failed - can't run "
+                    + owner.name()
+                    + " task until placement update succeeds";
+            log.error(msg);
+            throw new RuntimeException(msg);
           }
         }
         markUniverseUpdateInProgress(owner, universe, getConfig());
@@ -561,20 +626,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         return updaterConfig;
       }
     };
-  }
-
-  private boolean isRollbackTask(Universe universe, UUID placementModificationTaskUuid) {
-    Customer customer = Customer.get(universe.getCustomerId());
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    CustomerTask placementModificationTask =
-        CustomerTask.getOrBadRequest(
-            customer.getUuid(), universeDetails.placementModificationTaskUuid);
-    Optional<TaskInfo> placementModificationTaskInfo =
-        TaskInfo.maybeGet(placementModificationTask.getTaskUUID());
-    return placementModificationTaskInfo.isPresent()
-        && ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(
-            placementModificationTaskInfo.get().getTaskType())
-        && SOFTWARE_UPGRADE_ROLLBACK_TASKS.contains(getTaskExecutor().getTaskType(getClass()));
   }
 
   protected UniverseUpdater getFreezeUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
@@ -4214,12 +4265,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return false;
     }
 
-    TaskInfo taskInfo = TaskInfo.get(userTaskUUID);
-    if (taskInfo == null) {
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(getUserTaskUUID());
+    if (!optional.isPresent()) {
       return false;
     }
 
-    TaskType taskType = taskInfo.getTaskType();
+    TaskType taskType = optional.get().getTaskType();
     return !(taskType == TaskType.CreateUniverse
         || taskType == TaskType.CreateKubernetesUniverse
         || taskType == TaskType.DestroyUniverse
