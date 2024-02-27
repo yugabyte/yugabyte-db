@@ -1652,7 +1652,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "
         (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))
-        / (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_count{universe_uuid={{ $labels.universe_uuid }}, export_type='tserver_export'}[5m])) * 1000)
+        / (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
         {{ query_condition }} {{ query_threshold }}
         or (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))) 
         / (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
