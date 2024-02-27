@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating Dedicated clusters and exploring other features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Managed.
 
 To start a free trial:
 
@@ -39,6 +39,7 @@ After the free trial begins, you can use your credits to create dedicated cluste
 ## Limitations
 
 - Only one free trial can be applied to an account.
+- Free trials are limited to 24 vCPUs across all clusters you create.
 - The free trial features the Professional plan. Enterprise plan features are not included.
 - Not all regions are available during free trials.
 - After your trial ends, depending on your plan, you may lose access to some features.
