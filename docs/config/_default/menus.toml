@@ -561,7 +561,7 @@
   parent = "integrations"
 
 [[preview_integrations]]
-  name = "Platforms (HW, SW, Data Management)"
+  name = "Infrastructure (HW, SW, Data Mgmt)"
   weight = 12
   identifier = "integrations-platforms"
   parent = "integrations"
