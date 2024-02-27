@@ -6,7 +6,7 @@ description: Build Applications Using Azure App Service and YugabyteDB
 headcontent: Extend scalability and reliability to the data layer
 image: /images/tutorials/azure/icons/App-Service-Icon.svg
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-app-service
     parent: tutorials-azure
     weight: 10

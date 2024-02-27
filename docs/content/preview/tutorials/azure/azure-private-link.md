@@ -6,7 +6,7 @@ description: Using a Node.js app to demonstrate, see how YugabyteDB enhances Azu
 image: /images/tutorials/azure/icons/Private-Link-Icon.svg
 headcontent: Secure connections between applications in Azure and YugabyteDB
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-private-link
     parent: tutorials-azure
     weight: 50
@@ -35,7 +35,7 @@ In the following sections, you will:
 
 ![3-node YugabyteDB deployment in uswest3](/images/tutorials/azure/azure-private-link/yb-deployment.png "3-node YugabyteDB deployment in uswest3")
 
-Remember to save the credentials after creation and [download the CA certificate](../../../develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once operational, ensuring a secure connection through the Node.js Smart Client.
+Remember to save the credentials after creation and [download the CA certificate](../../../tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate) once operational, ensuring a secure connection through the Node.js Smart Client.
 
 ## Get started with Azure
 

@@ -11,11 +11,11 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid, objid, objsubid
 		LIMIT 2;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using pg_depend_depender_index on pg_depend
-         Remote Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
+         Storage Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
 -- We cannot run the following SELECT on test because different platforms have different system
@@ -30,11 +30,11 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid DESC, objid DESC, objsubid DESC
 		LIMIT 2;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan Backward using pg_depend_depender_index on pg_depend
-         Remote Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
+         Storage Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
 -- We cannot run the following SELECT on test because different platforms have different system

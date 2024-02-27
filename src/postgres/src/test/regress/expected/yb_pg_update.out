@@ -86,7 +86,7 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO 
 -- The order of subplans should be in bound order
 EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Update on range_parted
    Update on part_a_1_a_10
    Update on part_a_10_a_20
@@ -96,19 +96,19 @@ EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
    Update on part_d_15_20
    Update on part_b_20_b_30
    ->  Seq Scan on part_a_1_a_10
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_a_10_a_20
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_b_1_b_10
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_c_1_100
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_d_1_15
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_d_15_20
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
    ->  Seq Scan on part_b_20_b_30
-         Remote Filter: (c > '97'::numeric)
+         Storage Filter: (c > '97'::numeric)
 (22 rows)
 
 -- fail, row movement happens only within the partition subtree.
@@ -735,9 +735,9 @@ EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
    Update on part_a_1_5
    Update on part_a_5_10
    ->  Seq Scan on part_a_1_5  (cost=0.00..102.50 rows=1000 width=68)
-         Remote Filter: (a > 1)
+         Storage Filter: (a > 1)
    ->  Seq Scan on part_a_5_10  (cost=0.00..102.50 rows=1000 width=68)
-         Remote Filter: (a > 1)
+         Storage Filter: (a > 1)
 (7 rows)
 
 UPDATE parted SET b='6' WHERE a > 1;

@@ -10484,6 +10484,6 @@
   prorettype => 'record', proargtypes => '',
   proallargtypes => '{timestamptz,uuid,int8,text,text,text,uuid,int8,int8,text,text,float4}',
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,yql_endpoint_tserver_uuid,query_id,session_id,client_node_ip,wait_event_aux,sample_weight}',
+  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,ysql_session_id,client_node_ip,wait_event_aux,sample_weight}',
   prosrc => 'yb_active_session_history'},
 ]

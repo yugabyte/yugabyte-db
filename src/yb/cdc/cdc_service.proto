@@ -67,8 +67,10 @@ service CDCService {
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
-  rpc InitVirtualWALForCDC(InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
-  rpc GetConsistentChanges(GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
+      returns (DestroyVirtualWALForCDCResponsePB);
 }
 
 message CDCErrorPB {
@@ -173,6 +175,13 @@ message GetConsistentChangesResponsePB {
   repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
 }
 
+message DestroyVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+}
+
+message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
 
 message CreateCDCStreamRequestPB {
   // Table to set up CDC on.
@@ -241,6 +250,13 @@ message CDCCheckpointPB {
   optional OpIdPB op_id = 1;
 }
 
+enum CDCSDKRequestSource {
+  // Debezium connector directly calling CDC Service.
+  DEBEZIUM = 1;
+  // Walsender calling CDC service.
+  WALSENDER = 2;
+}
+
 message GetChangesRequestPB {
   optional bytes stream_id = 1;
   // Tablet to get the changes for.
@@ -274,6 +290,8 @@ message GetChangesRequestPB {
 
   // Used only in xCluster streams.
   optional uint32 auto_flags_config_version = 13;
+
+  optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
 }
 
 message KeyValuePairPB {
@@ -572,6 +590,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional bytes namespace_id = 2;
   repeated TableInfo table_info = 3;
 }
+
 message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;

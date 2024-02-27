@@ -103,7 +103,7 @@ ReplicationSlot *MyReplicationSlot = NULL;
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
-const char *YB_OUTPUT_PLUGIN = "yboutput";
+const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
 static void ReplicationSlotDropAcquired(void);
 static void ReplicationSlotDropPtr(ReplicationSlot *slot);
@@ -226,7 +226,8 @@ ReplicationSlotValidateName(const char *name, int elevel)
 void
 ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency persistency,
-					  CRSSnapshotAction yb_snapshot_action)
+					  CRSSnapshotAction yb_snapshot_action,
+					  uint64_t *yb_consistent_snapshot_time)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -242,7 +243,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateReplicationSlot(name, yb_snapshot_action);
+		YBCCreateReplicationSlot(name, yb_snapshot_action, yb_consistent_snapshot_time);
 		return;
 	}
 
@@ -355,6 +356,43 @@ retry:
 	Assert(MyReplicationSlot == NULL);
 
 	/*
+	 * Fetch the replication slot metadata from yb-master.
+	 * TODO(#20755): Support acquiring a replication slot exclusively in
+	 * yb-master.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCReplicationSlotDescriptor *yb_replication_slot;
+
+		YBCGetReplicationSlot(name, &yb_replication_slot);
+
+		slot = palloc(sizeof(ReplicationSlot));
+		namestrcpy(&slot->data.name, yb_replication_slot->slot_name);
+		namestrcpy(&slot->data.plugin, PG_OUTPUT_PLUGIN);
+		slot->data.database = yb_replication_slot->database_oid;
+		slot->data.persistency = RS_PERSISTENT;
+		strcpy(slot->data.yb_stream_id, yb_replication_slot->stream_id);
+		slot->active_pid = MyProcPid;
+
+		SpinLockInit(&slot->mutex);
+		LWLockInitialize(&slot->io_in_progress_lock,
+						 LWTRANCHE_REPLICATION_SLOT_IO_IN_PROGRESS);
+		ConditionVariableInit(&slot->active_cv);
+
+		/*
+		 * Dummy values to always stream from the start.
+		 * TODO(#20726): This has to be updated to support restarts.
+		 */
+		slot->data.catalog_xmin = 0;
+		slot->data.confirmed_flush = 0;
+		slot->data.xmin = 0;
+		slot->data.restart_lsn = 0;
+
+		MyReplicationSlot = slot;
+		return;
+	}
+
+	/*
 	 * Search for the named slot and mark it active if we find it.  If the
 	 * slot is already active, we exit the loop with active_pid set to the PID
 	 * of the backend that owns it.
@@ -461,7 +499,8 @@ ReplicationSlotRelease(void)
 	 * Snapshots can only be exported while the initial snapshot is still
 	 * acquired.
 	 */
-	if (!TransactionIdIsValid(slot->data.xmin) &&
+	if (!IsYugaByteEnabled() &&
+		!TransactionIdIsValid(slot->data.xmin) &&
 		TransactionIdIsValid(slot->effective_xmin))
 	{
 		SpinLockAcquire(&slot->mutex);

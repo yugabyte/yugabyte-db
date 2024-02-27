@@ -23,9 +23,9 @@ The following table summarizes the support for transactions across the YSQL and 
 | `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
 <!--
-| [Explicit locking](explicit-locking/) | Yes | No | Ability to perform row- and table-level locking |
-| [DDL statements](ddl-operations/) | Transaction per DDL statement  | Transaction per DDL statement | Each DDL statement is a transaction in both YSQL and YCQL, even if other DDL statements are in a transaction block in YSQL. |
-| [Non-transactional tables](non-transactional-tables/) | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
+| [Explicit locking] | Yes | No | Ability to perform row- and table-level locking |
+| [DDL statements] | Transaction per DDL statement  | Transaction per DDL statement | Each DDL statement is a transaction in both YSQL and YCQL, even if other DDL statements are in a transaction block in YSQL. |
+| [Non-transactional tables] | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
 -->
 
 <div class="row">

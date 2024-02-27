@@ -3021,11 +3021,13 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
           transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
         s = tablet_peer->shared_tablet()->GetLockStatus(
-            transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us());
+            transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
+            req->max_txn_locks_per_tablet());
       } else {
         DCHECK(!limit_resp_to_txns.empty());
         s = tablet_peer->shared_tablet()->GetLockStatus(
-            limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us());
+            limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
+            req->max_txn_locks_per_tablet());
       }
       if (!s.ok()) {
         resp->Clear();

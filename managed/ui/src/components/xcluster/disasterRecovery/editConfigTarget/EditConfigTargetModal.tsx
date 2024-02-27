@@ -92,7 +92,11 @@ export const EditConfigTargetModal = ({
           invalidateQueries();
         };
 
-        toast.success('success.requestSucess');
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         modalProps.onClose();
         if (redirectUrl) {
           browserHistory.push(redirectUrl);

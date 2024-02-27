@@ -73,7 +73,7 @@ pg_create_physical_replication_slot(PG_FUNCTION_ARGS)
 	/* acquire replication slot, this will check for conflicting names */
 	ReplicationSlotCreate(NameStr(*name), false,
 						  temporary ? RS_TEMPORARY : RS_PERSISTENT,
-						  CRS_NOEXPORT_SNAPSHOT);
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	values[0] = NameGetDatum(&MyReplicationSlot->data.name);
 	nulls[0] = false;
@@ -150,12 +150,15 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 		 *
 		 * This is different from PG where the validation is done after creating
 		 * the replication slot on disk which is cleaned up in case of errors.
+		 *
+		 * TODO(#20756): Support other plugins such as test_decoding once we
+		 * store replication slot metadata in yb-master.
 		 */
-		if (plugin == NULL || strcmp(NameStr(*plugin), YB_OUTPUT_PLUGIN) != 0)
+		if (plugin == NULL || strcmp(NameStr(*plugin), PG_OUTPUT_PLUGIN) != 0)
 			ereport(ERROR, 
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid output plugin"),
-					 errdetail("Only 'yboutput' plugin is supported")));
+					 errdetail("Only 'pgoutput' plugin is supported")));
 	}
 
 	check_permissions();
@@ -177,7 +180,7 @@ pg_create_logical_replication_slot(PG_FUNCTION_ARGS)
 	 */
 	ReplicationSlotCreate(NameStr(*name), true,
 						  temporary ? RS_TEMPORARY : RS_EPHEMERAL,
-						  CRS_NOEXPORT_SNAPSHOT);
+						  CRS_NOEXPORT_SNAPSHOT, NULL);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -347,7 +350,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 
 			database = slot->database_oid;
 			namestrcpy(&slot_name, slot->slot_name);
-			namestrcpy(&plugin, YB_OUTPUT_PLUGIN);
+			namestrcpy(&plugin, PG_OUTPUT_PLUGIN);
 			yb_stream_id = slot->stream_id;
 			yb_stream_active = slot->active;
 

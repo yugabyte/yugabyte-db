@@ -1407,10 +1407,11 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Status CDCSDKYsqlTest::InitVirtualWAL(
-      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids) {
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id) {
     InitVirtualWALForCDCRequestPB init_req;
     init_req.set_stream_id(stream_id.ToString());
-    init_req.set_session_id(1);
+    init_req.set_session_id(session_id);
     for (const auto& table_id : table_ids) {
       init_req.add_table_id(table_id);
     }
@@ -1425,6 +1426,13 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
             return true;
           }
 
+          if (status.ok() && init_resp.has_error()) {
+            status = StatusFromPB(init_resp.error().status());
+            if (status.IsAlreadyPresent() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
           return false;
         },
         MonoDelta::FromSeconds(kRpcTimeout), "InitVirtualWal failed due to RPC timeout"));
@@ -1432,12 +1440,41 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return Status::OK();
   }
 
+  Status CDCSDKYsqlTest::DestroyVirtualWAL(const uint64_t session_id) {
+    DestroyVirtualWALForCDCRequestPB req;
+    req.set_session_id(session_id);
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          DestroyVirtualWALForCDCResponsePB resp;
+          RpcController init_rpc;
+          auto status = cdc_proxy_->DestroyVirtualWALForCDC(req, &resp, &init_rpc);
+
+          if (status.ok() && !resp.has_error()) {
+            return true;
+          }
+
+          if (status.ok() && resp.has_error()) {
+            status = StatusFromPB(resp.error().status());
+            if (status.IsNotFound() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "DestroyVirtualWAL failed due to RPC timeout"));
+
+    return Status::OK();
+  }
+
   Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromCDC(
-      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids) {
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id) {
     GetConsistentChangesRequestPB change_req;
     GetConsistentChangesResponsePB final_resp;
     change_req.set_stream_id(stream_id.ToString());
-    change_req.set_session_id(1);
+    change_req.set_session_id(session_id);
 
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
@@ -1448,6 +1485,13 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
           if (!status.ok()) {
             return false;
+          }
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+            if (status.IsNotFound() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
           }
 
           final_resp = change_resp;
@@ -1744,10 +1788,10 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Result<CDCSDKYsqlTest::GetAllPendingChangesResponse> CDCSDKYsqlTest::GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal) {
+      bool init_virtual_wal, const uint64_t session_id) {
     GetAllPendingChangesResponse resp;
     if (init_virtual_wal) {
-      Status s = InitVirtualWAL(stream_id, table_ids);
+      Status s = InitVirtualWAL(stream_id, table_ids, session_id);
       if (!s.ok()) {
         LOG(INFO) << "Error while trying to initialize virtual WAL";
         RETURN_NOT_OK(s);
@@ -1763,7 +1807,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           GetConsistentChangesResponsePB change_resp;
-          auto get_changes_result = GetConsistentChangesFromCDC(stream_id, table_ids);
+          auto get_changes_result = GetConsistentChangesFromCDC(stream_id, table_ids, session_id);
 
           if (get_changes_result.ok()) {
             change_resp = *get_changes_result;
@@ -2480,24 +2524,6 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     RETURN_NOT_OK(test_client()->GetCDCStream(
         stream_id, &ns_id, &stream_table_ids, &options, &transactional));
     return stream_table_ids;
-  }
-
-  Result<master::GetCDCStreamResponsePB> CDCSDKYsqlTest::GetCDCStream(
-      const xrepl::StreamId& db_stream_id) {
-    master::GetCDCStreamRequestPB get_req;
-    master::GetCDCStreamResponsePB get_resp;
-    get_req.set_stream_id(db_stream_id.ToString());
-
-    RpcController get_rpc;
-    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    master::MasterReplicationProxy master_proxy_(
-        &test_client()->proxy_cache(),
-        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
-
-    return get_resp;
   }
 
   uint32_t CDCSDKYsqlTest::GetTotalNumRecordsInTablet(
