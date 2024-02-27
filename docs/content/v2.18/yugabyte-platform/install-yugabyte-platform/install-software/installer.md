@@ -59,6 +59,8 @@ You can use YBA Installer only if you are about to perform a new install. Curren
   /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
   ```
 
+- Note that if you are trying to install YBA installer to a version lower than 2.18.4.2, you need to set umask for the root user to 022.
+
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
@@ -70,12 +72,6 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18" format="long">}}/yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
     $ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.tar.gz
     $ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
-    ```
-
-    Note that if you are trying to upgrade your YBA installer to a version prior to 2.18.4.2, run the following command additionally:
-
-    ```sh
-    $ umask 022
     ```
 
 1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
