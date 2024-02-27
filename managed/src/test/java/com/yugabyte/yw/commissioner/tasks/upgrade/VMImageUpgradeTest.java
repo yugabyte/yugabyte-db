@@ -81,6 +81,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
+          TaskType.CheckLocale,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
@@ -95,6 +96,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.UpdateNodeDetails);
 
+  private static final List<TaskType> NODE_VALIDATION_TASKS =
+      ImmutableList.of(TaskType.CheckLocale);
+
   @Override
   @Before
   public void setUp() {
@@ -102,6 +106,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    mockLocaleCheckResponse(mockNodeUniverseManager);
   }
 
   private TaskInfo submitTask(VMImageUpgradeParams requestParams, int version) {
@@ -245,7 +250,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
         assertEquals(type, taskType);
 
-        if (!NON_NODE_TASKS.contains(taskType)) {
+        if (!NON_NODE_TASKS.contains(taskType) && !NODE_VALIDATION_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
@@ -434,7 +439,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
         assertEquals(type, taskType);
 
-        if (!NON_NODE_TASKS.contains(taskType)) {
+        if (!NON_NODE_TASKS.contains(taskType) && !NODE_VALIDATION_TASKS.contains(taskType)) {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 

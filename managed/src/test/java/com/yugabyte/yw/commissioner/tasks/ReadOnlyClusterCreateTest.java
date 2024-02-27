@@ -9,7 +9,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,7 +32,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,25 +82,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
 
-      List<String> command = new ArrayList<>();
-      command.add("locale");
-      command.add("-a");
-      command.add("|");
-      command.add("grep");
-      command.add("-E");
-      command.add("-q");
-      command.add("\"en_US.utf8|en_US.UTF-8\"");
-      command.add("&&");
-      command.add("echo");
-      command.add("\"Locale is present\"");
-      command.add("||");
-      command.add("echo");
-      command.add("\"Locale is not present\"");
-      when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "Locale is present"));
+      mockLocaleCheckResponse(mockNodeUniverseManager);
 
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {

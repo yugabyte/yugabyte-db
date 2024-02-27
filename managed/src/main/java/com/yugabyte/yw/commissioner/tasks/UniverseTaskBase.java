@@ -1473,11 +1473,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Creates a task to check locale on the universe nodes */
-  public SubTaskGroup createLocaleCheckTask() {
+  public SubTaskGroup createLocaleCheckTask(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckLocale");
     CheckLocale task = createTask(CheckLocale.class);
     CheckLocale.Params params = new CheckLocale.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
