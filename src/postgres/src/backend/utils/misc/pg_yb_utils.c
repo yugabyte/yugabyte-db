@@ -4420,3 +4420,39 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query = RedactPasswordIfExists(*redacted_query);
 	*redacted_query_len = strlen(*redacted_query);
 }
+
+Datum
+yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
+{
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers can generate bundles"))));
+
+	bool is_queryid_null = PG_ARGISNULL(0);
+	int8 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+    int bundleid = queryid;
+
+	if (bundleid)
+	;
+
+    //generate_data_pg_stat_statement(queryid);
+    PG_RETURN_BOOL(true);
+}
+
+Datum
+yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details acquired for a specific query id
+{
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers can stop and print bundle details"))));
+	bool is_queryid_null = PG_ARGISNULL(0);
+	int8 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	if(queryid)
+	;
+
+	//int bundleid = -1;
+
+	PG_RETURN_BOOL(true);
+}

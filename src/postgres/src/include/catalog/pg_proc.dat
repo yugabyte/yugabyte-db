@@ -10486,4 +10486,16 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,yql_endpoint_tserver_uuid,query_id,session_id,client_node_ip,wait_event_aux,sample_weight}',
   prosrc => 'yb_active_session_history'},
+
+{ oid => '8066', descr => 'enable bundle generation',
+  proname => 'yb_pg_generate_bundle', provolatile => 'v', proisstrict => 'f', proparallel => 's',
+  prorettype => 'bool', proargtypes => 'int8', 
+  proargnames => '{queryid}',
+  prosrc => 'yb_pg_generate_bundle', },
+
+  { oid => '8067', descr => 'stop bundle generation and print details',
+  proname => 'yb_pg_stop_bundle', provolatile => 'v', proisstrict => 'f', proparallel => 's',
+  prorettype => 'bool', proargtypes => 'int8', 
+  proargnames => '{queryid}',
+  prosrc => 'yb_pg_stop_bundle', },
 ]
