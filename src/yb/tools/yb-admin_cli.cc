@@ -1107,7 +1107,7 @@ Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 const auto disable_tablet_splitting_args = "<disable_duration_ms> <feature_name>";
 Status disable_tablet_splitting_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
+  if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
   const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
