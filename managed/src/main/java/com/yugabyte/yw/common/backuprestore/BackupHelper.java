@@ -86,7 +86,6 @@ import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.NamespaceType;
-import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
 
 @Slf4j
@@ -1072,7 +1071,6 @@ public class BackupHelper {
    */
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1082,15 +1080,10 @@ public class BackupHelper {
                     storageUtilFactory
                         .getStorageUtil(storageConfig.getName())
                         .createDsmCloudStoreSpec(bL, storageConfig.getDataObject());
-                ProxyConfig proxyConfig =
-                    storageUtilFactory
-                        .getStorageUtil(storageConfig.getName())
-                        .createYbcProxyConfig(universe, storageConfig.getDataObject());
                 String taskId = UUID.randomUUID().toString() + "_preflight_success_marker";
                 // Need to assign some namespace type here, real context does not change.
                 BackupServiceTaskCreateRequest smDownloadRequest =
-                    YbcBackupUtil.createDsmRequest(
-                        successMarkerCSSpec, taskId, NamespaceType.YCQL, proxyConfig);
+                    YbcBackupUtil.createDsmRequest(successMarkerCSSpec, taskId, NamespaceType.YCQL);
                 String successMarkerStr =
                     ybcManager.downloadSuccessMarker(smDownloadRequest, universeUUID, taskId);
                 if (StringUtils.isBlank(successMarkerStr)) {
@@ -1129,7 +1122,7 @@ public class BackupHelper {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
           node.cloudInfo.private_ip,
           universe,
-          ybcBackupUtil.getCloudStoreConfigWithProvidedRegions(config, null, universe));
+          ybcBackupUtil.getCloudStoreConfigWithProvidedRegions(config, null));
     }
   }
 
@@ -1153,8 +1146,7 @@ public class BackupHelper {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
           node.cloudInfo.private_ip,
           universe,
-          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
-              config, bucketLocationsMap, universe));
+          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(config, bucketLocationsMap));
     }
   }
 
@@ -1165,16 +1157,13 @@ public class BackupHelper {
     }
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
-      CloudStoreSpec successMarkerCSSpec =
-          storageUtilFactory
-              .getStorageUtil(config.getName())
-              .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject());
-      ProxyConfig proxyConfig =
-          storageUtilFactory
-              .getStorageUtil(config.getName())
-              .createYbcProxyConfig(universe, config.getDataObject());
       CloudStoreConfig csConfig =
-          YbcBackupUtil.getCloudStoreConfig(successMarkerCSSpec, null, proxyConfig);
+          CloudStoreConfig.newBuilder()
+              .setDefaultSpec(
+                  storageUtilFactory
+                      .getStorageUtil(config.getName())
+                      .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject()))
+              .build();
       for (NodeDetails node : nodeDetailsList) {
         ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
             node.cloudInfo.private_ip, universe, csConfig);

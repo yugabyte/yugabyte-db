@@ -95,7 +95,6 @@ import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.NamespaceType;
-import org.yb.ybc.ProxyConfig;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
 import org.yb.ybc.TableRestoreSpec;
@@ -488,7 +487,6 @@ public class YbcBackupUtil {
     CustomerConfig config =
         configService.getOrBadRequest(
             backupTableParams.customerUuid, backupTableParams.storageConfigUUID);
-    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     String taskID =
         getYbcTaskID(
             backupTableParams.backupUuid,
@@ -504,7 +502,7 @@ public class YbcBackupUtil {
     Map<String, String> keyspacePreviousLocationsMap =
         BackupUtil.getLocationMap(previousTableParams);
     CloudStoreConfig cloudStoreConfig =
-        createBackupConfig(config, specificCloudDir, keyspacePreviousLocationsMap, universe);
+        createBackupConfig(config, specificCloudDir, keyspacePreviousLocationsMap);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
 
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
@@ -526,34 +524,26 @@ public class YbcBackupUtil {
       UUID storageConfigUUID,
       BackupStorageInfo backupStorageInfo,
       String taskId,
-      YbcBackupResponse successMarker,
-      UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+      YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForRestore(backupStorageInfo);
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
-    CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker, universe);
+    CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
     backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
     addRestoreSpec(backupServiceTaskCreateRequestBuilder, backupStorageInfo, successMarker);
     return backupServiceTaskCreateRequestBuilder.build();
   }
 
   public BackupServiceTaskCreateRequest createDsmRequest(
-      UUID customerUUID,
-      UUID storageConfigUUID,
-      String taskId,
-      BackupStorageInfo storageInfo,
-      UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+      UUID customerUUID, UUID storageConfigUUID, String taskId, BackupStorageInfo storageInfo) {
     BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(
             taskId, getNamespaceType(storageInfo.backupType), extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
-    CloudStoreConfig cloudStoreConfig =
-        createDsmConfig(config, storageInfo.storageLocation, universe);
+    CloudStoreConfig cloudStoreConfig = createDsmConfig(config, storageInfo.storageLocation);
     backupServiceTaskCreateRequestBuilder.setDsm(true).setCsConfig(cloudStoreConfig);
     return backupServiceTaskCreateRequestBuilder.build();
   }
@@ -563,28 +553,18 @@ public class YbcBackupUtil {
     BackupStorageInfo storageInfo = new BackupStorageInfo();
     storageInfo.backupType = tableParams.backupType;
     storageInfo.storageLocation = tableParams.storageLocation;
-    return createDsmRequest(
-        customerUUID, storageConfigUUID, taskId, storageInfo, tableParams.getUniverseUUID());
+    return createDsmRequest(customerUUID, storageConfigUUID, taskId, storageInfo);
   }
 
   // Static method for use outside backup/restore tasks.
   public static BackupServiceTaskCreateRequest createDsmRequest(
-      CloudStoreSpec cloudStoreSpec,
-      String taskId,
-      NamespaceType nsType,
-      @Nullable ProxyConfig proxyConfig) {
+      CloudStoreSpec cloudStoreSpec, String taskId, NamespaceType nsType) {
     BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskId, nsType, extendedArgs);
-    CloudStoreConfig.Builder cloudStoreConfigBuilder = CloudStoreConfig.newBuilder();
-    cloudStoreConfigBuilder.setDefaultSpec(cloudStoreSpec);
-    if (proxyConfig != null) {
-      cloudStoreConfigBuilder.setProxyConfig(proxyConfig);
-    }
-    return backupServiceTaskCreateRequestBuilder
-        .setCsConfig(cloudStoreConfigBuilder.build())
-        .setDsm(true)
-        .build();
+    CloudStoreConfig cloudStoreConfig =
+        CloudStoreConfig.newBuilder().setDefaultSpec(cloudStoreSpec).build();
+    return backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig).setDsm(true).build();
   }
 
   private static BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateBuilder(
@@ -704,9 +684,8 @@ public class YbcBackupUtil {
    * @param commonSuffix
    * @return CloudStoreConfig object for YB-Controller task.
    */
-  public CloudStoreConfig createBackupConfig(
-      CustomerConfig config, String commonSuffix, Universe universe) {
-    return createBackupConfig(config, commonSuffix, new HashMap<>(), universe);
+  public CloudStoreConfig createBackupConfig(CustomerConfig config, String commonSuffix) {
+    return createBackupConfig(config, commonSuffix, new HashMap<>());
   }
 
   /**
@@ -714,14 +693,12 @@ public class YbcBackupUtil {
    *
    * @param config
    * @param commonSuffix
-   * @param universe
    * @return CloudStoreConfig object for YB-Controller task.
    */
   public CloudStoreConfig createBackupConfig(
       CustomerConfig config,
       String commonSuffix,
-      Map<String, String> keyspacePreviousLocationsMap,
-      Universe universe) {
+      Map<String, String> keyspacePreviousLocationsMap) {
     String configType = config.getName();
     CustomerConfigData configData = config.getDataObject();
     CloudStoreSpec defaultSpec = null;
@@ -749,13 +726,6 @@ public class YbcBackupUtil {
     if (MapUtils.isNotEmpty(regionSpecMap)) {
       cloudStoreConfigBuilder.putAllRegionSpecMap(regionSpecMap);
     }
-    ProxyConfig proxyConfig =
-        storageUtilFactory
-            .getStorageUtil(config.getName())
-            .createYbcProxyConfig(universe, configData);
-    if (proxyConfig != null) {
-      cloudStoreConfigBuilder.setProxyConfig(proxyConfig);
-    }
     return cloudStoreConfigBuilder.build();
   }
 
@@ -764,26 +734,24 @@ public class YbcBackupUtil {
   public CloudStoreConfig createCloudStoreConfigForNode(
       String nodeIP, Universe universe, UUID storageConfigUUID, UUID customerUUID) {
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
-    return getCloudStoreConfigWithProvidedRegions(config, null, universe);
+    return getCloudStoreConfigWithProvidedRegions(config, null);
   }
 
   // TODO: Add per-region spec for the regions parameter in the next cut.
   public CloudStoreConfig getCloudStoreConfigWithProvidedRegions(
-      CustomerConfig config, @Nullable Set<String> regions, Universe universe) {
+      CustomerConfig config, @Nullable Set<String> regions) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
     CloudStoreSpec defaultSpec =
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject());
-    ProxyConfig pConfig =
-        storageUtilFactory
-            .getStorageUtil(config.getName())
-            .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
   }
 
   // TODO: Add per-region spec for in the next cut.
   public CloudStoreConfig getCloudStoreConfigWithBucketLocationsMap(
-      CustomerConfig config, Map<String, BucketLocation> bucketLocationsMap, Universe universe) {
+      CustomerConfig config, Map<String, BucketLocation> bucketLocationsMap) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
     CloudStoreSpec defaultSpec =
         storageUtilFactory
             .getStorageUtil(config.getName())
@@ -792,15 +760,11 @@ public class YbcBackupUtil {
                 bucketLocationsMap.get(DEFAULT_REGION_STRING).cloudDir,
                 config.getDataObject(),
                 false);
-    ProxyConfig pConfig =
-        storageUtilFactory
-            .getStorageUtil(config.getName())
-            .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
   }
 
   public CloudStoreConfig createRestoreConfig(
-      CustomerConfig config, YbcBackupResponse successMarker, Universe universe) {
+      CustomerConfig config, YbcBackupResponse successMarker) {
     CustomerConfigData configData = config.getDataObject();
 
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
@@ -810,6 +774,9 @@ public class YbcBackupUtil {
         storageUtil.createRestoreCloudStoreSpec(
             DEFAULT_REGION_STRING, defaultBucketLocation.cloudDir, configData, false);
 
+    CloudStoreConfig.Builder csConfigBuilder =
+        CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
+
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
       successMarker.responseCloudStoreSpec.regionLocations.forEach(
@@ -818,35 +785,20 @@ public class YbcBackupUtil {
                 r, storageUtil.createRestoreCloudStoreSpec(r, bL.cloudDir, configData, false));
           });
     }
-    ProxyConfig pConfig =
-        storageUtilFactory
-            .getStorageUtil(config.getName())
-            .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, regionSpecMap, pConfig);
+    if (MapUtils.isNotEmpty(regionSpecMap)) {
+      csConfigBuilder.putAllRegionSpecMap(regionSpecMap);
+    }
+    return csConfigBuilder.build();
   }
 
-  public CloudStoreConfig createDsmConfig(
-      CustomerConfig config, String defaultBackupLocation, Universe universe) {
+  public CloudStoreConfig createDsmConfig(CustomerConfig config, String defaultBackupLocation) {
     CustomerConfigData configData = config.getDataObject();
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     CloudStoreSpec defaultSpec =
         storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData);
-    ProxyConfig pConfig = storageUtil.createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
-  }
 
-  public static CloudStoreConfig getCloudStoreConfig(
-      CloudStoreSpec defaultSpec,
-      @Nullable Map<String, CloudStoreSpec> regionSpecMap,
-      @Nullable ProxyConfig proxyConfig) {
-    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
-    csConfigBuilder.setDefaultSpec(defaultSpec);
-    if (MapUtils.isNotEmpty(regionSpecMap)) {
-      csConfigBuilder.putAllRegionSpecMap(regionSpecMap);
-    }
-    if (proxyConfig != null) {
-      csConfigBuilder.setProxyConfig(proxyConfig);
-    }
+    CloudStoreConfig.Builder csConfigBuilder =
+        CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
     return csConfigBuilder.build();
   }
 

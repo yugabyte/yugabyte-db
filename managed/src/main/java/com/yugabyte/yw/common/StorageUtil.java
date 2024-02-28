@@ -51,11 +51,6 @@ public interface StorageUtil {
         YbcBackupUtil.DEFAULT_REGION_STRING, backupLocation, configData, true);
   }
 
-  public default org.yb.ybc.ProxyConfig createYbcProxyConfig(
-      Universe universe, CustomerConfigData configData) {
-    return null;
-  }
-
   /**
    * Generate CloudStoreSpec for restore/success marker download
    *

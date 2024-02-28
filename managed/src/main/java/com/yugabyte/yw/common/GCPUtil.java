@@ -72,7 +72,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
-import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
 
 @Singleton
@@ -365,11 +364,6 @@ public class GCPUtil implements CloudUtil {
           INTERNAL_SERVER_ERROR, "No blob was found at the specified location: " + cloudPath);
     }
     return Channels.newInputStream(blob.reader());
-  }
-
-  @Override
-  public ProxyConfig createYbcProxyConfig(Universe universe, CustomerConfigData configData) {
-    return null;
   }
 
   /*

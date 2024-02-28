@@ -146,8 +146,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
                     taskParams().customerUUID,
                     taskParams().storageConfigUUID,
                     dsmTaskId,
-                    backupStorageInfo,
-                    taskParams().getUniverseUUID());
+                    backupStorageInfo);
             String successMarkerString =
                 ybcManager.downloadSuccessMarker(
                     downloadSuccessMarkerRequest, dsmTaskId, ybcClient);
@@ -173,8 +172,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   taskParams().storageConfigUUID,
                   backupStorageInfo,
                   taskId,
-                  taskParams().getSuccessMarker(),
-                  taskParams().getUniverseUUID());
+                  taskParams().getSuccessMarker());
           BackupServiceTaskCreateResponse response =
               ybcClient.restoreNamespace(restoreTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {

@@ -26,7 +26,6 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
-import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -609,18 +608,6 @@ public class UpgradeUniverseHandler {
       baseTaskName += booleanToStr(clientToNode == null ? nodeToNode : clientToNode);
     }
     return baseTaskName;
-  }
-
-  public UUID updateProxyConfig(
-      ProxyConfigUpdateParams requestParams, Customer customer, Universe universe) {
-    // Verify request params
-    requestParams.verifyParams(universe, true);
-    return submitUpgradeTask(
-        TaskType.UpdateProxyConfig,
-        CustomerTask.TaskType.UpdateProxyConfig,
-        requestParams,
-        customer,
-        universe);
   }
 
   private static String booleanToStr(boolean toggle) {

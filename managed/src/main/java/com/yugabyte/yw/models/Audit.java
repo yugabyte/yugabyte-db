@@ -567,10 +567,7 @@ public class Audit extends Model {
     Unlock,
 
     @EnumValue("Sync Universe with LDAP server")
-    LdapUniverseSync,
-
-    @EnumValue("Update Universe's Proxy Configuration")
-    UpdateProxyConfig
+    LdapUniverseSync
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

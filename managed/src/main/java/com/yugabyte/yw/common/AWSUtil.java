@@ -61,6 +61,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
@@ -89,7 +90,7 @@ import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
-import org.yb.ybc.ProxySpec;
+import org.yb.ybc.S3ProxySetting;
 
 @Singleton
 @Slf4j
@@ -326,6 +327,9 @@ public class AWSUtil implements CloudUtil {
       s3ClientBuilder.withRegion(clientRegion);
     }
     ClientConfiguration clientConfig = null;
+    if (s3Data.proxySetting != null) {
+      clientConfig = getClientConfiguration(s3Data.proxySetting);
+    }
     try {
       Boolean caStoreEnabled = customCAStoreManager.isEnabled();
       Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
@@ -372,6 +376,20 @@ public class AWSUtil implements CloudUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
+  }
+
+  private static ClientConfiguration getClientConfiguration(ProxySetting proxySetting) {
+    ClientConfiguration cc = new ClientConfiguration();
+    cc.withProxyHost(proxySetting.proxy);
+    if (proxySetting.port > 0) {
+      cc.withProxyPort(proxySetting.port);
+    }
+    if (StringUtils.isNotBlank(proxySetting.username)
+        && StringUtils.isNotBlank(proxySetting.password)) {
+      cc.withProxyUsername(proxySetting.username);
+      cc.withProxyPassword(proxySetting.password);
+    }
+    return cc;
   }
 
   public static Map<String, String> getRegionHostBaseMap(CustomerConfigData configData) {
@@ -596,6 +614,9 @@ public class AWSUtil implements CloudUtil {
         .setPrevCloudDir(previousCloudDir)
         .setCloudDir(cloudDir)
         .putAllCreds(s3CredsMap);
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
+    }
     return cloudStoreSpecBuilder.build();
   }
 
@@ -616,6 +637,9 @@ public class AWSUtil implements CloudUtil {
       cloudStoreSpecBuilder.setCloudDir(BackupUtil.appendSlash(location));
     } else {
       cloudStoreSpecBuilder.setCloudDir(cloudDir);
+    }
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
     }
     return cloudStoreSpecBuilder.build();
   }
@@ -662,26 +686,19 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  @Override
-  public ProxySpec getOldProxySpec(CustomerConfigData configData) {
-    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    if (s3Data.proxySetting != null) {
-      return ProxySpec.newBuilder()
-          .setHost(s3Data.proxySetting.proxy)
-          .setPort(s3Data.proxySetting.port)
-          .setUsername(s3Data.proxySetting.username)
-          .setPassword(s3Data.proxySetting.password)
-          .build();
+  private S3ProxySetting addYbcProxySettings(
+      CustomerConfigStorageS3Data.ProxySetting proxySettings) {
+    S3ProxySetting.Builder proxyBuilder = S3ProxySetting.newBuilder();
+    proxyBuilder.setProxyHost(proxySettings.proxy);
+    if (proxySettings.port > 0) {
+      proxyBuilder.setProxyPort(proxySettings.port);
     }
-    return null;
-  }
-
-  @Override
-  public boolean shouldUseHttpsProxy(CustomerConfigData configData) {
-    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    return StringUtils.isBlank(s3Data.awsHostBase)
-        || isHostBaseS3Standard(s3Data.awsHostBase)
-        || s3Data.awsHostBase.startsWith("https://");
+    if (StringUtils.isNotBlank(proxySettings.username)
+        && StringUtils.isNotBlank(proxySettings.password)) {
+      proxyBuilder.setProxyPassword(proxySettings.password);
+      proxyBuilder.setProxyUsername(proxySettings.username);
+    }
+    return proxyBuilder.build();
   }
 
   @Override

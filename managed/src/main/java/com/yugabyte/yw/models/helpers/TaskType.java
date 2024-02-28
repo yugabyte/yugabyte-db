@@ -616,9 +616,7 @@ public enum TaskType {
 
   UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
 
-  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
-
-  UpdateProxyConfig(com.yugabyte.yw.commissioner.tasks.upgrade.UpdateProxyConfig.class);
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
 
   private final Class<? extends ITask> taskClass;
 
