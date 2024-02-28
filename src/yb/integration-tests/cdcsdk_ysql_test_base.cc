@@ -3501,8 +3501,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // last record received should be a COMMIT.
     ASSERT_EQ(resp.records.back().row_message().op(), RowMessage::COMMIT);
 
-    // Number of BEGIN & COMMIT should be equal to the txn_id of last received record (i.e COMMIT) -
-    // 1 since assignment of txn_id starts from 2 onwards.
+    // Number of BEGIN & COMMIT should be equal to the txn_id of last received record (i.e COMMIT)
+    // - 1 since transaction generator starts from 2, so first record will have txn_id as 2.
     auto last_txn_id = resp.records.back().row_message().pg_transaction_id() - 1;
     int begin_records = resp.record_count[6];
     int commit_records = resp.record_count[7];

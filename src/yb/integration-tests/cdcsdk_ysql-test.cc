@@ -7837,5 +7837,36 @@ TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
   ASSERT_EQ(row.cdc_sdk_safe_time, HybridTime::FromPB(checkpointed_time));
 }
 
+TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  // cdc_state entry for the replication slot should only be seen when replication commands are
+  // enabled and a consistent_snapshot stream is created.
+  CDCStateTable cdc_state_table(test_client());
+  auto stream_id_1 = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id_1, tablets[0].tablet_id()));
+  auto entry_1 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id_1}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_1.has_value());
+  ASSERT_EQ(entry_1->confirmed_flush_lsn.value(), 2);
+  ASSERT_EQ(entry_1->restart_lsn.value(), 1);
+  ASSERT_EQ(entry_1->xmin.value(), 1);
+  ASSERT_EQ(entry_1->record_id_commit_time.value(), checkpoint.snapshot_time());
+  ASSERT_EQ(entry_1->cdc_sdk_safe_time.value(), checkpoint.snapshot_time());
+
+  // On a non-consistent snapshot stream, we should not see the entry for replication slot.
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_FALSE(entry_2.has_value());
+}
+
 }  // namespace cdc
 }  // namespace yb
