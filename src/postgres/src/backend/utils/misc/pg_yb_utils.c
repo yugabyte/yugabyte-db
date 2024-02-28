@@ -3693,17 +3693,20 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YbPgEventMetric* agg = &instr->storage_event_metrics[i];
-		const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
-		agg->sum += val->sum;
-		agg->count += val->count;
+	if (exec_stats->storage_metrics_version != instr->storage_metrics_version) {
+		instr->storage_metrics_version = exec_stats->storage_metrics_version;
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YbPgEventMetric* agg = &instr->storage_event_metrics[i];
+			const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
+			agg->sum += val->sum;
+			agg->count += val->count;
+		}
 	}
 }
 
@@ -3733,20 +3736,23 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		result->storage_gauge_metrics[i] =
-				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		result->storage_counter_metrics[i] =
-				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
-		const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
-		const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
-		result_metric->sum = current_metric->sum - old_metric->sum;
-		result_metric->count = current_metric->count - old_metric->count;
+	result->storage_metrics_version = current->storage_metrics_version;
+	if (old->storage_metrics_version != current->storage_metrics_version) {
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			result->storage_gauge_metrics[i] =
+					current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			result->storage_counter_metrics[i] =
+					current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
+			const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
+			const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+			result_metric->sum = current_metric->sum - old_metric->sum;
+			result_metric->count = current_metric->count - old_metric->count;
+		}
 	}
 }
 
@@ -3766,6 +3772,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		old->catalog = current->catalog;
 
 	if (yb_session_stats.current_state.metrics_capture) {
+		old->storage_metrics_version = current->storage_metrics_version;
 		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
 			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
 		}
