@@ -3,7 +3,7 @@ title: Continuous availability
 headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
-headcontent: High availability and fault tolerance.
+headcontent: High availability and fault tolerance
 aliases:
   - /preview/explore/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
@@ -19,9 +19,9 @@ type: indexpage
 
 YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 
-## Fault Domains
+## Fault domains
 
-A Fault domain is a potential point of failure. Fault domains can be nodes, racks, zones, or entire regions. The RAFT-based replication and automatic rebalancing ensure that even if one domain experiences a failure, the database can continue to serve reads and writes without interruption. The fault tolerance level determines how resilient the cluster is to domain outages, achieved by adding redundancy in the form of additional nodes across the fault domain.
+A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. YugabyteDB's RAFT-based replication and automatic rebalancing ensure that even if a domain fails, the database can continue to serve reads and writes without interruption. The fault tolerance of a YugabyteDB cluster determines how resilient the cluster is to domain outages. Fault tolerance is achieved by adding redundancy in the form of additional nodes across the fault domain.
 
 ### Node failure
 
