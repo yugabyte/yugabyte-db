@@ -62,3 +62,4 @@ int yb_locks_min_txn_age = 1000;
 int yb_locks_max_transactions = 16;
 
 uint64_t yb_read_time = 0;
+bool yb_is_read_time_ht = false;
