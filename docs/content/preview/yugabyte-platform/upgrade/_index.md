@@ -12,9 +12,9 @@ menu:
 type: indexpage
 ---
 
-Keep YugabyteDB Anywhere up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
+Keep YugabyteDB Anywhere (YBA) up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
+You can upgrade YBA using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
@@ -28,7 +28,7 @@ If you have upgraded YBA to version 2.12 or later and [xCluster replication](../
 
 {{< note title="Upgrading YBA on deprecated operating systems" >}}
 
-If you are running YugabyteDB Anywhere on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you will need to update your OS before you can upgrade YBA to the next major release.
+If you are running YBA on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you will need to update your OS before you can upgrade YBA to the next major release.
 
 {{< /note >}}
 

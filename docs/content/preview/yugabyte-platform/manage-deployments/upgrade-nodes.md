@@ -1,14 +1,14 @@
 ---
 title: Apply operating system upgrades and patches to universe nodes
-headerTitle: Upgrade and patch the Linux operating system
-linkTitle: Upgrade node OS
+headerTitle: Patch and upgrade the Linux operating system
+linkTitle: Patch Linux OS
 description: Apply operating system upgrades and patches to universe nodes.
 headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
   preview_yugabyte-platform:
     identifier: upgrade-nodes
     parent: manage-deployments
-    weight: 20
+    weight: 10
 type: docs
 ---
 
@@ -28,7 +28,7 @@ For each node in the universe, use the following general procedure:
 
 1. Stop the processes for the node to be patched.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Stop Processes**.
+    In YugabyteDB Anywhere (YBA), navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Stop Processes**.
 
     If using the YBA API, use the following command:
 
@@ -50,7 +50,7 @@ For each node in the universe, use the following general procedure:
 
 1. Start the processes for the node.
 
-    In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
+    In YBA, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
 
     If using the YBA API, use the following command:
 

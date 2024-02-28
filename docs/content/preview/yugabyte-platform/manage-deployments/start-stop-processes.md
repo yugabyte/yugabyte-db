@@ -1,4 +1,4 @@
----
+<!---
 title: Start and stop processes
 headerTitle: Start and stop processes
 linkTitle: Start and stop processes
@@ -7,9 +7,9 @@ menu:
   preview_yugabyte-platform:
     identifier: start-stop-processes
     parent: manage-deployments
-    weight: 10
+    weight: 78
 type: docs
----
+--->
 
 ## Start a process
 

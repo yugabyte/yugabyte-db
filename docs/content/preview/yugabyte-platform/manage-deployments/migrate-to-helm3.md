@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     identifier: migrate-to-helm3
     parent: manage-deployments
-    weight: 90
+    weight: 95
 type: docs
 ---
 
