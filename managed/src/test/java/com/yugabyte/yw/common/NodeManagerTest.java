@@ -878,12 +878,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(setupParams.instanceType);
         }
 
-        if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.getYbImage();
-          if (ybImage != null && !ybImage.isEmpty()) {
-            expectedCommand.add("--machine_image");
-            expectedCommand.add(ybImage);
-          }
+        String ybImage = testData.region.getYbImage();
+        if (ybImage != null && !ybImage.isEmpty()) {
+          expectedCommand.add("--machine_image");
+          expectedCommand.add(ybImage);
         }
 
         if ((cloud.equals(Common.CloudType.aws) || cloud.equals(Common.CloudType.gcp))

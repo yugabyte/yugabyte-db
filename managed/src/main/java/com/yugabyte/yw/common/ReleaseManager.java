@@ -315,6 +315,14 @@ public class ReleaseManager {
       }
       return packages.stream().anyMatch(p -> p.path.startsWith("/"));
     }
+
+    @JsonIgnore
+    public Set<String> getLocalReleases() {
+      return packages.stream()
+          .map(p -> p.path)
+          .filter(path -> path.startsWith("/"))
+          .collect(Collectors.toSet());
+    }
   }
 
   private Predicate<Path> getPackageFilter(String pathMatchGlob) {
