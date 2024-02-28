@@ -57,7 +57,7 @@ Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/
 
 ## Query-level metrics
 
-View live queries using the [pg_stat_activity](../query-1-performance/pg-stat-activity) view, and get query statistics (such as the _time spent by a query_) using the [pg_stat_statements](../query-1-performance/pg-stat-statements) view. Use these query-level metrics to tune query performance.
+View live queries using the [pg_stat_activity](./pg-stat-activity) view, identify terminated queries with [yb_terminated_queries](./yb-pg-stat-get-queries/) view, get the status of a COPY command execution with [pg_stat_progress_copy](./pg-stat-progress-copy), and get query statistics (such as the _time spent by a query_) using the [pg_stat_statements](../query-1-performance/pg-stat-statements) view. Use these query-level metrics to tune query performance.
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
@@ -77,6 +77,24 @@ To get more details about the various steps of a query execution, use the [Expla
       icon="fa-solid fa-chart-bar">}}
 
   {{<index/item
+      title="View live queries with pg_stat_activity"
+      body="Troubleshoot problems and identify long-running queries with the activity view."
+      href="./pg-stat-activity/"
+      icon="/images/section_icons/manage/diagnostics.png">}}
+
+  {{<index/item
+      title="View terminated queries with yb_terminated_queries"
+      body="Identify terminated queries with the get queries function."
+      href="./yb-pg-stat-get-queries/"
+      icon="/images/section_icons/explore/monitoring.png">}}
+
+  {{<index/item
+      title="View COPY status with pg_stat_progress_copy"
+      body="Get the COPY command status, number of tuples processed, and other COPY progress reports with this view."
+      href="./pg-stat-progress-copy/"
+      icon="/images/section_icons/explore/json_documents.png">}}
+
+  {{<index/item
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
       href="../query-1-performance/pg-stat-statements"
@@ -87,4 +105,5 @@ To get more details about the various steps of a query execution, use the [Expla
       body="Understand the different metrics in YugabyteDB to monitor your cluster"
       href="../../launch-and-manage/monitor-and-alert/metrics"
       icon="fa-solid fa-bell">}}
+
 {{</index/block>}}
