@@ -142,6 +142,10 @@ Examples:
 --cloud_location *cloud-location*
 : Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
 
+{{<tip title="Rack Awareness">}}
+For on-prem deployments racks can be considered as zones and treated as fault domains.
+{{</tip>}}
+
 --fault_tolerance *fault_tolerance*
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 

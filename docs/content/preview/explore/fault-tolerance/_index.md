@@ -3,7 +3,7 @@ title: Continuous availability
 headerTitle: Continuous availability
 linkTitle: Continuous availability
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
-headcontent: Highly available and fault tolerant
+headcontent: High availability and fault tolerance.
 aliases:
   - /preview/explore/fault-tolerance/
   - /preview/explore/postgresql/fault-tolerance/
@@ -17,9 +17,35 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region.
+YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's [High availability](../../architecture/core-functions/high-availability/) is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 
-YugabyteDB provides [high availability](../../architecture/core-functions/high-availability/) (HA) by replicating data across [fault domains](../../architecture/docdb-replication/replication/#fault-domains). If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
+## Fault Domains
+
+A Fault domain is a potential point of failure. Fault domains can be nodes, racks, zones, or entire regions. The RAFT-based replication and automatic rebalancing ensure that even if one domain experiences a failure, the database can continue to serve reads and writes without interruption. The fault tolerance level determines how resilient the cluster is to domain outages, achieved by adding redundancy in the form of additional nodes across the fault domain.
+
+### Node failure
+
+In an RF3 cluster, a minimum of 3 nodes is required to tolerate 1 node outage, and in an RF5 cluster you need a minimum of 5 nodes for 2 node outages, and so on. Each additional node increases the resilience to node failures.
+
+### Zone failure
+
+An RF3 cluster can survive 1 zone outage when spread across 3 zones. This setup ensures that even if an entire zone goes down, the database can continue operating.
+
+### Region failure
+
+Similar to zone-level fault tolerance, but on a larger scale, involving multiple regions. This provides the highest level of protection against region-wide outages.
+
+### Rack failure
+
+In the case of on-prem deployments, you can consider racks as zones to make your cluster rack-aware and ensure that your cluster spread across racks can survive rack-level failures.
+
+{{<tip title="Rack Awareness">}}
+Racks can be mapped as zones and used as fault domains using the [--cloud-location](../../reference/configuration/yugabyted/#flags) flag via [yugabyted](../../reference/configuration/yugabyted) or directly using the [--placement-zone](../../reference/configuration/yb-tserver/#placement-zone) flag of the [tserver](../../reference/configuration/yb-tserver)
+{{</tip>}}
+
+## Recovery time
+
+If a fault domain experiences a failure, an active replica is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
 
 This is reflected in both the recovery point objective (RPO) and recovery time objective (RTO) for YugabyteDB universes:
 
