@@ -11,6 +11,7 @@ import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -1014,6 +1015,7 @@ public class CloudProviderHelper {
         }
       }
     }
+    validateDefaultImageBundleExistence(editProviderReq.getImageBundles());
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null
@@ -1073,6 +1075,22 @@ public class CloudProviderHelper {
                     region.getCode(), bundle.getName()));
           }
         }
+      }
+    }
+  }
+
+  public void validateDefaultImageBundleExistence(List<ImageBundle> bundles) {
+    // Check if there is at least one active default bundle for a architecture
+    for (Architecture arch : Architecture.values()) {
+      if (bundles.stream()
+          .noneMatch(
+              bundle ->
+                  bundle.getDetails().getArch().equals(arch)
+                      && bundle.getActive()
+                      && bundle.getUseAsDefault())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "One of the image bundles should be default for the " + arch.name() + " architecture");
       }
     }
   }

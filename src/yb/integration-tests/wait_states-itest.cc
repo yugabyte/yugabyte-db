@@ -692,11 +692,11 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRocksDB_CloseFile,
       ash::WaitStateCode::kRocksDB_RateLimiter,
       ash::WaitStateCode::kRocksDB_NewIterator,
-      ash::WaitStateCode::kCQL_Parse,
-      ash::WaitStateCode::kCQL_Analyze,
-      ash::WaitStateCode::kCQL_Execute,
-      ash::WaitStateCode::kYBC_WaitingOnDocdb,
-      ash::WaitStateCode::kYBC_LookingUpTablet
+      ash::WaitStateCode::kYCQL_Parse,
+      ash::WaitStateCode::kYCQL_Analyze,
+      ash::WaitStateCode::kYCQL_Execute,
+      ash::WaitStateCode::kYBClient_WaitingOnDocDB,
+      ash::WaitStateCode::kYBClient_LookingUpTablet
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, YB_DISABLE_TEST_IN_TSAN(VerifyWaitStateEntered)) {

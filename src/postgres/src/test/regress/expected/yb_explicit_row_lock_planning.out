@@ -158,7 +158,7 @@ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
 ---------------------------------
  LockRows
    ->  Seq Scan on yb_locks_tasc
-         Remote Filter: (k = 1)
+         Storage Filter: (k = 1)
 (3 rows)
 
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;

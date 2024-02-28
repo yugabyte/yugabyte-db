@@ -850,6 +850,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "runtime configuration.",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> validateLocalRelease =
+      new ConfKeyInfo<>(
+          "yb.universe.validate_local_release",
+          ScopeType.UNIVERSE,
+          "Validate filepath for local release",
+          "For certain tasks validates the existence of local filepath for the universe software "
+              + "version.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableRollbackSupport =
       new ConfKeyInfo<>(
           "yb.upgrade.enable_rollback_support",

@@ -2562,7 +2562,7 @@ YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
 /*
  * YbDmlAppendQuals
  *
- * Add remote filter expressions to the statement.
+ * Add storage filter expressions to the statement.
  * The expression are pushed down to DocDB and used to filter rows early to
  * avoid sending them across network.
  * Set is_primary to false if the filter expression is to apply to secondary

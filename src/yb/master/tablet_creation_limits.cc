@@ -11,35 +11,19 @@
 // under the License.
 //
 
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flags/flag_tags.h"
-
-DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 1024/0.7,
-    "The maximum number of tablets per GiB of RAM reserved by TServers for tablet overheads the "
-    "cluster can support. A non-positive number means no limit.");
-TAG_FLAG(tablet_replicas_per_gib_limit, experimental);
-
-DEFINE_RUNTIME_int32(tablet_replicas_per_core_limit, 0,
-    "The maximum number of tablets per vCPU available to TServer processes the cluster can "
-    "support. A non-positive number means no limit.");
-TAG_FLAG(tablet_replicas_per_core_limit, experimental);
 
 namespace yb::master {
 
-namespace {
+using tserver::AggregatedClusterInfo;
 
-std::optional<int64_t> PositiveOrNullopt(int64_t n) {
-  if (n > 0) {
-    return n;
-  }
-  return std::nullopt;
-}
+namespace {
 
 // Use:
 //   Compute a numeric total of a proto field across a collection of protos.
@@ -86,28 +70,10 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
   };
 }
 
-int64_t ComputeTabletReplicaLimit(
-    const AggregatedClusterInfo& cluster_info, const TabletReplicaPerResourceLimits& limits) {
-  int64_t limit = (limits.per_core && cluster_info.total_cores)
-                      ? limits.per_core.value() * cluster_info.total_cores.value()
-                      : std::numeric_limits<int64_t>::max();
-  if (limits.per_gib && cluster_info.total_memory) {
-    // To support TServer processes dedicating less than 1 GiB to tablet overheads, compute memory
-    // limit using double.
-    limit = std::min(
-        limit, static_cast<int64_t>(std::llround(std::trunc(
-                   limits.per_gib.value() *
-                   (static_cast<double>(*cluster_info.total_memory) / (1 << 30))))));
-  }
-  return limit;
-}
-
 Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
-  TabletReplicaPerResourceLimits limits{
-      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_gib_limit)),
-      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_core_limit))};
+  auto limits = tserver::GetTabletReplicaPerResourceLimits();
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }

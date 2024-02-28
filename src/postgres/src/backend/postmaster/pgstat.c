@@ -3614,7 +3614,7 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 	if (wait_event_info == 0)
 	{
 		if (IsYugaByteEnabled() && YBEnableAsh())
-			return "YsqlQuery";
+			return "YSQLQuery";
 		return NULL;
 	}
 

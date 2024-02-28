@@ -60,7 +60,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 --------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=3 loops=1)
    Index Cond: (h1 = ANY ('{1,2,3,4}'::integer[]))
-   Remote Filter: (a = 1)
+   Storage Filter: (a = 1)
    Storage Table Read Requests: 4
    Storage Table Rows Scanned: 4
 (5 rows)
@@ -132,7 +132,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 --------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=3 loops=1)
    Index Cond: (h1 = ANY ('{1,2,3,4}'::integer[]))
-   Remote Filter: (a = 1)
+   Storage Filter: (a = 1)
    Storage Table Read Requests: 3
    Storage Table Rows Scanned: 4
 (5 rows)
@@ -549,7 +549,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
                     QUERY PLAN
 --------------------------------------------------
  Seq Scan on test_method (actual rows=17 loops=1)
-   Remote Filter: (h1 = 1)
+   Storage Filter: (h1 = 1)
    Storage Table Read Requests: 1
    Storage Table Rows Scanned: 19
 (4 rows)
@@ -732,7 +732,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
                     QUERY PLAN
 --------------------------------------------------
  Seq Scan on test_method (actual rows=17 loops=1)
-   Remote Filter: (h1 = 1)
+   Storage Filter: (h1 = 1)
    Storage Table Read Requests: 1
    Storage Table Rows Scanned: 19
 (4 rows)

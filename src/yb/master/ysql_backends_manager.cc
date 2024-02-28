@@ -256,7 +256,6 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
-  auto epoch = l.epoch();
   if (job->state() != MonitoredTaskState::kRunning) {
     // The only reason for this to happen is if catalog manager bg thread does AbortAllJobs or
     // AbortInactiveJobs between CompareAndSwapState and SCOPED_LEADER_SHARED_LOCK above.  Any
@@ -275,7 +274,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     RETURN_NOT_OK(CheckLeadership(&l, resp));
   }
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(job);
-  RETURN_NOT_OK(job->Launch(epoch));
+  RETURN_NOT_OK(job->Launch(master_->catalog_manager()->leader_ready_term()));
   return Status::OK();
 }
 
@@ -464,7 +463,7 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Stat
   return old_state;
 }
 
-Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
+Status BackendsCatalogVersionJob::Launch(int64_t term) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
   const auto& descs = master_->ts_manager()->GetAllDescriptors();
@@ -478,7 +477,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
     std::lock_guard l(mutex_);
 
     // Commit term now.
-    epoch_ = epoch;
+    term_ = term;
 
     for (const auto& ts_desc : descs) {
       if (!ts_desc->IsLive()) {
@@ -494,14 +493,13 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
   }
 
   for (const auto& ts_uuid : ts_uuids) {
-    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch));
+    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */));
   }
 
   return Status::OK();
 }
 
-Status BackendsCatalogVersionJob::LaunchTS(
-    TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
+Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
       shared_from_this(), ts_uuid, num_lagging_backends);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
@@ -536,11 +534,11 @@ bool BackendsCatalogVersionJob::IsInactive() const {
 bool BackendsCatalogVersionJob::IsSameTerm() const {
   const int64_t term = master_->catalog_manager()->leader_ready_term();
   std::lock_guard l(mutex_);
-  if (epoch_.leader_term == term) {
+  if (term_ == term) {
     VLOG_WITH_PREFIX(3) << "Sys catalog term is " << term;
     return true;
   }
-  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << epoch_.leader_term;
+  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << term_;
   return false;
 }
 
@@ -615,14 +613,12 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     auto s = num_lagging_backends.status();
     if (s.IsTryAgain()) {
       int last_known_num_lagging_backends;
-      LeaderEpoch epoch;
       {
         std::lock_guard l(mutex_);
         last_known_num_lagging_backends = ts_map_[ts_uuid];
-        epoch = epoch_;
       }
       // Ignore returned status since it is already logged/handled.
-      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch);
+      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends);
     } else {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString() << " from TS " << ts_uuid;
       master_->ysql_backends_manager()->TerminateJob(
@@ -633,10 +629,8 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
   DCHECK_GE(*num_lagging_backends, 0);
 
   // Update num_lagging_backends.
-  LeaderEpoch epoch;
   {
     std::lock_guard l(mutex_);
-    epoch = epoch_;
 
 #ifndef NDEBUG
     if (ts_map_[ts_uuid] != -1) {
@@ -653,7 +647,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     VLOG_WITH_PREFIX(2) << "still waiting on " << *num_lagging_backends << " backends of TS "
                         << ts_uuid;
     // Ignore returned status since it is already logged/handled.
-    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch);
+    (void)LaunchTS(ts_uuid, *num_lagging_backends);
     return;
   }
   DCHECK_EQ(*num_lagging_backends, 0);

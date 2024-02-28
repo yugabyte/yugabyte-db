@@ -85,7 +85,7 @@ namespace yb::ash {
 // YB ASH Wait Components (4 bits)
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Component, uint8_t,
-    (kPostgres)
+    (kYSQL)
     (kYCQL)
     (kTServer));
 
@@ -93,10 +93,10 @@ YB_DEFINE_TYPED_ENUM(Component, uint8_t,
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     // PG classes
-    ((kTServerWait, YB_ASH_MAKE_CLASS(Postgres)))
+    ((kTServerWait, YB_ASH_MAKE_CLASS(YSQL)))
 
     // YB Client classes
-    ((kCqlQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
+    ((kYCQLQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
     (kClient)
 
     // Tserver classes
@@ -112,8 +112,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kUnused, 0xFFFFFFFFU))
 
     // Wait states related to postgres
-    // Don't change the position of kPostgresReserved
-    ((kPostgresReserved, YB_ASH_MAKE_EVENT(TServerWait)))
+    // Don't change the position of kYSQLReserved
+    ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
     (kStorageRead)
@@ -134,7 +134,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kCreatingNewTablet)
     (kSaveRaftGroupMetadataToDisk)
     (kTransactionStatusCache_DoGetCommitData)
-    (kWaitForYsqlBackendsCatalogVersion)
+    (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
@@ -159,13 +159,13 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
-    ((kCQL_Parse, YB_ASH_MAKE_EVENT(CqlQueryProcessing)))
-    (kCQL_Read)
-    (kCQL_Write)
-    (kCQL_Analyze)
-    (kCQL_Execute)
-    ((kYBC_WaitingOnDocdb, YB_ASH_MAKE_EVENT(Client)))
-    (kYBC_LookingUpTablet)
+    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
+    (kYCQL_Read)
+    (kYCQL_Write)
+    (kYCQL_Analyze)
+    (kYCQL_Execute)
+    ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
+    (kYBClient_LookingUpTablet)
 );
 
 // We also want to track background operations such as, log-append

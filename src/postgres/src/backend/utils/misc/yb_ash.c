@@ -488,7 +488,6 @@ copy_pgproc_sample_fields(PGPROC *proc)
 {
 	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
 
-	/* TODO: Add aux info to circular buffer once it's available */
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
@@ -509,6 +508,8 @@ copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
+	/* TODO(asaha): Add aux info to circular buffer once it's available */
+	cb_sample->aux_info[0] = '\0';
 	cb_sample->sample_weight = sample_weight;
 	cb_sample->sample_time = sample_time;
 }

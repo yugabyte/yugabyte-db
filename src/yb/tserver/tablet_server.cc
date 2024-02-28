@@ -183,9 +183,9 @@ DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres us
 
 DECLARE_int32(num_concurrent_backfills_allowed);
 
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+constexpr int kTServerYBClientDefaultTimeoutMs = 60 * 1000;
 
-DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYBClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 

@@ -139,7 +139,7 @@ DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
-DECLARE_int32(cdcsdk_max_consistent_records);
+DECLARE_uint32(cdcsdk_max_consistent_records);
 
 namespace yb {
 
@@ -475,11 +475,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0);
 
-  Status InitVirtualWAL(const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids);
+  Status InitVirtualWAL(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id = 1);
+
+  Status DestroyVirtualWAL(const uint64_t session_id = 1);
 
   Result<GetAllPendingChangesResponse> GetAllPendingChangesFromCdc(
-      const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_records,
-      bool init_virtual_wal);
+      const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
+      bool init_virtual_wal, const uint64_t session_id = 1);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -508,7 +512,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t replication_factor, bool add_tables_without_primary_key = false);
 
   Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
-      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids);
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id = 1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,

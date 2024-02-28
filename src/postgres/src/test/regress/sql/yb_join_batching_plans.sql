@@ -26,6 +26,7 @@ ANALYZE p5;
 
 SET yb_enable_optimizer_statistics = on;
 SET yb_enable_base_scans_cost_model = on;
+SET yb_prefer_bnl = off;
 
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;

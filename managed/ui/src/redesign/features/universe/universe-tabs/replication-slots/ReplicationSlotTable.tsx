@@ -1,14 +1,19 @@
 import { FC } from 'react';
 import _ from 'lodash';
-import { useQuery, useQueries } from 'react-query';
+import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueries } from 'react-query';
 import { Box, Typography, Link } from '@material-ui/core';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { TableHeaderColumn } from 'react-bootstrap-table';
+import { YBTable } from '../../../../../components/common/YBTable';
 import { YBLoading } from '../../../../../components/common/indicators';
 import { QUERY_KEY, api } from '../../../../utils/api';
-import { replicationSlotStyles } from './ReplicationSlotStyles';
-import { fetchCDCMetrics } from './helper';
-import { ReplicationSlotResponse } from './types';
+import { fetchCDCLagMetrics } from './utils/helper';
+import { formatDuration } from '../../../../../utils/Formatters';
+import { ReplicationSlot, ReplicationSlotResponse, SlotState } from './utils/types';
+import { StatusBadge, Badge_Types } from '../../../../../components/common/badge/StatusBadge';
+import { replicationSlotStyles } from './utils/ReplicationSlotStyles';
+
 //icons
 import DatabaseEvent from '../../../../assets/database-event.svg';
 import Flash from '../../../../assets/flash.svg';
@@ -29,7 +34,7 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
   const metricsQuery = useQueries(
     (replicationSlotData?.replicationSlots || []).map((d) => ({
       queryKey: d.streamID,
-      queryFn: () => fetchCDCMetrics(d.streamID, nodePrefix),
+      queryFn: () => fetchCDCLagMetrics(d.streamID, nodePrefix),
       enabled: !!replicationSlotData?.replicationSlots?.length
     }))
   );
@@ -37,16 +42,23 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
   const getCurrentLag = (sID: string) => {
     const streamResult = metricsQuery.find((m) => m.data?.streamID === sID);
     if (!streamResult) return 'n/a';
-    else return _.last(streamResult?.data?.cdcsdk_sent_lag_micros?.data[0]?.y);
+    const currentLag = Number(_.last(streamResult?.data?.cdcsdk_sent_lag_micros?.data[0]?.y));
+    return currentLag > 0 ? formatDuration(currentLag) : '0ms';
+  };
+
+  const handleRowClick = (row: ReplicationSlot) => {
+    browserHistory.push(`/universes/${universeUUID}/replication-slots/${row.streamID}`);
   };
 
   if (isLoading) return <YBLoading />;
   if (!!replicationSlotData?.replicationSlots?.length)
     return (
       <Box display="flex" flexDirection="column" width="100%">
-        <Typography>{replicationSlotData?.replicationSlots?.length} Replication Slots</Typography>
+        <Typography>
+          {replicationSlotData?.replicationSlots?.length} {t('cdc.replicationSlots')}
+        </Typography>
         <Box mt={3} width="100%" height="700px">
-          <BootstrapTable
+          <YBTable
             data={replicationSlotData?.replicationSlots}
             height={'690px'}
             tableStyle={{
@@ -62,6 +74,9 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               fontWeight: 600,
               color: '#0B1117'
             }}
+            options={{
+              onRowClick: handleRowClick
+            }}
           >
             <TableHeaderColumn
               width={'35%'}
@@ -69,15 +84,24 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               dataSort
               dataFormat={(cell) => <span>{cell}</span>}
             >
-              <span>Name</span>
+              <span>{t('cdc.name')}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
               width={'20%'}
               dataField="state"
               dataSort
-              dataFormat={(cell) => <span>{cell}</span>}
+              dataFormat={(cell) => (
+                <StatusBadge
+                  statusType={
+                    [SlotState.INITIATED, SlotState.ACTIVE].includes(cell)
+                      ? Badge_Types.SUCCESS
+                      : Badge_Types.DELETED
+                  }
+                  customLabel={_.capitalize(cell)}
+                />
+              )}
             >
-              <span>Status</span>
+              <span>{t('cdc.status')}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
               width={'25%'}
@@ -85,18 +109,18 @@ export const ReplicationSlotTable: FC<ReplicationTableProps> = ({ universeUUID, 
               dataSort
               dataFormat={(cell) => <span>{cell}</span>}
             >
-              <span>Database</span>
+              <span>{t('cdc.database')}</span>
             </TableHeaderColumn>
             <TableHeaderColumn
               width={'20%'}
               dataField="streamID"
               dataSort
-              dataFormat={(cell) => <span>{getCurrentLag(cell)} ms</span>}
+              dataFormat={(cell) => <span>{getCurrentLag(cell)}</span>}
               isKey
             >
-              <span>Current Lag</span>
+              <span>{t('cdc.currentLag')}</span>
             </TableHeaderColumn>
-          </BootstrapTable>
+          </YBTable>
         </Box>
       </Box>
     );

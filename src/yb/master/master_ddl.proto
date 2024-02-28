@@ -174,6 +174,7 @@ message ListTablesResponsePB {
     optional string pgschema_name = 7;
     optional ColocatedInfo colocated_info = 8;
     optional bool hidden = 9;
+    optional string indexed_table_id = 10;
   }
 
   repeated TableInfo tables = 2;

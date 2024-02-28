@@ -729,6 +729,7 @@ class PgClientServiceImpl::Impl {
     std::vector<master::TSInformationPB> live_tservers;
     RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
     GetLockStatusRequestPB lock_status_req;
+    lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
       // TODO(pglocks): Forward the request to tservers hosting the involved tablets of the txn,
       // as opposed to broadcasting the request to all live tservers.
@@ -1293,7 +1294,7 @@ class PgClientServiceImpl::Impl {
 
   void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
     for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
+      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }
@@ -1301,7 +1302,7 @@ class PgClientServiceImpl::Impl {
 
   void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
     for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
+      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
         wait_state_ptr->ToPB(resp->add_wait_states());
       }
     }

@@ -67,8 +67,10 @@ service CDCService {
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
-  rpc InitVirtualWALForCDC(InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
-  rpc GetConsistentChanges(GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
+      returns (DestroyVirtualWALForCDCResponsePB);
 }
 
 message CDCErrorPB {
@@ -173,6 +175,13 @@ message GetConsistentChangesResponsePB {
   repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
 }
 
+message DestroyVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+}
+
+message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
 
 message CreateCDCStreamRequestPB {
   // Table to set up CDC on.
