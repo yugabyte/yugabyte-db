@@ -1204,6 +1204,23 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
     }
   }
 
+  // Add a new entry in cdc_state table representing the replication slot for the associated stream.
+  // This entry holds metadata for two main usages:
+  // 1. Represent the slot's consistent point i.e. first record sent in the streaming phase will
+  // have LSN & txnID set to 2.
+  // 2. Initialize components (LSN & txnID generators) of the CDCSDK Virtual WAL on restarts.
+  if (FLAGS_ysql_yb_enable_replication_commands && has_consistent_snapshot_option) {
+    cdc::CDCStateTableEntry entry(cdc::kCDCSDKSlotEntryTabletId, stream_id);
+    entry.confirmed_flush_lsn = 2;
+    entry.restart_lsn = 1;
+    entry.xmin = 1;
+    entry.record_id_commit_time = consistent_snapshot_time;
+    entry.cdc_sdk_safe_time = consistent_snapshot_time;
+    entries.push_back(entry);
+    VLOG(1) << "Added entry in cdc_state for the replication slot with tablet_id: "
+            << cdc::kCDCSDKSlotEntryTabletId << " stream_id: " << stream_id;
+  }
+
   return cdc_state_table_->UpsertEntries(entries);
 }
 
