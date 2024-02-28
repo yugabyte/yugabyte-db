@@ -2431,6 +2431,12 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const auto& checkpoint = *entry.checkpoint;
     count++;
 
+    // kCDCSDKSlotEntryTabletId represent cdc_state entry for a replication slot. Ignore it while
+    // moving retention barriers.
+    if (tablet_id == kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
+
     // Find the minimum checkpoint op_id per tablet. This minimum op_id
     // will be passed to LEADER and it's peers for log cache eviction and clean the consumed intents
     // in a regular interval.
