@@ -3,7 +3,7 @@ title: High availability during failures in a local universe
 headerTitle: High availability during node and zone failures
 linkTitle: HA during failures
 description: Simulate fault tolerance and resilience in a local YugabyteDB database.
-headcontent: Keep serving requests through node, zone, and region failures
+headcontent: Keep serving requests through node, rack, zone, and region failures
 menu:
   stable:
     identifier: node-failure-1-macos
