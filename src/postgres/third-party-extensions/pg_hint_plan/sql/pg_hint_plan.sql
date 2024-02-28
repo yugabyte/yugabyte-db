@@ -9,7 +9,31 @@ SET client_min_messages TO log;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
+
+LOAD 'pg_hint_plan';
 SET pg_hint_plan.debug_print TO on;
+SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
+SHOW pg_hint_plan.enable_hint_table;
+
+/* query-id related test */
+SET compute_query_id to off;
+SET pg_hint_plan.enable_hint_table to on;	-- error
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+SELECT 1;									-- not
+SET compute_query_id to on;
+SELECT 1;									-- reactivated
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+SET pg_hint_plan.enable_hint_table to off;
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SELECT 1;									-- no warining
+
+RESET compute_query_id;
+RESET pg_hint_plan.enable_hint_table;
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
@@ -36,20 +60,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 -- pg_hint_plan_comments can be used in between queries
 EXPLAIN (COSTS false) /*+Set(enable_indexscan off)*/
  SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- YB_COMMENT
--- Since t1.id and t2.id is sorted postgres will ideally use merge joins. However, YB does not
--- support merge join for now. Postgres output for the query is as follows.
---           QUERY PLAN
--------------------------------
---  Merge Join
---    Merge Cond: (t1.id = t2.id)
---    ->  Sort
---          Sort Key: t1.id
---          ->  Seq Scan on t1
---    ->  Sort
---          Sort Key: t2.id
---          ->  Seq Scan on t2
--- (8 rows)
 /*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -109,6 +119,12 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+
+-- YB_COMMENT
+-- Because the plan defaults to a BNL in Yugabyte, add a NoYbBatchedNL test
+/*+NoYbBatchedNL(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -513,12 +529,23 @@ EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
 -- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
 -- /*+TidScan(p1)*/
 -- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
---
+
+-- IndexScan is safe for unordered indexes
+CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
+CREATE TABLE ischk_d1 PARTITION OF ischk FOR VALUES IN (0);
+CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
+CREATE INDEX ischk_idx ON ischk USING gin (b);
+/*+ IndexScan(ischk ischk_idx) */
+EXPLAIN (COSTS false) SELECT * FROM ischk WHERE b = 'x';
+DROP TABLE ischk;
+
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
 EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
 
 -- duplicate hint test
+-- YB_COMMENT
+-- Removed TidScan because CTID based scans and searches not supported in Yugabyte
 /*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -646,9 +673,9 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
 );
 
--- ambigous error
+-- ambiguous error
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-/*+NestLoop(t1 t2)*/
+/*+MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
 /*+Leading(t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
@@ -779,7 +806,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t
 
 -- YB_COMMENT
 -- Inheritance not supporte by Yugabyte
--- Inherited table test to specify the index's name
+-- inherite table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
 -- /*+IndexScan(p2 p2_pkey)*/
 -- EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -790,7 +817,7 @@ EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid =
 --
 -- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 --
--- Inhibit parallel execution to avoid inheriting the hint
+-- Inhibit parallel exection to avoid interfaring the hint
 set max_parallel_workers_per_gather to 0;
 -- /*+ IndexScan(p2 p2_val)*/
 -- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
@@ -848,6 +875,9 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 /*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+
+-- YB_COMMENT
+-- Yugabyte does not support bitmap scan
 /*+ BitmapScanRegexp(t5 t5_[^i].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 /*+ BitmapScanRegexp(t5 t5_id[0-9].*)*/
@@ -1061,14 +1091,12 @@ $$ LANGUAGE plpgsql;
 -- END;
 -- $$ VOLATILE LANGUAGE plpgsql;
 -- SET pg_hint_plan.enable_hint = false;
--- SELECT pg_sleep(1);
 -- SELECT reset_stats_and_wait();
 -- SELECT dynsql2(9000);
 -- SELECT pg_sleep(1);
 -- -- one of the index scans happened while planning.
 -- SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
 -- SET pg_hint_plan.enable_hint = true;
--- SELECT pg_sleep(1);
 -- SELECT reset_stats_and_wait();
 -- SELECT dynsql2(9000);
 -- SELECT pg_sleep(1);
@@ -1105,12 +1133,12 @@ $$ LANGUAGE plpgsql;
 -- UNION
 -- SELECT val::int FROM p2 WHERE id < 1000;
 --
--- --
--- -- Rows hint tests
--- --
--- -- Explain result includes "Planning time" if COSTS is enabled, but
--- -- this test needs it enabled for get rows count. So do tests via psql
--- -- and grep -v the mutable line.
+--
+-- Rows hint tests
+--
+-- Explain result includes "Planning time" if COSTS is enabled, but
+-- this test needs it enabled for get rows count. So do tests via psql
+-- and grep -v the mutable line.
 --
 -- -- Parse error check
 -- /*+ Rows() */ SELECT 1;
@@ -1193,8 +1221,11 @@ $$ LANGUAGE plpgsql;
 --
 -- hint error level
 set client_min_messages to 'DEBUG1';
-set pg_hint_plan.debug_level to 'verbose';
 /*+ SeqScan( */ SELECT 1;
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+set pg_hint_plan.parse_messages to 'ERROR';
+-- Force an error before running the planner hook, when forcing the Set hints.
+/*+ Set(work_mem "foo") */ SELECT 1;
 /*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
 set pg_hint_plan.message_level to 'DEBUG1';
 set pg_hint_plan.parse_messages to 'NOTICE';

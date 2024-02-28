@@ -37,6 +37,9 @@
 #include "parser/scansup.h"
 #include "utils/queryjumble.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */
 
 /* GUC parameters */
@@ -281,6 +284,8 @@ JumbleRangeTable(JumbleState *jstate, List *rtable)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+				if (IsYugaByteEnabled() && rte->relid >= FirstNormalObjectId)
+					APP_JUMB(MyDatabaseId);
 				APP_JUMB(rte->relid);
 				JumbleExpr(jstate, (Node *) rte->tablesample);
 				APP_JUMB(rte->inh);

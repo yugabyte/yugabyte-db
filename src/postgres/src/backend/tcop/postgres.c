@@ -4475,7 +4475,7 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	elog(DEBUG1, "Error details: edata->message=%s edata->filename=%s edata->lineno=%d",
+	elog(DEBUG2, "Error details: edata->message=%s edata->filename=%s edata->lineno=%d",
 			 edata->message, edata->filename, edata->lineno);
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
