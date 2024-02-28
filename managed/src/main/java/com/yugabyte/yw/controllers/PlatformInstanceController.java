@@ -97,6 +97,10 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instance.getIsLeader()) {
       config.get().updateLastFailover();
     }
+
+    // Sync instances immediately after being added
+    replicationManager.oneOffSync();
+
     auditService()
         .createAuditEntry(
             request,
