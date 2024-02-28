@@ -57,18 +57,27 @@ get_rettuple(FunctionCallInfo fcinfo)
  * columns. When first argument is "on" or "true", then warnings will be raised.
  */
 static bool
-should_raise_warnings(FunctionCallInfo fcinfo)
+should_raise_warnings(FunctionCallInfo fcinfo, bool *raise_error)
 {
 	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
 	Trigger		   *trigger = trigdata->tg_trigger;
+
+	*raise_error = false;
 
 	if (trigger->tgnargs > 0)
 	{
 		char		  **args = trigger->tgargs;
 
 		if (strcmp(args[0], "on") == 0 ||
-				strcmp(args[0], "true") == 0)
+				strcmp(args[0], "true") == 0 ||
+				strcmp(args[0], "warning") == 0)
 			return true;
+
+		if (strcmp(args[0], "error") == 0)
+		{
+			*raise_error = true;
+			return true;
+		}
 	}
 
 	return false;
@@ -91,10 +100,11 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 	int				nresetcols = 0;
 	int				attnum;
 	bool			raise_warning = false;
+	bool			raise_error;
 	char		   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_empty_strings");
-	raise_warning = should_raise_warnings(fcinfo);
+	raise_warning = should_raise_warnings(fcinfo, &raise_error);
 
 	rettuple = get_rettuple(fcinfo);
 	tupdesc = trigdata->tg_relation->rd_att;
@@ -149,7 +159,7 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 						if (!relname)
 							relname = SPI_getrelname(trigdata->tg_relation);
 
-						elog(WARNING,
+						elog(raise_error ? ERROR : WARNING,
 				"Field \"%s\" of table \"%s\" is empty string (replaced by NULL).",
 								SPI_fname(tupdesc, attnum), relname);
 					}
@@ -195,10 +205,11 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 	int				nresetcols = 0;
 	int				attnum;
 	bool			raise_warning = false;
+	bool			raise_error;
 	char		   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_null_strings");
-	raise_warning = should_raise_warnings(fcinfo);
+	raise_warning = should_raise_warnings(fcinfo, &raise_error);
 
 	rettuple = get_rettuple(fcinfo);
 
@@ -252,7 +263,7 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 					if (!relname)
 						relname = SPI_getrelname(trigdata->tg_relation);
 
-					elog(WARNING,
+					elog(raise_error ? ERROR : WARNING,
 				"Field \"%s\" of table \"%s\" is NULL (replaced by '').",
 								SPI_fname(tupdesc, attnum), relname);
 				}

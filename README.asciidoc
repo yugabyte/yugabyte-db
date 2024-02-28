@@ -883,12 +883,12 @@ text type columns. Both variants has some advantages and disadvantages.
 This can be enusured with trigger functions:
 
 ----
-oracle.replace_empty_strings([raise_warnings boolean])
-oracle.replace_null_strings([raise_warnings boolean])
+oracle.replace_empty_strings([ 'on' | 'true' | 'warning' | 'error' ])
+oracle.replace_null_strings([ 'on' | 'true' | 'warning' | 'error' ])
 ----
 
-Optional boolean argument is used as indicator so these functions should to
-raise warning when row was changed inside these functions.
+Optional string argument is used as indicator so these functions should to
+raise warning (possibly error) when row was changed inside these functions.
 
 ----
 CREATE TABLE test(id serial, name varchar, surname varchar);
