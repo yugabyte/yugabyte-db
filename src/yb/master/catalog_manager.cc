@@ -7703,6 +7703,9 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_name(ltm->name());
     table->set_table_type(ltm->table_type());
     table->set_relation_type(relation_type);
+    if (relation_type == INDEX_TABLE_RELATION) {
+      table->set_indexed_table_id(table_info->indexed_table_id());
+    }
     table->set_state(ltm->pb.state());
     table->set_pgschema_name(ltm->schema().pgschema_name());
     if (table_info->colocated()) {
