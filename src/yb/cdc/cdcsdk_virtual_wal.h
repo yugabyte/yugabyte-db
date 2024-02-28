@@ -14,14 +14,15 @@
 
 #include <queue>
 #include <unordered_set>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdcsdk_unique_record_id.h"
 #include "yb/cdc/xrepl_types.h"
-#include "yb/util/monotime.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/opid.h"
-#include "yb/cdc/cdcsdk_unique_record_id.h"
 
 namespace yb {
 
