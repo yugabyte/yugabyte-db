@@ -6,15 +6,13 @@ cd pg15_tests
 # All tests should start with "test_".
 diff <(find . -name '*.sh' | grep -v '^./test_' | sort) - <<EOT
 ./common.sh
-./run_flaky_cxx_tests.sh
-./run_flaky_java_tests.sh
-./run_passing_cxx_tests.sh
-./run_passing_java_tests.sh
+./run_flaky_tests.sh
+./run_passing_tests.sh
 ./run_shell_tests.sh
 ./run_test_n_times.sh
 EOT
 
-# flaky_foo.tsv and passing_foo.tsv.
+# flaky_tests.tsv and passing_tests.tsv.
 find . -name '*.tsv' \
   | while read -r tsv; do
   # Check sorted and no duplicates.

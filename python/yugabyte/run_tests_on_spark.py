@@ -1070,11 +1070,9 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
     # For pg15, run only tests that we expect to pass.  To run more in addition to that, pass
     # jenkins DSL "test regex", and that will be combined with the expected-pass tests.
     src_root = yb_dist_tests.get_global_conf().yb_src_root
-    pg15_test_descriptors = subprocess.run(['awk', '{print$NF}',
-                                            f'{src_root}/pg15_tests/flaky_cxx.tsv',
-                                            f'{src_root}/pg15_tests/flaky_java.tsv',
-                                            f'{src_root}/pg15_tests/passing_cxx.tsv',
-                                            f'{src_root}/pg15_tests/passing_java.tsv'],
+    pg15_test_descriptors = subprocess.run(['cut', '-f', '2',
+                                            f'{src_root}/pg15_tests/flaky_tests.tsv',
+                                            f'{src_root}/pg15_tests/passing_tests.tsv'],
                                            stdout=subprocess.PIPE,
                                            text=True,
                                            check=True).stdout.rstrip().split('\n')

@@ -11,14 +11,11 @@ Run a test n times like
 Run all tests once like
 
     pg15_tests/run_shell_tests.sh fastdebug --clang16
-    pg15_tests/run_passing_cxx_tests.sh fastdebug --clang16
-    pg15_tests/run_passing_java_tests.sh fastdebug --clang16
-    pg15_tests/run_flaky_cxx_tests.sh fastdebug --clang16
-    pg15_tests/run_flaky_java_tests.sh fastdebug --clang16
+    pg15_tests/run_passing_tests.sh fastdebug --clang16
+    pg15_tests/run_flaky_tests.sh fastdebug --clang16
 
-Add passing tests into passing_cxx.tsv or passing_java.tsv.  Add <5% flaky
-tests into flaky_cxx.tsv or flaky_java.tsv.  >5% flaky and failing tests can be
-tracked in shell tests.
+Add passing tests into passing_tests.tsv.  Add <5% flaky tests into
+flaky_tests.tsv.  >5% flaky and failing tests can be tracked in shell tests.
 
 Add shell tests by adding a new test_*.sh file following the existing
 conventions.
