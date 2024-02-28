@@ -86,9 +86,11 @@ PG_MODULE_MAGIC;
 #define HINT_PARALLEL			"Parallel"
 
 #define HINT_NESTLOOP			"NestLoop"
+#define HINT_BATCHEDNL			"YbBatchedNL"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
 #define HINT_NONESTLOOP			"NoNestLoop"
+#define HINT_NOBATCHEDNL		"NoYbBatchedNL"
 #define HINT_NOMERGEJOIN		"NoMergeJoin"
 #define HINT_NOHASHJOIN			"NoHashJoin"
 #define HINT_LEADING			"Leading"
@@ -125,13 +127,15 @@ enum
 	ENABLE_NESTLOOP = 0x01,
 	ENABLE_MERGEJOIN = 0x02,
 	ENABLE_HASHJOIN = 0x04,
-	ENABLE_MEMOIZE	= 0x08
+	ENABLE_MEMOIZE	= 0x08,
+	ENABLE_BATCHEDNL = 0x10
 } JOIN_TYPE_BITS;
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
 						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN | \
 						 ENABLE_INDEXONLYSCAN)
-#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
+#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | \
+								 ENABLE_HASHJOIN | ENABLE_BATCHEDNL)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
 
@@ -153,9 +157,11 @@ typedef enum HintKeyword
 	HINT_KEYWORD_NOINDEXONLYSCAN,
 
 	HINT_KEYWORD_NESTLOOP,
+	HINT_KEYWORD_BATCHEDNL,
 	HINT_KEYWORD_MERGEJOIN,
 	HINT_KEYWORD_HASHJOIN,
 	HINT_KEYWORD_NONESTLOOP,
+	HINT_KEYWORD_NOBATCHEDNL,
 	HINT_KEYWORD_NOMERGEJOIN,
 	HINT_KEYWORD_NOHASHJOIN,
 
@@ -616,9 +622,11 @@ static const HintParser parsers[] = {
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
 
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
+	{HINT_BATCHEDNL, JoinMethodHintCreate, HINT_KEYWORD_BATCHEDNL},
 	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
 	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
 	{HINT_NONESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NONESTLOOP},
+	{HINT_NOBATCHEDNL, JoinMethodHintCreate, HINT_KEYWORD_NOBATCHEDNL},
 	{HINT_NOMERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOMERGEJOIN},
 	{HINT_NOHASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOHASHJOIN},
 
@@ -2222,6 +2230,9 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 		case HINT_KEYWORD_NESTLOOP:
 			hint->enforce_mask = ENABLE_NESTLOOP;
 			break;
+		case HINT_KEYWORD_BATCHEDNL:
+			hint->enforce_mask = ENABLE_BATCHEDNL;
+			break;
 		case HINT_KEYWORD_MERGEJOIN:
 			hint->enforce_mask = ENABLE_MERGEJOIN;
 			break;
@@ -2230,6 +2241,9 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 			break;
 		case HINT_KEYWORD_NONESTLOOP:
 			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
+			break;
+		case HINT_KEYWORD_NOBATCHEDNL:
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_BATCHEDNL;
 			break;
 		case HINT_KEYWORD_NOMERGEJOIN:
 			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
@@ -2571,6 +2585,8 @@ get_current_join_mask()
 		mask |= ENABLE_HASHJOIN;
 	if (enable_memoize)
 		mask |= ENABLE_MEMOIZE;
+	if (yb_enable_batchednl)
+		mask |= ENABLE_BATCHEDNL;
 
 	return mask;
 }
@@ -2767,7 +2783,7 @@ set_join_config_options(unsigned char enforce_mask, bool set_memoize,
 	unsigned char	mask;
 
 	if (enforce_mask == ENABLE_NESTLOOP || enforce_mask == ENABLE_MERGEJOIN ||
-		enforce_mask == ENABLE_HASHJOIN)
+		enforce_mask == ENABLE_HASHJOIN || enforce_mask == ENABLE_BATCHEDNL)
 		mask = enforce_mask;
 	else
 		mask = enforce_mask & current_hint_state->init_join_mask;
@@ -2778,6 +2794,8 @@ set_join_config_options(unsigned char enforce_mask, bool set_memoize,
 
 	if (set_memoize)
 		SET_CONFIG_OPTION("enable_memoize", ENABLE_MEMOIZE);
+
+	SET_CONFIG_OPTION("yb_enable_batchednl", ENABLE_BATCHEDNL);
 
 	/*
 	 * Hash join may be rejected for the reason of estimated memory usage. Try

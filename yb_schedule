@@ -1,0 +1,10 @@
+# third-party-extensions/pg_hint_plan/yb_schedule
+
+test: oldextversions
+test: init
+test: base_plan
+test: pg_hint_plan
+test: hints_anywhere
+# TODO(#TBD): These tests are broken in upstream. Once a hint is given by a statement, all
+# subsequent statements continue to use the same hints.
+# test: plpgsql

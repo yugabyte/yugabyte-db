@@ -56,6 +56,9 @@ TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	docs/* expected/*.out sql/*.sql sql/maskout*.sh \
 	data/data.csv SPECS/*.spec
 
+LDFLAGS += -lyb_pggate_util
+LDFLAGS += -L${BUILD_ROOT}/lib
+
 rpms: rpm15
 
 # pg_hint_plan.c includes core.c and make_join_rel.c

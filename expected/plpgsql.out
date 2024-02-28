@@ -5,15 +5,19 @@ SET search_path TO public;
 SET client_min_messages TO log;
 \set SHOW_CONTEXT always
 LOAD 'pg_hint_plan';
+ERROR:  LOAD not supported yet
+LINE 1: LOAD 'pg_hint_plan';
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET pg_hint_plan.debug_print TO on;
 SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
- ?column? 
+ ?column?
 ----------
  t
 (1 row)
 
 SHOW pg_hint_plan.enable_hint_table;
- pg_hint_plan.enable_hint_table 
+ pg_hint_plan.enable_hint_table
 --------------------------------
  off
 (1 row)
@@ -39,7 +43,7 @@ $$;
 -- when expected.
 begin;
 select set_config('compute_query_id','off', true);
- set_config 
+ set_config
 ------------
  off
 (1 row)
@@ -47,7 +51,7 @@ select set_config('compute_query_id','off', true);
 -- Show plan without hints
 explain (costs false) with test as (select 'z' val)
   select t1.val from test t1, test t2 where t1.val = t2.val;
-            QUERY PLAN            
+            QUERY PLAN
 ----------------------------------
  Nested Loop
    Join Filter: (t1.val = t2.val)
@@ -68,9 +72,9 @@ NOTICE:  Execution of test_hint_exception at level 2
 CONTEXT:  PL/pgSQL function test_hint_exception(integer) line 4 at RAISE
 SQL statement "select test_hint_exception(1)"
 PL/pgSQL function test_hint_exception(integer) line 10 at EXECUTE
- test_hint_exception 
+ test_hint_exception
 ---------------------
- 
+
 (1 row)
 
 -- Show plan with hint, stored as an internal state of plpgsql_recurse_level.
@@ -83,7 +87,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Merge Join
    Merge Cond: (t1.val = t2.val)
@@ -100,7 +104,7 @@ error hint:
 -- This query should have the same plan as the first one, without hints.
 explain (costs false) with test as (select 'y' val)
   select t1.val from test t1, test t2 where t1.val = t2.val;
-            QUERY PLAN            
+            QUERY PLAN
 ----------------------------------
  Nested Loop
    Join Filter: (t1.val = t2.val)
@@ -114,9 +118,9 @@ explain (costs false) with test as (select 'y' val)
 select test_hint_exception(1);
 NOTICE:  Execution of test_hint_exception at level 2
 CONTEXT:  PL/pgSQL function test_hint_exception(integer) line 4 at RAISE
- test_hint_exception 
+ test_hint_exception
 ---------------------
- 
+
 (1 row)
 
 -- Show plan with hint.
@@ -129,7 +133,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Merge Join
    Merge Cond: (t1.val = t2.val)
@@ -146,7 +150,7 @@ error hint:
 -- This query should have no hints.
 explain (costs false) with test as (select 'y' val)
   select t1.val from test t1, test t2 where t1.val = t2.val;
-            QUERY PLAN            
+            QUERY PLAN
 ----------------------------------
  Nested Loop
    Join Filter: (t1.val = t2.val)
@@ -160,7 +164,7 @@ rollback;
 -- Still no hints used here.
 explain (costs false) with test as (select 'y' val)
   select t1.val from test t1, test t2 where t1.val = t2.val;
-            QUERY PLAN            
+            QUERY PLAN
 ----------------------------------
  Nested Loop
    Join Filter: (t1.val = t2.val)
@@ -407,10 +411,10 @@ PL/pgSQL function test_hint_queries(integer,integer) line 21 at EXECUTE
 SQL statement "select test_hint_queries(3, 0)"
 PL/pgSQL function test_hint_transaction() line 5 at EXECUTE
 table test_hint_tab;
- a 
+ a
 ---
- 0
  2
+ 0
 (2 rows)
 
 drop procedure test_hint_transaction;
