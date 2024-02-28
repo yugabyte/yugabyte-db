@@ -21,6 +21,7 @@
 #include <catalog/pg_am.h>
 #include <optimizer/pathnode.h>
 #include "nodes/pg_list.h"
+#include <server/pg_config_manual.h>
 
 #include "query/query_operator.h"
 #include "planner/mongo_query_operator.h"
@@ -32,6 +33,19 @@
 #include "vector/vector_utilities.h"
 #include "utils/version_utils.h"
 #include "query/helio_bson_compare.h"
+
+typedef struct
+{
+	pgbsonelement minElement;
+	bool isMinInclusive;
+	IndexClause *minClause;
+	pgbsonelement maxElement;
+	bool isMaxInclusive;
+	IndexClause *maxClause;
+
+	bool isInvalidCandidateForRange;
+} DollarRangeElement;
+
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -359,20 +373,13 @@ static List *
 OptimizeIndexExpressionsForRange(List *indexClauses)
 {
 	ListCell *indexPathCell;
-	bool isValidCandidateForRange = true;
-	pgbsonelement minElementCandidate = { 0 };
-	bool isMinInclusive = false;
-	pgbsonelement maxElementCandidate = { 0 };
-	bool isMaxInclusive = false;
+	DollarRangeElement rangeElements[INDEX_MAX_KEYS];
+	memset(&rangeElements, 0, sizeof(DollarRangeElement) * INDEX_MAX_KEYS);
+
 	foreach(indexPathCell, indexClauses)
 	{
 		IndexClause *iclause = (IndexClause *) lfirst(indexPathCell);
 		RestrictInfo *rinfo = iclause->rinfo;
-
-		if (!isValidCandidateForRange)
-		{
-			break;
-		}
 
 		if (!IsA(rinfo->clause, OpExpr))
 		{
@@ -383,6 +390,14 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 		const MongoIndexOperatorInfo *operator =
 			GetMongoIndexOperatorByPostgresOperatorId(opExpr->opno);
 		bool isComparisonInvalidIgnore = false;
+
+		DollarRangeElement *element = &rangeElements[iclause->indexcol];
+
+		if (element->isInvalidCandidateForRange)
+		{
+			continue;
+		}
+
 		switch (operator->indexStrategy)
 		{
 			case BSON_INDEX_STRATEGY_DOLLAR_GREATER:
@@ -393,26 +408,27 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 				pgbsonelement argElement;
 				PgbsonToSinglePgbsonElement(secondArg, &argElement);
 
-				if (minElementCandidate.pathLength == 0)
+				if (element->minElement.pathLength == 0)
 				{
-					minElementCandidate = argElement;
-					isMinInclusive = operator->indexStrategy ==
-									 BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL;
+					element->minElement = argElement;
+					element->isMinInclusive = operator->indexStrategy ==
+											  BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL;
+					element->minClause = iclause;
 				}
-				else if (minElementCandidate.pathLength != argElement.pathLength ||
-						 strncmp(minElementCandidate.path, argElement.path,
+				else if (element->minElement.pathLength != argElement.pathLength ||
+						 strncmp(element->minElement.path, argElement.path,
 								 argElement.pathLength) != 0)
 				{
-					isValidCandidateForRange = false;
-					break;
+					element->isInvalidCandidateForRange = true;
 				}
 				else if (CompareBsonValueAndType(
-							 &minElementCandidate.bsonValue, &argElement.bsonValue,
+							 &element->minElement.bsonValue, &argElement.bsonValue,
 							 &isComparisonInvalidIgnore) < 0)
 				{
-					minElementCandidate = argElement;
-					isMinInclusive = operator->indexStrategy ==
-									 BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL;
+					element->minElement = argElement;
+					element->isMinInclusive = operator->indexStrategy ==
+											  BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL;
+					element->minClause = iclause;
 				}
 
 				break;
@@ -426,26 +442,27 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 				pgbsonelement argElement;
 				PgbsonToSinglePgbsonElement(secondArg, &argElement);
 
-				if (maxElementCandidate.pathLength == 0)
+				if (element->maxElement.pathLength == 0)
 				{
-					maxElementCandidate = argElement;
-					isMaxInclusive = operator->indexStrategy ==
-									 BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL;
+					element->maxElement = argElement;
+					element->isMaxInclusive = operator->indexStrategy ==
+											  BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL;
+					element->maxClause = iclause;
 				}
-				else if (maxElementCandidate.pathLength != argElement.pathLength ||
-						 strncmp(maxElementCandidate.path, argElement.path,
+				else if (element->maxElement.pathLength != argElement.pathLength ||
+						 strncmp(element->maxElement.path, argElement.path,
 								 argElement.pathLength) != 0)
 				{
-					isValidCandidateForRange = false;
-					break;
+					element->isInvalidCandidateForRange = true;
 				}
 				else if (CompareBsonValueAndType(
-							 &maxElementCandidate.bsonValue, &argElement.bsonValue,
+							 &element->maxElement.bsonValue, &argElement.bsonValue,
 							 &isComparisonInvalidIgnore) > 0)
 				{
-					maxElementCandidate = argElement;
-					isMaxInclusive = operator->indexStrategy ==
-									 BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL;
+					element->maxElement = argElement;
+					element->isMaxInclusive = operator->indexStrategy ==
+											  BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL;
+					element->maxClause = iclause;
 				}
 
 				break;
@@ -453,58 +470,70 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 
 			default:
 			{
-				isValidCandidateForRange = false;
 				break;
 			}
 		}
 	}
 
-	if (!isValidCandidateForRange)
+	for (int i = 0; i < INDEX_MAX_KEYS; i++)
 	{
-		return indexClauses;
+		if (rangeElements[i].isInvalidCandidateForRange)
+		{
+			continue;
+		}
+
+		if (rangeElements[i].minElement.bsonValue.value_type == BSON_TYPE_EOD ||
+			rangeElements[i].maxElement.bsonValue.value_type == BSON_TYPE_EOD)
+		{
+			continue;
+		}
+
+		if (rangeElements[i].minElement.pathLength !=
+			rangeElements[i].maxElement.pathLength ||
+			strncmp(rangeElements[i].minElement.path, rangeElements[i].maxElement.path,
+					rangeElements[i].minElement.pathLength) != 0)
+		{
+			continue;
+		}
+
+		OpExpr *expr = (OpExpr *) rangeElements[i].minClause->rinfo->clause;
+
+		pgbson_writer clauseWriter;
+		pgbson_writer childWriter;
+		PgbsonWriterInit(&clauseWriter);
+		PgbsonWriterStartDocument(&clauseWriter, rangeElements[i].minElement.path,
+								  rangeElements[i].minElement.pathLength,
+								  &childWriter);
+
+		PgbsonWriterAppendValue(&childWriter, "min", 3,
+								&rangeElements[i].minElement.bsonValue);
+		PgbsonWriterAppendValue(&childWriter, "max", 3,
+								&rangeElements[i].maxElement.bsonValue);
+		PgbsonWriterAppendBool(&childWriter, "minInclusive", 12,
+							   rangeElements[i].isMinInclusive);
+		PgbsonWriterAppendBool(&childWriter, "maxInclusive", 12,
+							   rangeElements[i].isMaxInclusive);
+		PgbsonWriterEndDocument(&clauseWriter, &childWriter);
+
+
+		Const *bsonConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
+										 PgbsonWriterGetPgbson(&clauseWriter)), false,
+									 false);
+
+		OpExpr *opExpr = (OpExpr *) make_opclause(BsonRangeMatchOperatorOid(), BOOLOID,
+												  false,
+												  linitial(expr->args),
+												  (Expr *) bsonConst, InvalidOid,
+												  InvalidOid);
+		opExpr->opfuncid = BsonRangeMatchFunctionId();
+		rangeElements[i].minClause->rinfo->clause = (Expr *) opExpr;
+		rangeElements[i].minClause->indexquals = list_make1(
+			rangeElements[i].minClause->rinfo);
+		rangeElements[i].maxClause->rinfo->clause = (Expr *) opExpr;
+		indexClauses = list_delete_ptr(indexClauses, rangeElements[i].maxClause);
 	}
 
-	if (minElementCandidate.bsonValue.value_type == BSON_TYPE_EOD ||
-		maxElementCandidate.bsonValue.value_type == BSON_TYPE_EOD)
-	{
-		return indexClauses;
-	}
-
-	if (minElementCandidate.pathLength != maxElementCandidate.pathLength ||
-		strncmp(minElementCandidate.path, maxElementCandidate.path,
-				minElementCandidate.pathLength) != 0)
-	{
-		return indexClauses;
-	}
-
-	IndexClause *iclause = (IndexClause *) linitial(indexClauses);
-	OpExpr *expr = (OpExpr *) iclause->rinfo->clause;
-
-	pgbson_writer clauseWriter;
-	pgbson_writer childWriter;
-	PgbsonWriterInit(&clauseWriter);
-	PgbsonWriterStartDocument(&clauseWriter, minElementCandidate.path,
-							  minElementCandidate.pathLength,
-							  &childWriter);
-
-	PgbsonWriterAppendValue(&childWriter, "min", 3, &minElementCandidate.bsonValue);
-	PgbsonWriterAppendValue(&childWriter, "max", 3, &maxElementCandidate.bsonValue);
-	PgbsonWriterAppendBool(&childWriter, "minInclusive", 12, isMinInclusive);
-	PgbsonWriterAppendBool(&childWriter, "maxInclusive", 12, isMaxInclusive);
-	PgbsonWriterEndDocument(&clauseWriter, &childWriter);
-
-
-	Const *bsonConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
-									 PgbsonWriterGetPgbson(&clauseWriter)), false, false);
-
-	OpExpr *opExpr = (OpExpr *) make_opclause(BsonRangeMatchOperatorOid(), BOOLOID, false,
-											  linitial(expr->args),
-											  (Expr *) bsonConst, InvalidOid, InvalidOid);
-	opExpr->opfuncid = BsonRangeMatchFunctionId();
-	iclause->rinfo->clause = (Expr *) opExpr;
-	iclause->indexquals = list_make1(iclause->rinfo);
-
-	return list_make1(iclause);
+	return indexClauses;
 }
 
 
@@ -844,12 +873,8 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 			}
 		}
 
-		if (context->inputData.isShardQuery)
-		{
-			indexPath->indexclauses = OptimizeIndexExpressionsForRange(
-				indexPath->indexclauses);
-		}
-
+		indexPath->indexclauses = OptimizeIndexExpressionsForRange(
+			indexPath->indexclauses);
 		if (EnableInQueryOptimization)
 		{
 			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, parentType);
