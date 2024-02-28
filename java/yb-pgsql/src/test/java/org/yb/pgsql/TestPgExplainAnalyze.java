@@ -35,6 +35,7 @@ import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
+import org.yb.util.json.ValueChecker;
 import org.yb.pgsql.ExplainAnalyzeUtils.ExplainAnalyzeOptionsBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
@@ -100,7 +101,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
       Checker checker = makeTopLevelBuilder()
           .storageReadRequests(Checkers.equal(5))
           .storageReadExecutionTime(Checkers.greater(0.0))
-          .storageRowsScanned(Checkers.equal(TABLE_ROWS))
           .storageWriteRequests(Checkers.equal(0))
           .storageFlushRequests(Checkers.equal(0))
           .catalogReadRequests(Checkers.equal(0))
@@ -112,8 +112,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
               .alias(TABLE_NAME)
               .storageTableReadRequests(Checkers.equal(5))
               .storageTableReadExecutionTime(Checkers.greater(0.0))
-              .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
-              .actualRows(Checkers.equal(TABLE_ROWS))
               .build())
           .build();
 
@@ -138,7 +136,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(1))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(5))
             .storageWriteRequests(Checkers.equal(0))
             .storageFlushRequests(Checkers.equal(0))
             .catalogReadRequests(Checkers.greater(0))
@@ -152,8 +149,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .indexName(PK_INDEX_NAME)
                 .storageTableReadRequests(Checkers.equal(1))
                 .storageTableReadExecutionTime(Checkers.greater(0.0))
-                .storageTableRowsScanned(Checkers.equal(5))
-                .actualRows(Checkers.equal(5))
                 .build())
             .build());
     }
@@ -172,7 +167,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
           .storageReadRequests(Checkers.equal(8))
           .storageReadExecutionTime(Checkers.greater(0.0))
-          .storageRowsScanned(Checkers.equal(8000))
           .storageWriteRequests(Checkers.equal(0))
           .storageFlushRequests(Checkers.equal(0))
           .catalogReadRequests(Checkers.greater(0))
@@ -186,11 +180,8 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
               .indexName(INDEX_NAME)
               .storageTableReadRequests(Checkers.equal(4))
               .storageTableReadExecutionTime(Checkers.greater(0.0))
-              .storageTableRowsScanned(Checkers.equal(4000))
               .storageIndexReadRequests(Checkers.equal(4))
               .storageIndexReadExecutionTime(Checkers.greater(0.0))
-              .storageIndexRowsScanned(Checkers.equal(4000))
-              .actualRows(Checkers.equal(4000))
               .build())
           .build());
     }
@@ -211,7 +202,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(4))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(4000))
             .storageWriteRequests(Checkers.equal(0))
             .storageFlushRequests(Checkers.equal(0))
             .catalogReadRequests(Checkers.greater(0))
@@ -225,8 +215,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .indexName(INDEX_NAME)
                 .storageIndexReadRequests(Checkers.equal(4))
                 .storageIndexReadExecutionTime(Checkers.greater(0.0))
-                .storageIndexRowsScanned(Checkers.equal(4000))
-                .actualRows(Checkers.equal(4000))
                 .build())
             .build());
     }
@@ -247,7 +235,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
       makeTopLevelBuilder()
           .storageReadRequests(Checkers.greater(((numLoops - 1) * 8) + 1))
           .storageReadExecutionTime(Checkers.greater(0.0))
-          .storageRowsScanned(Checkers.equal(36000 + 5))
           .storageWriteRequests(Checkers.equal(0))
           .storageFlushRequests(Checkers.equal(0))
           .catalogReadRequests(Checkers.greater(0))
@@ -265,8 +252,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                       .alias(t1Alias)
                       .storageTableReadRequests(Checkers.equal(1))
                       .storageTableReadExecutionTime(Checkers.greater(0.0))
-                      .storageTableRowsScanned(Checkers.equal(5))
-                      .actualRows(Checkers.equal(5))
                       .build(),
                   makePlanBuilder()
                       .nodeType(NODE_INDEX_SCAN)
@@ -277,11 +262,8 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                       .alias(t2Alias)
                       .storageTableReadRequests(Checkers.equal(4))
                       .storageTableReadExecutionTime(Checkers.greater(0.0))
-                      .storageTableRowsScanned(Checkers.equal(3600))
                       .storageIndexReadRequests(Checkers.equal(4))
                       .storageIndexReadExecutionTime(Checkers.greater(0.0))
-                      .storageIndexRowsScanned(Checkers.equal(3600))
-                      .actualRows(Checkers.equal(3600))
                       .build())
               .build())
           .build());
@@ -301,7 +283,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
       makeTopLevelBuilder()
           .storageReadRequests(Checkers.equal(1))
           .storageReadExecutionTime(Checkers.greater(0.0))
-          .storageRowsScanned(Checkers.equal(0))
           .storageWriteRequests(Checkers.equal(0))
           .storageFlushRequests(Checkers.equal(0))
           .catalogReadRequests(Checkers.greater(0))
@@ -318,14 +299,12 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                       .alias(t1Alias)
                       .storageTableReadRequests(Checkers.equal(1))
                       .storageTableReadExecutionTime(Checkers.greater(0.0))
-                      .actualRows(Checkers.equal(0))
                       .build(),
                   makePlanBuilder()
                       .nodeType(NODE_INDEX_SCAN)
                       .relationName(TABLE_NAME)
                       .indexName(INDEX_NAME)
                       .alias(t2Alias)
-                      .actualRows(Checkers.equal(0))
                       .build())
               .build())
           .build());
@@ -346,12 +325,10 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
               .operation(OPERATION_INSERT)
               .relationName(TABLE_NAME)
               .alias(TABLE_NAME)
-              .actualRows(Checkers.equal(0))
               .plans(
                   makePlanBuilder()
                       .nodeType(NODE_VALUES_SCAN)
                       .alias("*VALUES*")
-                      .actualRows(Checkers.equal(4))
                       .build())
               .build();
 
@@ -361,7 +338,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             "(1003, 0, 0, 'vwx'), (1004, 0, 0, 'vwx')", TABLE_NAME),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(0))
-            .storageRowsScanned(Checkers.equal(0))
             .storageWriteRequests(Checkers.equal(8))
             .storageFlushRequests(Checkers.equal(2))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -380,7 +356,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             TABLE_NAME),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(0))
-            .storageRowsScanned(Checkers.equal(0))
             .storageWriteRequests(Checkers.equal(8))
             .storageFlushRequests(Checkers.equal(8))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -402,7 +377,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             TABLE_NAME, TABLE_ROWS, alias, TABLE_ROWS + 1, (int)(1.5 * TABLE_ROWS)),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(0))
-            .storageRowsScanned(Checkers.equal(0))
             .storageWriteRequests(Checkers.equal(5000))
             .storageFlushRequests(Checkers.equal(10))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -414,12 +388,10 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .nodeType(NODE_MODIFY_TABLE)
                 .relationName(TABLE_NAME)
                 .alias(TABLE_NAME)
-                .actualRows(Checkers.equal(0))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_FUNCTION_SCAN)
                         .alias(alias)
-                        .actualRows(Checkers.equal((int)(0.5 * TABLE_ROWS)))
                         .build())
                 .build())
             .build());
@@ -436,7 +408,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(2))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(410))
             .storageWriteRequests(Checkers.greater(1))
             .storageFlushRequests(Checkers.equal(1))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -448,7 +419,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .nodeType(NODE_MODIFY_TABLE)
                 .relationName(TABLE_NAME)
                 .alias(alias)
-                .actualRows(Checkers.equal(0))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_INDEX_SCAN)
@@ -457,12 +427,9 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .alias(alias)
                         .storageTableReadRequests(Checkers.equal(1))
                         .storageTableReadExecutionTime(Checkers.greater(0.0))
-                        .storageTableRowsScanned(Checkers.equal(205))
                         .storageIndexReadRequests(Checkers.equal(1))
                         .storageIndexReadExecutionTime(Checkers.greater(0.0))
-                        .storageIndexRowsScanned(Checkers.equal(205))
-                        .storageTableWriteRequests(Checkers.equal(205))
-                        .actualRows(Checkers.equal(205))
+                        .storageTableWriteRequests(Checkers.greater(0))
                         .build())
                 .build())
             .build());
@@ -478,7 +445,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(1))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(50))
             .storageWriteRequests(Checkers.equal(50 + 50))
             .storageFlushRequests(Checkers.equal(1))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -490,7 +456,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .nodeType(NODE_MODIFY_TABLE)
                 .relationName(TABLE_NAME)
                 .alias(alias)
-                .actualRows(Checkers.equal(0))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_INDEX_SCAN)
@@ -499,10 +464,8 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .alias(alias)
                         .storageTableReadRequests(Checkers.equal(1))
                         .storageTableReadExecutionTime(Checkers.greater(0.0))
-                        .storageTableRowsScanned(Checkers.equal(50))
                         .storageTableWriteRequests(Checkers.equal(50))
                         .storageIndexWriteRequests(Checkers.equal(50))
-                        .actualRows(Checkers.equal(50))
                         .build())
                 .build())
             .build());
@@ -518,7 +481,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
           makeTopLevelBuilder()
               .storageReadRequests(Checkers.equal(5))
               .storageReadExecutionTime(Checkers.greater(0.0))
-              .storageRowsScanned(Checkers.equal(TABLE_ROWS))
               .storageWriteRequests(Checkers.equal(5000 + 5000))
               .storageFlushRequests(Checkers.equal(20))
               .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -530,7 +492,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                   .nodeType(NODE_MODIFY_TABLE)
                   .relationName(TABLE_NAME)
                   .alias(TABLE_NAME)
-                  .actualRows(Checkers.equal(0))
                   .plans(
                       makePlanBuilder()
                           .nodeType(NODE_SEQ_SCAN)
@@ -538,10 +499,8 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                           .alias(TABLE_NAME)
                           .storageTableReadRequests(Checkers.equal(5))
                           .storageTableReadExecutionTime(Checkers.greater(0.0))
-                          .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
-                          .storageIndexWriteRequests(Checkers.equal(TABLE_ROWS))
-                          .storageTableWriteRequests(Checkers.equal(TABLE_ROWS))
-                          .actualRows(Checkers.equal(TABLE_ROWS))
+                          .storageIndexWriteRequests(Checkers.equal(5000))
+                          .storageTableWriteRequests(Checkers.equal(5000))
                           .build())
                   .build())
               .build());
@@ -552,7 +511,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
           makeTopLevelBuilder()
               .storageReadRequests(Checkers.equal(1))
               .storageReadExecutionTime(Checkers.greater(0.0))
-              .storageRowsScanned(Checkers.equal(0))
               .storageWriteRequests(Checkers.equal(0))
               .storageFlushRequests(Checkers.equal(0))
               .catalogReadRequests(Checkers.equal(0))
@@ -586,7 +544,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             INDEX_NAME, TABLE_NAME, alias),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(2))
-            .storageRowsScanned(Checkers.equal(410))
             .storageWriteRequests(Checkers.greater(1))
             .storageFlushRequests(Checkers.equal(1))
             .catalogReadRequests(Checkers.greater(0))
@@ -602,10 +559,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .indexName(INDEX_NAME)
                         .alias(alias)
                         .storageTableReadRequests(Checkers.equal(1))
-                        .storageTableRowsScanned(Checkers.equal(205))
                         .storageIndexReadRequests(Checkers.equal(1))
-                        .storageIndexRowsScanned(Checkers.equal(205))
-                        .actualRows(Checkers.equal(205))
                         .build())
                 .build())
             .build());
@@ -617,7 +571,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         String.format("INSERT INTO %s VALUES (1001, 0, 0, 'abc') RETURNING *", TABLE_NAME),
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(0))
-            .storageRowsScanned(Checkers.equal(0))
             .storageWriteRequests(Checkers.equal(2))
             .storageFlushRequests(Checkers.equal(1))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -631,11 +584,9 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .alias(TABLE_NAME)
                 .storageTableWriteRequests(Checkers.equal(1))
                 .storageIndexWriteRequests(Checkers.equal(1))
-                .actualRows(Checkers.equal(1))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_RESULT)
-                        .actualRows(Checkers.equal(1))
                         .build())
                 .build())
             .build());
@@ -650,7 +601,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(1))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(5))
             .storageWriteRequests(Checkers.equal(5))
             .storageFlushRequests(Checkers.equal(1))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -663,7 +613,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .relationName(TABLE_NAME)
                 .alias(TABLE_NAME)
                 .storageTableWriteRequests(Checkers.equal(5))
-                .actualRows(Checkers.equal(5))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_INDEX_SCAN)
@@ -672,8 +621,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .alias(TABLE_NAME)
                         .storageTableReadRequests(Checkers.equal(1))
                         .storageTableReadExecutionTime(Checkers.greater(0.0))
-                        .storageTableRowsScanned(Checkers.equal(5))
-                        .actualRows(Checkers.equal(5))
                         .build())
                 .build())
             .build());
@@ -689,7 +636,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
         makeTopLevelBuilder()
             .storageReadRequests(Checkers.equal(3))
             .storageReadExecutionTime(Checkers.greater(0.0))
-            .storageRowsScanned(Checkers.equal(2500))
             .storageWriteRequests(Checkers.equal(5000))
             .storageFlushRequests(Checkers.equal(10))
             .storageFlushExecutionTime(Checkers.greater(0.0))
@@ -703,7 +649,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                 .alias(alias)
                 .storageTableWriteRequests(Checkers.equal(2500))
                 .storageIndexWriteRequests(Checkers.equal(2500))
-                .actualRows(Checkers.equal(2500))
                 .plans(
                     makePlanBuilder()
                         .nodeType(NODE_INDEX_SCAN)
@@ -712,8 +657,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                         .alias(alias)
                         .storageTableReadRequests(Checkers.equal(3))
                         .storageTableReadExecutionTime(Checkers.greater(0.0))
-                        .storageTableRowsScanned(Checkers.equal(2500))
-                        .actualRows(Checkers.equal(2500))
                         .build())
                 .build())
             .build());
@@ -734,7 +677,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             query,
             makeTopLevelBuilder()
                 .storageReadRequests(Checkers.equal(5))
-                .storageRowsScanned(Checkers.equal(TABLE_ROWS))
                 .storageWriteRequests(Checkers.equal(0))
                 .storageFlushRequests(Checkers.equal(0))
                 .plan(makePlanBuilder()
@@ -744,7 +686,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .planRows(Checkers.greater(0))
                     .actualRows(Checkers.equal(5000))
                     .storageTableReadRequests(Checkers.equal(5))
-                    .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
                     .build())
                 .build());
 
@@ -764,7 +705,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .planRows(Checkers.greater(0))
                     .actualRows(Checkers.equal(5000))
                     .storageTableReadRequests(Checkers.equal(5))
-                    .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
                     .build())
                 .build());
 
@@ -781,7 +721,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             makeTopLevelBuilder()
                 .storageReadRequests(Checkers.equal(5))
                 .storageReadExecutionTime(Checkers.greater(0.0))
-                .storageRowsScanned(Checkers.equal(TABLE_ROWS))
                 .storageWriteRequests(Checkers.equal(0))
                 .storageFlushRequests(Checkers.equal(0))
                 .catalogReadRequests(Checkers.equal(0))
@@ -795,7 +734,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .actualRows(Checkers.equal(5000))
                     .storageTableReadRequests(Checkers.equal(5))
                     .storageTableReadExecutionTime(Checkers.greater(0.0))
-                    .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
                     .build())
                 .build());
 
@@ -817,7 +755,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .alias(TABLE_NAME)
                     .storageTableReadRequests(Checkers.equal(5))
                     .storageTableReadExecutionTime(Checkers.greater(0.0))
-                    .storageTableRowsScanned(Checkers.equal(TABLE_ROWS))
                     .actualRows(Checkers.equal(5000))
                     .build())
                 .build());
@@ -835,7 +772,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
             makeTopLevelBuilder()
                 .storageReadRequests(Checkers.equal(1))
                 .storageReadExecutionTime(Checkers.greater(0.0))
-                .storageRowsScanned(Checkers.equal(5))
                 .storageWriteRequests(Checkers.equal(0))
                 .storageFlushRequests(Checkers.equal(0))
                 .catalogReadRequests(Checkers.greaterOrEqual(0))
@@ -850,7 +786,6 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
                     .actualRows(Checkers.equal(5))
                     .storageTableReadRequests(Checkers.equal(1))
                     .storageTableReadExecutionTime(Checkers.greater(0.0))
-                    .storageTableRowsScanned(Checkers.equal(5))
                     .build())
                 .build());
     }
