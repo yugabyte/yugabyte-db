@@ -15,6 +15,9 @@
 #include "access/hash.h"
 #include "parser/scanner.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 static void AppendJumble(pgssJumbleState *jstate,
 			 const unsigned char *item, Size size);
 static void JumbleQuery(pgssJumbleState *jstate, Query *query);
@@ -122,6 +125,8 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
+				if (IsYugaByteEnabled() && rte->relid >= FirstNormalObjectId)
+					APP_JUMB(MyDatabaseId);
 				APP_JUMB(rte->relid);
 				JumbleExpr(jstate, (Node *) rte->tablesample);
 				break;
@@ -159,6 +164,11 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 	}
 }
 
+#ifdef YB_TODO
+/*
+ * - Delete this code.
+ * - This function has been moved to utils/misc/queryjumble.c
+ */
 /*
  * Jumble an expression tree
  *
@@ -254,6 +264,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			}
 			break;
 		case T_ArrayRef:
+		case T_SubscriptingRef:
 			{
 				ArrayRef   *aref = (ArrayRef *) node;
 
@@ -645,6 +656,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			break;
 	}
 }
+#endif
 
 /*
  * Record location of constant within query string of query tree

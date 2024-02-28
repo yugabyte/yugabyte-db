@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "postgres.h"
+#include "access/relation.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
 #include "commands/prepare.h"
@@ -17,7 +18,6 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/params.h"
-#include "nodes/relation.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -40,6 +40,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/resowner.h"
+#include "utils/float.h"
 
 #include "catalog/pg_class.h"
 
@@ -81,9 +82,11 @@ PG_MODULE_MAGIC;
 #define HINT_PARALLEL			"Parallel"
 
 #define HINT_NESTLOOP			"NestLoop"
+#define HINT_BATCHEDNL			"YbBatchedNL"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
 #define HINT_NONESTLOOP			"NoNestLoop"
+#define HINT_NOBATCHEDNL		"NoYbBatchedNL"
 #define HINT_NOMERGEJOIN		"NoMergeJoin"
 #define HINT_NOHASHJOIN			"NoHashJoin"
 #define HINT_LEADING			"Leading"
@@ -117,13 +120,15 @@ enum
 {
 	ENABLE_NESTLOOP = 0x01,
 	ENABLE_MERGEJOIN = 0x02,
-	ENABLE_HASHJOIN = 0x04
+	ENABLE_HASHJOIN = 0x04,
+	ENABLE_BATCHEDNL = 0x08
 } JOIN_TYPE_BITS;
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
 						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN | \
 						 ENABLE_INDEXONLYSCAN)
-#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
+#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | \
+								 ENABLE_HASHJOIN | ENABLE_BATCHEDNL)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
 
@@ -145,9 +150,11 @@ typedef enum HintKeyword
 	HINT_KEYWORD_NOINDEXONLYSCAN,
 
 	HINT_KEYWORD_NESTLOOP,
+	HINT_KEYWORD_BATCHEDNL,
 	HINT_KEYWORD_MERGEJOIN,
 	HINT_KEYWORD_HASHJOIN,
 	HINT_KEYWORD_NONESTLOOP,
+	HINT_KEYWORD_NOBATCHEDNL,
 	HINT_KEYWORD_NOMERGEJOIN,
 	HINT_KEYWORD_NOHASHJOIN,
 
@@ -505,6 +512,8 @@ static int set_config_int32_option(const char *name, int32 value,
 static int set_config_double_option(const char *name, double value,
 									GucContext context);
 
+static void pg_hint_ExecutorEnd(QueryDesc *queryDesc);
+
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
 static int debug_level = 0;
@@ -560,6 +569,7 @@ static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -589,9 +599,11 @@ static const HintParser parsers[] = {
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
 
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
+	{HINT_BATCHEDNL, JoinMethodHintCreate, HINT_KEYWORD_BATCHEDNL},
 	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
 	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
 	{HINT_NONESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NONESTLOOP},
+	{HINT_NOBATCHEDNL, JoinMethodHintCreate, HINT_KEYWORD_NOBATCHEDNL},
 	{HINT_NOMERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOMERGEJOIN},
 	{HINT_NOHASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOHASHJOIN},
 
@@ -691,6 +703,8 @@ _PG_init(void)
 	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
 	prev_ProcessUtility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
+	prev_ExecutorEnd = ExecutorEnd_hook;
+	ExecutorEnd_hook = pg_hint_ExecutorEnd;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -714,6 +728,7 @@ _PG_fini(void)
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
 	ProcessUtility_hook = prev_ProcessUtility_hook;
+	ExecutorEnd_hook = prev_ExecutorEnd;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -2224,6 +2239,9 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 		case HINT_KEYWORD_NESTLOOP:
 			hint->enforce_mask = ENABLE_NESTLOOP;
 			break;
+		case HINT_KEYWORD_BATCHEDNL:
+			hint->enforce_mask = ENABLE_BATCHEDNL;
+			break;
 		case HINT_KEYWORD_MERGEJOIN:
 			hint->enforce_mask = ENABLE_MERGEJOIN;
 			break;
@@ -2232,6 +2250,9 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 			break;
 		case HINT_KEYWORD_NONESTLOOP:
 			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
+			break;
+		case HINT_KEYWORD_NOBATCHEDNL:
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_BATCHEDNL;
 			break;
 		case HINT_KEYWORD_NOMERGEJOIN:
 			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
@@ -2567,6 +2588,8 @@ get_current_join_mask()
 		mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
 		mask |= ENABLE_HASHJOIN;
+	if (yb_enable_batchednl)
+		mask |= ENABLE_BATCHEDNL;
 
 	return mask;
 }
@@ -2762,7 +2785,7 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	unsigned char	mask;
 
 	if (enforce_mask == ENABLE_NESTLOOP || enforce_mask == ENABLE_MERGEJOIN ||
-		enforce_mask == ENABLE_HASHJOIN)
+		enforce_mask == ENABLE_HASHJOIN || enforce_mask == ENABLE_BATCHEDNL)
 		mask = enforce_mask;
 	else
 		mask = enforce_mask & current_hint_state->init_join_mask;
@@ -2770,6 +2793,7 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
+	SET_CONFIG_OPTION("yb_enable_batchednl", ENABLE_BATCHEDNL);
 
 	/*
 	 * Hash join may be rejected for the reason of estimated memory usage. Try
@@ -3861,7 +3885,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 
 				parentrel_oid =
 					root->simple_rte_array[current_hint_state->parent_relid]->relid;
-				parent_rel = heap_open(parentrel_oid, NoLock);
+				parent_rel = table_open(parentrel_oid, NoLock);
 
 				/* Search the parent relation for indexes match the hint spec */
 				foreach(l, RelationGetIndexList(parent_rel))
@@ -3885,7 +3909,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 						lappend(current_hint_state->parent_index_infos,
 								parent_index_info);
 				}
-				heap_close(parent_rel, NoLock);
+				table_close(parent_rel, NoLock);
 			}
 		}
 	}
@@ -4899,6 +4923,16 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 		return;
 	/* Cancel plpgsql nest level*/
 	plpgsql_recurse_level = 0;
+}
+
+static void pg_hint_ExecutorEnd(QueryDesc *queryDesc) {
+	if (plpgsql_recurse_level <= 0) {
+		current_hint_retrieved = false;
+	}
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search

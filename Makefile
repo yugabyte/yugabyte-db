@@ -31,6 +31,9 @@ TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	doc/* expected/*.out sql/*.sql sql/maskout.sh \
 	data/data.csv input/*.source output/*.source SPECS/*.spec
 
+LDFLAGS += -lyb_pggate_util
+LDFLAGS += -L${BUILD_ROOT}/lib
+
 ifneq ($(shell uname), SunOS)
 LDFLAGS+=-Wl,--build-id
 endif
