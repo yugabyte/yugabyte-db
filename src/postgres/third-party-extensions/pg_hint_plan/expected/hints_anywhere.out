@@ -1,0 +1,91 @@
+LOAD 'pg_hint_plan';
+ERROR:  LOAD not supported yet
+LINE 1: LOAD 'pg_hint_plan';
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+SET client_min_messages TO log;
+\set SHOW_CONTEXT always
+SET pg_hint_plan.debug_print TO on;
+explain (costs false)
+select * from t1 join t2 on t1.id = t2.id where '/*+HashJoin(t1 t2)*/' <> '';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
+(5 rows)
+
+set pg_hint_plan.hints_anywhere = on;
+explain (costs false)
+select * from t1 join t2 on t1.id = t2.id where '/*+HashJoin(t1 t2)*/' <> '';
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+set pg_hint_plan.hints_anywhere = off;
+explain (costs false)
+select * from t1 join t2 on t1.id = t2.id where '/*+HashJoin(t1 t2)*/' <> '';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
+(5 rows)
+
+set pg_hint_plan.hints_anywhere = on;
+/*+ MergeJoin(t1 t2) */
+explain (costs false)
+select * from t1 join t2 on t1.val = t2.val where '/*+HashJoin(t1 t2)*/' <> '';
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN
+---------------------------------
+ Merge Join
+   Merge Cond: (t2.val = t1.val)
+   ->  Sort
+         Sort Key: t2.val
+         ->  Seq Scan on t2
+   ->  Sort
+         Sort Key: t1.val
+         ->  Seq Scan on t1
+(8 rows)
+
+/*+ HashJoin(t1 t2) */
+explain (costs false)
+select * from t1 join t2 on t1.val = t2.val where '/*+MergeJoin(t1 t2)*/' <> '';
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN
+--------------------------------
+ Hash Join
+   Hash Cond: (t2.val = t1.val)
+   ->  Seq Scan on t2
+   ->  Hash
+         ->  Seq Scan on t1
+(5 rows)

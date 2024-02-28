@@ -16,16 +16,86 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-           QUERY PLAN
---------------------------------
- Hash Join
-   Hash Cond: (t2.val = t1.val)
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.val = t2.val)
    ->  Seq Scan on t2
-   ->  Hash
-         ->  Seq Scan on t1
-(5 rows)
+   ->  Memoize
+         Cache Key: t2.val
+         Cache Mode: logical
+         ->  Index Scan using t1_val on t1
+               Index Cond: (val = ANY (ARRAY[t2.val, $1, $2, ..., $1023]))
+(8 rows)
 
+LOAD 'pg_hint_plan';
+ERROR:  LOAD not supported yet
+LINE 1: LOAD 'pg_hint_plan';
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET pg_hint_plan.debug_print TO on;
+SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
+ ?column?
+----------
+ t
+(1 row)
+
+SHOW pg_hint_plan.enable_hint_table;
+ pg_hint_plan.enable_hint_table
+--------------------------------
+ off
+(1 row)
+
+/* query-id related test */
+SET compute_query_id to off;
+SET pg_hint_plan.enable_hint_table to on;	-- error
+ERROR:  table hint is not activated because queryid is not available
+HINT:  Set compute_query_id to on or auto to use hint table.
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+WARNING:  hint table feature is deactivated because queryid is not available
+HINT:  Set compute_query_id to "auto" or "on" to use hint table.
+ ?column?
+----------
+        1
+(1 row)
+
+SELECT 1;									-- not
+ ?column?
+----------
+        1
+(1 row)
+
+SET compute_query_id to on;
+SELECT 1;									-- reactivated
+LOG:  hint table feature is reactivated
+ ?column?
+----------
+        1
+(1 row)
+
+SET compute_query_id to off;
+SELECT 1;									-- gets warining
+WARNING:  hint table feature is deactivated because queryid is not available
+HINT:  Set compute_query_id to "auto" or "on" to use hint table.
+ ?column?
+----------
+        1
+(1 row)
+
+SET pg_hint_plan.enable_hint_table to off;
+SET compute_query_id to on;
+SET pg_hint_plan.enable_hint_table to on;
+SELECT 1;									-- no warining
+ ?column?
+----------
+        1
+(1 row)
+
+RESET compute_query_id;
+RESET pg_hint_plan.enable_hint_table;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
                             QUERY PLAN
 -------------------------------------------------------------------
@@ -37,14 +107,17 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
-           QUERY PLAN
---------------------------------
- Hash Join
-   Hash Cond: (t2.val = t1.val)
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.val = t2.val)
    ->  Seq Scan on t2
-   ->  Hash
-         ->  Seq Scan on t1
-(5 rows)
+   ->  Memoize
+         Cache Key: t2.val
+         Cache Mode: logical
+         ->  Index Scan using t1_val on t1
+               Index Cond: (val = ANY (ARRAY[t2.val, $1, $2, ..., $1023]))
+(8 rows)
 
 -- pg_hint_plan when enabled recognizes Test as an unknown keyword
 /*+ Test (t1 t2) */
@@ -149,20 +222,6 @@ error hint:
          ->  Seq Scan on t2
 (5 rows)
 
--- YB_COMMENT
--- Since t1.id and t2.id is sorted postgres will ideally use merge joins. However, YB does not
--- support merge join for now. Postgres output for the query is as follows.
---           QUERY PLAN
--------------------------------
---  Merge Join
---    Merge Cond: (t1.id = t2.id)
---    ->  Sort
---          Sort Key: t1.id
---          ->  Seq Scan on t1
---    ->  Sort
---          Sort Key: t2.id
---          ->  Seq Scan on t2
--- (8 rows)
 /*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
@@ -518,6 +577,25 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+(4 rows)
+
+-- YB_COMMENT
+-- Because the plan defaults to a BNL in Yugabyte, add a NoYbBatchedNL test
+/*+NoYbBatchedNL(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoYbBatchedNL(t1 t2)
 not used hint:
 duplication hint:
 error hint:
@@ -1390,7 +1468,37 @@ ERROR:  System column "ctid" is not supported yet
 -- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
 -- /*+TidScan(p1)*/
 -- EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
---
+-- IndexScan is safe for unordered indexes
+CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
+CREATE TABLE ischk_d1 PARTITION OF ischk FOR VALUES IN (0);
+CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
+CREATE INDEX ischk_idx ON ischk USING gin (b);
+LOG:  substituting access method "gin" for "ybgin"
+LOG:  substituting access method "gin" for "ybgin"
+LOG:  substituting access method "gin" for "ybgin"
+/*+ IndexScan(ischk ischk_idx) */
+EXPLAIN (COSTS false) SELECT * FROM ischk WHERE b = 'x';
+LOG:  available indexes for IndexScan(ischk_d1): ischk_d1_b_idx
+LOG:  available indexes for IndexScan(ischk_d2): ischk_d2_b_idx
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ischk ischk_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN
+------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Append
+         ->  Seq Scan on ischk_d1 ischk_1
+               Remote Filter: (b = '''x'''::tsvector)
+         ->  Seq Scan on ischk_d2 ischk_2
+               Remote Filter: (b = '''x'''::tsvector)
+(7 rows)
+
+DROP TABLE ischk;
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
 EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
@@ -1419,6 +1527,8 @@ error hint:
 (9 rows)
 
 -- duplicate hint test
+-- YB_COMMENT
+-- Removed TidScan because CTID based scans and searches not supported in Yugabyte
 /*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near "SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
@@ -1483,21 +1593,10 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
 );
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1505,10 +1604,10 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1516,29 +1615,38 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_3
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
                      ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $6146)
+                           Index Cond: (id = $4097)
                      ->  Nested Loop
                            ->  Index Scan using t3_pkey on t3 t3_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t3_pkey on t3 t3_1
-                                       Index Cond: (id = $6146)
-                                 ->  CTE Scan on c1_1
-                                       Filter: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+                                 ->  Aggregate
+                                       Filter: (max(t1_5.id) = $4097)
+                                       ->  YB Batched Nested Loop Join
+                                             Join Filter: (t1_5.id = t2_5.id)
+                                             ->  YB Batched Nested Loop Join
+                                                   Join Filter: (t1_5.id = t3_5.id)
+                                                   ->  Seq Scan on t3 t3_5
+                                                   ->  Index Scan using t1_pkey on t1 t1_5
+                                                         Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                             ->  Index Scan using t2_pkey on t2 t2_5
+                                                   Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
 EXPLAIN (COSTS false)
@@ -1563,21 +1671,10 @@ not used hint:
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1585,10 +1682,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1596,29 +1693,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_3
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
                      ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $6146)
+                           Index Cond: (id = $4097)
                      ->  Nested Loop
                            ->  Index Scan using t3_pkey on t3 t3_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t3_pkey on t3 t3_1
-                                       Index Cond: (id = $6146)
-                                 ->  CTE Scan on c1_1
-                                       Filter: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+                                 ->  Aggregate
+                                       Filter: (max(t1_5.id) = $4097)
+                                       ->  YB Batched Nested Loop Join
+                                             Join Filter: (t1_5.id = t2_5.id)
+                                             ->  YB Batched Nested Loop Join
+                                                   Join Filter: (t1_5.id = t3_5.id)
+                                                   ->  Seq Scan on t3 t3_5
+                                                   ->  Index Scan using t1_pkey on t1 t1_5
+                                                         Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                             ->  Index Scan using t2_pkey on t2 t2_5
+                                                   Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
 EXPLAIN (COSTS false)
@@ -1644,21 +1750,10 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1666,10 +1761,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1677,29 +1772,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_3
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
                      ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $6146)
+                           Index Cond: (id = $4097)
                      ->  Nested Loop
                            ->  Index Scan using t3_pkey on t3 t3_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t3_pkey on t3 t3_1
-                                       Index Cond: (id = $6146)
-                                 ->  CTE Scan on c1_1
-                                       Filter: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+                                 ->  Aggregate
+                                       Filter: (max(t1_5.id) = $4097)
+                                       ->  YB Batched Nested Loop Join
+                                             Join Filter: (t1_5.id = t2_5.id)
+                                             ->  YB Batched Nested Loop Join
+                                                   Join Filter: (t1_5.id = t3_5.id)
+                                                   ->  Seq Scan on t3 t3_5
+                                                   ->  Index Scan using t1_pkey on t1 t1_5
+                                                         Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                             ->  Index Scan using t2_pkey on t2 t2_5
+                                                   Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
 EXPLAIN (COSTS false)
@@ -1725,21 +1829,10 @@ Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1747,10 +1840,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1758,29 +1851,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_3
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t1_pkey on t1 t1_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
                      ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $6146)
+                           Index Cond: (id = $4097)
                      ->  Nested Loop
                            ->  Index Scan using t3_pkey on t3 t3_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t3_pkey on t3 t3_1
-                                       Index Cond: (id = $6146)
-                                 ->  CTE Scan on c1_1
-                                       Filter: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+                                 ->  Aggregate
+                                       Filter: (max(t1_5.id) = $4097)
+                                       ->  YB Batched Nested Loop Join
+                                             Join Filter: (t1_5.id = t2_5.id)
+                                             ->  YB Batched Nested Loop Join
+                                                   Join Filter: (t1_5.id = t3_5.id)
+                                                   ->  Seq Scan on t3 t3_5
+                                                   ->  Index Scan using t1_pkey on t1 t1_5
+                                                         Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                             ->  Index Scan using t2_pkey on t2 t2_5
+                                                   Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(t3_5 t2_5 t1_5)Leading(t3_2 t2_2 t1_2)Leading(t3_4 t2_4 t1_4)Leading(c1_1 t3_3 t2_3 t1_3 t3_1 t2_1 t1_1)*/
 EXPLAIN (COSTS false)
@@ -1809,21 +1911,10 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t2_5.id = t1_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t2_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t1_pkey on t1 t1_5
-                       Index Cond: (id = ANY (ARRAY[t2_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t2_2.id = t1_2.id)
@@ -1831,10 +1922,10 @@ error hint:
                        Join Filter: (t2_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t1_pkey on t1 t1_2
-                       Index Cond: (id = ANY (ARRAY[t2_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t2_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t2_4.id = t1_4.id)
@@ -1842,29 +1933,38 @@ error hint:
                        Join Filter: (t2_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t1_pkey on t1 t1_4
-                       Index Cond: (id = ANY (ARRAY[t2_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t2_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
                      ->  Index Scan using t1_pkey on t1 t1_3
-                           Index Cond: (id = $6146)
+                           Index Cond: (id = $4097)
                      ->  Nested Loop
                            ->  Index Scan using t2_pkey on t2 t2_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-                                 ->  CTE Scan on c1_1
-                                       Filter: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+                                 ->  Aggregate
+                                       Filter: (max(t1_5.id) = $4097)
+                                       ->  YB Batched Nested Loop Join
+                                             Join Filter: (t2_5.id = t1_5.id)
+                                             ->  YB Batched Nested Loop Join
+                                                   Join Filter: (t2_5.id = t3_5.id)
+                                                   ->  Seq Scan on t3 t3_5
+                                                   ->  Index Scan using t2_pkey on t2 t2_5
+                                                         Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                             ->  Index Scan using t1_pkey on t1 t1_5
+                                                   Index Cond: (id = ANY (ARRAY[t2_5.id, $5123, $5124, ..., $6145]))
+(51 rows)
 
 SET from_collapse_limit TO 1;
 EXPLAIN (COSTS false)
@@ -1878,21 +1978,10 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id
 );
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1900,10 +1989,10 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1911,29 +2000,38 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
-                     ->  CTE Scan on c1_1
-                           Filter: (id = $6146)
+                     ->  Aggregate
+                           Filter: (max(t1_5.id) = $4097)
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t1_5.id = t2_5.id)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t1_5.id = t3_5.id)
+                                       ->  Seq Scan on t3 t3_5
+                                       ->  Index Scan using t1_pkey on t1 t1_5
+                                             Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                 ->  Index Scan using t2_pkey on t2 t2_5
+                                       Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
                      ->  Nested Loop
                            ->  Index Scan using t1_pkey on t1 t1_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t2_pkey on t2 t2_3
-                                       Index Cond: (id = $6146)
+                                       Index Cond: (id = $4097)
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
 EXPLAIN (COSTS false)
@@ -1958,21 +2056,10 @@ not used hint:
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -1980,10 +2067,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -1991,29 +2078,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
-                     ->  CTE Scan on c1_1
-                           Filter: (id = $6146)
+                     ->  Aggregate
+                           Filter: (max(t1_5.id) = $4097)
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t1_5.id = t2_5.id)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t1_5.id = t3_5.id)
+                                       ->  Seq Scan on t3 t3_5
+                                       ->  Index Scan using t1_pkey on t1 t1_5
+                                             Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                 ->  Index Scan using t2_pkey on t2 t2_5
+                                       Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
                      ->  Nested Loop
                            ->  Index Scan using t1_pkey on t1 t1_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t2_pkey on t2 t2_3
-                                       Index Cond: (id = $6146)
+                                       Index Cond: (id = $4097)
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
 EXPLAIN (COSTS false)
@@ -2039,21 +2135,10 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -2061,10 +2146,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -2072,29 +2157,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
-                     ->  CTE Scan on c1_1
-                           Filter: (id = $6146)
+                     ->  Aggregate
+                           Filter: (max(t1_5.id) = $4097)
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t1_5.id = t2_5.id)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t1_5.id = t3_5.id)
+                                       ->  Seq Scan on t3 t3_5
+                                       ->  Index Scan using t1_pkey on t1 t1_5
+                                             Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                 ->  Index Scan using t2_pkey on t2 t2_5
+                                       Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
                      ->  Nested Loop
                            ->  Index Scan using t1_pkey on t1 t1_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t2_pkey on t2 t2_3
-                                       Index Cond: (id = $6146)
+                                       Index Cond: (id = $4097)
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
 EXPLAIN (COSTS false)
@@ -2120,21 +2214,10 @@ Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t1_5.id = t2_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t1_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t2_pkey on t2 t2_5
-                       Index Cond: (id = ANY (ARRAY[t1_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_2.id = t2_2.id)
@@ -2142,10 +2225,10 @@ error hint:
                        Join Filter: (t1_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t1_pkey on t1 t1_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t2_pkey on t2 t2_2
-                       Index Cond: (id = ANY (ARRAY[t1_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t1_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t1_4.id = t2_4.id)
@@ -2153,29 +2236,38 @@ error hint:
                        Join Filter: (t1_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t1_pkey on t1 t1_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t2_pkey on t2 t2_4
-                       Index Cond: (id = ANY (ARRAY[t1_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t1_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
-                     ->  CTE Scan on c1_1
-                           Filter: (id = $6146)
+                     ->  Aggregate
+                           Filter: (max(t1_5.id) = $4097)
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t1_5.id = t2_5.id)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t1_5.id = t3_5.id)
+                                       ->  Seq Scan on t3 t3_5
+                                       ->  Index Scan using t1_pkey on t1 t1_5
+                                             Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                 ->  Index Scan using t2_pkey on t2 t2_5
+                                       Index Cond: (id = ANY (ARRAY[t1_5.id, $5123, $5124, ..., $6145]))
                      ->  Nested Loop
                            ->  Index Scan using t1_pkey on t1 t1_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t2_pkey on t2 t2_3
-                                       Index Cond: (id = $6146)
+                                       Index Cond: (id = $4097)
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+(51 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(t3_5 t2_5 t1_5)Leading(t3_2 t2_2 t1_2)Leading(t3_4 t2_4 t1_4)Leading(c1_1 t3_3 t2_3 t1_3 t3_1 t2_1 t1_1)*/
 EXPLAIN (COSTS false)
@@ -2204,21 +2296,10 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
  Nested Loop
-   CTE c1_1
-     ->  Aggregate
-           ->  YB Batched Nested Loop Join
-                 Join Filter: (t2_5.id = t1_5.id)
-                 ->  YB Batched Nested Loop Join
-                       Join Filter: (t2_5.id = t3_5.id)
-                       ->  Seq Scan on t3 t3_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                             Index Cond: (id = ANY (ARRAY[t3_5.id, $1, $2, ..., $1023]))
-                 ->  Index Scan using t1_pkey on t1 t1_5
-                       Index Cond: (id = ANY (ARRAY[t2_5.id, $1025, $1026, ..., $2047]))
-   InitPlan 2 (returns $4097)
+   InitPlan 1 (returns $2048)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t2_2.id = t1_2.id)
@@ -2226,10 +2307,10 @@ error hint:
                        Join Filter: (t2_2.id = t3_2.id)
                        ->  Seq Scan on t3 t3_2
                        ->  Index Scan using t2_pkey on t2 t2_2
-                             Index Cond: (id = ANY (ARRAY[t3_2.id, $2050, $2051, ..., $3072]))
+                             Index Cond: (id = ANY (ARRAY[t3_2.id, $1, $2, ..., $1023]))
                  ->  Index Scan using t1_pkey on t1 t1_2
-                       Index Cond: (id = ANY (ARRAY[t2_2.id, $3074, $3075, ..., $4096]))
-   InitPlan 3 (returns $6146)
+                       Index Cond: (id = ANY (ARRAY[t2_2.id, $1025, $1026, ..., $2047]))
+   InitPlan 2 (returns $4097)
      ->  Aggregate
            ->  YB Batched Nested Loop Join
                  Join Filter: (t2_4.id = t1_4.id)
@@ -2237,31 +2318,40 @@ error hint:
                        Join Filter: (t2_4.id = t3_4.id)
                        ->  Seq Scan on t3 t3_4
                        ->  Index Scan using t2_pkey on t2 t2_4
-                             Index Cond: (id = ANY (ARRAY[t3_4.id, $4099, $4100, ..., $5121]))
+                             Index Cond: (id = ANY (ARRAY[t3_4.id, $2050, $2051, ..., $3072]))
                  ->  Index Scan using t1_pkey on t1 t1_4
-                       Index Cond: (id = ANY (ARRAY[t2_4.id, $5123, $5124, ..., $6145]))
+                       Index Cond: (id = ANY (ARRAY[t2_4.id, $3074, $3075, ..., $4096]))
    ->  Index Scan using t1_pkey on t1 t1_1
-         Index Cond: (id = $6146)
+         Index Cond: (id = $4097)
    ->  Nested Loop
          ->  Index Scan using t2_pkey on t2 t2_1
-               Index Cond: (id = $6146)
+               Index Cond: (id = $4097)
          ->  Nested Loop
                ->  Index Scan using t3_pkey on t3 t3_1
-                     Index Cond: (id = $6146)
+                     Index Cond: (id = $4097)
                ->  Nested Loop
-                     ->  CTE Scan on c1_1
-                           Filter: (id = $6146)
+                     ->  Aggregate
+                           Filter: (max(t1_5.id) = $4097)
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t2_5.id = t1_5.id)
+                                 ->  YB Batched Nested Loop Join
+                                       Join Filter: (t2_5.id = t3_5.id)
+                                       ->  Seq Scan on t3 t3_5
+                                       ->  Index Scan using t2_pkey on t2 t2_5
+                                             Index Cond: (id = ANY (ARRAY[t3_5.id, $4099, $4100, ..., $5121]))
+                                 ->  Index Scan using t1_pkey on t1 t1_5
+                                       Index Cond: (id = ANY (ARRAY[t2_5.id, $5123, $5124, ..., $6145]))
                      ->  Nested Loop
                            ->  Index Scan using t1_pkey on t1 t1_3
-                                 Index Cond: (id = $6146)
+                                 Index Cond: (id = $4097)
                            ->  Nested Loop
                                  ->  Index Scan using t2_pkey on t2 t2_3
-                                       Index Cond: (id = $6146)
+                                       Index Cond: (id = $4097)
                                  ->  Index Scan using t3_pkey on t3 t3_3
-                                       Index Cond: (id = $6146)
-(53 rows)
+                                       Index Cond: (id = $4097)
+(51 rows)
 
--- ambigous error
+-- ambiguous error
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
                                 QUERY PLAN
 ---------------------------------------------------------------------------
@@ -2276,16 +2366,16 @@ EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id 
          Index Cond: (id = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
 (9 rows)
 
-/*+NestLoop(t1 t2)*/
+/*+MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-INFO:  pg_hint_plan: hint syntax error at or near "NestLoop(t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t1 t2)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
 duplication hint:
 error hint:
-NestLoop(t1 t2)
+MergeJoin(t1 t2)
 
                                 QUERY PLAN
 ---------------------------------------------------------------------------
@@ -2428,7 +2518,7 @@ ERROR:  1.23457e+63 is outside the valid range for parameter "cursor_tuple_fract
 /*+ Set(enable_seqscan 100)Set(seq_page_cost on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  parameter "enable_seqscan" requires a Boolean value
-INFO:  parameter "seq_page_cost" requires a numeric value
+INFO:  invalid value for parameter "seq_page_cost": "on"
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -2475,15 +2565,15 @@ EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 no_exist)
 not used hint:
+IndexScan(t5 no_exist)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+IndexScan(t5 t5_id1 t5_id2)*/
@@ -2523,15 +2613,15 @@ EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 no_exist5 no_exist2)
 not used hint:
+IndexScan(t5 no_exist5 no_exist2)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 -- outer inner
@@ -3103,8 +3193,8 @@ MergeJoin(t3 t4)
 duplication hint:
 error hint:
 
-                            QUERY PLAN
--------------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t3.id = t4.id)
    ->  Hash Join
@@ -3117,9 +3207,12 @@ error hint:
                      ->  Seq Scan on t2
          ->  Hash
                ->  Seq Scan on t3
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
-(14 rows)
+   ->  Memoize
+         Cache Key: t3.id
+         Cache Mode: logical
+         ->  Index Scan using t4_pkey on t4
+               Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
+(17 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id = t4.id AND t1.val = t3.val AND t1.id < 10;
@@ -3535,7 +3628,7 @@ error hint:
 
 -- YB_COMMENT
 -- Inheritance not supporte by Yugabyte
--- Inherited table test to specify the index's name
+-- inherite table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
 ERROR:  System column "ctid" is not supported yet
 -- /*+IndexScan(p2 p2_pkey)*/
@@ -3547,7 +3640,7 @@ ERROR:  System column "ctid" is not supported yet
 --
 -- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 --
--- Inhibit parallel execution to avoid inheriting the hint
+-- Inhibit parallel exection to avoid interfaring the hint
 set max_parallel_workers_per_gather to 0;
 -- /*+ IndexScan(p2 p2_val)*/
 -- EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
@@ -3628,15 +3721,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(t5 t5[^_].*)
 not used hint:
+IndexScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3644,15 +3737,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexScan(t5 t5_id[0-9].*)*/
@@ -3660,15 +3753,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 t5_id[0-9].*)
 not used hint:
+IndexScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 t5_[^i].*)*/
@@ -3708,15 +3801,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScanRegexp(t5 t5[^_].*)
 not used hint:
+IndexOnlyScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3724,15 +3817,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
@@ -3740,17 +3833,19 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScan(t5 t5_id[0-9].*)
 not used hint:
+IndexOnlyScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
+-- YB_COMMENT
+-- Yugabyte does not support bitmap scan
 /*+ BitmapScanRegexp(t5 t5_[^i].*)*/
 EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScanRegexp(t5): t5_val t5_pkey
@@ -3788,15 +3883,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScanRegexp(t5 t5[^_].*)
 not used hint:
+BitmapScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3804,15 +3899,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ BitmapScan(t5 t5_id[0-9].*)*/
@@ -3820,24 +3915,24 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(t5 t5_id[0-9].*)
 not used hint:
+BitmapScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
- Seq Scan on t5
-   Remote Filter: (id = 1)
+           QUERY PLAN
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 -- YB_COMMENT
 -- Inheritance
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
-             QUERY PLAN
--------------------------------------
- Index Only Scan using p1_val3 on p1
-   Index Cond: (val = 1)
+         QUERY PLAN
+----------------------------
+ Seq Scan on p1
+   Remote Filter: (val = 1)
 (2 rows)
 
 -- /*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
@@ -3986,7 +4081,7 @@ not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "SELECT 1, /*+ SeqScan(t1) */ * from t1"
+CONTEXT:  SQL statement "SELECT  1, /*+ SeqScan(t1) */ * from t1"
 PL/pgSQL function testfunc() line 3 at PERFORM
  testfunc
 ----------
@@ -4185,14 +4280,12 @@ $$ LANGUAGE plpgsql;
 -- END;
 -- $$ VOLATILE LANGUAGE plpgsql;
 -- SET pg_hint_plan.enable_hint = false;
--- SELECT pg_sleep(1);
 -- SELECT reset_stats_and_wait();
 -- SELECT dynsql2(9000);
 -- SELECT pg_sleep(1);
 -- -- one of the index scans happened while planning.
 -- SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE schemaname = 'public' AND (relname = 'p1_c1' OR relname = 'p1_c2');
 -- SET pg_hint_plan.enable_hint = true;
--- SELECT pg_sleep(1);
 -- SELECT reset_stats_and_wait();
 -- SELECT dynsql2(9000);
 -- SELECT pg_sleep(1);
@@ -4229,12 +4322,12 @@ $$ LANGUAGE plpgsql;
 -- UNION
 -- SELECT val::int FROM p2 WHERE id < 1000;
 --
--- --
--- -- Rows hint tests
--- --
--- -- Explain result includes "Planning time" if COSTS is enabled, but
--- -- this test needs it enabled for get rows count. So do tests via psql
--- -- and grep -v the mutable line.
+--
+-- Rows hint tests
+--
+-- Explain result includes "Planning time" if COSTS is enabled, but
+-- this test needs it enabled for get rows count. So do tests via psql
+-- and grep -v the mutable line.
 --
 -- -- Parse error check
 -- /*+ Rows() */ SELECT 1;
@@ -4317,7 +4410,6 @@ $$ LANGUAGE plpgsql;
 --
 -- hint error level
 set client_min_messages to 'DEBUG1';
-set pg_hint_plan.debug_level to 'verbose';
 /*+ SeqScan( */ SELECT 1;
 INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
@@ -4326,6 +4418,22 @@ DETAIL:  Closing parenthesis is necessary.
         1
 (1 row)
 
+/*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val
+----+-----
+(0 rows)
+
+set pg_hint_plan.parse_messages to 'ERROR';
+-- Force an error before running the planner hook, when forcing the Set hints.
+/*+ Set(work_mem "foo") */ SELECT 1;
+ERROR:  invalid value for parameter "work_mem": "foo"
 /*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
 LOG:  pg_hint_plan:
 used hint:

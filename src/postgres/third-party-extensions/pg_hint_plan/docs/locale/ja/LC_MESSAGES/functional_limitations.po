@@ -1,0 +1,82 @@
+# LANGUAGE message translation file for pg_hint_plan functional limitations.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../functional_limitations.md:1 754ee7dcce174b46b3c1efe4cc4fba86
+msgid "Functional limitations"
+msgstr ""
+
+#: ../../functional_limitations.md:3 6c1833bc6d5644c2b27da25efc390fbe
+msgid "Influences of some of planner GUC parameters"
+msgstr ""
+
+#: ../../functional_limitations.md:5 1dfbde105f224fac91734d2533ca7798
+msgid ""
+"The planner does not try to consider joining order for FROM clause "
+"entries more than `from_collapse_limit`. `pg_hint_plan` cannot affect "
+"joining order as expected for the case."
+msgstr ""
+
+#: ../../functional_limitations.md:9 b2d18bc403634586aa4b1252d6e49b6e
+msgid "Hints trying to enforce unexecutable plans"
+msgstr ""
+
+#: ../../functional_limitations.md:11 e7710f004e7f4a4bb09d275646ff4491
+msgid ""
+"Planner chooses any executable plans when the enforced plan cannot be "
+"executed."
+msgstr ""
+
+#: ../../functional_limitations.md:13 5ece073c2f564da7a79db76126709a92
+msgid "`FULL OUTER JOIN` to use nested loop"
+msgstr ""
+
+#: ../../functional_limitations.md:14 8d0ca9684ebf4fee84b80eb565523cb9
+msgid "To use indexes that does not have columns used in quals"
+msgstr ""
+
+#: ../../functional_limitations.md:15 d1c9ba33191846d98b211cb15bd235dc
+msgid "To do TID scans for queries without ctid conditions"
+msgstr ""
+
+#: ../../functional_limitations.md:17 5218fbab7a004568ad865cfed6ef0984
+msgid "Queries in ECPG"
+msgstr ""
+
+#: ../../functional_limitations.md:19 4da4d9067fbe4035b42ee12e403e810a
+msgid ""
+"ECPG removes comments in queries written as embedded SQLs so hints cannot"
+" be passed form those queries. The only exception is that `EXECUTE` "
+"command passes given string unmodifed. Please consider using the hint "
+"table in the case."
+msgstr ""
+
+#: ../../functional_limitations.md:23 98b05c489b464d03bafd397a767b9935
+msgid "Work with `pg_stat_statements`"
+msgstr ""
+
+#: ../../functional_limitations.md:25 bdd39eecdc5a4e2dae91f940874a9c65
+msgid ""
+"`pg_stat_statements` generates a query id ignoring comments. As the "
+"result, the identical queries with different hints are summarized as the "
+"same query."
+msgstr ""
+
