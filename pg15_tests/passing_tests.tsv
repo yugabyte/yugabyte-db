@@ -39,6 +39,7 @@
 	org.yb.pgsql.TestPgWrapper#testNotNullConstraint
 	org.yb.pgsql.TestYbBackup#testAlteredTableWithNotNull
 cdcsdk_ysql-test	CDCSDKYsqlTest.TestReplicationSlotDropWithActiveInvalid
+docdb_pgapi-test	YbGateTest.*
 integration-tests_cdcsdk_before_image-test	CDCSDKYsqlTest.TestSingleShardUpdateBeforeImageAllMode
 integration-tests_cdcsdk_before_image-test	CDCSDKYsqlTest.TestSingleShardUpdateBeforeImageChangeMode
 integration-tests_cdcsdk_before_image-test	CDCSDKYsqlTest.TestSingleShardUpdateBeforeImageFullRowNewImageMode

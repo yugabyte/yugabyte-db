@@ -235,6 +235,10 @@ typedef struct YbgErrorData
 } YbgErrorData;
 typedef struct YbgErrorData *YbgError;
 
+static void yb_errmsg_va(const char* fmt, va_list args);
+static void yb_message_from_status_data(StringInfo buf, const char *fmt,
+										const size_t nargs, const char **args);
+
 /*
  * yb_errstart - YbGate equivalent of errstart
  *
@@ -331,6 +335,34 @@ yb_copy_edata_fields_to_status(YbgStatus status, YbgError edata)
 }
 
 /*
+ * yb_write_status_to_server_log - write the status to the tserver log.
+ *
+ * Must be called from yb_errfinish because only then are filename and lineno
+ * populated.
+ */
+static void
+yb_write_status_to_server_log()
+{
+	YbgStatus		status = YBCPgGetThreadLocalErrStatus();
+	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
+	StringInfoData	buf;
+	MemoryContext	error_context = (MemoryContext) YbgStatusGetContext(status);
+	MemoryContext	oldcontext = MemoryContextSwitchTo(error_context);
+
+	initStringInfo(&buf);
+	yb_message_from_status_data(&buf, edata->errmsg, edata->nargs,
+								edata->errargs);
+	bool is_error = YbgStatusIsError(status);
+	YBCLogImpl(is_error ? 2 : 0 /* severity */,
+			   edata->filename,
+			   edata->lineno,
+			   is_error ? YBShouldLogStackTraceOnError() : false,
+			   "%s", buf.data);
+	pfree(buf.data);
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
  * yb_errfinish - YbGate equivalent of errfinish
  *
  * Move error data from the current YbgError frame to the status, and if error
@@ -354,6 +386,8 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 	edata->filename = filename;
 	edata->lineno = lineno;
 	edata->funcname = funcname;
+
+	yb_write_status_to_server_log();
 
 	/*
 	 * Pop current edata frame by setting previous as current.
@@ -428,10 +462,6 @@ static void send_message_to_server_log(ErrorData *edata);
 static void send_message_to_frontend(ErrorData *edata);
 static void append_with_tabs(StringInfo buf, const char *str);
 
-static void yb_log_errmsg_va(const char* fmt, va_list args);
-static void yb_errmsg_va(const char* fmt, va_list args);
-static void	yb_message_from_status_data(StringInfo buf, const char *fmt,
-										const size_t nargs, const char **args);
 
 /*
  * is_log_level_output -- is elevel logically >= log_min_level?
@@ -1218,11 +1248,10 @@ errmsg(const char *fmt,...)
 	if (IsMultiThreadedMode())
 	{
 		va_list args;
-		/* Always log, severity depends on current elevel */
-		va_start(args, fmt);
-		yb_log_errmsg_va(fmt, args);
-		va_end(args);
-		/* Update current error message */
+		/*
+		 * Update current error message.
+		 * Will also be logged to tserver log as part of yb_errfinish.
+		 */
 		va_start(args, fmt);
 		yb_errmsg_va(fmt, args);
 		va_end(args);
@@ -1312,14 +1341,22 @@ set_backtrace(ErrorData *edata, int num_skip)
  * We also use this for certain cases where we *must* not try to translate
  * the message because the translation would fail and result in infinite
  * error recursion.
- *
- * In YbGate environment does nothing, which is probably fine for a case that
- * "can't happen".
  */
 int
 errmsg_internal(const char *fmt,...)
 {
-	RETURN_IF_MULTITHREADED_MODE();
+	if (IsMultiThreadedMode())
+	{
+		va_list args;
+		/*
+		 * Update current error message.
+		 * Will also be logged to tserver log as part of yb_errfinish.
+		 */
+		va_start(args, fmt);
+		yb_errmsg_va(fmt, args);
+		va_end(args);
+		return 0;
+	}
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1356,11 +1393,10 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 	{
 		const char *fmt = n == 1 ? fmt_singular : fmt_plural;
 		va_list args;
-		/* Always log, severity depends on current elevel */
-		va_start(args, n);
-		yb_log_errmsg_va(fmt, args);
-		va_end(args);
-		/* Update current error message */
+		/*
+		 * Update current error message.
+		 * Will also be logged to tserver log in yb_errfinish.
+		 */
 		va_start(args, n);
 		yb_errmsg_va(fmt, args);
 		va_end(args);
@@ -3956,49 +3992,17 @@ send_message_to_frontend(ErrorData *edata)
  */
 
 /*
- * A multi-thread friendly version of useful_strerror()
+ * A multi-thread friendly version of pg_strerror() (in strerror.c)
  *
- * Uses palloc'd buffer istead of static
+ * Uses palloc'd buffer instead of static. Defined here so that we don't add a
+ * requirement for strerror.c to depend on palloc.
  */
 static const char *
 yb_strerror(int errnum)
 {
-	return NULL;
-#ifdef YB_TODO
-	/* Needs to move this function to strerror.c to match Postgres code */
-	const char *str;
+	char *errorstr_buf = (char *) palloc(PG_STRERROR_R_BUFLEN);
 
-#ifdef WIN32
-	/* Winsock error code range, per WinError.h */
-	if (errnum >= 10000 && errnum <= 11999)
-		return pgwin32_socket_strerror(errnum);
-#endif
-	str = strerror(errnum);
-
-	/*
-	 * Some strerror()s return an empty string for out-of-range errno.  This
-	 * is ANSI C spec compliant, but not exactly useful.  Also, we may get
-	 * back strings of question marks if libc cannot transcode the message to
-	 * the codeset specified by LC_CTYPE.  If we get nothing useful, first try
-	 * get_errno_symbol(), and if that fails, print the numeric errno.
-	 */
-	if (str == NULL || *str == '\0' || *str == '?')
-		str = get_errno_symbol(errnum);
-
-	if (str == NULL)
-	{
-		#define ERRORSTR_BUF_SIZE 48
-		char *errorstr_buf = (char *) palloc(ERRORSTR_BUF_SIZE);
-		snprintf(errorstr_buf, ERRORSTR_BUF_SIZE,
-		/*------
-		  translator: This string will be truncated at 47
-		  characters expanded. */
-				 _("operating system error %d"), errnum);
-		str = errorstr_buf;
-	}
-
-	return str;
-#endif
+	return pg_strerror_r(errnum, errorstr_buf, PG_STRERROR_R_BUFLEN);
 }
 
 /*
@@ -4269,23 +4273,6 @@ yb_edata_add_arg(YbgError edata, const char *arg)
 }
 
 /*
- * yb_log_errmsg_va - write error message with arguments to tserver log
- */
-static void
-yb_log_errmsg_va(const char *fmt, va_list args)
-{
-	YbgStatus	status = YBCPgGetThreadLocalErrStatus();
-	YbgError	edata = (YbgError) YbgStatusGetEdata(status);
-	bool is_error = YbgStatusIsError(status);
-	YBCLogVA(is_error ? 2 : 0 /* severity */,
-			 edata->filename,
-			 edata->lineno,
-			 is_error ? YBShouldLogStackTraceOnError() : false,
-			 fmt,
-			 args);
-}
-
-/*
  * Render one argument using the template found in the format string and add
  * the result to the argument list in edata.
  */
@@ -4343,12 +4330,6 @@ yb_errmsg_va(const char *fmt, va_list args)
 	const char *next;
 
 	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-	/*
-	 * The message has already been logged and if severity is low, it won't go
-	 * anywhere. Therefore just ignore the message.
-	 */
-	if (edata->elevel < ERROR)
-		return;
 	MemoryContext	error_context = (MemoryContext) YbgStatusGetContext(status);
 	MemoryContext	old_context = MemoryContextSwitchTo(error_context);
 	/* Save copy of the format string to edata */
