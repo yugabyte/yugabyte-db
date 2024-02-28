@@ -74,7 +74,7 @@ If you disable **Assign Public IP** during the universe creation, the process ma
 - `python-minimal`, if YugabyteDB Anywhere is installed on Ubuntu 18.04.
 - `python-setuptools`, if YugabyteDB Anywhere is installed on Ubuntu 18.04.
 - `python-six` or `python2-six` (the Python2 version of Six).
-- `policycoreutils-python`, if YugabyteDB Anywhere is installed on CentOS 7 or Oracle Linux 8.
+- `policycoreutils-python`, if YugabyteDB Anywhere is installed on Oracle Linux 8.
 - `selinux-policy` must be on an accessible package repository, if YugabyteDB Anywhere is installed on Oracle Linux 8.
 - `locales`, if YugabyteDB Anywhere is installed on Ubuntu.
 
