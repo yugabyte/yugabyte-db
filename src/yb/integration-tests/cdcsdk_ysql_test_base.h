@@ -1043,6 +1043,31 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     change_req->mutable_explicit_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
   }
 
+  void PrepareChangeRequestWithExplicitCheckpoint(
+      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* from_op_id, const CDCSDKCheckpointPB* explicit_checkpoint,
+      const int tablet_idx = 0) {
+    change_req->set_stream_id(stream_id);
+    change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
+
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(from_op_id->term());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(from_op_id->index());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(from_op_id->key());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(from_op_id->write_id());
+    change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(from_op_id->snapshot_time());
+
+    if (explicit_checkpoint != nullptr) {
+      change_req->mutable_explicit_cdc_sdk_checkpoint()->set_term(explicit_checkpoint->term());
+      change_req->mutable_explicit_cdc_sdk_checkpoint()->set_index(explicit_checkpoint->index());
+      change_req->mutable_explicit_cdc_sdk_checkpoint()->set_key(explicit_checkpoint->key());
+      change_req->mutable_explicit_cdc_sdk_checkpoint()->set_write_id(
+          explicit_checkpoint->write_id());
+      change_req->mutable_explicit_cdc_sdk_checkpoint()->set_snapshot_time(
+          explicit_checkpoint->snapshot_time());
+    }
+  }
+
   void PrepareSetCheckpointRequest(
       SetCDCCheckpointRequestPB* set_checkpoint_req,
       const CDCStreamId stream_id,
@@ -1647,6 +1672,45 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, tablet_idx);
     } else {
       PrepareChangeRequestWithExplicitCheckpoint(&change_req, stream_id, tablets, *cp, tablet_idx);
+    }
+
+    // Retry only on LeaderNotReadyToServe errors
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController get_changes_rpc;
+          auto status = cdc_proxy_->GetChanges(change_req, &change_resp, &get_changes_rpc);
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+          }
+
+          if (status.IsLeaderNotReadyToServe()) {
+            return false;
+          }
+
+          RETURN_NOT_OK(status);
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
+
+    return change_resp;
+  }
+
+    Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* from_op_d,
+      const CDCSDKCheckpointPB* explicit_checkpoint,
+      int tablet_idx = 0) {
+    GetChangesRequestPB change_req;
+    GetChangesResponsePB change_resp;
+
+    if (from_op_d == nullptr) {
+      PrepareChangeRequest(&change_req, stream_id, tablets, tablet_idx);
+    } else {
+      PrepareChangeRequestWithExplicitCheckpoint(
+          &change_req, stream_id, tablets, from_op_d, explicit_checkpoint, tablet_idx);
     }
 
     // Retry only on LeaderNotReadyToServe errors
