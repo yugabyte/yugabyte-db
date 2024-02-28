@@ -244,6 +244,20 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 	else
 		standard_ExecutorEnd(queryDesc);
 
+	FILE* fptr = fopen("/Users/ishanchhangani/ash.csv","w");
+	fprintf(fptr, "sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, yql_endpoint_tserver_uuid, query_id, session_id, client_node_ip, wait_event_aux, sample_weight\n");
+	fclose(fptr);
+
+ 	for (int i = 0; i < yb_ash->max_entries; ++i){
+		FILE* fptr = fopen("/Users/ishanchhangani/ash.csv","a");
+		
+		
+		// if(yb_ash->circular_buffer[i].metadata.query_id == given_queryid){ do a queryid check here
+		// if(yb_ash->circular_buffer[i].sample_time){ do a time check here
+		char* client_node_ip = "127.0.0.1"; // Declare and initialize the 'client_node_ip' variable
+		fprintf(fptr, "%llu,%s,%lld,%s,%s,%s,%s,%llu,%llu,%s,%s,%f\n", yb_ash->circular_buffer[i].sample_time, yb_ash->circular_buffer[i].metadata.root_request_id, yb_ash->circular_buffer[i].rpc_request_id, YBCGetWaitEventComponent(yb_ash->circular_buffer[i].wait_event_code), pgstat_get_wait_event_type(yb_ash->circular_buffer[i].wait_event_code), pgstat_get_wait_event(yb_ash->circular_buffer[i].wait_event_code), yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, yb_ash->circular_buffer[i].metadata.query_id, yb_ash->circular_buffer[i].metadata.session_id, client_node_ip, yb_ash->circular_buffer[i].aux_info, yb_ash->circular_buffer[i].sample_weight);
+		fclose(fptr);
+	}
 	/*
 	 * Unset ASH metadata. Utility statements do not go through this
 	 * code path.
@@ -572,7 +586,6 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	YbAshAcquireBufferLock(false /* exclusive */);
-
 	for (i = 0; i < yb_ash->max_entries; ++i)
 	{
 		Datum		values[ACTIVE_SESSION_HISTORY_COLS];
@@ -671,3 +684,18 @@ client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 				client_port);
 	}
 }
+
+
+// static void dumpAshData()	//pass queryid,timestamp as parameter
+// {
+// 	FILE* fptr = fopen("/Users/ishanchhangani/ash.csv","w");
+// 	fprintf(fptr, "sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, yql_endpoint_tserver_uuid, query_id, session_id, client_node_ip, wait_event_aux, sample_weight\n");
+// 	fclose(fptr);
+
+//  	for (int i = 0; i < yb_ash->max_entries; ++i){
+// 		FILE* fptr = fopen("/Users/ishanchchangani/ash.csv","a");
+// 		char* client_node_ip = "127.0.0.1"; // Declare and initialize the 'client_node_ip' variable
+// 		fprintf(fptr, "%llu,%s,%lld,%s,%s,%s,%s,%llu,%llu,%s,%s,%f\n", yb_ash->circular_buffer[i].sample_time, yb_ash->circular_buffer[i].metadata.root_request_id, yb_ash->circular_buffer[i].rpc_request_id, YBCGetWaitEventComponent(yb_ash->circular_buffer[i].wait_event_code), pgstat_get_wait_event_type(yb_ash->circular_buffer[i].wait_event_code), pgstat_get_wait_event(yb_ash->circular_buffer[i].wait_event_code), yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, yb_ash->circular_buffer[i].metadata.query_id, yb_ash->circular_buffer[i].metadata.session_id, client_node_ip, yb_ash->circular_buffer[i].aux_info, yb_ash->circular_buffer[i].sample_weight);
+// 		fclose(fptr);
+// 	}
+// }

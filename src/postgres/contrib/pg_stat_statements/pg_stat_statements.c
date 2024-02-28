@@ -1715,6 +1715,38 @@ pgss_store(const char *query, uint64 queryId,
 		e->counters.usage += USAGE_EXEC(total_time);
 
 		SpinLockRelease(&e->mutex);
+
+
+
+		FILE* fptr = fopen("/Users/ishanchhangani/pgss.csv","w");
+		fprintf(fptr, "userid,dbid,queryid,query,calls,total_time,min_time,max_time,mean_time,stddev_time,rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,yb_latency_histogram\n");
+		//histogram
+		fprintf(fptr, "%d,%d,%ld,%s,%ld,%f,%f,%f,%f,0,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n" , 
+				key.userid,
+				key.dbid,
+				queryId, 
+				query,
+				e->counters.calls,
+				total_time,
+				total_time,
+				total_time,
+				total_time,
+				rows,
+				bufusage->shared_blks_hit,
+				bufusage->shared_blks_read,
+				bufusage->shared_blks_dirtied,
+				bufusage->shared_blks_written,
+				bufusage->local_blks_hit,
+				bufusage->local_blks_read,
+				bufusage->local_blks_dirtied,
+				bufusage->local_blks_written,
+				bufusage->temp_blks_read,
+				bufusage->temp_blks_written,
+				INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time),
+				INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time)
+				// e->yb_hdr_histogram
+				);
+		fclose(fptr);
 	}
 
 done:
@@ -1966,13 +1998,19 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
+		FILE* fptr = fopen("/Users/ishanchhangani/test.csv","a");
+
 		values[i++] = ObjectIdGetDatum(entry->key.userid);
+		fprintf(fptr, "%lu," , values[i-1]);
 		values[i++] = ObjectIdGetDatum(entry->key.dbid);
+		fprintf(fptr, "%lu," , values[i-1]);
 
 		if (is_allowed_role || entry->key.userid == userid)
 		{
-			if (api_version >= PGSS_V1_2)
+			if (api_version >= PGSS_V1_2){
 				values[i++] = Int64GetDatumFast(queryid);
+				fprintf(fptr, "%lu," , values[i-1]);
+			}
 
 			if (showtext)
 			{
@@ -1990,6 +2028,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 										   entry->encoding);
 
 					values[i++] = CStringGetTextDatum(enc);
+					fprintf(fptr, "%s," , qstr);
 
 					if (enc != qstr)
 						pfree(enc);
@@ -2036,12 +2075,18 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			continue;
 
 		values[i++] = Int64GetDatumFast(tmp.calls);
+		fprintf(fptr, "%lu," , values[i-1]);
+
 		values[i++] = Float8GetDatumFast(tmp.total_time);
+		fprintf(fptr, "%f," , tmp.total_time);
 		if (api_version >= PGSS_V1_3)
 		{
 			values[i++] = Float8GetDatumFast(tmp.min_time);
+			fprintf(fptr, "%f," , tmp.min_time);
 			values[i++] = Float8GetDatumFast(tmp.max_time);
+			fprintf(fptr, "%f," , tmp.max_time);
 			values[i++] = Float8GetDatumFast(tmp.mean_time);
+			fprintf(fptr, "%f," , tmp.mean_time);
 
 			/*
 			 * Note we are calculating the population variance here, not the
@@ -2054,32 +2099,52 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			else
 				stddev = 0.0;
 			values[i++] = Float8GetDatumFast(stddev);
+			fprintf(fptr, "%f," , stddev);
 		}
 		values[i++] = Int64GetDatumFast(tmp.rows);
+		fprintf(fptr, "%lu," , tmp.rows);
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_hit);
+		fprintf(fptr, "%lu," , tmp.shared_blks_hit);
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_read);
-		if (api_version >= PGSS_V1_1)
+		fprintf(fptr, "%lu," , tmp.shared_blks_read);
+		if (api_version >= PGSS_V1_1){
 			values[i++] = Int64GetDatumFast(tmp.shared_blks_dirtied);
+			fprintf(fptr, "%lu," , tmp.shared_blks_dirtied);
+		}
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_written);
+		fprintf(fptr, "%lu," , tmp.shared_blks_written);
 		values[i++] = Int64GetDatumFast(tmp.local_blks_hit);
+		fprintf(fptr, "%lu," , tmp.local_blks_hit);
 		values[i++] = Int64GetDatumFast(tmp.local_blks_read);
-		if (api_version >= PGSS_V1_1)
+		fprintf(fptr, "%lu," , tmp.local_blks_read);
+		if (api_version >= PGSS_V1_1){
 			values[i++] = Int64GetDatumFast(tmp.local_blks_dirtied);
+			fprintf(fptr, "%lu," , tmp.local_blks_dirtied);
+		}
 		values[i++] = Int64GetDatumFast(tmp.local_blks_written);
+		fprintf(fptr, "%lu," , tmp.local_blks_written);
 		values[i++] = Int64GetDatumFast(tmp.temp_blks_read);
+		fprintf(fptr, "%lu," , tmp.temp_blks_read);
 		values[i++] = Int64GetDatumFast(tmp.temp_blks_written);
+		fprintf(fptr, "%lu," , tmp.temp_blks_written);
 		if (api_version >= PGSS_V1_1)
 		{
 			values[i++] = Float8GetDatumFast(tmp.blk_read_time);
+			fprintf(fptr, "%f," , tmp.blk_read_time);
 			values[i++] = Float8GetDatumFast(tmp.blk_write_time);
+			fprintf(fptr, "%f," , tmp.blk_write_time);
 		}
 
 		if (api_version >= YB_PGSS_V1_4)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid, entry->key.userid, entry->key.dbid);
+			fprintf(fptr, "0,");
 		}
 
-		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
+		fprintf(fptr, "\n");
+		fclose(fptr);
+		
+			Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
 					 api_version == PGSS_V1_1 ? PG_STAT_STATEMENTS_COLS_V1_1 :
 					 api_version == PGSS_V1_2 ? PG_STAT_STATEMENTS_COLS_V1_2 :
 					 api_version == PGSS_V1_3 ? PG_STAT_STATEMENTS_COLS_V1_3 :
