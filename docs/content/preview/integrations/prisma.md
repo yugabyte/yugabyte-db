@@ -33,7 +33,7 @@ If you are new to YugabyteDB, you can be up and running with YugabyteDB in under
 If YugabyteDB is installed, run the following `yb-ctl create` command to start a YugabyteDB 1-node cluster, setting the default transaction isolation level to `serializable`:
 
 ```sh
-./bin/yb-ctl create --tserver_flags=ysql_pg_conf="default_transaction_isolation=serializable"
+./bin/yugabyted start --tserver_flags ysql_pg_conf="default_transaction_isolation=serializable"
 ```
 
 ### Prisma

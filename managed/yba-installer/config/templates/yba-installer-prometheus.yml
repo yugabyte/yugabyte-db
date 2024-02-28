@@ -39,11 +39,9 @@
           - targets: ['{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
-        {{if eq (yamlPath "platform.port") "443"}}
         scheme: https
         tls_config:
           insecure_skip_verify: true
-        {{end}}
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
@@ -161,11 +159,11 @@
           target_label: "service_type"
           replacement: "$2"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "service_method"
           replacement: "$3"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "__name__"
           replacement: "rpc_latency$4"
         - source_labels: ["__name__"]

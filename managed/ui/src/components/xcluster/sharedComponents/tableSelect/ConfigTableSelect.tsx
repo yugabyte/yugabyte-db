@@ -8,9 +8,12 @@ import {
 } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
+import moment from 'moment';
+import { Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import { api, metricQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
@@ -18,10 +21,23 @@ import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
+import {
+  liveMetricTimeRangeUnit,
+  liveMetricTimeRangeValue,
+  MetricName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
+import { getTableUuid } from '../../../../utils/tableUtils';
 
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import {
+  MetricsQueryParams,
+  TableType,
+  Universe,
+  YBTable
+} from '../../../../redesign/helpers/dtos';
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
+import { NodeAggregation, SplitType } from '../../../metrics/dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -33,8 +49,9 @@ interface RowItem {
 
 interface ConfigTableSelectProps {
   xClusterConfig: XClusterConfig;
-  selectedTableUUIDs: string[];
+  isDrInterface: boolean;
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  selectedTableUUIDs: string[];
   configTableType: XClusterTableType;
   selectedKeyspaces: string[];
   setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
@@ -44,8 +61,7 @@ interface ConfigTableSelectProps {
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
-
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -55,6 +71,7 @@ export const ConfigTableSelect = ({
   xClusterConfig,
   selectedTableUUIDs,
   setSelectedTableUUIDs,
+  isDrInterface,
   configTableType,
   selectedKeyspaces,
   setSelectedKeyspaces,
@@ -66,21 +83,43 @@ export const ConfigTableSelect = ({
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof RowItem>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  );
+
+  const replicationLagMetricSettings = {
+    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
+    nodeAggregation: NodeAggregation.MAX,
+    splitType: SplitType.TABLE
+  };
+  const replciationLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [replicationLagMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    xClusterConfigUuid: xClusterConfig.uuid,
+    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
+    end: moment().format('X')
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.live(
+      replciationLagMetricRequestParams,
+      liveMetricTimeRangeValue,
+      liveMetricTimeRangeUnit
+    ),
+    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    {
+      enabled: !!sourceUniverseQuery.data
+    }
   );
 
   if (
@@ -107,84 +146,71 @@ export const ConfigTableSelect = ({
     return <YBErrorIndicator />;
   }
 
-  const toggleTableGroup = (isSelected: boolean, rows: XClusterTable[]) => {
+  const toggleTableGroup = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
     if (isSelected) {
-      const tableUUIDsToAdd: string[] = [];
-      const currentSelectedTableUUIDs = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
-      rows.forEach((row) => {
-        if (!currentSelectedTableUUIDs.has(row.tableUUID)) {
-          tableUUIDsToAdd.push(row.tableUUID);
-        }
+      xClusterTables.forEach((xClusterTable) => {
+        currentSelectedTableUuids.add(getTableUuid(xClusterTable));
       });
 
-      setSelectedTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
+      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTables = new Set(rows.map((row) => row.tableUUID));
+      const removedTableUuids = new Set(
+        xClusterTables.map((xClustertables) => getTableUuid(xClustertables))
+      );
 
       setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
+        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
 
-  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTable[]) => {
-    toggleTableGroup(isSelected, rows);
+  const handleTableGroupToggle = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+    toggleTableGroup(isSelected, xClusterTables);
     return true;
   };
 
-  const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
-    } else {
-      setSelectedTableUUIDs([
-        ...selectedTableUUIDs.filter((tableUUID: string) => tableUUID !== row.tableUUID)
-      ]);
-    }
+  const handleTableToggle = (xClustertable: XClusterTable, isSelected: boolean) => {
+    toggleTableGroup(isSelected, [xClustertable]);
   };
 
-  const toggleKeyspaceGroup = (isSelected: boolean, rows: RowItem[]) => {
+  const toggleNamespaceGroup = (isSelected: boolean, rows: RowItem[]) => {
     if (isSelected) {
-      const keyspacesToAdd: string[] = [];
-      const currentSelectedKeyspaces = new Set(selectedKeyspaces);
+      const currentSelectedNamespaces = new Set(selectedKeyspaces);
 
       rows.forEach((row) => {
-        if (!currentSelectedKeyspaces.has(row.keyspace)) {
-          keyspacesToAdd.push(row.keyspace);
-        }
+        currentSelectedNamespaces.add(row.keyspace);
       });
-      setSelectedKeyspaces([...selectedKeyspaces, ...keyspacesToAdd]);
+      setSelectedKeyspaces(Array.from(currentSelectedNamespaces));
     } else {
-      const removedKeyspaces = new Set(rows.map((row) => row.keyspace));
+      const removedNamespaceUuids = new Set(rows.map((row) => row.keyspace));
 
       setSelectedKeyspaces(
-        selectedKeyspaces.filter((keyspace: string) => !removedKeyspaces.has(keyspace))
+        selectedKeyspaces.filter((keyspace: string) => !removedNamespaceUuids.has(keyspace))
       );
     }
   };
 
   const handleAllKeyspaceSelect = (isSelected: boolean, rows: RowItem[]) => {
-    const underlyingTables = rows.reduce((table: XClusterTable[], row) => {
+    const selectedTables = rows.reduce((table: XClusterTable[], row) => {
       return table.concat(row.xClusterTables);
     }, []);
 
-    toggleKeyspaceGroup(isSelected, rows);
-    toggleTableGroup(isSelected, underlyingTables);
+    toggleNamespaceGroup(isSelected, rows);
+    toggleTableGroup(isSelected, selectedTables);
     return true;
   };
 
   const handleKeyspaceSelect = (row: RowItem, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedKeyspaces([...selectedKeyspaces, row.keyspace]);
-    } else {
-      setSelectedKeyspaces(selectedKeyspaces.filter((keyspace) => keyspace !== row.keyspace));
-    }
+    toggleNamespaceGroup(isSelected, [row]);
     toggleTableGroup(isSelected, row.xClusterTables);
   };
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data
   );
 
   const tablesForSelection = tablesInConfig.filter(
@@ -204,15 +230,17 @@ export const ConfigTableSelect = ({
       setSortOrder(sortOrder);
     }
   };
-
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
       <div className={styles.tableToolbar}>
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search for keyspace.."
+          placeHolder="Search for database.."
           onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
         />
       </div>
@@ -234,8 +262,8 @@ export const ConfigTableSelect = ({
               tableType={configTableType}
               sourceUniverseUUID={sourceUniverseUUID}
               sourceUniverseNodePrefix={sourceUniverseNodePrefix}
-              handleTableSelect={handleTableSelect}
-              handleAllTableSelect={handleAllTableSelect}
+              handleTableSelect={handleTableToggle}
+              handleAllTableSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
@@ -287,16 +315,21 @@ export const ConfigTableSelect = ({
           />
         </div>
       )}
-      {configTableType === TableType.PGSQL_TABLE_TYPE ? (
-        <div>
-          Tables in {selectedKeyspaces.length} of {rowItems.length} database(s) selected
-        </div>
+      {configTableType === TableType.YQL_TABLE_TYPE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length,
+            availableTableCount: tablesForSelection.length
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {tablesForSelection.length} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedKeyspaces.length,
+            availableDatabaseCount: rowItems.length
+          })}
+        </Typography>
       )}
-
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
           {selectionError && (

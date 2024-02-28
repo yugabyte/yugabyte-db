@@ -22,14 +22,18 @@ func SetupNodeCommand(parentCmd *cobra.Command) {
 	SetupConfigureCommand(nodeCmd)
 	SetupPreflightCheckCommand(nodeCmd)
 	SetupRegisterCommand(nodeCmd)
+	SetupDeleteNodeInstanceCmd(nodeCmd)
 	parentCmd.AddCommand(nodeCmd)
 }
 
 // Accepts a key and desciption and updates the config with user input.
-func checkConfigAndUpdate(ctx context.Context, key string, desc string) {
+func checkConfigAndUpdate(ctx context.Context, key string, defaultValue *string, desc string) {
 	config := util.CurrentConfig()
 	for {
 		val := config.String(key)
+		if val == "" && defaultValue != nil {
+			val = *defaultValue
+		}
 		if val != "" {
 			fmt.Printf(
 				"* The current value of %s is set to %s; Enter new value or enter to skip: ",

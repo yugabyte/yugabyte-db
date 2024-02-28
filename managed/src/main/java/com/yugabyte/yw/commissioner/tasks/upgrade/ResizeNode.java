@@ -62,6 +62,11 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {

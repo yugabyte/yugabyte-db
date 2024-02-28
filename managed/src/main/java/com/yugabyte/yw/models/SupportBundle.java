@@ -17,6 +17,10 @@ import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -25,10 +29,6 @@ import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -117,6 +117,9 @@ public class SupportBundle extends Model {
 
   @JsonIgnore
   public Path getPathObject() {
+    if (this.path == null) {
+      return null;
+    }
     return Paths.get(this.path);
   }
 
@@ -132,7 +135,9 @@ public class SupportBundle extends Model {
     if (bundleData != null) {
       supportBundle.startDate = bundleData.startDate;
       supportBundle.endDate = bundleData.endDate;
-      supportBundle.bundleDetails = new BundleDetails(bundleData.components);
+      supportBundle.bundleDetails =
+          new BundleDetails(
+              bundleData.components, bundleData.maxNumRecentCores, bundleData.maxCoreFileSize);
     }
     supportBundle.status = SupportBundleStatusType.Running;
     supportBundle.save();
@@ -226,15 +231,11 @@ public class SupportBundle extends Model {
 
   public static void delete(UUID bundleUUID) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
-    if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
-      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
+    if (supportBundle.delete()) {
+      LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
     } else {
-      if (supportBundle.delete()) {
-        LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
-      } else {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
-      }
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
     }
   }
 }

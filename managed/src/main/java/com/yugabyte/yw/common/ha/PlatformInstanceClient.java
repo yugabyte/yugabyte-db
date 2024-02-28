@@ -10,11 +10,8 @@
 
 package com.yugabyte.yw.common.ha;
 
-import static scala.compat.java8.JFunction.func;
+import static com.yugabyte.yw.common.Util.getYbaVersion;
 
-import akka.stream.javadsl.FileIO;
-import akka.stream.javadsl.Source;
-import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -32,6 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import org.apache.pekko.stream.javadsl.FileIO;
+import org.apache.pekko.stream.javadsl.Source;
+import org.apache.pekko.util.ByteString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -70,7 +70,7 @@ public class PlatformInstanceClient {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
     this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
-    this.controller = new ReverseInternalHAController(func(this::getPrefix));
+    this.controller = new ReverseInternalHAController(this::getPrefix);
     this.configHelper = configHelper;
   }
 
@@ -143,13 +143,24 @@ public class PlatformInstanceClient {
             this.controller.syncBackups().url(),
             this.requestHeader,
             buildPartsList(
-                backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+                backupFile,
+                ImmutableMap.of(
+                    "leader", leaderAddr, "sender", senderAddr, "ybaversion", getYbaVersion())));
     if (response == null || response.get("error") != null) {
       LOG.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
       return false;
     } else {
       return true;
     }
+  }
+
+  public boolean testConnection() {
+    try {
+      JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+    } catch (Exception e) {
+      return false;
+    }
+    return true;
   }
 
   private void maybeGenerateVersionMismatchEvent(JsonNode remoteVersion) {

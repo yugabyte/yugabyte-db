@@ -2,7 +2,6 @@
 title: Cursors
 linkTitle: Cursors
 description: Using Cursors in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: advanced-features-cursor

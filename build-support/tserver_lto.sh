@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# shellcheck source=build-support/common-build-env.sh
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
 activate_virtualenv

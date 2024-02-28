@@ -4,7 +4,6 @@ headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Node.js Prisma ORM support for YugabyteDB
 headcontent: Node.js ORM support for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: prisma-1
@@ -109,7 +108,7 @@ npm install -g prisma
 
 If you have a YugabyteDB Managed cluster, modify the `DATABASE_URL` using the following steps:
 
-1. Download your [cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication).
 
 1. Install OpenSSL, if not present.
 

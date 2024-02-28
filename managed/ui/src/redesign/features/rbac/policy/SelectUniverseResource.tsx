@@ -17,7 +17,7 @@ import { YBTable } from '../../../../components/backupv2/components/restore/page
 import { YBCheckbox, YBModal } from '../../../components';
 import { Universe } from '../../../helpers/dtos';
 import { UniverseNameAndUUIDMapping } from './IPolicy';
-import { Resource } from '../permission';
+import { Action, Resource } from '../permission';
 import { RbacUserWithResources } from '../users/interface/Users';
 
 import Checked from '../../../assets/checkbox/Checked.svg';
@@ -89,6 +89,11 @@ const useStyle = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1)
+  },
+  disabledOnUniverseCreatePerm: {
+    marginTop: '30px',
+    marginBottom: '10px',
+    color: theme.palette.ybacolors.error
   }
 }));
 
@@ -131,8 +136,8 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
     !allowAll
       ? getUniverseLabelAndValue(
-          roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
-        )
+        roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
+      )
       : getUniverseLabelAndValue([], true)
   );
 
@@ -143,6 +148,8 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   if (!find(role.permissionDetails.permissionList, { resourceType: Resource.UNIVERSE })) {
     return <div className={classes.noRole}>{t('noUniversePermInRole')}</div>;
   }
+
+  const hasUniverseCreatePerm = !!find(role.permissionDetails.permissionList, { resourceType: Resource.UNIVERSE, action: Action.CREATE });
 
   const getUniverseSelectionText = () => {
     if (allowAll) {
@@ -180,8 +187,8 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
           toggleUniverseSelectionModal(false);
           const oldValues = !roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll
             ? getUniverseLabelAndValue(
-                roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
-              )
+              roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
+            )
             : getUniverseLabelAndValue([], true);
           setAllowAll(roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll);
           setSelectedResources(oldValues);
@@ -231,22 +238,30 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
               </>
             )}
             customComponents={() => (
-              <Box className={classes.includeUniverses}>
-                <YBCheckbox
-                  name={`allowAll`}
-                  checked={allowAll}
-                  onChange={(e) => setAllowAll(e.target.value)}
-                  label={t('includeFutureUniverse')}
-                  icon={<img src={UnChecked} alt="unchecked" />}
-                  checkedIcon={<img src={Checked} alt="checked" />}
-                  indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
-                  disabled={selectedResources.length !== universeList.length}
-                />
-              </Box>
+              <>
+                <Box className={classes.includeUniverses}>
+                  <YBCheckbox
+                    name={`allowAll`}
+                    checked={allowAll || hasUniverseCreatePerm}
+                    onChange={(e) => setAllowAll(e.target.value)}
+                    label={t('includeFutureUniverse')}
+                    icon={<img src={UnChecked} alt="unchecked" />}
+                    checkedIcon={<img src={Checked} alt="checked" />}
+                    indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
+                    disabled={selectedResources.length !== universeList.length || hasUniverseCreatePerm}
+                  />
+                </Box>
+                {
+                  hasUniverseCreatePerm && (
+                    <div className={classes.disabledOnUniverseCreatePerm}>{t('disabledOnUniverseCreatePerm')}</div>
+                  )
+                }
+              </>
             )}
             overrideStyles={{
               actionsClassname: classes.tableActions
             }}
+            disableSelection={hasUniverseCreatePerm}
           />
         )}
       </YBModal>

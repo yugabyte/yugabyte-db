@@ -2,7 +2,6 @@
 title: Keyspaces and tables
 linkTitle: Keyspaces and tables
 description: Keyspaces and tables in YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ycql-language-features-keyspaces-tables
@@ -177,7 +176,6 @@ ycqlsh> quit;
 | LIST ROLES        | select * from system_auth.roles                           |
 | SHOW SESSION      | Tracing from `ycqlsh` is not supported.                   |
 | TRACING           | Tracing from `ycqlsh` is not supported.                   |
-
 
 ## Learn more
 

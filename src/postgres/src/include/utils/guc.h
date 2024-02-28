@@ -261,6 +261,7 @@ extern double log_statement_sample_rate;
 extern double log_xact_sample_rate;
 
 extern int	yb_bnl_batch_size;
+extern bool  yb_bnl_optimize_first_batch;
 extern bool  yb_bnl_enable_hashing;
 
 extern bool yb_lock_pk_single_rpc;

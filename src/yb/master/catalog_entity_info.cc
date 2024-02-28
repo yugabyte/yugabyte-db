@@ -114,7 +114,10 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
+  leader_lease_info.ht_lease_expiration =
+      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
+          ? std::max(info.ht_lease_expiration, old_lease_exp)
+          : 0;
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -157,6 +160,7 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
+      last_time_with_valid_leader_(MonoTime::Now()),
       reported_schema_version_({}) {
   // Have to pre-initialize to an empty map, in case of access before the first setter is called.
   replica_locations_ = std::make_shared<TabletReplicaMap>();
@@ -242,7 +246,6 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
     const std::string& ts_uuid) const {
   std::lock_guard l(lock_);
-
   auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end() || it->second.role != PeerRole::LEADER) {
     return GetLeaderNotFoundStatus();
@@ -309,6 +312,21 @@ void TabletInfo::set_last_update_time(const MonoTime& ts) {
 MonoTime TabletInfo::last_update_time() const {
   std::lock_guard l(lock_);
   return last_update_time_;
+}
+
+void TabletInfo::UpdateLastTimeWithValidLeader() {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = MonoTime::Now();
+}
+
+MonoTime TabletInfo::last_time_with_valid_leader() const {
+  std::lock_guard l(lock_);
+  return last_time_with_valid_leader_;
+}
+
+void TabletInfo::TEST_set_last_time_with_valid_leader(const MonoTime& time) {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = time;
 }
 
 bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t version) {
@@ -390,13 +408,10 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id,
-                     bool colocated,
-                     scoped_refptr<TasksTracker> tasks_tracker)
-    : table_id_(std::move(table_id)),
-      tasks_tracker_(tasks_tracker),
-      colocated_(colocated) {
-}
+TableInfo::TableInfo(TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)),
+      table_id_(std::move(table_id)),
+      colocated_(colocated) {}
 
 TableInfo::~TableInfo() {
 }
@@ -463,8 +478,8 @@ bool TableInfo::has_pg_type_oid() const {
   return true;
 }
 
-TableId TableInfo::matview_pg_table_id() const {
-  return LockForRead()->pb.matview_pg_table_id();
+TableId TableInfo::pg_table_id() const {
+  return LockForRead()->pb.pg_table_id();
 }
 
 bool TableInfo::is_matview() const {
@@ -485,6 +500,16 @@ bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
   return l->pb.has_index_info() ? l->pb.index_info().is_unique()
                                 : l->pb.is_unique_index();
+}
+
+Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
+  return GetPgsqlTableOid(id());
+}
+
+Result<uint32_t> TableInfo::GetPgTableOid() const {
+  const auto pg_table_id = LockForRead()->pb.pg_table_id();
+  return pg_table_id.empty() ? GetPgsqlTableOid(id()) :
+                               GetPgsqlTableOid(pg_table_id);
 }
 
 TableType TableInfo::GetTableType() const {
@@ -804,128 +829,9 @@ Status TableInfo::GetCreateTableErrorStatus() const {
 }
 
 std::size_t TableInfo::NumLBTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return std::count_if(pending_tasks_.begin(),
-                       pending_tasks_.end(),
-                       [](auto task) { return task->started_by_lb(); });
-}
-
-std::size_t TableInfo::NumTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_.size();
-}
-
-bool TableInfo::HasTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(pending_tasks_);
-  return !pending_tasks_.empty();
-}
-
-bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  for (auto task : pending_tasks_) {
-    if (task->type() == type) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void TableInfo::AddTask(std::shared_ptr<server::MonitoredTask> task) {
-  bool abort_task = false;
-  {
-    std::lock_guard l(lock_);
-    if (!closing_) {
-      pending_tasks_.insert(task);
-      if (tasks_tracker_) {
-        tasks_tracker_->AddTask(task);
-      }
-    } else {
-      abort_task = true;
-    }
-  }
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
-  }
-}
-
-bool TableInfo::RemoveTask(const std::shared_ptr<server::MonitoredTask>& task) {
-  bool result;
-  {
-    std::lock_guard l(lock_);
-    pending_tasks_.erase(task);
-    result = pending_tasks_.empty();
-  }
-  VLOG(1) << "Removed task " << task.get() << " " << task->description();
-  return result;
-}
-
-// Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
-// from the pending list.
-void TableInfo::AbortTasks() {
-  AbortTasksAndCloseIfRequested( /* close */ false);
-}
-
-void TableInfo::AbortTasksAndClose() {
-  AbortTasksAndCloseIfRequested( /* close */ true);
-}
-
-void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
-  std::vector<std::shared_ptr<server::MonitoredTask>> abort_tasks;
-  {
-    std::lock_guard l(lock_);
-    if (close) {
-      closing_ = true;
-    }
-    abort_tasks.reserve(pending_tasks_.size());
-    abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-  }
-  if (abort_tasks.empty()) {
-    return;
-  }
-  auto status = close ? STATUS(Expired, "Table closing") : STATUS(Aborted, "Table closing");
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  for (const auto& task : abort_tasks) {
-    VLOG_WITH_FUNC(1)
-        << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
-        << task->description();
-    task->AbortAndReturnPrevState(status);
-  }
-}
-
-void TableInfo::WaitTasksCompletion() {
-  const int kMaxWaitMs = 30000;
-  int wait_time_ms = 5;
-  while (1) {
-    std::vector<std::shared_ptr<server::MonitoredTask>> waiting_on_for_debug;
-    bool at_max_wait = wait_time_ms >= kMaxWaitMs;
-    {
-      SharedLock<decltype(lock_)> l(lock_);
-      if (pending_tasks_.empty()) {
-        break;
-      } else if (VLOG_IS_ON(1) || at_max_wait) {
-        waiting_on_for_debug.reserve(pending_tasks_.size());
-        waiting_on_for_debug.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-      }
-    }
-    for (const auto& task : waiting_on_for_debug) {
-      if (at_max_wait) {
-        LOG(WARNING) << "Long wait for aborting task " << task.get() << " " << task->description();
-      } else {
-        VLOG(1) << "Waiting for aborting task " << task.get() << " " << task->description();
-      }
-    }
-    base::SleepForMilliseconds(wait_time_ms);
-    wait_time_ms = std::min(wait_time_ms * 5 / 4, kMaxWaitMs);
-  }
-}
-
-std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_;
+  const auto tasks = GetTasks();
+  return std::count_if(
+      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumPartitions() const {
@@ -1163,7 +1069,8 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 // NamespaceInfo
 // ================================================================================================
 
-NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
+NamespaceInfo::NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)), namespace_id_(std::move(ns_id)) {}
 
 const NamespaceName NamespaceInfo::name() const {
   return LockForRead()->pb.name();
@@ -1263,6 +1170,12 @@ const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() cons
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
 }
 
+bool CDCStreamInfo::IsConsistentSnapshotStream() const {
+  auto l = LockForRead();
+  return l->pb.has_cdcsdk_stream_metadata() &&
+         l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {
@@ -1308,7 +1221,9 @@ std::string UniverseReplicationInfo::ToString() const {
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
   std::lock_guard l(lock_);
-  setup_universe_replication_error_ = status;
+  if (setup_universe_replication_error_.ok()) {
+    setup_universe_replication_error_ = status;
+  }
 }
 
 Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {

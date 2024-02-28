@@ -102,8 +102,6 @@ get_role_password(const char *role, char **logdetail)
 bool
 yb_get_role_password(const char *role, char **logdetail, uint64_t* auth_key)
 {
-	if (!yb_is_role_allowed_for_tserver_auth(role, logdetail))
-		return false;
 	*auth_key = YBCGetSharedAuthKey();
 	return true;
 }
@@ -323,9 +321,6 @@ yb_plain_key_verify(const char *role,
 					uint64_t client_auth_key,
 					char **logdetail)
 {
-	if (!yb_is_role_allowed_for_tserver_auth(role, logdetail))
-		return STATUS_ERROR;
-
 	/* Simply compare the plain auth keys */
 	if (server_auth_key == client_auth_key)
 		return STATUS_OK;

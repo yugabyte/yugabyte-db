@@ -35,6 +35,7 @@ typedef enum
 	PROCSIG_NOTIFY_INTERRUPT,	/* listen/notify interrupt */
 	PROCSIG_PARALLEL_MESSAGE,	/* message from cooperating parallel backend */
 	PROCSIG_WALSND_INIT_STOPPING,	/* ask walsenders to prepare for shutdown  */
+	PROCSIG_LOG_MEMORY_CONTEXT, /* ask backend to log the memory contexts */
 
 	/* Recovery conflict reasons */
 	PROCSIG_RECOVERY_CONFLICT_DATABASE,

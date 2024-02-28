@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 
@@ -67,21 +68,26 @@ public class StorageUtilTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("AZ"))).thenReturn(mockAZUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
-    doCallRealMethod().when(mockAWSUtil).checkStoragePrefixValidity(anyString(), anyString());
     when(mockAWSUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
-    when(mockAWSUtil.getBucketRegion(anyString(), any())).thenReturn("reg-1");
-    when(mockAWSUtil.getOrCreateHostBase(any(), anyString(), anyString()))
+    when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
+        .thenCallRealMethod();
+    when(mockAWSUtil.getBucketRegion(anyString(), any(), anyString())).thenReturn("reg-1");
+    when(mockAWSUtil.getOrCreateHostBase(any(), anyString(), anyString(), anyString()))
         .thenReturn("s3.amazonaws.com");
-    doCallRealMethod().when(mockGCPUtil).checkStoragePrefixValidity(anyString(), anyString());
-    doCallRealMethod().when(mockNfsUtil).checkStoragePrefixValidity(anyString(), anyString());
+    doCallRealMethod()
+        .when(mockNfsUtil)
+        .checkStoragePrefixValidity(
+            any(), nullable(String.class), nullable(String.class), anyBoolean());
     when(mockNfsUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
     when(mockNfsUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
-    doCallRealMethod().when(mockAZUtil).checkStoragePrefixValidity(anyString(), anyString());
+    doCallRealMethod().when(mockAWSUtil).checkConfigTypeAndBackupLocationSame(anyString());
+    doCallRealMethod().when(mockGCPUtil).checkConfigTypeAndBackupLocationSame(anyString());
+    doCallRealMethod().when(mockAZUtil).checkConfigTypeAndBackupLocationSame(anyString());
     s3ConfigWithSlash =
         CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithSlash);
     s3ConfigWithoutSlash =
@@ -95,62 +101,132 @@ public class StorageUtilTest extends FakeDBApplication {
   @Test(expected = Test.None.class)
   @Parameters(
       value = {
-        "NFS, /yugabyte_backup, /yugabyte_backup"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "NFS, /, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, //, //yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, /tmp/nfs/yugabyte_backup, /tmp/nfs/yugabyte_backup"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "NFS, /tmp/nfs/yugabyte_backup, /tmp/nfs/yugabyte_backup/yugabyte_backup"
-            + "/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "S3, s3://backup, s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "S3, s3://backup/test, s3://backup/univ-00000000-0000-0000-0000-000000000000"
-            + "/backup-foo/bar",
-        "S3, s3://backup, s3://backup/test/univ-00000000-0000-0000-0000-000000000000"
-            + "/backup-foo/bar",
-        "AZ, https://x.y.z.next/test, https://x.y.z.next/test"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "GCS, https://storage.googleapis.com/test, gs://test"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "GCS, gs://test, https://storage.googleapis.com/test"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
+        "/, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "//, //yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "/tmp/nfs/yugabyte_backup, /tmp/nfs/yugabyte_backup/yugabyte_backup"
+            + "/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar"
       })
-  public void testStoragePrefixValidityValid(
-      String configType, String configLocation, String backupLocation) {
+  public void testStoragePrefixValidityValidYbc(String configLocation, String backupLocation) {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-1", configLocation);
     mockStorageUtilFactory
-        .getStorageUtil(configType)
-        .checkStoragePrefixValidity(configLocation, backupLocation);
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, true);
+  }
+
+  @Test(expected = Test.None.class)
+  @Parameters(
+      value = {
+        "/tmp/nfs, /tmp/nfs/nfs_bucket/univ-000/ybc_backup-foo/bar",
+        "/, /nfs_bucket/univ-000/ybc_backup-foo/bar",
+        "//, //nfs_bucket/univ-000/ybc_backup-foo/bar"
+      })
+  public void testStoragePrefixValidityValidYbcCustomBucket(
+      String configLocation, String backupLocation) {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-1", configLocation, "nfs_bucket");
+    mockStorageUtilFactory
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, true);
   }
 
   @Test(expected = PlatformServiceException.class)
   @Parameters(
       value = {
-        "NFS, /yugabyte_backup1, "
-            + "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, /, yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "NFS, //, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, /tmp/nfs/yugabyte_backup, /tmp/nfs/yugabte_backup"
-            + "/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "S3, s3://backup-1, s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "S3, s3://backup-1/test, s3://backup/univ-00000000-0000-0000-0000-000000000000"
-            + "/backup-foo/bar",
-        "S3, s3://backup, s3://backup-1/test/univ-00000000-0000-0000-0000-000000000000"
-            + "/backup-foo/bar",
-        "AZ, https://x.y.z.first/test, https://x.y.z.next/test"
+        "/tmp/nfs, /tmp/nfs/yugabyte_bucket/univ-000/ybc_backup-foo/bar",
+        "/, /yugabyte/nfs_bucket/univ-000/ybc_backup-foo/bar",
+        "/tmp, /yugabyte_backup/univ-000/ybc_backup-foo/bar",
+        "/tmp, /nfs_bucket/univ-000/ybc_backup-foo/bar"
+      })
+  public void testStoragePrefixValidityValidYbcCustomBucketFail(
+      String configLocation, String backupLocation) {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-1", configLocation, "nfs_bucket");
+    mockStorageUtilFactory
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, true);
+  }
+
+  @Test(expected = Test.None.class)
+  @Parameters(
+      value = {
+        "/yugabyte_backup, /yugabyte_backup"
             + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "AZ, https://x.y.z.first/test, https://x.y.z.first/tes-1"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "GCS, https://storage.googleapis.com/test-1, gs://test"
-            + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "GCS, gs://test-1, https://storage.googleapis.com/test"
+        "/, /univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "/tmp/nfs/yugabyte_backup, /tmp/nfs/yugabyte_backup"
             + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
       })
-  public void testStoragePrefixValidityInvalid(
-      String configType, String configLocation, String backupLocation)
+  public void testStoragePrefixValidityValidNonYbc(String configLocation, String backupLocation) {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-1", configLocation);
+    mockStorageUtilFactory
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, false);
+  }
+
+  @Test(expected = PlatformServiceException.class)
+  @Parameters(
+      value = {
+        "/yugabyte_backup1, "
+            + "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "//, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "/tmp/nfs/yugabyte_backup, /tmp/nfs/yugabte_backup"
+            + "/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+        "/tmp/nfs,"
+            + " /tmp/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
+      })
+  public void testStoragePrefixValidityInvalidYbc(String configLocation, String backupLocation)
       throws PlatformServiceException {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-2", configLocation);
+    mockStorageUtilFactory
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, true);
+  }
+
+  @Test(expected = PlatformServiceException.class)
+  @Parameters(
+      value = {
+        "/, yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
+        "/tmp/nfs, /tmp/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
+      })
+  public void testStoragePrefixValidityInvalidNonYbc(String configLocation, String backupLocation)
+      throws PlatformServiceException {
+    CustomerConfig csConfig =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-2", configLocation);
+    mockStorageUtilFactory
+        .getStorageUtil("NFS")
+        .checkStoragePrefixValidity(csConfig.getDataObject(), "", backupLocation, true);
+  }
+
+  @Test(expected = Test.None.class)
+  @Parameters(
+      value = {
+        "S3, s3://backup.yugabyte.com",
+        "GCS, gs://backup.yugabyte.com",
+        "GCS, https://storage.googleapis.com/backup.yugabyte.com",
+        "AZ, https://backup.yugabyte.com"
+      })
+  public void testCheckConfigTypeAndBackupLocationSame(String configType, String location) {
     mockStorageUtilFactory
         .getStorageUtil(configType)
-        .checkStoragePrefixValidity(configLocation, backupLocation);
+        .checkConfigTypeAndBackupLocationSame(location);
+  }
+
+  @Test(expected = PlatformServiceException.class)
+  @Parameters(
+      value = {
+        "S3, gs://backup.yugabyte.com",
+        "S3, https://backup.yugabyte.com",
+        "GCS, s3://backup.yugabyte.com",
+        "GCS, https://backup.yugabyte.com",
+        "AZ, gs://backup.yugabyte.com",
+        "AZ, s3://backup.yugabyte.com"
+      })
+  public void testCheckConfigTypeAndBackupLocationSameFail(String configType, String location) {
+    mockStorageUtilFactory
+        .getStorageUtil(configType)
+        .checkConfigTypeAndBackupLocationSame(location);
   }
 
   private CloudStoreSpec createDsmSpec(

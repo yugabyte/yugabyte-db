@@ -761,25 +761,35 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/* Operator to hash the outer side of this clause
-							   with. */
+	Oid hashOp;				/*
+							 * Operator to hash the outer side of this clause
+							 * with. The inner side must be the left input of
+							 * this op.
+							 */
 	int innerHashAttNo;		/* Attno of inner side variable. */
 	Expr *outerParamExpr;	/* Outer expression of this clause. */
+	Expr *orig_expr;
 } YbBNLHashClauseInfo;
 
 typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
 
-	/*
-	 * Only relevant if we're using the hash batching strategy.
-	 */
+	double first_batch_factor;
+	/* Only relevant if we're using the hash batching strategy. */
 
-	YbBNLHashClauseInfo *hashClauseInfos; /*
-										   * Array of information about each
-										   * hashable join clause.
-										   */
+	/*
+	 * Array of information about each
+	 * hashable join clause.
+	 */
+	YbBNLHashClauseInfo *hashClauseInfos;
 	int num_hashClauseInfos;
+	/* remaining fields are just like the sort-key info in struct Sort */
+	int			numSortCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 } YbBatchedNestLoop;
 
 typedef struct NestLoopParam

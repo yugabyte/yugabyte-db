@@ -89,6 +89,8 @@ message WriteRequestPB {
   optional int64 leader_term = 21;
 
   optional uint64 start_time_micros = 22;
+
+  optional AshMetadataPB ash_metadata = 23;
 }
 
 message WriteResponsePB {
@@ -224,6 +226,10 @@ message ReadRequestPB {
   optional double rejection_score = 13;
 
   optional uint64 batch_idx = 14;
+
+  optional uint64 start_time_micros = 16;
+
+  optional AshMetadataPB ash_metadata = 17;
 }
 
 message ReadResponsePB {

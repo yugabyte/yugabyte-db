@@ -17,7 +17,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
-#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/entity_ids.h"
 
@@ -52,7 +52,7 @@ typedef Callback<void(Result<TableBootstrapIdsMap>)> BootstrapProducerCallback;
 class XClusterRpcTasks {
  public:
   static Result<std::shared_ptr<XClusterRpcTasks>> CreateWithMasterAddrs(
-      const cdc::ReplicationGroupId& producer_id, const std::string& master_addrs);
+      const xcluster::ReplicationGroupId& producer_id, const std::string& master_addrs);
 
   ~XClusterRpcTasks();
 

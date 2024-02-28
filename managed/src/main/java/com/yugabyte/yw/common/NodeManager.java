@@ -49,27 +49,24 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ImageBundle;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
+import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -92,12 +89,10 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Singleton
@@ -125,8 +120,6 @@ public class NodeManager extends DevopsBase {
 
   public static final String YUGABYTE_USER = "yugabyte";
 
-  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
-
   @Inject Config appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
@@ -142,6 +135,8 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
+
+  @Inject TelemetryProviderService telemetryProviderService;
 
   @Inject LocalNodeManager localNodeManager;
 
@@ -193,6 +188,12 @@ public class NodeManager extends DevopsBase {
     return getUserIntentFromParams(universe, nodeTaskParam);
   }
 
+  private boolean imdsv2required(CloudType cloudType, Provider provider) {
+    return (cloudType.equals(CloudType.aws)
+        && provider.getDetails().getCloudInfo() != null
+        && provider.getDetails().getCloudInfo().getAws().useIMDSv2);
+  }
+
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
@@ -201,12 +202,12 @@ public class NodeManager extends DevopsBase {
         throw new RuntimeException("No node is found in universe " + universe.getName());
       }
       nodeDetails = nodeIter.next();
-      LOG.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
+      log.info("Node {} not found, so using {}.", nodeTaskParam.nodeName, nodeDetails.nodeName);
     }
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
 
-  private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
+  private List<String> getCloudArgs(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().getCode());
@@ -224,12 +225,51 @@ public class NodeManager extends DevopsBase {
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       // Instance may not be present if it is deleted from NodeInstance table after a release
-      // action. Node UUID is not available in 2.6.
-      Optional<NodeInstance> node = NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+      // action.
+      ObjectNode detailsJson = Json.newObject();
+      Optional<NodeInstance> optional = NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
+      if (optional.isPresent()) {
+        NodeInstanceData instanceData = optional.get().getDetails();
+        detailsJson = (ObjectNode) Json.toJson(instanceData);
+        if (type == NodeCommandType.Precheck && StringUtils.isEmpty(instanceData.nodeName)) {
+          detailsJson.put("nodeName", nodeTaskParam.nodeName);
+        }
+      }
       command.add("--node_metadata");
-      command.add(node.isPresent() ? node.get().getDetailsJson() : "{}");
+      command.add(detailsJson.toString());
     }
     return command;
+  }
+
+  /**
+   * Inline wait for clock sync means to wait for clock skew to go below the threshold before
+   * cronjob or systemd starts the master and tserver processes. It is useful to handle out-of-band
+   * restart of the nodes.
+   *
+   * @return The list of the arguments required to force cronjob and systemd to wait for clock skew
+   *     to decrease below the threshold before starting the master and tserver processes
+   */
+  public static List<String> getInlineWaitForClockSyncCommandArgs(RuntimeConfGetter confGetter) {
+    List<String> args = new ArrayList<>();
+    if (!confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled)) {
+      return args;
+    }
+    args.add("--acceptable_clock_skew_wait_enabled");
+    args.add("--acceptable_clock_skew_sec");
+    args.add(
+        String.format(
+            "%.9f",
+            confGetter
+                    .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
+                    .toNanos()
+                / Math.pow(10, 9)));
+    // Because the script checks the clock skew every 1 second, we can pass the number of seconds
+    // as the number of retries.
+    args.add("--acceptable_clock_skew_max_tries");
+    args.add(
+        String.valueOf(
+            confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds()));
+    return args;
   }
 
   private List<String> getAccessKeySpecificCommand(NodeTaskParams params, NodeCommandType type) {
@@ -262,8 +302,8 @@ public class NodeManager extends DevopsBase {
         sshPort = params.sshPortOverride;
       }
 
-      LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
-      LOG.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
+      log.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
+      log.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
               params,
@@ -331,9 +371,13 @@ public class NodeManager extends DevopsBase {
     ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
-      subCommand.add("--install_node_exporter");
+      subCommand.add("--clean_node_exporter");
       if (!providerDetails.skipProvisioning) {
         subCommand.add("--provisioning_cleanup");
+      }
+      AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
+      if (destroyParams.otelCollectorInstalled) {
+        subCommand.add("--clean_otel_collector");
       }
     }
 
@@ -353,7 +397,7 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Change_Instance_Type
             || type == NodeCommandType.Create_Root_Volumes
             || type == NodeCommandType.RunHooks)
-        && StringUtils.isNotBlank(providerDetails.sshUser)) {
+        && (StringUtils.isNotBlank(providerDetails.sshUser) || StringUtils.isNotBlank(sshUser))) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
         subCommand.add(sshUser);
@@ -586,7 +630,7 @@ public class NodeManager extends DevopsBase {
                 subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
               }
             } catch (IOException e) {
-              LOG.error(e.getMessage(), e);
+              log.error(e.getMessage(), e);
               throw new RuntimeException(e);
             }
             break;
@@ -680,7 +724,7 @@ public class NodeManager extends DevopsBase {
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
             } catch (IOException e) {
-              LOG.error(e.getMessage(), e);
+              log.error(e.getMessage(), e);
               throw new RuntimeException(e);
             }
             break;
@@ -749,23 +793,23 @@ public class NodeManager extends DevopsBase {
       Map<String, String> gflags,
       boolean useHostname,
       boolean allowOverrideAll) {
-    if (!config.getBoolean("yb.cloud.enabled")) {
-      allowOverrideAll |=
-          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
-      GFlagsUtil.processUserGFlags(
-          node,
-          gflags,
-          GFlagsUtil.getAllDefaultGFlags(
-              taskParam,
-              universe,
-              getUserIntentFromParams(taskParam),
-              useHostname,
-              appConfig,
-              confGetter),
-          allowOverrideAll,
-          confGetter,
-          taskParam);
-    }
+    allowOverrideAll |=
+        confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
+    allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
+
+    GFlagsUtil.processUserGFlags(
+        node,
+        gflags,
+        GFlagsUtil.getAllDefaultGFlags(
+            taskParam,
+            universe,
+            getUserIntentFromParams(taskParam),
+            useHostname,
+            appConfig,
+            confGetter),
+        allowOverrideAll,
+        confGetter,
+        taskParam);
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
@@ -775,16 +819,15 @@ public class NodeManager extends DevopsBase {
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
     String masterAddresses = universe.getMasterAddresses();
+    if (StringUtils.isBlank(masterAddresses)) {
+      log.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
+    }
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     subcommand.add("--num_cores_to_keep");
     subcommand.add(String.valueOf(num_cores_to_keep));
-
-    if (masterAddresses == null || masterAddresses.isEmpty()) {
-      LOG.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
-    }
 
     if (!taskParam.isMasterInShellMode) {
       subcommand.add("--master_addresses_for_master");
@@ -859,7 +902,8 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config);
+      ybcFlags =
+          GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config, taskParam.ybcGflags);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -1281,7 +1325,7 @@ public class NodeManager extends DevopsBase {
             } else if (taskParam.nodeToNodeChange < 0) {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             } else {
-              LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
+              log.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
             processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
@@ -1293,6 +1337,15 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("Invalid taskSubType property: " + subType);
           }
         }
+        break;
+      case YbcGFlags:
+        subcommand.add("--ybc_flags");
+        subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+        subcommand.add("--configure_ybc");
+        subcommand.add("--ybc_dir");
+        subcommand.add(ybcDir);
+        subcommand.add("--tags");
+        subcommand.add("override_ybc_gflags");
         break;
       default:
         break;
@@ -1396,7 +1449,7 @@ public class NodeManager extends DevopsBase {
         "ANSIBLE_LOCAL_TEMP",
         confGetter.getConfForScope(universe, UniverseConfKeys.ansibleLocalTemp));
 
-    LOG.trace("ansible env vars {}", envVars);
+    log.trace("ansible env vars {}", envVars);
     return envVars;
   }
 
@@ -1488,7 +1541,7 @@ public class NodeManager extends DevopsBase {
         Files.write(bootScriptFile, bootScript.getBytes());
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     } else {
@@ -1496,7 +1549,7 @@ public class NodeManager extends DevopsBase {
         Files.write(bootScriptFile, Files.readAllBytes(Paths.get(bootScript)));
         Files.write(bootScriptFile, BOOT_SCRIPT_COMPLETE.getBytes(), StandardOpenOption.APPEND);
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     }
@@ -1553,8 +1606,11 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+
       Optional<NodeInstance> nodeInstanceOp =
-          NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+          nodeTaskParam.nodeUuid == null
+              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
+              : NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (nodeInstanceOp.isPresent()) {
         nodeIp = nodeInstanceOp.get().getDetails().ip;
       }
@@ -1587,9 +1643,28 @@ public class NodeManager extends DevopsBase {
       Universe universe, NodeTaskParams nodeTaskParam, List<String> commandArgs) {
     NodeDetails node = universe.getNode(nodeTaskParam.getNodeName());
     commandArgs.add("--remote_tmp_dir");
-    commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+    if (node == null) {
+      Cluster cluster = universe.getCluster(nodeTaskParam.placementUuid);
+      commandArgs.add(
+          GFlagsUtil.getCustomTmpDirectory(
+              universe,
+              cluster,
+              nodeTaskParam.azUuid,
+              nodeTaskParam.isMaster,
+              nodeTaskParam.isTserver));
+    } else {
+      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+    }
   }
 
+  /**
+   * Runs command on the node which may not yet be present in the universe nodes in some of the
+   * commands. An example is preflight-check of a node which is not yet added to the universe.
+   *
+   * @param type the command type.
+   * @param nodeTaskParam the given node parameters.
+   * @return the command response.
+   */
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     Provider provider = nodeTaskParam.getProvider();
@@ -1675,12 +1750,16 @@ public class NodeManager extends DevopsBase {
               // If low mem instance, configure small boot disk size.
               if (isLowMemInstanceType(taskParam.instanceType)) {
                 String lowMemBootDiskSizeGB = "8";
-                LOG.info(
+                log.info(
                     "Detected low memory instance type. "
                         + "Setting up nodes using low boot disk size.");
                 commandArgs.add("--boot_disk_size_gb");
                 commandArgs.add(lowMemBootDiskSizeGB);
               }
+            }
+
+            if (imdsv2required(userIntent.providerType, provider)) {
+              commandArgs.add("--imdsv2required");
             }
 
             if (!bootScript.isEmpty()) {
@@ -1763,13 +1842,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
             }
-            /*
-            // TODO(bogdan): talk to Ram about this, if we want/use it for kube/onprem?
-            if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
-              commandArgs.add("--machine_image");
-              commandArgs.add(taskParam.getRegion().ybImage);
-            }
-            */
             if (taskParam.assignPublicIP) {
               commandArgs.add("--assign_public_ip");
             }
@@ -1829,11 +1901,21 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
+
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
               userIntent.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
 
@@ -1849,14 +1931,11 @@ public class NodeManager extends DevopsBase {
           } else {
             imageBundleDefaultImage = taskParam.getRegion().getYbImage();
           }
-          // gcp uses machine_image for ansible preprovision.yml
-          if (cloudType.equals(Common.CloudType.gcp)) {
-            String ybImage =
-                Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
-            if (ybImage != null && !ybImage.isEmpty()) {
-              commandArgs.add("--machine_image");
-              commandArgs.add(ybImage);
-            }
+          String ybImage =
+              Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
+          if (ybImage != null && !ybImage.isEmpty()) {
+            commandArgs.add("--machine_image");
+            commandArgs.add(ybImage);
           }
 
           if (confGetter.getGlobalConf(GlobalConfKeys.installLocalesDbNodes)) {
@@ -1893,6 +1972,10 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
+          }
+
+          if (imdsv2required(userIntent.providerType, provider)) {
+            commandArgs.add("--imdsv2required");
           }
 
           if (!bootScript.isEmpty()) {
@@ -1947,6 +2030,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
@@ -2347,6 +2431,7 @@ public class NodeManager extends DevopsBase {
               params,
               params.installOtelCollector,
               params.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
@@ -2380,7 +2465,7 @@ public class NodeManager extends DevopsBase {
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
-              .cloudArgs(getCloudArgs(nodeTaskParam))
+              .cloudArgs(getCloudArgs(type, nodeTaskParam))
               .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
@@ -2390,7 +2475,7 @@ public class NodeManager extends DevopsBase {
         try {
           Files.deleteIfExists(bootScriptFile);
         } catch (IOException e) {
-          LOG.error(e.getMessage(), e);
+          log.error(e.getMessage(), e);
         }
       }
     }
@@ -2637,7 +2722,9 @@ public class NodeManager extends DevopsBase {
           ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-        imageBundleUUID = bundle.getUuid();
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
       }
     }
 
@@ -2649,6 +2736,7 @@ public class NodeManager extends DevopsBase {
       NodeTaskParams taskParams,
       boolean installOtelCollector,
       AuditLogConfig config,
+      String logLinePrefix,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
@@ -2661,13 +2749,61 @@ public class NodeManager extends DevopsBase {
         && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
       return;
     }
-    if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    commandArgs.add("--ycql_audit_log_level");
+    if (config.getYcqlAuditConfig() != null) {
+      YCQLAuditConfig.YCQLAuditLogLevel logLevel =
+          config.getYcqlAuditConfig().getLogLevel() != null
+              ? config.getYcqlAuditConfig().getLogLevel()
+              : YCQLAuditConfig.YCQLAuditLogLevel.ERROR;
+      commandArgs.add(logLevel.name());
+    } else {
+      commandArgs.add("NONE");
+    }
+    if (config.isExportActive()
+        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
-              .generateConfigFile(taskParams, provider, userIntent, config)
+              .generateConfigFile(taskParams, provider, userIntent, config, logLinePrefix)
               .toAbsolutePath()
               .toString());
+
+      for (UniverseLogsExporterConfig logsExporterConfig : config.getUniverseLogsExporterConfig()) {
+        TelemetryProvider telemetryProvider =
+            telemetryProviderService.get(logsExporterConfig.getExporterUuid());
+        switch (telemetryProvider.getConfig().getType()) {
+          case AWS_CLOUDWATCH -> {
+            AWSCloudWatchConfig awsCloudWatchConfig =
+                (AWSCloudWatchConfig) telemetryProvider.getConfig();
+            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
+              commandArgs.add("--otel_col_aws_access_key");
+              commandArgs.add(awsCloudWatchConfig.getAccessKey());
+            }
+            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
+              commandArgs.add("--otel_col_aws_secret_key");
+              commandArgs.add(awsCloudWatchConfig.getSecretKey());
+            }
+          }
+          case GCP_CLOUD_MONITORING -> {
+            GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+                (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+            if (gcpCloudMonitoringConfig.getCredentials() != null) {
+              Path path =
+                  fileHelperService.createTempFile(
+                      "otel_collector_gcp_creds_"
+                          + taskParams.getUniverseUUID()
+                          + "_"
+                          + taskParams.nodeUuid,
+                      ".json");
+              String filePath = path.toAbsolutePath().toString();
+              FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+              commandArgs.add("--otel_col_gcp_creds_file");
+              commandArgs.add(filePath);
+            }
+          }
+        }
+      }
     }
   }
 }

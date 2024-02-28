@@ -244,7 +244,7 @@ This is the result:
  Caught "division_by_zero" in "s.callee()". | -1 | -
 ```
 
-And now provoke an error for which there's no handler in the callee function and which escapes to the caller to be be handled:
+And now provoke an error for which there's no handler in the callee function and which escapes to the caller to be handled:
 
 ```plpgsql
 with c(rec) as (select s.caller('string_data_right_truncation'))
@@ -270,7 +270,7 @@ When the point of execution enters a PL/pgSQL block statement, at any level of n
 {{< note title="Performance implications for a block statement that has an exception section" >}}
 The PostgreSQL documentation, in the subsection [Trapping Errors](https://www.postgresql.org/docs/11/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING) of the section [Control Structures](https://www.postgresql.org/docs/11/plpgsql-control-structures.html) within the [PL/pgSQL chapter](https://www.postgresql.org/docs/11/plpgsql.html), includes this note (slightly paraphrased):
 
-> A block statement that has an _exception_ section is significantly more expensive to enter and exit than a block without one. Therefore, don't write an an _exception_ section unless you need it.
+> A block statement that has an _exception_ section is significantly more expensive to enter and exit than a block without one. Therefore, don't write an _exception_ section unless you need it.
 
 The putative cost is due to the creation of the savepoint and the subsequent release of, or rollback to, the savepoint. There has been some discussion about this advice on the _pgsql-general_ email list. See, for example, [HERE](https://www.postgresql.org/message-id/4A59B6AA01F1874283EA66C976ED51FC0E1A6B%40COENGEXCMB01.cable.comcast.com) and [HERE](https://www.postgresql.org/message-id/24CD0FA6-F58C-44B5-B3D5-FE704A63E5CA@yugabyte.com). This, from acknowledged expert Tom Lane, best summarises the responses:
 
@@ -287,7 +287,7 @@ It helps to distinguish between two kinds of error:
   However, this approach would lead to verbose, cluttered, code to the extent that it would be very difficult to read and maintain. And, with so very many savepoints being created and then released during normal, error free, execution, there would be noticeable performance penalty.
 
   The best, and simplest, way to handle such unexpected errors is in a single _when others_ handler at the end of the top-level PL/pgSQL block statement that implements the subprogram or *do* statement that the client code invoked. This handler can marshal as many facts as are available. These facts include the _context_ which specifies the call stack at the time of the exception. See the account of the _get stacked diagnostics_ statement in the next section. These facts can then be recorded in an _incidents_ table with an auto-generated _ticket_number_ primary key. When this exception section finishes, control returns to the client. This means that there is no need, here, for a bare _raise_ statement to stop execution blundering on. Rather, it's enough to return the fact that such an unexpected error occurred together with the ticket number. The client can then report this outcome in end-user terminology.
-  
+
   You can see a self-contained working code example that illustrates this paradigm in the [ysql-case-studies](https://github.com/YugabyteDB-Samples/ysql-case-studies) GitHub repo. Look at the [hard-shell](https://github.com/YugabyteDB-Samples/ysql-case-studies/tree/main/hard-shell) case-study and within that at the exception section in the source code for the procedure [api.insert_master_and_details()](https://github.com/YugabyteDB-Samples/ysql-case-studies/blob/main/hard-shell/60-install-api.sql#L36).
 {{< /note >}}
 
@@ -485,7 +485,7 @@ update s.t set c1 = 'cat', c2 = 2 where k = 1;
 
 This is the result:
 
-```ouput
+```output
  sqlstate:    No error
 ```
 
@@ -573,7 +573,6 @@ This is the result:
 ```
 
 Notice that _t_c2_nn_, which _is_ listed, is defined as a _table_ constraint rather than as a _column_ constraint.
-
 
 **4. Next, cause another error:**
 

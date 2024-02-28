@@ -2,7 +2,6 @@
 title: Connect an app
 linkTitle: Connect an app
 description: Go drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: pgx-driver

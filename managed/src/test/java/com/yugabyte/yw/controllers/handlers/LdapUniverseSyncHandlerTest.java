@@ -71,13 +71,15 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     String gFlag = "test";
 
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
-    ldapUnivSyncFormData.setLdapServer("");
 
     Result result =
         assertPlatformException(() -> handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapServer is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapServer(null) is required."));
   }
 
   @Test
@@ -87,7 +89,6 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
 
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
     ldapUnivSyncFormData.setLdapServer("test");
-    ldapUnivSyncFormData.setLdapPort(null);
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
     ldapUnivSyncFormData.setLdapSearchFilter("test");
@@ -95,6 +96,12 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
 
     ldapUnivSyncFormData = handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag);
     assertTrue(ldapUnivSyncFormData.getLdapPort() == 389);
+
+    ldapUnivSyncFormData.setLdapPort(null);
+    ldapUnivSyncFormData.setUseLdapTls(true);
+    ldapUnivSyncFormData = handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag);
+
+    assertTrue(ldapUnivSyncFormData.getLdapPort() == 636);
   }
 
   @Test
@@ -104,13 +111,15 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
 
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
     ldapUnivSyncFormData.setLdapServer("test");
-    ldapUnivSyncFormData.setLdapBindDn("");
 
     Result result =
         assertPlatformException(() -> handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBindDn is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapBindDn(null) is required."));
   }
 
   @Test
@@ -121,13 +130,16 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
     ldapUnivSyncFormData.setLdapServer("test");
     ldapUnivSyncFormData.setLdapBindDn("test");
-    ldapUnivSyncFormData.setLdapBindPassword("");
 
     Result result =
         assertPlatformException(() -> handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBindPassword is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format(
+            "Couldnt extract the value from the gflag. ldapBindPassword(null) is required."));
   }
 
   @Test
@@ -139,13 +151,16 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     ldapUnivSyncFormData.setLdapServer("test");
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
-    ldapUnivSyncFormData.setLdapSearchFilter("");
 
     Result result =
         assertPlatformException(() -> handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapSearchFilter is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format(
+            "Couldnt extract the value from the gflag. ldapSearchFilter(null) is required."));
   }
 
   @Test
@@ -158,13 +173,15 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
     ldapUnivSyncFormData.setLdapSearchFilter("test");
-    ldapUnivSyncFormData.setLdapBasedn("");
 
     Result result =
         assertPlatformException(() -> handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBasedn is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapBasedn(null) is required."));
   }
 
   @Test
@@ -177,7 +194,6 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     ldapUnivSyncFormData.setLdapBindPassword("test");
     ldapUnivSyncFormData.setLdapSearchFilter("test");
     ldapUnivSyncFormData.setLdapBasedn("test");
-    ldapUnivSyncFormData.setUseLdapTls(null);
 
     ldapUnivSyncFormData = handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag);
     assertFalse(ldapUnivSyncFormData.getUseLdapTls());
@@ -192,13 +208,6 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
             + " ldapbindpasswd=test\" ldaptls=0 ldapport=636";
 
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
-    ldapUnivSyncFormData.setLdapServer("");
-    ldapUnivSyncFormData.setLdapPort(null);
-    ldapUnivSyncFormData.setLdapBindDn("");
-    ldapUnivSyncFormData.setLdapBindPassword("");
-    ldapUnivSyncFormData.setLdapSearchFilter("");
-    ldapUnivSyncFormData.setLdapBasedn("");
-    ldapUnivSyncFormData.setUseLdapTls(null);
 
     ldapUnivSyncFormData = handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag);
 
@@ -218,7 +227,7 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     ldapUnivSyncFormData.setUseLdapTls(null);
     ldapUnivSyncFormData = handler.populateFromGflagYSQL(ldapUnivSyncFormData, gFlag);
 
-    Assert.assertEquals(true, ldapUnivSyncFormData.getUseLdapTls());
+    assertTrue(ldapUnivSyncFormData.getUseLdapTls());
   }
 
   @Test
@@ -247,14 +256,16 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
   public void testInvalidYcqlLdapServer() {
     // Test for ldapServer
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
-    ldapUnivSyncFormData.setLdapServer("");
 
     Result result =
         assertPlatformException(
             () -> handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapServer is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapServer(null) is required."));
   }
 
   @Test
@@ -262,14 +273,17 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     // Test for ldapBindDn
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
     ldapUnivSyncFormData.setLdapServer("test");
-    ldapUnivSyncFormData.setLdapBindDn("");
+    ldapUnivSyncFormData.setLdapPort(123);
 
     Result result =
         assertPlatformException(
             () -> handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBindDn is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapBindDn(null) is required."));
   }
 
   @Test
@@ -277,15 +291,19 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     // Test for ldapBindPassword
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
     ldapUnivSyncFormData.setLdapServer("test");
+    ldapUnivSyncFormData.setLdapPort(123);
     ldapUnivSyncFormData.setLdapBindDn("test");
-    ldapUnivSyncFormData.setLdapBindPassword("");
 
     Result result =
         assertPlatformException(
             () -> handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBindPassword is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format(
+            "Couldnt extract the value from the gflag. ldapBindPassword(null) is required."));
   }
 
   @Test
@@ -293,16 +311,20 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     // Test for ldapSearchFilter
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
     ldapUnivSyncFormData.setLdapServer("test");
+    ldapUnivSyncFormData.setLdapPort(123);
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
-    ldapUnivSyncFormData.setLdapSearchFilter("");
 
     Result result =
         assertPlatformException(
             () -> handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapSearchFilter is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format(
+            "Couldnt extract the value from the gflag. ldapSearchFilter(null) is required."));
   }
 
   @Test
@@ -310,17 +332,20 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     // Test for ldapBaseDn
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
     ldapUnivSyncFormData.setLdapServer("test");
+    ldapUnivSyncFormData.setLdapPort(123);
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
     ldapUnivSyncFormData.setLdapSearchFilter("test");
-    ldapUnivSyncFormData.setLdapBasedn("");
 
     Result result =
         assertPlatformException(
             () -> handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "error", String.format("ldapBasedn is required: null"));
+    assertValue(
+        resultJson,
+        "error",
+        String.format("Couldnt extract the value from the gflag. ldapBasedn(null) is required."));
   }
 
   @Test
@@ -328,18 +353,13 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     // Test for ldaptls
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
     ldapUnivSyncFormData.setLdapServer("test");
+    ldapUnivSyncFormData.setLdapPort(123);
     ldapUnivSyncFormData.setLdapBindDn("test");
     ldapUnivSyncFormData.setLdapBindPassword("test");
     ldapUnivSyncFormData.setLdapSearchFilter("test");
     ldapUnivSyncFormData.setLdapBasedn("test");
-    ldapUnivSyncFormData.setUseLdapTls(null);
 
-    try {
-      ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
+    ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
     assertFalse(ldapUnivSyncFormData.getUseLdapTls());
   }
 
@@ -347,13 +367,6 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
   public void testValidYcqlGflag() {
     tserverMap.put(GFlagsUtil.USE_CASSANDRA_AUTHENTICATION, "true");
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);
-    ldapUnivSyncFormData.setLdapServer("");
-    ldapUnivSyncFormData.setLdapPort(null);
-    ldapUnivSyncFormData.setLdapBindDn("");
-    ldapUnivSyncFormData.setLdapBindPassword("");
-    ldapUnivSyncFormData.setLdapSearchFilter("");
-    ldapUnivSyncFormData.setLdapBasedn("");
-    ldapUnivSyncFormData.setUseLdapTls(null);
 
     tserverMap.put(LdapUniverseSyncHandler.YCQL_LDAP_SERVER, "ldap://0.0.0.0:000");
     tserverMap.put(LdapUniverseSyncHandler.YCQL_LDAP_BIND_DN, "cn=test,dc=test,dc=org");
@@ -362,11 +375,7 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
     tserverMap.put(LdapUniverseSyncHandler.YCQL_LDAP_BASE_DN, "dc=test,dc=org");
     tserverMap.put(LdapUniverseSyncHandler.YCQL_LDAP_TLS, "false");
 
-    try {
-      ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
 
     assertEquals("0.0.0.0", ldapUnivSyncFormData.getLdapServer());
     assertTrue(ldapUnivSyncFormData.getLdapPort() == 0);
@@ -378,11 +387,9 @@ public class LdapUniverseSyncHandlerTest extends FakeDBApplication {
 
     ldapUnivSyncFormData.setUseLdapTls(null);
     tserverMap.put(LdapUniverseSyncHandler.YCQL_LDAP_TLS, "true");
-    try {
-      ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+
+    ldapUnivSyncFormData = handler.populateFromGflagYCQL(ldapUnivSyncFormData, tserverMap);
+
     Assert.assertEquals(true, ldapUnivSyncFormData.getUseLdapTls());
   }
 

@@ -17,6 +17,6 @@ public class SoftwareUpgradeInfoRequest {
   @ApiModelProperty(
       value = "WARNING: This is a preview API that could change. DB version",
       required = true)
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   private String ybSoftwareVersion;
 }

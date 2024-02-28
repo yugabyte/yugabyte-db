@@ -3,7 +3,6 @@ title: YugabyteDB Anywhere REST API
 headerTitle: REST API
 linkTitle: REST API
 description: REST API YugabyteDB Anywhere.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the REST API
 menu:
   preview_yugabyte-platform:

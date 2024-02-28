@@ -26,6 +26,11 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -49,11 +54,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -70,6 +70,7 @@ import play.mvc.Http.Status;
 public class NodeAgent extends Model {
 
   public static final KeyLock<UUID> NODE_AGENT_KEY_LOCK = new KeyLock<UUID>();
+  public static final String NODE_AGENT_DIR = "node-agent";
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -179,7 +180,6 @@ public class NodeAgent extends Model {
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
   public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
-  public static final String ROOT_NODE_AGENT_HOME = "/root/node-agent";
 
   @Id
   @ApiModelProperty(value = "Node agent UUID", accessMode = READ_ONLY)

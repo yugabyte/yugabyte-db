@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
-
 import { Component } from 'react';
-import { YBModal } from '../../common/forms/fields';
-import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
+import { toast } from 'react-toastify';
+import PropTypes from 'prop-types';
+import { YBModal } from '../../common/forms/fields';
 import { NodeAction } from '../../universes';
 
 const nodeActionExpectedResult = {
@@ -55,6 +55,8 @@ export default class NodeActionModal extends Component {
     performUniverseNodeAction(universeUUID, nodeInfo.name, actionType).then((response) => {
       if (response.error !== true) {
         this.pollNodeStatusUpdate(universeUUID, actionType, nodeInfo.name, response.payload);
+      } else if (response.error && response.payload.status !== 200) {
+        toast.error(createErrorMessage(response.payload));
       }
     });
     onHide();

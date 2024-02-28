@@ -29,6 +29,7 @@ import { ProviderStatusLabel } from '../components/ProviderStatusLabel';
 import { useInterval } from 'react-use';
 import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { isRbacEnabled } from '../../../../redesign/features/rbac/common/RbacUtils';
 import styles from './ProviderView.module.scss';
 
 interface ProviderViewProps {
@@ -67,7 +68,7 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
   if (providerQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider." />;
   }
-  if (universeListQuery.isError) {
+  if (universeListQuery.isError && !isRbacEnabled()) {
     return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
   }
 
@@ -83,7 +84,7 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
   };
 
   const providerConfig = providerQuery.data;
-  const universeList = universeListQuery.data;
+  const universeList = universeListQuery.data ?? [];
   const linkedUniverses = getLinkedUniverses(providerConfig.uuid, universeList);
   return (
     <div className={styles.viewContainer}>

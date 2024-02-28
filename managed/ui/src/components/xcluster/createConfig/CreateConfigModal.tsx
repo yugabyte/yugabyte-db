@@ -27,7 +27,8 @@ import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
-  XClusterConfigType
+  XClusterConfigType,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import { TableSelect } from '../sharedComponents/tableSelect/TableSelect';
 
@@ -168,15 +169,9 @@ export const CreateConfigModal = ({
   );
 
   const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then(
+      fetchTablesInUniverse(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
         (response) => response.data
       )
   );
@@ -339,6 +334,7 @@ export const CreateConfigModal = ({
           tablesQuery.data,
           universeQuery.data,
           isTableSelectionValidated,
+          tableType,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -452,6 +448,7 @@ const validateForm = async (
   sourceUniverseTables: YBTable[],
   sourceUniverse: Universe,
   isTableSelectionValidated: boolean,
+  tableType: TableType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarnings: (formWarnings: CreateXClusterConfigFormWarnings) => void
 ) => {
@@ -490,18 +487,25 @@ const validateForm = async (
       if (!isTableSelectionValidated) {
         if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
           errors.tableUUIDs = {
-            title: 'No tables selected.',
-            body: 'Select at least 1 table to proceed'
+            title: `No ${
+              tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+            } selected.`,
+            body: `Select at least 1 ${
+              tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+            } to proceed`
           };
+          throw errors;
         }
         let bootstrapTableUUIDs: string[] | null = null;
         try {
           bootstrapTableUUIDs = await getTablesForBootstrapping(
-            values.tableUUIDs.map(formatUuidForXCluster),
+            values.tableUUIDs,
             sourceUniverse.universeUUID,
             values.targetUniverse.value.universeUUID,
             sourceUniverseTables,
-            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
+            [] /* Table UUIDs currently in config */,
+            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
+            false /* used for dr */
           );
         } catch (error: any) {
           toast.error(
@@ -576,11 +580,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Bootstrap';
+        return 'Next: Configure Full Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Bootstrap and Enable Replication';
+      return 'Create Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }

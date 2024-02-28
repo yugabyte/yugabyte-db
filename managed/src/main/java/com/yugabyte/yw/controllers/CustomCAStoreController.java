@@ -50,7 +50,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Add a named custom CA certificate",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Add a named custom CA certificate",
       response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -105,9 +106,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. List all custom CA certificates of a"
-              + " customer",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all custom CA certificates of a customer",
       responseContainer = "List",
       response = CustomCaCertificateInfo.class,
       nickname = "listAllCustomCaCertificates")
@@ -124,9 +124,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Download a custom CA certificates of a"
-              + " customer",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Download a custom CA certificates of a customer",
       response = CustomCaCertificateInfo.class,
       nickname = "getAllCustomCaCertificates")
   @AuthzPath({
@@ -143,8 +142,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Update a named custom CA certificate",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update a named custom CA certificate",
       response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -198,8 +197,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Delete a named custom CA certificate",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete a named custom CA certificate",
       response = YBPSuccess.class,
       nickname = "Delete custom CA certificate")
   @AuthzPath({

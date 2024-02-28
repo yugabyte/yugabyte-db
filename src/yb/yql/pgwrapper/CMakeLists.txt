@@ -17,6 +17,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
+    yb_ash
     yb_common
     yb_pggate_flags
     yb_process_wrapper
@@ -24,6 +25,8 @@ set(PGWRAPPER_LIBS
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
+
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
 # We indirectly use some headers that are generated while processing the protobufs below.
 add_dependencies(
@@ -138,6 +141,7 @@ ADD_YB_TEST(pg_namespace-test)
 ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_row_lock-test)
@@ -146,8 +150,10 @@ ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
 ADD_YB_TEST(pg_stat_activity-test)
 ADD_YB_TEST(pg_table_size-test)
+ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
+ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)

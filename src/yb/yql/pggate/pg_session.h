@@ -40,6 +40,7 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -253,7 +254,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   struct CacheOptions {
-    uint64_t key_group;
+    uint32_t key_group;
     std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
   };
@@ -348,23 +349,34 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<bool> CheckIfPitrActive();
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   PgDocMetrics& metrics() { return metrics_; }
+
+  uint64_t GetReadTimeSerialNo();
+
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
 
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
   Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
+  Result<yb::tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name);
+
   Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
 
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+
+  Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
-  Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
+  Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   class RunHelper;
 
@@ -416,12 +428,14 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics metrics_;
 
+  const YBCPgCallbacks& pg_callbacks_;
+  const PgWaitEventWatcher::Starter wait_starter_;
+
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
-  const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
 };
 

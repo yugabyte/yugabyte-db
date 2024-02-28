@@ -13,6 +13,8 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 )
 
+const SecretsDirectory = "/var/lib/replicated/secrets"
+
 // ReplicatedCtl client for using replicatedctl
 type ReplicatedCtl struct {
 	// Path to the replicatedctl executable

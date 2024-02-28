@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +35,7 @@ import play.mvc.Http.Request;
 @Singleton
 public class AuditService {
 
-  public static final TypedKey<Boolean> IS_AUDITED = TypedKey.create("isAudited");
+  public static final TypedKey<AtomicBoolean> IS_AUDITED = TypedKey.create("isAudited");
   public static final Logger LOG = LoggerFactory.getLogger(AuditService.class);
 
   public static final Configuration JSONPATH_CONFIG =
@@ -108,6 +109,11 @@ public class AuditService {
   }
 
   public void createAuditEntryWithReqBody(
+      Http.Request request, Audit.TargetType target, Audit.ActionType action) {
+    createAuditEntry(request, target, null, action, request.body().asJson(), null);
+  }
+
+  public void createAuditEntryWithReqBody(
       Http.Request request,
       Audit.TargetType target,
       String targetID,
@@ -167,7 +173,7 @@ public class AuditService {
       UUID taskUUID,
       JsonNode additionalDetails) {
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = RedactingService.filterSecretFields(params, RedactionTarget.LOGS);

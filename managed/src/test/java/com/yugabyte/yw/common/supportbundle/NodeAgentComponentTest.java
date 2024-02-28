@@ -144,7 +144,7 @@ public class NodeAgentComponentTest extends FakeDBApplication {
     NodeAgentComponent nodeAgentComponent =
         new NodeAgentComponent(
             mockUniverseInfoHandler, mockNodeUniverseManager, mockSupportBundleUtil);
-    nodeAgentComponent.downloadComponent(customer, universe, fakeBundlePath, node);
+    nodeAgentComponent.downloadComponent(null, customer, universe, fakeBundlePath, node);
 
     ArgumentCaptor<List<String>> sourceFiles = ArgumentCaptor.forClass(List.class);
     // Check that the download function is called.

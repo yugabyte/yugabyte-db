@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.EnableRollbackSupportKeyValidator;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
+import com.yugabyte.yw.common.config.impl.OidcEnabledKeyValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
 import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzValidator;
 import com.yugabyte.yw.models.Customer;
@@ -46,11 +47,13 @@ public class RuntimeConfigPreChangeNotifier {
       SSH2EnabledKeyValidator ssh2EnabledKeyValidator,
       MetricCollectionLevelValidator metricCollectionLevelValidator,
       UseNewRbacAuthzValidator useNewRbacAuthzValidator,
-      EnableRollbackSupportKeyValidator enableRollbackSupportKeyValidator) {
+      EnableRollbackSupportKeyValidator enableRollbackSupportKeyValidator,
+      OidcEnabledKeyValidator oidcEnabledKeyValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
     addListener(useNewRbacAuthzValidator);
     addListener(enableRollbackSupportKeyValidator);
+    addListener(oidcEnabledKeyValidator);
   }
 
   public void notifyListenersDeleteConfig(UUID scopeUUID, String path) {

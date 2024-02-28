@@ -116,7 +116,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -297,7 +297,6 @@ public class AWSCloudImpl implements CloudAPI {
     List<LoadBalancer> lbs = null;
     try {
       lbs = lbClient.describeLoadBalancers(request).getLoadBalancers();
-      System.out.print(lbs);
       if (lbs.size() > 1) {
         throw new Exception("Failure: More than one load balancer with name \"" + lbName + "\"!");
       } else if (lbs.size() == 0) {

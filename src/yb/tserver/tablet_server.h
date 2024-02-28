@@ -45,7 +45,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -78,10 +78,22 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
-class AutoFlagsManager;
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+}
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+}
 
 namespace tserver {
 
+class TserverAutoFlagsManager;
 class PgClientServiceImpl;
 class XClusterConsumerIf;
 
@@ -231,11 +243,20 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
+  bool catalog_version_table_in_perdb_mode() const override {
+    std::lock_guard l(lock_);
+    return catalog_version_table_in_perdb_mode_;
+  }
+
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
+
+  rpc::Messenger* GetMessenger(ServerType type) const override;
+
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override;
 
   virtual Env* GetEnv();
 
@@ -343,7 +364,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // The options passed at construction time, and will be updated if master config changes.
   TabletServerOptions opts_;
 
-  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
+  std::unique_ptr<TserverAutoFlagsManager> auto_flags_manager_;
 
   // Manager for tablets which are available on this server.
   std::unique_ptr<TSTabletManager> tablet_manager_;
@@ -387,6 +408,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+  // See same variable comments in CatalogManager.
+  bool catalog_version_table_in_perdb_mode_ = false;
 
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
@@ -448,6 +471,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rocksdb::Env> rocksdb_env_;
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
+
+  std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

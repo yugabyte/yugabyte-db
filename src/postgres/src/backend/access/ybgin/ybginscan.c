@@ -84,13 +84,13 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/* Initialize ybgin scan opaque handle. */
 	YBCPgPrepareParameters prepare_params = {
-		.index_oid = RelationGetRelid(scan->indexRelation),
+		.index_relfilenode_oid = YbGetRelfileNodeId(scan->indexRelation),
 		.index_only_scan = scan->xs_want_itup,
 		.use_secondary_index = true,	/* can't have ybgin primary index */
 		.querying_colocated_table = is_colocated,
 	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
-								  YbGetStorageRelid(scan->heapRelation),
+								  YbGetRelfileNodeId(scan->heapRelation),
 								  &prepare_params,
 								  YBCIsRegionLocal(scan->heapRelation),
 								  &ybso->handle));

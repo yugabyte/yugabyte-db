@@ -132,6 +132,22 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpAllWithoutYbMetadata() throws Exception {
+    // Note that we're using the same describe input as for regular ysql_dump!
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dumpall_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dumpall_without_ybmetadata_describe.out"
+        /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.OFF);
+  }
+
+  @Test
   public void ysqlDumpColocatedDB() throws Exception {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,

@@ -59,9 +59,9 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         } catch (PlatformServiceException e) {
           if (e.getHttpStatus() == BAD_REQUEST) {
             if (awsCloudImpl.checkKeysExists(provider)) {
-              throwBeanProviderValidatorError("KEYS", e.getMessage());
+              throwBeanProviderValidatorError("KEYS", e.getMessage(), null);
             } else {
-              throwBeanProviderValidatorError("IAM", e.getMessage());
+              throwBeanProviderValidatorError("IAM", e.getMessage(), null);
             }
           }
           throw e;
@@ -134,7 +134,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     if (!validationErrorsMap.isEmpty()) {
-      throwMultipleProviderValidatorError(validationErrorsMap);
+      throwMultipleProviderValidatorError(validationErrorsMap, null);
     }
   }
 
@@ -189,7 +189,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   private void validateAMI(
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
     String imageId = region.getYbImage();
-    String fieldDetails = "REGION." + region.getCode() + "." + "IMAGE";
+    String fieldDetails = "REGION." + region.getCode() + ".IMAGE";
     try {
       if (!StringUtils.isEmpty(imageId)) {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);
@@ -335,7 +335,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     String accessKeySecret = cloudInfo.awsAccessKeySecret;
     if ((StringUtils.isEmpty(accessKey) && !StringUtils.isEmpty(accessKeySecret))
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
-      throwBeanProviderValidatorError("KEYS", "Please provide both access key and its secret");
+      throwBeanProviderValidatorError(
+          "KEYS", "Please provide both access key and its secret", null);
     }
   }
 

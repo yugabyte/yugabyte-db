@@ -45,7 +45,8 @@ type YBTableProps<T> = {
   customComponents?: () => React.ReactChild;
   overrideStyles?: {
     actionsClassname?: string
-  }
+  };
+  disableSelection?: boolean;
 };
 
 type FilterOptions = 'ALL' | 'SELECTED';
@@ -100,6 +101,9 @@ const useStyles = makeStyles((theme) => ({
   tableCell: {
     paddingLeft: '0 !important',
     height: '40px'
+  },
+  checkboxDisabled: {
+    opacity: '0.5'
   }
 }));
 
@@ -113,7 +117,7 @@ const getDefaultValues = <T,>(allValues: T[], selected: T[]) => {
 };
 
 export const YBTable = <T,>(props: YBTableProps<T>) => {
-  const { tableHeader, table, name, setValue, defaultValues, searchPlaceholder, renderBodyFn, searchFn, tableCountInfo, customComponents, overrideStyles } = props;
+  const { tableHeader, table, name, setValue, defaultValues, searchPlaceholder, renderBodyFn, searchFn, tableCountInfo, customComponents, overrideStyles, disableSelection = false } = props;
 
   const [selected, { set, setAll, get, remove }] = useMap<typeof table>(
     (getDefaultValues(table, defaultValues) as unknown) as T[]
@@ -161,6 +165,8 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
               icon={<img src={UnChecked} alt="unchecked" />}
               checkedIcon={<img src={Checked} alt="checked" />}
               indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
+              disabled={disableSelection}
+              className={clsx(disableSelection && classes.checkboxDisabled)}
             />
           </TableCell>
           {tableHeader.map((title, i) => (
@@ -210,6 +216,7 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
                   }}
                   icon={<img src={UnChecked} alt="unchecked" />}
                   checkedIcon={<img src={Checked} alt="checked" />}
+                  disabled={disableSelection}
                 />
               </TableCell>
               <TableCell className={classes.tableCell}>{renderBodyFn?.(row) ?? row}</TableCell>

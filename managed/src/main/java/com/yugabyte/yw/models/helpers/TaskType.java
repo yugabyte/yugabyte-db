@@ -2,6 +2,8 @@ package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
@@ -169,6 +171,9 @@ public enum TaskType {
   KubernetesCheckVolumeExpansion(
       com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
 
+  KubernetesPostExpansionCheckVolume(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
+
   StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
 
   DeleteXClusterConfig(com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class),
@@ -264,6 +269,8 @@ public enum TaskType {
 
   CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
 
+  CheckNodeSafeToDelete(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -290,6 +297,9 @@ public enum TaskType {
 
   UpdateUniverseYbcDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails.class),
+
+  UpdateUniverseYbcGflagsDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
 
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
@@ -398,6 +408,9 @@ public enum TaskType {
   PromoteSecondaryConfigToMainConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig
           .class),
+
+  DeleteRemnantStreams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteRemnantStreams.class),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
@@ -510,6 +523,8 @@ public enum TaskType {
 
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
+  CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 
@@ -551,6 +566,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
+
+  UpgradeYbcGFlags(com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class),
 
   DisableYbc(com.yugabyte.yw.commissioner.tasks.DisableYbc.class),
 
@@ -613,7 +630,13 @@ public enum TaskType {
   // Tasks belonging to subtasks.ldap classpath
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
-  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
+
+  CheckForClusterServers(CheckClusterConsistency.class),
+
+  CheckLeaderlessTablets(CheckLeaderlessTablets.class),
+
+  UpdateProxyConfig(com.yugabyte.yw.commissioner.tasks.upgrade.UpdateProxyConfig.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -706,6 +729,7 @@ public enum TaskType {
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
           .put(LdapUniverseSync, 137)
+          .put(UpgradeYbcGFlags, 138)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

@@ -12,6 +12,7 @@ public class MetricGraphData {
   public String tableName;
   public String tableId;
   public String namespaceName;
+  public String namespaceId;
   public String type;
   public ArrayNode x = Json.newArray();
   public ArrayNode y = Json.newArray();

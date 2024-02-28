@@ -3,7 +3,6 @@ title: Install YugabyteDB Anywhere on Private Cloud Overview
 headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on private cloud
-image: /images/section_icons/deploy/enterprise.png
 menu:
   v2.18_yugabyte-platform:
     identifier: install-3-private-cloud

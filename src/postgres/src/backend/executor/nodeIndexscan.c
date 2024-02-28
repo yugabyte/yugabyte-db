@@ -73,6 +73,7 @@ static int reorderqueue_cmp(const pairingheap_node *a,
 static void reorderqueue_push(IndexScanState *node, HeapTuple tuple,
 				  Datum *orderbyvals, bool *orderbynulls);
 static HeapTuple reorderqueue_pop(IndexScanState *node);
+static void yb_init_index_scandesc(IndexScanState *node);
 
 
 /* ----------------------------------------------------------------
@@ -134,8 +135,6 @@ IndexNext(IndexScanState *node)
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 
-		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
-
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -147,17 +146,7 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-
-		if (IsYugaByteEnabled())
-		{
-			scandesc->yb_scan_plan = (Scan *) plan;
-			scandesc->yb_rel_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
-			scandesc->yb_idx_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
-			scandesc->yb_aggrefs = node->yb_iss_aggrefs;
-			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
-		}
+		yb_init_index_scandesc(node);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -209,7 +198,8 @@ IndexNext(IndexScanState *node)
 		 * Set reference to slot in scan desc so that YB amgettuple can use it
 		 * during aggregate pushdown.
 		 */
-		scandesc->yb_agg_slot = slot;
+		if (scandesc->yb_aggrefs)
+			scandesc->yb_agg_slot = slot;
 	}
 
 	/*
@@ -319,8 +309,6 @@ IndexNextWithReorder(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
-		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
-
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -332,11 +320,7 @@ IndexNextWithReorder(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *) plan;
-		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
-		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+		yb_init_index_scandesc(node);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -718,13 +702,7 @@ ExecReScanIndexScan(IndexScanState *node)
 	/* reset index scan */
 	if (node->iss_ScanDesc)
 	{
-		IndexScanDesc scandesc = node->iss_ScanDesc;
-		IndexScan *plan = (IndexScan *) scandesc->yb_scan_plan;
-		EState *estate = node->ss.ps.state;
-		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
-		scandesc->yb_idx_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+		yb_init_index_scandesc(node);
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);
@@ -1919,13 +1897,13 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * initialize the scan key's fields appropriately
 				 */
 				ScanKeyEntryInitialize(this_key,
-									   					 flags,
-									   					 varattno,  /* attribute number to scan */
-									   					 op_strategy, /* op's strategy */
-									   					 op_righttype,	/* strategy subtype */
-									   					 saop->inputcollid,	/* collation */
-									   					 opfuncid,	/* reg proc to use */
-									   					 scanvalue);	/* constant */
+									   flags,
+									   varattno,  /* attribute number to scan */
+									   op_strategy, /* op's strategy */
+									   op_righttype,	/* strategy subtype */
+									   saop->inputcollid,	/* collation */
+									   opfuncid,	/* reg proc to use */
+									   scanvalue);	/* constant */
 				n_sub_key++;
 			}
 
@@ -2014,6 +1992,30 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 		elog(ERROR, "ScalarArrayOpExpr index qual found where not allowed");
 }
 
+/*
+ * yb_init_index_scandesc
+ *
+ *		Initialize Yugabyte specific fields of the IndexScanDesc.
+ */
+static void
+yb_init_index_scandesc(IndexScanState *node)
+{
+	if (IsYugaByteEnabled())
+	{
+		IndexScanDesc scandesc = node->iss_ScanDesc;
+		EState *estate = node->ss.ps.state;
+		IndexScan *plan = (IndexScan *) node->ss.ps.plan;
+		scandesc->yb_exec_params = &estate->yb_exec_params;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+		scandesc->yb_idx_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
+		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+	}
+}
+
 /* ----------------------------------------------------------------
  *						Parallel Scan Support
  * ----------------------------------------------------------------
@@ -2063,6 +2065,7 @@ ExecIndexScanInitializeDSM(IndexScanState *node,
 								 node->iss_NumScanKeys,
 								 node->iss_NumOrderByKeys,
 								 piscan);
+	yb_init_index_scandesc(node);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
@@ -2106,6 +2109,7 @@ ExecIndexScanInitializeWorker(IndexScanState *node,
 								 node->iss_NumScanKeys,
 								 node->iss_NumOrderByKeys,
 								 piscan);
+	yb_init_index_scandesc(node);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass

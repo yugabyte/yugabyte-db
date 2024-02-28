@@ -3,7 +3,6 @@ title: Distributed snapshots for YSQL
 headerTitle: Distributed snapshots for YSQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YSQL.
-image: /images/section_icons/manage/enterprise.png
 menu:
   stable:
     identifier: snapshots-1-ysql

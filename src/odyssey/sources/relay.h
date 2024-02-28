@@ -151,6 +151,8 @@ static inline int od_relay_full_packet_required(char *data)
 	    header->type == KIWI_BE_READY_FOR_QUERY ||
 	    header->type == KIWI_BE_ERROR_RESPONSE ||
 	    header->type == KIWI_FE_PARSE || header->type == KIWI_FE_BIND ||
+		// For Ysql Connection Manager full packet is required for below headers as well
+		header->type == KIWI_FE_COPY_DATA || header->type == KIWI_FE_QUERY ||
 	    header->type == KIWI_FE_DESCRIBE)
 		return 1;
 	return 0;

@@ -22,7 +22,7 @@ PACKAGE_DIR := ${TOP_BUILDDIR}/yba_cli-${VERSION}-${GOOS}-${GOARCH}
 PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
-VERSION_TXT:=$(CURDIR)/version.json
+VERSION_TXT:=$(CURDIR)/version.txt
 
 
 all: yba package
@@ -41,7 +41,9 @@ package: ${PACKAGE_NAME}
 ${PACKAGE_NAME}: yba
 	mkdir $(PACKAGE_DIR)
 	cp -RL ${BIN_DIR}/${BIN_NAME} ${VERSION_METADATA_JSON} ${VERSION_TXT} ${PACKAGE_DIR}
-	tar -czvf ${PACKAGE_NAME} ${PACKAGE_DIR} && rm -R ${PACKAGE_DIR}
+	tar -czvf ${PACKAGE_NAME} ${PACKAGE_DIR}
+	@echo "List of files in ${PACKAGE_DIR}:"
+	@find ${PACKAGE_DIR} -type f -exec readlink -f {} \;
 
 
 

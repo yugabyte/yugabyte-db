@@ -36,18 +36,25 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/dockv/partition.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/rocksdb/db/db_impl.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
@@ -70,6 +77,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 
@@ -317,11 +325,21 @@ class PgClientSessionLocker {
 };
 
 using SessionInfoPtr = std::shared_ptr<SessionInfo>;
-using OldTxnsRespPtr = std::shared_ptr<tserver::GetOldTransactionsResponsePB>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
+using client::internal::RemoteTabletPtr;
+using OldTxnsRespPtr = std::shared_ptr<tserver::GetOldTransactionsResponsePB>;
+using OldSingleShardWaitersRespPtr = std::shared_ptr<tserver::GetOldSingleShardWaitersResponsePB>;
 using OldTransactionMetadataPB = tserver::GetOldTransactionsResponsePB::OldTransactionMetadataPB;
 using OldTransactionMetadataPBPtr = std::shared_ptr<OldTransactionMetadataPB>;
-using client::internal::RemoteTabletPtr;
+using OldSingleShardWaiterMetadataPB =
+    tserver::GetOldSingleShardWaitersResponsePB::OldSingleShardWaiterMetadataPB;
+using OldSingleShardWaiterMetadataPBPtr = std::shared_ptr<OldSingleShardWaiterMetadataPB>;
+using OldTxnsRespPtrVariant = std::variant<OldSingleShardWaitersRespPtr, OldTxnsRespPtr>;
+using OldTxnMetadataVariant =
+    std::variant<OldSingleShardWaiterMetadataPB, OldTransactionMetadataPB>;
+using OldTxnMetadataPtrVariant =
+    std::variant<OldSingleShardWaiterMetadataPBPtr, OldTransactionMetadataPBPtr>;
+
 
 void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
   const auto table_partition_list = table->GetVersionedPartitions();
@@ -332,6 +350,32 @@ void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB*
     *partition_keys->Add() = key;
   }
   partition_list->set_version(table_partition_list->version);
+}
+
+struct OldTxnsRespInfo {
+  const TabletId status_tablet_id;
+  OldTxnsRespPtrVariant resp_ptr;
+};
+
+struct OldTxnMetadataPtrVariantVisitor {
+  std::function<void(const OldSingleShardWaiterMetadataPBPtr&)> single_shard_visitor;
+  std::function<void(const OldTransactionMetadataPBPtr&)> dist_txn_visitor;
+  void operator()(const OldSingleShardWaiterMetadataPBPtr& arg) { single_shard_visitor(arg); }
+  void operator()(const OldTransactionMetadataPBPtr& arg) { dist_txn_visitor(arg); }
+  void operator()(auto&& arg) {
+    LOG(DFATAL) << "Unsupported type passed for OldTxnMetadataPtrVariantVisitor";
+  }
+};
+
+auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
+  OldTxnMetadataPtrVariant shared_txn_meta;
+  if (auto txn_meta_pb_ptr = std::get_if<OldTransactionMetadataPB>(&txn_meta_variant)) {
+    shared_txn_meta = std::make_shared<OldTransactionMetadataPB>(std::move(*txn_meta_pb_ptr));
+  } else {
+    auto meta_pb_ptr = std::get_if<OldSingleShardWaiterMetadataPB>(&txn_meta_variant);
+    shared_txn_meta = std::make_shared<OldSingleShardWaiterMetadataPB>(std::move(*meta_pb_ptr));
+  }
+  return shared_txn_meta;
 }
 
 } // namespace
@@ -542,15 +586,15 @@ class PgClientServiceImpl::Impl {
     return tserver::CreateSequencesDataTable(&client(), context->GetClientDeadline());
   }
 
-  std::future<Result<std::pair<TabletId, OldTxnsRespPtr>>> DoGetOldTransactionsForTablet(
-      const TabletId& tablet_id, const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy) {
+  std::future<Result<OldTxnsRespInfo>> DoGetOldTransactionsForTablet(
+      const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
+      const std::shared_ptr<TabletServerServiceProxy>& proxy, const TabletId& tablet_id) {
     auto req = std::make_shared<tserver::GetOldTransactionsRequestPB>();
     req->set_tablet_id(tablet_id);
     req->set_min_txn_age_ms(min_txn_age_ms);
     req->set_max_num_txns(max_num_txns);
 
-    return MakeFuture<Result<std::pair<TabletId, OldTxnsRespPtr>>>([&](auto callback) {
+    return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
       auto resp = std::make_shared<GetOldTransactionsResponsePB>();
       std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
       proxy->GetOldTransactionsAsync(
@@ -562,20 +606,64 @@ class PgClientServiceImpl::Impl {
               Format("GetOldTransactions request for tablet $0 failed: ", req->tablet_id()));
           return callback(s);
         }
-        callback(std::make_pair(req->tablet_id(), std::move(resp)));
+        callback(OldTxnsRespInfo {
+          .status_tablet_id = req->tablet_id(),
+          .resp_ptr = std::move(resp),
+        });
+      });
+    });
+  }
+
+  std::future<Result<OldTxnsRespInfo>> DoGetOldSingleShardWaiters(
+      const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
+      const std::shared_ptr<TabletServerServiceProxy>& proxy) {
+    auto req = std::make_shared<tserver::GetOldSingleShardWaitersRequestPB>();
+    req->set_min_txn_age_ms(min_txn_age_ms);
+    req->set_max_num_txns(max_num_txns);
+
+    return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
+      auto resp = std::make_shared<GetOldSingleShardWaitersResponsePB>();
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetOldSingleShardWaitersAsync(
+          *req.get(), resp.get(), controller.get(),
+          [req, callback, controller, resp] {
+        auto s = controller->status();
+        if (!s.ok()) {
+          s = s.CloneAndPrepend("GetOldSingleShardWaiters request failed: ");
+          return callback(s);
+        }
+        callback(OldTxnsRespInfo {
+          .status_tablet_id = "",
+          .resp_ptr = std::move(resp),
+        });
       });
     });
   }
 
   // Comparator used for maintaining a max heap of old transactions based on their start times.
-  struct OldTransactionComparator {
+  struct OldTxnMetadataVariantComparator {
     bool operator()(
-        const OldTransactionMetadataPBPtr& lhs, const OldTransactionMetadataPBPtr& rhs) const {
+        const OldTxnMetadataPtrVariant& lhs, const OldTxnMetadataPtrVariant& rhs) const {
       // Order is reversed so that we pop newer transactions first.
-      if (lhs->start_time() != rhs->start_time()) {
-        return lhs->start_time() < rhs->start_time();
+      auto lhs_start_time = get_start_time(lhs);
+      auto rhs_start_time = get_start_time(rhs);
+      if (lhs_start_time != rhs_start_time) {
+        return lhs_start_time < rhs_start_time;
       }
-      return lhs->transaction_id() > rhs->transaction_id();
+      return get_raw_ptr(lhs) > get_raw_ptr(rhs);
+    }
+
+   private:
+    void* get_raw_ptr(const OldTxnMetadataPtrVariant& old_txn_meta_ptr_variant) const {
+      return std::visit([&](auto&& old_txn_meta_pb_ptr) -> void* {
+        return old_txn_meta_pb_ptr.get();
+      }, old_txn_meta_ptr_variant);
+    }
+
+    uint64_t get_start_time(const OldTxnMetadataPtrVariant& old_txn_meta_ptr_variant) const {
+      return std::visit([&](auto&& old_txn_meta_pb_ptr) {
+        return old_txn_meta_pb_ptr->start_time();
+      }, old_txn_meta_ptr_variant);
     }
   };
 
@@ -641,6 +729,7 @@ class PgClientServiceImpl::Impl {
     std::vector<master::TSInformationPB> live_tservers;
     RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
     GetLockStatusRequestPB lock_status_req;
+    lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
       // TODO(pglocks): Forward the request to tservers hosting the involved tablets of the txn,
       // as opposed to broadcasting the request to all live tservers.
@@ -673,7 +762,7 @@ class PgClientServiceImpl::Impl {
       SleepFor(MonoDelta::FromMicroseconds(delay_usec));
     }
 
-    std::vector<std::future<Result<std::pair<TabletId, OldTxnsRespPtr>>>> res_futures;
+    std::vector<std::future<Result<OldTxnsRespInfo>>> res_futures;
     std::unordered_set<TabletId> status_tablet_ids;
     for (const auto& live_ts : live_tservers) {
       const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
@@ -684,52 +773,63 @@ class PgClientServiceImpl::Impl {
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(tablet, min_txn_age_ms, max_num_txns, proxy));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
         status_tablet_ids.insert(tablet);
       }
       for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(tablet, min_txn_age_ms, max_num_txns, proxy));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
         status_tablet_ids.insert(tablet);
       }
+      // Query for oldest single shard waiting transactions as well.
+      res_futures.push_back(
+          DoGetOldSingleShardWaiters(min_txn_age_ms, max_num_txns, proxy));
     }
     // Limit num transactions to max_num_txns for which lock status is being queried.
     //
     // TODO(pglocks): We could end up storing duplicate records for the same transaction in the
     // priority queue, and end up reporting locks of #transaction < max_num_txns. This will be
     // fixed once https://github.com/yugabyte/yugabyte-db/issues/18140 is addressed.
-    std::priority_queue<OldTransactionMetadataPBPtr,
-                        std::vector<OldTransactionMetadataPBPtr>,
-                        OldTransactionComparator> old_txns_pq;
-    for (auto it = res_futures.begin(); it != res_futures.end(); ) {
+    std::priority_queue<OldTxnMetadataPtrVariant,
+                        std::vector<OldTxnMetadataPtrVariant>,
+                        OldTxnMetadataVariantComparator> old_txns_pq;
+    StatusToPB(Status::OK(), resp->mutable_status());
+    for (auto it = res_futures.begin();
+         it != res_futures.end() && resp->status().code() == AppStatusPB::OK; ) {
       auto res = it->get();
       if (!res.ok()) {
         return res.status();
       }
 
-      auto& [status_tablet_id, old_txns_resp] = *res;
-      if (old_txns_resp->has_error()) {
-        // Ignore leadership errors as we broadcast the request to all tservers.
-        if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
-          it = res_futures.erase(it);
-          continue;
+      std::visit([&](auto&& old_txns_resp) {
+        if (old_txns_resp->has_error()) {
+          // Ignore leadership errors as we broadcast the request to all tservers.
+          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+            it = res_futures.erase(it);
+            return;
+          }
+          const auto& s = StatusFromPB(old_txns_resp->error().status());
+          StatusToPB(s, resp->mutable_status());
+          return;
         }
-        const auto& s = StatusFromPB(old_txns_resp->error().status());
-        StatusToPB(s, resp->mutable_status());
-        return Status::OK();
-      }
 
-      status_tablet_ids.erase(status_tablet_id);
-      for (auto& old_txn : old_txns_resp->txn()) {
-        auto old_txn_ptr = std::make_shared<OldTransactionMetadataPB>(std::move(old_txn));
-        old_txns_pq.push(std::move(old_txn_ptr));
-        while (old_txns_pq.size() > max_num_txns) {
-          VLOG(4) << "Dropping old transaction with metadata "
-                  << old_txns_pq.top()->ShortDebugString();
-          old_txns_pq.pop();
+        status_tablet_ids.erase(res->status_tablet_id);
+        for (auto& old_txn : old_txns_resp->txn()) {
+          auto old_txn_ptr = MakeSharedOldTxnMetadataVariant(std::move(old_txn));
+          old_txns_pq.push(std::move(old_txn_ptr));
+          while (old_txns_pq.size() > max_num_txns) {
+            VLOG(4) << "Dropping old transaction with metadata "
+                    << std::visit([](auto&& arg) {
+                         return arg->ShortDebugString();
+                       }, old_txns_pq.top());
+            old_txns_pq.pop();
+          }
         }
-      }
-      it++;
+        it++;
+      }, res->resp_ptr);
+    }
+    if (resp->status().code() != AppStatusPB::OK) {
+      return Status::OK();
     }
     // Set status and return if we don't get a valid resp for all status tablets at least once.
     // It's ok if we get more than one resp for a status tablet, as we accumulate received
@@ -743,22 +843,42 @@ class PgClientServiceImpl::Impl {
       return Status::OK();
     }
 
+    uint64_t max_single_shard_waiter_start_time = 0;
+    bool include_single_shard_waiters = false;
     while (!old_txns_pq.empty()) {
       auto& old_txn = old_txns_pq.top();
-      const auto& txn_id = old_txn->transaction_id();
-      auto& node_entry = (*resp->mutable_transactions_by_node())[old_txn->host_node_uuid()];
-      node_entry.add_transaction_ids(txn_id);
-      for (const auto& tablet_id : old_txn->tablets()) {
-        // DDL statements might have master tablet as one of their involved tablets, skip it.
-        if (tablet_id == master::kSysCatalogTabletId) {
-          continue;
+      std::visit(OldTxnMetadataPtrVariantVisitor {
+        [&](const OldSingleShardWaiterMetadataPBPtr& arg) {
+          include_single_shard_waiters = true;
+          if (max_single_shard_waiter_start_time == 0) {
+            max_single_shard_waiter_start_time = arg->start_time();
+          }
+          (*lock_status_req.mutable_transactions_by_tablet())[arg->tablet()];
+        },
+        [&](const OldTransactionMetadataPBPtr& arg) {
+          if (max_single_shard_waiter_start_time == 0) {
+            max_single_shard_waiter_start_time = arg->start_time();
+          }
+          auto& txn_id = arg->transaction_id();
+          auto& node_entry = (*resp->mutable_transactions_by_node())[arg->host_node_uuid()];
+          node_entry.add_transaction_ids(txn_id);
+          auto& involved_tablets = arg->tablets();
+          for (const auto& tablet_id : involved_tablets) {
+            // DDL statements might have master tablet as one of their involved tablets, skip it.
+            if (tablet_id == master::kSysCatalogTabletId) {
+              continue;
+            }
+            auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
+            auto* transaction = tablet_entry.add_transactions();
+            transaction->set_id(txn_id);
+            transaction->mutable_aborted()->Swap(arg->mutable_aborted_subtxn_set());
+          }
         }
-        auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
-        auto* transaction = tablet_entry.add_transactions();
-        transaction->set_id(txn_id);
-        transaction->mutable_aborted()->Swap(old_txn->mutable_aborted_subtxn_set());
-      }
+      }, old_txn);
       old_txns_pq.pop();
+    }
+    if (include_single_shard_waiters) {
+      lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
     auto remote_tservers = VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(&lock_status_req));
     return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
@@ -933,35 +1053,39 @@ class PgClientServiceImpl::Impl {
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {
-    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
-    Status iteration_status;
-    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
-
-    for (auto entry_result : range_result) {
-      RETURN_NOT_OK(entry_result);
-      const auto& entry = *entry_result;
-
-      auto stream_id = entry.key.stream_id;
-      auto active_time = entry.active_time;
-      // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
-        continue;
-      }
-
-      if (stream_to_latest_active_time.contains(stream_id)) {
-        stream_to_latest_active_time[stream_id] =
-            std::max(stream_to_latest_active_time[stream_id], *active_time);
-      } else {
-        stream_to_latest_active_time[stream_id] = *active_time;
-      }
-    }
-    SCHECK(
-        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
-        iteration_status);
-
     auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+
+    // Determine latest active time of each stream if there are any.
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
+    if (!streams.empty()) {
+      Status iteration_status;
+      auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+          cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+
+      for (auto entry_result : range_result) {
+        RETURN_NOT_OK(entry_result);
+        const auto& entry = *entry_result;
+
+        auto stream_id = entry.key.stream_id;
+        auto active_time = entry.active_time;
+        // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
+        // yet by the client. So treat it is as an inactive case.
+        if (!active_time) {
+          continue;
+        }
+
+        if (stream_to_latest_active_time.contains(stream_id)) {
+          stream_to_latest_active_time[stream_id] =
+              std::max(stream_to_latest_active_time[stream_id], *active_time);
+        } else {
+          stream_to_latest_active_time[stream_id] = *active_time;
+        }
+      }
+      SCHECK(
+          iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+          iteration_status);
+    }
+
     auto current_time = GetCurrentTimeMicros();
     for (const auto& stream : streams) {
       auto stream_id = xrepl::StreamId::FromString(stream.stream_id);
@@ -980,13 +1104,23 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetReplicationSlot(
+      const PgGetReplicationSlotRequestPB& req, PgGetReplicationSlotResponsePB* resp,
+      rpc::RpcContext* context) {
+    LOG_WITH_FUNC(INFO) << "Start with req: " << req.DebugString();
+    auto stream =
+        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    stream.ToPB(resp->mutable_replication_slot_info());
+    return Status::OK();
+  }
+
   Status GetReplicationSlotStatus(
       const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
       rpc::RpcContext* context) {
     // Get the stream_id for the replication slot.
-    xrepl::StreamId stream_id = xrepl::StreamId::Nil();
-    RETURN_NOT_OK(
-        client().GetCDCStream(ReplicationSlotName(req.replication_slot_name()), &stream_id));
+    auto stream =
+        VERIFY_RESULT(client().GetCDCStream(ReplicationSlotName(req.replication_slot_name())));
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
 
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
@@ -1094,6 +1228,100 @@ class PgClientServiceImpl::Impl {
       StatusToPB(res.status(), resp->mutable_status());
     } else {
       resp->set_is_pitr_active(*res);
+    }
+    return Status::OK();
+  }
+
+  void GetRpcsWaitStates(
+      const PgActiveSessionHistoryRequestPB& req, ServerType type, tserver::WaitStatesPB* resp) {
+    auto* messenger = tablet_server_.GetMessenger(type);
+    if (!messenger) {
+      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(type);
+      return;
+    }
+
+    rpc::DumpRunningRpcsRequestPB dump_req;
+    rpc::DumpRunningRpcsResponsePB dump_resp;
+
+    dump_req.set_include_traces(false);
+    dump_req.set_get_wait_state(true);
+    dump_req.set_dump_timed_out(false);
+    dump_req.set_get_local_calls(true);
+
+    WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+
+    size_t ignored_calls = 0;
+    size_t ignored_calls_no_wait_state = 0;
+    for (const auto& conns : dump_resp.inbound_connections()) {
+      for (const auto& call : conns.calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            // Ignore log-appenders which are just Idle
+            call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+            // Ignore ActiveSessionHistory calls, if desired.
+            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
+             call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    if (dump_resp.has_local_calls()) {
+      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
+             call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
+        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
+        << " without wait state";
+    VLOG(2) << __PRETTY_FUNCTION__
+            << " wait-states: " << yb::ToString(resp->wait_states());
+  }
+
+  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
+    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
+      if (wait_state_ptr) {
+        wait_state_ptr->ToPB(resp->add_wait_states());
+      }
+    }
+  }
+
+  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
+    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
+      if (wait_state_ptr) {
+        wait_state_ptr->ToPB(resp->add_wait_states());
+      }
+    }
+  }
+
+  Status ActiveSessionHistory(
+      const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
+      rpc::RpcContext* context) {
+    if (req.fetch_tserver_states()) {
+      GetRpcsWaitStates(req, ServerType::TServer, resp->mutable_tserver_wait_states());
+    }
+    if (req.fetch_flush_and_compaction_states()) {
+      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+    }
+    if (req.fetch_raft_log_appender_states()) {
+      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+    }
+    if (req.fetch_cql_states()) {
+      GetRpcsWaitStates(req, ServerType::CQLServer, resp->mutable_cql_wait_states());
     }
     return Status::OK();
   }
@@ -1321,7 +1549,12 @@ class PgClientServiceImpl::Impl {
     DCHECK_NE(session_id, 0);
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
-    SCHECK(it != sessions_.end(), InvalidArgument, "Unknown session: $0", session_id);
+    if (PREDICT_FALSE(it == sessions_.end())) {
+      return STATUS(InvalidArgument,
+          Format("Connection terminated unexpectedly due to unknown session $0", session_id),
+          Slice(),
+          PgsqlError(YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST));
+    }
     return *it;
   }
 
@@ -1387,7 +1620,8 @@ class PgClientServiceImpl::Impl {
 
   Result<std::unordered_set<uint32_t>> GetPgDatabaseOids() {
     LOG(INFO) << "Fetching set of database oids";
-    auto namespaces = VERIFY_RESULT(client().ListNamespaces(YQL_DATABASE_PGSQL));
+    auto namespaces = VERIFY_RESULT(
+        client().ListNamespaces(client::IncludeNonrunningNamespaces::kFalse, YQL_DATABASE_PGSQL));
     std::unordered_set<uint32_t> result;
     for (const auto& ns : namespaces) {
       result.insert(VERIFY_RESULT(GetPgsqlDatabaseOid(ns.id.id())));

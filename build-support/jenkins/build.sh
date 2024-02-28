@@ -131,6 +131,9 @@ build_cpp_code() {
     )
   fi
 
+  # Static check of bash scripts need only be done during one phase of the build.
+  yb_build_args+=( "--shellcheck" )
+
   log "Building cpp code with options: ${yb_build_args[*]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
@@ -454,6 +457,9 @@ java_build_failed=false
 if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
   set_mvn_parameters
 
+  # We need a truststore for the CA used in unit tests, only for Java tests, so we generate it here.
+  "${YB_SRC_ROOT}/build-support/generate_test_truststore.sh" "$BUILD_ROOT/test_certs"
+
   heading "Building Java code..."
   if [[ -n ${JAVA_HOME:-} ]]; then
     export PATH=${JAVA_HOME}/bin:${PATH}
@@ -473,7 +479,7 @@ if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
     else
       log "Java code build in directory '${java_project_dir}' SUCCEEDED"
     fi
-    popd
+    popd +0
   done
 
   if [[ ${java_build_failed} == "true" ]]; then
@@ -521,7 +527,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     "${YB_SRC_ROOT}/yb_release"
     --build "${build_type}"
     --build_root "${BUILD_ROOT}"
-    --build_args="--skip-build"
+    "--build_args=--skip-build"
     --save_release_path_to_file "${package_path_file}"
     --commit "${current_git_commit}"
     --force

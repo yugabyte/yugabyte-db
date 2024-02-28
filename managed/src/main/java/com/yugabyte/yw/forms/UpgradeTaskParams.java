@@ -35,6 +35,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     ResizeNode,
     Reboot,
     ThirdPartyPackages,
+    YbcGFlags,
   }
 
   public enum UpgradeTaskSubType {

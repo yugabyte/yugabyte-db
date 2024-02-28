@@ -638,6 +638,33 @@ Flushed [yugabyte.table_name] tables.
 ```
 ---
 
+
+#### backfill_indexes_for_table
+
+Backfill all DEFERRED indexes in a YCQL table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    backfill_indexes_for_table <keyspace> <table_name>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *keyspace*: Specifies the keyspace `ycql.keyspace-name`.
+* *table_name*: Specifies the table name.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    backfill_indexes_for_table ybdemo table_name
+```
+
+A new backfill job is created for all the `DEFERRED` indexes of the table. The command does not have any output.
+
 ### Backup and snapshot commands
 
 The following backup and snapshot commands are available:
@@ -689,7 +716,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_database_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### create_keyspace_snapshot
 
@@ -716,7 +743,7 @@ When this command runs, a `snapshot_id` is generated and printed.
     create_keyspace_snapshot
 ```
 
-To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the database snapshot creation has completed, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### list_snapshots
 
@@ -842,7 +869,7 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list_snapshots) command.
+To see if the snapshot creation has finished, run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 #### restore_snapshot
 
@@ -1981,12 +2008,12 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    -master_addresses <master-addresses> \
     change_xcluster_role \
     <role>
 ```
 
-* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
 
 **Example**
@@ -2123,7 +2150,7 @@ yb-admin \
 * `force_delete`: (Optional) Force the delete operation.
 
 {{< note title="Note" >}}
-This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication).
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication-source-universe-uuid).
 {{< /note >}}
 
 #### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
@@ -2165,7 +2192,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
@@ -2416,9 +2443,62 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
+For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+
+#### get_auto_flags_config
+
+Returns the current AutoFlags configuration of the universe.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_auto_flags_config
+```
+
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+AutoFlags config:
+config_version: 1
+promoted_flags {
+  process_name: "yb-master"
+  flags: "enable_automatic_tablet_splitting"
+  flags: "master_enable_universe_uuid_heartbeat_check"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+promoted_flags {
+  process_name: "yb-tserver"
+  flags: "regular_tablets_data_block_key_value_encoding"
+  flags: "remote_bootstrap_from_leader_only"
+  flags: "ysql_yb_enable_expression_pushdown"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+```
+
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
@@ -2430,7 +2510,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted` and `kExternal`. Default value is `kExternal`.
 * *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
 * *force*: Forces the generation of a new AutoFlag configuration and sends it to all YugabyteDB processes even if there are no new AutoFlags to promote.
 
@@ -2460,7 +2540,7 @@ No new AutoFlags to promote
 
 Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
 
-YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
+YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql).
 
 **Syntax**
 

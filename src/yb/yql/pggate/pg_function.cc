@@ -307,18 +307,19 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
             GetDecodedBlockerTransactionIds(transaction_locks.waiting_locks()));
         for (const auto& lock : transaction_locks.waiting_locks().locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
-              transaction_id, wait_start_ht, blocking_txn_ids));
+              projection, schema, node_id, tab.table_id(), tab.tablet_id(), lock, transaction_id,
+              wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }
 
+      // TODO(#20116): Populate host node uuid for single shard waiters.
       for (const auto& waiter : tab.single_shard_waiters()) {
         auto wait_start_ht = HybridTime::FromPB(waiter.wait_start_ht());
         auto blocking_txn_ids = VERIFY_RESULT(GetDecodedBlockerTransactionIds(waiter));
         for (const auto& lock : waiter.locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
+              projection, schema, "", tab.table_id(), tab.tablet_id(), lock,
               TransactionId::Nil(), wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }

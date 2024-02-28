@@ -256,7 +256,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 			  List *joinclauses, List *otherclauses, List *nestParams,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype, bool inner_unique,
-			  size_t num_hashClauseInfos,
+			  double first_batch_factor, size_t num_hashClauseInfos,
 			  YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
@@ -330,6 +330,7 @@ static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 						 GatherMergePath *best_path);
 
 extern int yb_bnl_batch_size;
+bool yb_bnl_optimize_first_batch;
 
 /*
  * create_plan
@@ -2890,7 +2891,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		index_path = (IndexPath *) projection_path->subpath;
 
-		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
+		Bitmapset *primary_key_attrs = bms_copy(YBGetTablePrimaryKeyBms(relation));
 
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
@@ -4857,6 +4858,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		saveOuterRels = root->curOuterRels;
 
 	bool yb_is_batched;
+	double yb_first_batch_factor = 1.0;
 	size_t yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 
@@ -4946,12 +4948,25 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
 											 	inner_relids);
-
-				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				hashOpno = ((OpExpr *) rinfo->clause)->opno;
+				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
+					hashOpno = get_commutator(hashOpno);
 			}
 
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
+		}
+
+		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
+		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		{
+			SemiAntiJoinFactors semifactors;
+			compute_semi_anti_join_factors(root, best_path->path.parent,
+										   best_path->outerjoinpath->parent,best_path->innerjoinpath->parent,best_path->jointype, NULL,best_path->joinrestrictinfo,
+										   &semifactors);
+			double output_tuple_per_outer_tuple =
+				semifactors.outer_match_frac * semifactors.match_count;
+			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
 		}
 	}
 
@@ -4990,17 +5005,29 @@ create_nestloop_plan(PlannerInfo *root,
 	nestParams = identify_current_nestloop_params(root, outerrelids);
 	if (yb_is_batched)
 	{
-		join_plan =
-			(NestLoop *) make_YbBatchedNestLoop(tlist,
-												joinclauses,
-												otherclauses,
-												nestParams,
-												outer_plan,
-												inner_plan,
-												best_path->jointype,
-												best_path->inner_unique,
-												yb_num_hashClauseInfos,
-												yb_hashClauseInfos);
+		YbBatchedNestLoop *bnl_plan =
+			make_YbBatchedNestLoop(tlist,
+								   joinclauses,
+								   otherclauses,
+								   nestParams,
+								   outer_plan,
+								   inner_plan,
+								   best_path->jointype,
+								   best_path->inner_unique,
+								   yb_first_batch_factor,
+								   yb_num_hashClauseInfos,
+								   yb_hashClauseInfos);
+		join_plan = (NestLoop *) bnl_plan;
+		(void) prepare_sort_from_pathkeys((Plan *) bnl_plan,
+										  best_path->path.pathkeys,
+										  NULL,
+										  NULL,
+										  true,
+										  &bnl_plan->numSortCols,
+										  &bnl_plan->sortColIdx,
+										  &bnl_plan->sortOperators,
+										  &bnl_plan->collations,
+										  &bnl_plan->nullsFirst);
 	}
 	else
 	{
@@ -5589,19 +5616,21 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Oid scalar_type = InvalidOid;
 			Oid collid = InvalidOid;
 
-			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			Expr *inner_expr = (Expr *) linitial(opexpr->args);
 			saop->args = lappend(saop->args, inner_expr);
 
-			if(IsA(inner_expr, RowExpr))
+			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
+			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
+
+			if(IsA(outer_expr, RowExpr))
 			{
-				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				RowExpr *rowexpr = (RowExpr *) outer_expr;
 				scalar_type = rowexpr->row_typeid;
 			}
 			else
 			{
-				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
-				scalar_type = exprType((Node*) inner_expr);
-				collid = exprCollation((Node*)inner_expr);
+				scalar_type = exprType((Node*) outer_expr);
+				collid = exprCollation((Node*) outer_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6876,6 +6905,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
+					   double first_batch_factor,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -6890,6 +6920,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
+	node->first_batch_factor = first_batch_factor;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 
@@ -8096,10 +8127,23 @@ is_projection_capable_path(Path *path)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_NestLoop:
+			/*
+			 * Sorted Batched Nested Loop Joins cannot tolerate its tlist
+			 * being changed.
+			 */
+			return !(yb_is_nestloop_batched((NestPath *) path) &&
+					 path->pathkeys != NIL);
 		default:
 			break;
 	}
 	return true;
+}
+
+static bool
+is_bnl_projection_capable(YbBatchedNestLoop *bnl)
+{
+	return bnl->numSortCols == 0;
 }
 
 /*
@@ -8133,6 +8177,8 @@ is_projection_capable_plan(Plan *plan)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_YbBatchedNestLoop:
+			return is_bnl_projection_capable((YbBatchedNestLoop *) plan);
 		default:
 			break;
 	}

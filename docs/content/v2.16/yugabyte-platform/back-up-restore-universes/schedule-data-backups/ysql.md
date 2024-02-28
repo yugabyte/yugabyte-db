@@ -7,7 +7,7 @@ menu:
   v2.16_yugabyte-platform:
     identifier: schedule-data-backups-1-ysql
     parent: back-up-restore-universes
-    weight: 40
+    weight: 15
 type: docs
 ---
 

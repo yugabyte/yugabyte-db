@@ -315,17 +315,11 @@ OR
 
 ### %TYPE syntax is unsupported
 
-**GitHub**: [Issue #19169](https://github.com/yugabyte/yb-voyager/issues/19169)
+**GitHub**: [Issue #19169](https://github.com/yugabyte/yugabyte-db/issues/19169)
 
 **Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
 
 **Workaround**: None. A workaround is currently being explored.
-
-**Usage**: convert(string using conversion_name)
-
-**Example**: convert('PostgreSQL' using iso_8859_1_to_utf8)
-
-**Result**: 'PostgreSQL' (in UTF8 (Unicode, 8-bit) encoding)
 
 ---
 
@@ -336,5 +330,11 @@ OR
 **Description**: Oracle includes a concept of a National Character Set where it can use the TRANSLATE function to translate a value to the "NCHAR_CS" character set. The significance of the National Character Set is its ability to compare and sort character data based on linguistic rules specific to a particular character set. This function is not supported in PostgreSQL and therefore in YugabyteDB.
 
 **Workaround**: None. For a similar purpose, you can use the `convert` function in YugabyteDB.
+
+**Usage**: convert(string using conversion_name)
+
+**Example**: convert('PostgreSQL' using iso_8859_1_to_utf8)
+
+**Result**: 'PostgreSQL' (in UTF8 (Unicode, 8-bit) encoding)
 
 ---

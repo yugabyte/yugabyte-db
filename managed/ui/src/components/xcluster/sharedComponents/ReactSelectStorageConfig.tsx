@@ -1,10 +1,11 @@
 import { ReactNode } from 'react';
-import { makeStyles, useTheme } from '@material-ui/core';
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { components, OptionProps, SingleValueProps, Styles } from 'react-select';
 import { FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { groupBy } from 'lodash';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
 import {
   ReactSelectGroupedOption,
@@ -19,7 +20,9 @@ import { Optional } from '../../../redesign/helpers/types';
 const useSelectStyles = makeStyles((theme) => ({
   optionLabel: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+
+    marginRight: theme.spacing(1)
   },
   optionPillContainer: {
     display: 'flex',
@@ -33,12 +36,11 @@ export interface StorageConfigOption {
   label: string;
   value: {
     name: string;
-    regions: any[];
     uuid: string;
   };
 }
 
-const TRANSLATION_KEY_PREFIX = 'storageConfig.pill';
+const TRANSLATION_KEY_PREFIX = 'storageConfig';
 
 /**
  * Wrapper component around `YBReactSelectField`
@@ -75,8 +77,7 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
     return {
       value: {
         uuid: storageConfig.configUUID,
-        name: storageConfig.name,
-        regions: storageConfig.data?.REGION_LOCATIONS
+        name: storageConfig.name
       },
       label: storageConfig.configName
     };
@@ -85,15 +86,30 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
     groupBy(storageConfigsOptions, (configOption) => configOption.value.name)
   ).map(([label, options]) => ({ label, options }));
   return (
-    <YBReactSelectField
-      options={groupedStorageConfigOptions}
-      stylesOverride={storageConfigSelectStylesOverride}
-      components={{
-        SingleValue: SingleValue,
-        Option: Option
-      }}
-      {...props}
-    />
+    <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+      <YBReactSelectField
+        options={groupedStorageConfigOptions}
+        stylesOverride={storageConfigSelectStylesOverride}
+        accessoryContainerWidthPx={180}
+        components={{
+          SingleValue: SingleValue,
+          Option: Option
+        }}
+        {...props}
+      />
+      {groupedStorageConfigOptions.length <= 0 && (
+        <Typography variant="body2">
+          <Trans
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.createBackupStorageConfigPrompt`}
+            components={{
+              createStorageConfigLink: (
+                <Link to={'/config/backup'} target="_blank" rel="noopener noreferrer" />
+              )
+            }}
+          />
+        </Typography>
+      )}
+    </Box>
   );
 };
 
@@ -115,7 +131,7 @@ const ReactSelectStorageConfigOption = ({
       <span className={selectClasses.optionLabel}>{children}</span>
       <div className={selectClasses.optionPillContainer}>
         <div className={pillClasses.pill}>{option.value.name}</div>
-        <div className={pillClasses.pill}>{t('multiRegionSupport')}</div>
+        <div className={pillClasses.pill}>{t('pill.multiRegionSupport')}</div>
       </div>
     </>
   );

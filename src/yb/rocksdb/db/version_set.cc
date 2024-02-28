@@ -43,6 +43,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
@@ -823,6 +824,7 @@ void Version::AddLevel0Iterators(
     MergeIteratorBuilderType* merge_iter_builder,
     Arena* arena,
     const CreateIteratorFunc& create_iterator_func) {
+  FilterKeyCache filter_key_cache(read_options.user_key_for_filter);
   for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
     const auto& file = storage_info_.LevelFilesBrief(0).files[i];
     if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
@@ -833,7 +835,9 @@ void Version::AddLevel0Iterators(
           false);
       if (s.ok()) {
         if (!read_options.table_aware_file_filter ||
-            read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
+            read_options.table_aware_file_filter->Filter(
+                read_options, read_options.user_key_for_filter, &filter_key_cache,
+                trwh.table_reader)) {
           file_iter = create_iterator_func(&trwh, i);
         } else {
           file_iter = nullptr;
@@ -2302,7 +2306,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_writers_.pop_front();
     // Notify new head of write queue
     if (!manifest_writers_.empty()) {
-      manifest_writers_.front()->cv.Signal();
+      YB_PROFILE(manifest_writers_.front()->cv.Signal());
     }
     // we steal this code to also inform about cf-drop
     return STATUS(ShutdownInProgress, "");
@@ -2547,13 +2551,13 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     if (ready != &w) {
       ready->status = s;
       ready->done = true;
-      ready->cv.Signal();
+      YB_PROFILE(ready->cv.Signal());
     }
     if (ready == last_writer) break;
   }
   // Notify new head of write queue
   if (!manifest_writers_.empty()) {
-    manifest_writers_.front()->cv.Signal();
+    YB_PROFILE(manifest_writers_.front()->cv.Signal());
   }
   return s;
 }

@@ -1473,7 +1473,7 @@ public class YBClient implements AutoCloseable {
                                                   String checkpointType,
                                                   String recordType) throws Exception {
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
-      nameSpaceName, format, checkpointType, recordType);
+      nameSpaceName, format, checkpointType, recordType, null);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
   public CreateCDCStreamResponse createCDCStream(YBTable table,
@@ -1481,15 +1481,25 @@ public class YBClient implements AutoCloseable {
                                                   String format,
                                                   String checkpointType,
                                                   String recordType,
-                                                  Boolean dbtype) throws Exception {
+                                                  boolean dbtype,
+                                                  boolean consistentSnapshot,
+                                                  boolean useSnapshot) throws Exception {
     Deferred<CreateCDCStreamResponse> d;
     if (dbtype) {
       d = asyncClient.createCDCStream(table,
         nameSpaceName, format, checkpointType, recordType,
-        CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+        CommonTypes.YQLDatabase.YQL_DATABASE_CQL,
+        consistentSnapshot
+            ? (useSnapshot ? CommonTypes.CDCSDKSnapshotOption.USE_SNAPSHOT
+                : CommonTypes.CDCSDKSnapshotOption.NOEXPORT_SNAPSHOT)
+            : null);
     } else {
       d = asyncClient.createCDCStream(table,
-          nameSpaceName, format, checkpointType, recordType);
+        nameSpaceName, format, checkpointType, recordType,
+        consistentSnapshot
+            ? (useSnapshot ? CommonTypes.CDCSDKSnapshotOption.USE_SNAPSHOT
+                : CommonTypes.CDCSDKSnapshotOption.NOEXPORT_SNAPSHOT)
+            : null);
     }
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
@@ -2036,6 +2046,19 @@ public class YBClient implements AutoCloseable {
   public WaitForReplicationDrainResponse waitForReplicationDrain(
       List<String> streamIds) throws Exception {
     return waitForReplicationDrain(streamIds, null /* targetTime */);
+  }
+
+  /**
+   * Get information about the namespace/database.
+   * @param keyspaceName namespace name to get details about.
+   * @param databaseType database type the database belongs to.
+   * @return details for the namespace.
+   * @throws Exception
+   */
+  public GetNamespaceInfoResponse getNamespaceInfo(String keyspaceName,
+      YQLDatabase databaseType) throws Exception {
+    Deferred<GetNamespaceInfoResponse> d = asyncClient.getNamespaceInfo(keyspaceName, databaseType);
+    return d.join(getDefaultOperationTimeoutMs());
   }
 
   /**

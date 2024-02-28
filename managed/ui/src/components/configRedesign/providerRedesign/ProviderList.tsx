@@ -42,8 +42,12 @@ import { SortOrder } from '../../../redesign/helpers/constants';
 
 import { YBProvider, YBRegion } from './types';
 
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import styles from './ProviderList.module.scss';
 
 interface ProviderListCommonProps {
@@ -95,11 +99,11 @@ export const ProviderList = (props: ProviderListProps) => {
   if (providerListQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list." />;
   }
-  if (universeListQuery.isError) {
+  if (universeListQuery.isError && !isRbacEnabled()) {
     return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
   }
   const providerList = providerListQuery.data;
-  const universeList = universeListQuery.data;
+  const universeList = universeListQuery.data ?? [];
 
   const showDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(true);
@@ -118,8 +122,9 @@ export const ProviderList = (props: ProviderListProps) => {
   const formatProviderName = (providerName: string, row: ProviderListItem) => {
     return (
       <Link
-        to={`/${PROVIDER_ROUTE_PREFIX}/${providerCode === ProviderCode.KUBERNETES ? props.kubernetesProviderType : providerCode
-          }/${row.uuid}`}
+        to={`/${PROVIDER_ROUTE_PREFIX}/${
+          providerCode === ProviderCode.KUBERNETES ? props.kubernetesProviderType : providerCode
+        }/${row.uuid}`}
       >
         <Typography variant="body2">{providerName}</Typography>
       </Link>
@@ -161,7 +166,10 @@ export const ProviderList = (props: ProviderListProps) => {
               eventKey="1"
               onSelect={() => handleDeleteProviderConfig(row)}
               data-testid="DeleteConfiguration-button"
-              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm(ApiPermissionMap.DELETE_PROVIDER)}
+              disabled={
+                row.linkedUniverses.length > 0 ||
+                !hasNecessaryPerm(ApiPermissionMap.DELETE_PROVIDER)
+              }
             >
               <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
             </MenuItem>
@@ -185,9 +193,9 @@ export const ProviderList = (props: ProviderListProps) => {
     .filter((provider) =>
       providerCode === ProviderCode.KUBERNETES
         ? provider.code === providerCode &&
-        (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
-          provider.details.cloudInfo.kubernetes.kubernetesProvider
-        )
+          (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
+            provider.details.cloudInfo.kubernetes.kubernetesProvider
+          )
         : provider.code === providerCode
     )
     .map((provider) => {
@@ -195,18 +203,20 @@ export const ProviderList = (props: ProviderListProps) => {
       return { ...provider, linkedUniverses: linkedUniverses };
     });
 
+  const providerLabel =
+    providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+      ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+      : ProviderLabel[providerCode];
   return (
     <>
       <Box display="flex" marginBottom="35px" justifyContent="space-between">
-        <Typography variant="h4">{`${providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
-          ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
-          : ProviderLabel[providerCode]
-          } Configs`}</Typography>
+        <Typography variant="h4">{`${
+          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+            : ProviderLabel[providerCode]
+        } Configs`}</Typography>
         {filteredProviderList.length > 0 && (
-          <RbacValidator
-            accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
-            isControl
-          >
+          <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
             <YBButton
               style={{ marginLeft: 'auto', width: '200px' }}
               variant="primary"
@@ -221,8 +231,8 @@ export const ProviderList = (props: ProviderListProps) => {
       </Box>
       {filteredProviderList.length === 0 ? (
         <EmptyListPlaceholder
-          actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
-          descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
+          actionButtonText={`Create ${providerLabel} Config`}
+          descriptionText={`No ${providerLabel} config to show`}
           onActionButtonClick={handleCreateProviderAction}
           dataTestIdPrefix="ProviderEmptyList"
         />

@@ -239,7 +239,8 @@ class CassandraSession {
 
   static Result<CassandraSession> Create(CassCluster* cluster);
 
-  Status Execute(const CassandraStatement& statement);
+  // if timeout_ms == 0 - default CASS_DEFAULT_REQUEST_TIMEOUT_MS = 12000 is used.
+  Status Execute(const CassandraStatement& statement, uint32_t timeout_ms = 0);
 
   Result<CassandraResult> ExecuteWithResult(const CassandraStatement& statement);
 
@@ -247,7 +248,8 @@ class CassandraSession {
 
   CassandraFuture ExecuteGetFuture(const std::string& query);
 
-  Status ExecuteQuery(const std::string& query);
+  // if timeout_ms == 0 - default CASS_DEFAULT_REQUEST_TIMEOUT_MS = 12000 is used.
+  Status ExecuteQuery(const std::string& query, uint32_t timeout_ms = 0);
 
   template <class... Args>
   Status ExecuteQueryFormat(const std::string& query, Args&&... args) {

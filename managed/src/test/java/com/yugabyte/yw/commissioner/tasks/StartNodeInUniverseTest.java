@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -19,10 +20,12 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -30,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -142,6 +146,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         mockClient, ImmutableList.of("10.0.0.1"), Collections.emptyList());
 
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -162,8 +168,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  private void setMasters(Universe universe, String... nodeNames) {
-    Universe.saveDetails(
+  private Universe setMasters(Universe universe, String... nodeNames) {
+    return Universe.saveDetails(
         universe.getUniverseUUID(),
         univ -> {
           Arrays.stream(nodeNames)
@@ -174,6 +180,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -186,6 +194,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -198,6 +208,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -227,6 +239,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -283,6 +297,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     // Set one master atleast for master addresses to be populated.
     setMasters(defaultUniverse, "host-n2");
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -299,9 +314,11 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
             universe.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithInactiveNodes());
     // Set one master atleast for master addresses to be populated.
     setMasters(universe, "host-n2");
+    setExpectedMasters(universe, "host-n1", "host-n2");
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(13)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -314,9 +331,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   public void testStartUnknownNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // Throws at validateParams check.
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
   @Test
@@ -330,7 +346,9 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     setMasters(universe, "host-n2");
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
+    setExpectedMasters(universe, "host-n1", "host-n2");
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(16)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -351,6 +369,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0");
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -398,8 +417,10 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
               }
             });
     // Set one master atleast for master addresses to be populated.
-    setMasters(universe, "host-n2");
+    universe = setMasters(universe, "host-n2");
+    setExpectedMasters(universe, "host-n1", "host-n2");
     TaskInfo taskInfo = submitTask(taskParams, "host-n1", 4);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(isMasterStart ? 13 : 3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -410,8 +431,18 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
     assertStartNodeSequence(subTasksByPosition, isMasterStart);
   }
 
+  private void setExpectedMasters(Universe universe, String... names) {
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient,
+        Arrays.stream(names)
+            .map(name -> universe.getNode(name))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList()));
+  }
+
   @Test
   public void testStartNodeInUniverseRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(

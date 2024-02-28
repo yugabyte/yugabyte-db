@@ -79,7 +79,7 @@ SHLIB_EXPORTS = exports.txt
 
 ##########################################################################
 
-exports.txt:
+exports.txt: exports-common.txt exports-test.txt
 	cat exports-common.txt > $@
 ifneq ($(YB_DO_NOT_BUILD_TESTS), 1)
 	cat exports-test.txt >> $@

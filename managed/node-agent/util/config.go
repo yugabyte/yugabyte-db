@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"reflect"
 	"sync"
 
@@ -39,7 +40,8 @@ func SetCurrentConfig(config string) {
 }
 
 func CurrentConfig() *Config {
-	config, err := ConfigWithName(currentConfig)
+	configPath := path.Join(ConfigDir(), currentConfig)
+	config, err := ConfigWithName(configPath)
 	if err != nil {
 		panic(err)
 	}
@@ -47,15 +49,17 @@ func CurrentConfig() *Config {
 }
 
 // Returns the config by name.
-func ConfigWithName(name string) (*Config, error) {
-	i, ok := syncMap.Load(name)
+func ConfigWithName(configPath string) (*Config, error) {
+	configPath = path.Clean(configPath)
+	i, ok := syncMap.Load(configPath)
 	if ok {
 		return i.(*Config), nil
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
+	configDir := path.Dir(configPath)
+	configName := path.Base(configPath)
 	config := &Config{rwLock: &sync.RWMutex{}}
-	configDir := ConfigDir()
 	// Create config directory if not exists.
 	err := os.MkdirAll(configDir, os.ModePerm)
 	if err != nil {
@@ -63,7 +67,7 @@ func ConfigWithName(name string) (*Config, error) {
 		return nil, err
 	}
 	// Create config file if not exists.
-	filename := fmt.Sprintf("%s/%s.yml", configDir, name)
+	filename := fmt.Sprintf("%s.yml", configPath)
 	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		file, err := os.Create(filename)
 		if err != nil {
@@ -78,13 +82,13 @@ func ConfigWithName(name string) (*Config, error) {
 	config.viperInstance = viper.New()
 	config.viperInstance.SetConfigType("yml")
 	config.viperInstance.AddConfigPath(configDir)
-	config.viperInstance.SetConfigName(name)
+	config.viperInstance.SetConfigName(configName)
 	err = config.viperInstance.ReadInConfig()
 	if err != nil {
 		fmt.Errorf("Error reading the config file - %s", err.Error())
 		return nil, err
 	}
-	syncMap.Store(name, config)
+	syncMap.Store(configPath, config)
 	return config, nil
 }
 
@@ -184,6 +188,7 @@ func (config *Config) StoreCommandFlagString(
 	ctx context.Context,
 	cmd *cobra.Command,
 	flagName, configKey string,
+	defaultValue *string,
 	isRequired bool,
 	validator func(string) (string, error),
 ) (string, error) {
@@ -192,7 +197,17 @@ func (config *Config) StoreCommandFlagString(
 		FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
 		return value, err
 	}
-	if value != "" {
+	if value == "" {
+		if defaultValue != nil {
+			// Save the default value.
+			err = config.Update(configKey, *defaultValue)
+			if err != nil {
+				FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
+				return value, err
+			}
+			value = *defaultValue
+		}
+	} else {
 		if validator != nil {
 			value, err = validator(value)
 			if err != nil {

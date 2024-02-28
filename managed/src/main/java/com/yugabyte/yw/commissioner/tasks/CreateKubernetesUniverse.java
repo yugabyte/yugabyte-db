@@ -22,12 +22,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -57,9 +59,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected CreateKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -104,8 +106,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.CreateKubernetesUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.CREATING);
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -211,13 +217,18 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       if (taskParams().isEnableYbc()) {
         installYbcOnThePods(
-            universe.getName(), tserversAdded, false, taskParams().getYbcSoftwareVersion());
+            universe.getName(),
+            tserversAdded,
+            false,
+            taskParams().getYbcSoftwareVersion(),
+            taskParams().getPrimaryCluster().userIntent.ybcFlags);
         if (readClusters.size() == 1) {
           installYbcOnThePods(
               universe.getName(),
               readOnlyTserversAdded,
               true,
-              taskParams().getYbcSoftwareVersion());
+              taskParams().getYbcSoftwareVersion(),
+              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         }
         createWaitForYbcServerTask(allTserversAdded);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
@@ -235,8 +246,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.CreateKubernetesUniverse.name(),
           getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR_CREATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

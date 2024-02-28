@@ -16,6 +16,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 
 #include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -25,7 +26,9 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/rpc/messenger.h"
+#include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -75,6 +78,8 @@ DEFINE_test_flag(
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(enable_xcluster_stat_collection);
+DECLARE_bool(enable_xcluster_auto_flag_validation);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 using namespace std::placeholders;
 
@@ -103,9 +108,10 @@ namespace yb {
 namespace tserver {
 
 XClusterPoller::XClusterPoller(
-    const cdc::ProducerTabletInfo& producer_tablet_info,
-    const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    const std::shared_ptr<XClusterClient>& local_client,
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
+    const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
+    rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
     const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
     SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
     std::function<int64_t(const TabletId&)> get_leader_term)
@@ -115,6 +121,7 @@ XClusterPoller::XClusterPoller(
       poller_id_(
           producer_tablet_info.replication_group_id, consumer_tablet_info.table_id,
           producer_tablet_info.tablet_id, leader_term),
+      auto_flags_version_(std::move(auto_flags_version)),
       op_id_(consensus::MinimumOpId()),
       validated_schema_version_(0),
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
@@ -139,6 +146,15 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
       use_local_tserver, rate_limiter);
 }
 
+void XClusterPoller::InitDDLQueuePoller(
+    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
+    const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func) {
+  Init(use_local_tserver, rate_limiter);
+
+  ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
+      local_client_, namespace_name, namespace_id, std::move(connect_to_pg_func));
+}
+
 void XClusterPoller::StartShutdown() {
   // The poller is shutdown in two cases:
   // 1. The regular case where the poller is deleted via XClusterConsumer's
@@ -153,7 +169,7 @@ void XClusterPoller::StartShutdown() {
 
   DCHECK(!shutdown_);
   shutdown_ = true;
-  shutdown_cv_.notify_all();
+  YB_PROFILE(shutdown_cv_.notify_all());
 
   if (output_client_) {
     output_client_->StartShutdown();
@@ -328,6 +344,10 @@ void XClusterPoller::DoPoll() {
   req.set_tablet_id(producer_tablet_info_.tablet_id);
   req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
 
+  if (FLAGS_enable_xcluster_auto_flag_validation && auto_flags_version_) {
+    req.set_auto_flags_config_version(auto_flags_version_->GetCompatibleVersion());
+  }
+
   cdc::CDCCheckpointPB checkpoint;
   *checkpoint.mutable_op_id() = op_id_;
   if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
@@ -382,26 +402,11 @@ void XClusterPoller::HandleGetChangesResponse(
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
     if (status.ok()) {
-      if (resp->has_error()) {
-        LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure response: code="
-                                 << resp->error().code()
-                                 << ", status=" << resp->error().status().DebugString();
-        status = StatusFromPB(resp->error().status())
-                     .CloneAndPrepend("Unable to find expected op id on the producer");
-
-        if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
-          StoreReplicationError(ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
-        }
-      } else if (!resp->has_checkpoint()) {
-        static const auto no_checkpoint_status =
-            STATUS(NotFound, "XClusterPoller GetChanges failure: No checkpoint found");
-        LOG_WITH_PREFIX(ERROR) << "XClusterPoller GetChanges failure: no checkpoint";
-        status = no_checkpoint_status;
-      }
+      status = ProcessGetChangesResponseError(*resp);
     }
 
     if (!status.ok()) {
-      LOG_WITH_PREFIX(INFO) << "XClusterPoller GetChanges failure: " << status.ToString();
+      LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure: " << status.ToString();
 
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(status));
@@ -416,8 +421,45 @@ void XClusterPoller::HandleGetChangesResponse(
     poll_failures_ = static_cast<uint32>(
         std::max(static_cast<int64>(poll_failures_) - 2, static_cast<int64>(0)));
   }
+
   // Success Case.
   ScheduleApplyChanges(std::move(resp));
+}
+
+Status XClusterPoller::ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) {
+  if (!resp.has_error()) {
+    SCHECK(
+        resp.has_checkpoint(), NotFound, "XClusterPoller GetChanges failure: No checkpoint found");
+    return Status::OK();
+  }
+  const auto& error_code = resp.error().code();
+
+  LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure response: code=" << error_code
+                           << ", status=" << resp.error().status().DebugString();
+
+  if (resp.error().code() == cdc::CDCErrorPB::AUTO_FLAGS_CONFIG_VERSION_MISMATCH) {
+    StoreReplicationError(ReplicationErrorPb::REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH);
+
+    SCHECK(
+        resp.has_auto_flags_config_version(), NotFound,
+        "New AutoFlags config version not found in response when error code is "
+        "AUTO_FLAGS_CONFIG_VERSION_MISMATCH");
+
+    auto new_version = resp.auto_flags_config_version();
+    RETURN_NOT_OK_PREPEND(
+        xcluster_consumer_->ReportNewAutoFlagConfigVersion(GetReplicationGroupId(), new_version),
+        Format("Reporting new AutoFlags config version $0", new_version));
+
+    return STATUS_FORMAT(
+        IllegalState, "AutoFlags config version mismatch. New version: $0", new_version);
+  }
+
+  if (resp.error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
+    StoreReplicationError(ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
+  }
+
+  return StatusFromPB(resp.error().status())
+      .CloneAndPrepend("Unable to find expected op id on the producer");
 }
 
 void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse&& response) {
@@ -426,10 +468,11 @@ void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse&& respons
   }
 
   ScheduleFunc(
-      BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
+      BIND_FUNCTION_AND_ARGS(XClusterPoller::VerifyApplyChangesResponse, std::move(response)));
 }
 
-void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse& response) {
+void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse response) {
+  // Verify if the ApplyChanges failed, in which case we need to reschedule it.
   if (!response.status.ok() ||
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
@@ -445,7 +488,27 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse& re
     return;
   }
 
+  HandleApplyChangesResponse(std::move(response));
+}
+
+void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
   DCHECK(response.get_changes_response);
+
+  if (ddl_queue_handler_) {
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+    auto s = ddl_queue_handler_->ProcessDDLQueueTable(response);
+    if (!s.ok()) {
+      // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
+      YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+      if (FLAGS_enable_xcluster_stat_collection) {
+        poll_stats_history_.SetError(std::move(s));
+      }
+      ScheduleFuncWithDelay(
+          GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
+          BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));
+      return;
+    }
+  }
 
   if (FLAGS_enable_xcluster_stat_collection) {
     size_t resp_size = 0;
@@ -601,5 +664,6 @@ void XClusterPoller::ClearReplicationError() {
 void XClusterPoller::TEST_IncrementNumSuccessfulWriteRpcs() {
   xcluster_consumer_->TEST_IncrementNumSuccessfulWriteRpcs();
 }
+
 }  // namespace tserver
 }  // namespace yb

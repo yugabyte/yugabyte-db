@@ -3,7 +3,6 @@ title: Build and test
 headerTitle: Build and test
 linkTitle: Build and test
 description: Build and test
-image: /images/section_icons/index/quick_start.png
 headcontent: Building and testing with yb_build.sh.
 menu:
   preview:

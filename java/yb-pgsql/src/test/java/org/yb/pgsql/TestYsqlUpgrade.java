@@ -678,7 +678,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Statement stmt2 = conn2.createStatement();
          Statement stmt3 = conn2.createStatement()) {
       setSystemRelsModificationGuc(stmt1, true);
-      setAllowNonDdlTxnsGuc(stmt1, true);
 
       String createViewSqlPat =
           "CREATE OR REPLACE VIEW pg_catalog.test_view_to_change"
@@ -1941,9 +1940,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   private void runMigrations(boolean useSingleConnection) throws Exception {
-    // Set upgrade timeout to 6 (10) minutes, adjusted.
+    // Set upgrade timeout to 7 (11) minutes, adjusted.
     // Single-connection upgrade takes longer because of new connection overhead.
-    long timeoutMs = BuildTypeUtil.adjustTimeout((useSingleConnection ? 10 : 6) * 60 * 1000);
+    long timeoutMs = BuildTypeUtil.adjustTimeout((useSingleConnection ? 11 : 7) * 60 * 1000);
     List<String> command = new ArrayList<>(Arrays.asList(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",
@@ -1980,7 +1979,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
 
     // Wait for tablespace info to be refreshed in load balancer.
-    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS); // TODO(esheng) 2x?
+    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS * 1000); // TODO(esheng) 2x?
 
     int expectedTServers = miniCluster.getTabletServers().size() + 1;
     miniCluster.startTServer(perTserverZonePlacementFlags.get(1));

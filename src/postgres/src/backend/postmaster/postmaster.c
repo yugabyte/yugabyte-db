@@ -77,7 +77,7 @@
 #include <netdb.h>
 #include <limits.h>
 
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
 
@@ -143,6 +143,7 @@
 
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -292,9 +293,7 @@ static bool FatalError = false; /* T if recovering from backend crash */
 /* Crashed before fully acquiring a lock, or with unexpected error code.  */
 static bool YbCrashInUnmanageableState = false;
 
-#ifdef __linux__
 static char *YbBackendOomScoreAdj = NULL;
-#endif
 
 /*
  * We use a simple state machine to control startup, shutdown, and
@@ -1038,6 +1037,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register ASH collector */
+	if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+		YbAshRegister();
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -2978,6 +2981,15 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
+			if (proc->ybEnteredCriticalSection)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was in a critical section")));
+				break;
+			}
+
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
 			if (!CleanupKilledProcess(proc))
@@ -2986,8 +2998,8 @@ reaper(SIGNAL_ARGS)
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash that is "
 								"unable to be cleaned up")));
-				break;
 			}
+			break;
 		}
 
 		/*
@@ -3448,22 +3460,22 @@ CleanupKilledProcess(PGPROC *proc)
 
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
-
-		/* From ProcKill */
-		ReplicationSlotCleanupForProc(proc);
-		SyncRepCleanupAtProcExit(proc);
-		ConditionVariableCancelSleepForProc(proc);
-
-		if (proc->lockGroupLeader != NULL)
-		{
-			elog(WARNING, "cannot cleanup after a process in a lockgroup");
-			return false;
-		}
-
-		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
-
-		ReleaseProcToFreeList(proc);
 	}
+
+	/* From ProcKill */
+	ReplicationSlotCleanupForProc(proc);
+	SyncRepCleanupAtProcExit(proc);
+	ConditionVariableCancelSleepForProc(proc);
+
+	if (proc->lockGroupLeader != NULL)
+	{
+		elog(WARNING, "cannot cleanup after a process in a lockgroup");
+		return false;
+	}
+
+	DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+	ReleaseProcToFreeList(proc);
 
 	KilledProcToClean = NULL;
 	return true;
@@ -4265,6 +4277,41 @@ TerminateChildren(int signal)
 }
 
 /*
+ * SetOomScoreAdjForPid - sets /proc/<pid>/oom_score_adj for the given PID
+ *
+ * oom_score_adj varies from -1000 to 1000. The lower the value, the lower the
+ * chance that it's going to be killed. A high value is more likely to be
+ * killed by the OOM killer.
+ */
+static void
+SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
+{
+#ifdef __linux__
+	if (oom_score_adj[0] == 0)
+		return;
+
+	char file_name[64];
+	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
+	FILE * fPtr;
+	fPtr = fopen(file_name, "w");
+
+	if(fPtr == NULL)
+	{
+		int saved_errno = errno;
+		ereport(LOG,
+			(errcode_for_file_access(),
+				errmsg("error %d: %s, unable to open file %s", saved_errno,
+				strerror(saved_errno), file_name)));
+	}
+	else
+	{
+		fputs(oom_score_adj, fPtr);
+		fclose(fPtr);
+	}
+#endif
+}
+
+/*
  * BackendStartup -- start backend process
  *
  * returns: STATUS_ERROR if the fork failed, STATUS_OK otherwise.
@@ -4328,13 +4375,13 @@ BackendStartup(Port *port)
 	pid = fork_process();
 	if (pid == 0)				/* child */
 	{
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 		/*
 		 * In YB, all backends are stateless and upon PG master termination, all
 		 * backend processes should also terminate regardless what state they are
 		 * in. No clean-up procedure is needed in the backends.
 		 */
-		if (IsYugaByteEnabled())
+		if (YBIsEnabledInPostgresEnvVar())
 			prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
 
@@ -4387,33 +4434,7 @@ BackendStartup(Port *port)
 		ShmemBackendArrayAdd(bn);
 #endif
 
-#ifdef __linux__
-	char file_name[64];
-	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
-	FILE * fPtr;
-	fPtr = fopen(file_name, "w");
-
-    /*
-	 * oom_score_adj varies from -1000 to 1000. The lower the value, the lower
-	 * the chance that it's going to be killed. Here, we are setting low priority
-	 * (YbBackendOomScoreAdj) for postgres connections so that during out of
-	 * memory, postgres connections are killed first. We do that be setting a
-	 * high oom_score_adj value for the postgres connection.
-	 */
-	if(fPtr == NULL)
-	{
-		int saved_errno = errno;
-		ereport(LOG,
-			(errcode_for_file_access(),
-				errmsg("error %d: %s, unable to open file %s", saved_errno,
-				strerror(saved_errno), file_name)));
-	}
-	else
-	{
-		fputs(YbBackendOomScoreAdj, fPtr);
-		fclose(fPtr);
-	}
-#endif
+	SetOomScoreAdjForPid(pid, YbBackendOomScoreAdj);
 
 	return STATUS_OK;
 }
@@ -5915,7 +5936,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -5928,7 +5950,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  * Connect background worker to a database using OIDs.
  */
 void
-BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
+YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+											uint64_t *session_id, uint32 flags)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -5938,13 +5961,21 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid, NULL, useroid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(NULL, dboid, NULL, useroid, NULL, session_id,
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
 				(errmsg("invalid processing mode in background worker")));
 	SetProcessingMode(NormalProcessing);
+}
+
+void
+BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
+										  uint32 flags)
+{
+	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, NULL, flags);
 }
 
 /*
@@ -6058,6 +6089,8 @@ do_start_bgworker(RegisteredBgWorker *rw)
 			MemoryContextSwitchTo(TopMemoryContext);
 			MemoryContextDelete(PostmasterContext);
 			PostmasterContext = NULL;
+
+			SetOomScoreAdjForPid(MyProcPid, rw->rw_worker.bgw_oom_score_adj);
 
 			StartBackgroundWorker();
 

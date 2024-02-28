@@ -22,8 +22,8 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
-             "Timeout used by transaction related RPCs in milliseconds.");
+DEFINE_RUNTIME_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+                     "Timeout used by transaction related RPCs in milliseconds.");
 
 namespace yb {
 
@@ -33,8 +33,9 @@ const char* kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 const std::string kTransactionTablePrefix = "transactions_";
 
-TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
-    : TransactionStatusResult(status_, status_time_, SubtxnSet()) {}
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_, Status expected_deadlock_status_)
+    : TransactionStatusResult(status_, status_time_, SubtxnSet(), expected_deadlock_status_) {}
 
 TransactionStatusResult::TransactionStatusResult(
     TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,

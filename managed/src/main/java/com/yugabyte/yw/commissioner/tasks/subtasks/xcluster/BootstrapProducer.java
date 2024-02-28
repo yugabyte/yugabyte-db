@@ -66,11 +66,10 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
+        "%s (sourceUniverse=%s, xClusterUuid=%s)",
         super.getName(),
         taskParams().getUniverseUUID(),
-        taskParams().getXClusterConfig().getUuid(),
-        taskParams().tableIds);
+        taskParams().getXClusterConfig().getUuid());
   }
 
   @Override
@@ -179,7 +178,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

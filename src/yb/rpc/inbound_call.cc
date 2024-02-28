@@ -63,13 +63,57 @@ DEFINE_RUNTIME_int32(rpc_slow_query_threshold_ms, 10000,
     "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 
+DECLARE_bool(TEST_yb_enable_ash);
+
 namespace yb {
 namespace rpc {
 
-InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
-                         CallProcessedListener* call_processed_listener)
-    : trace_holder_(Trace::MaybeGetNewTrace()),
+namespace {
+// An InboundCall's trace may have multiple sub-traces. It will be nice
+// for all the wait-state updates to be on the inbound call's trace rather
+// than be spread across the different traces
+class WaitStateInfoWithInboundCall : public ash::WaitStateInfo {
+ public:
+  WaitStateInfoWithInboundCall() = default;
+
+  void VTrace(int level, GStringPiece data) override {
+    std::shared_ptr<const InboundCall> sptr;
+    {
+      std::lock_guard guard(mutex_);
+      sptr = holder_.lock();
+    }
+    VTraceTo(sptr ? sptr->trace() : nullptr, level, data);
+  }
+
+  void UseForTracing(const InboundCall* call) {
+    auto ptr = shared_from(call);
+    {
+      std::lock_guard guard(mutex_);
+      holder_ = std::move(ptr);
+    }
+  }
+
+ private:
+  simple_spinlock mutex_;
+  std::weak_ptr<const InboundCall> holder_ GUARDED_BY(mutex_);
+};
+
+int64_t NextInstanceId() {
+  static std::atomic<int64_t> next_instance_id{0};
+  return next_instance_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+}  // namespace
+
+InboundCall::InboundCall(
+    ConnectionPtr conn, RpcMetrics* rpc_metrics, CallProcessedListener* call_processed_listener)
+    : wait_state_(
+          GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
+              ? std::make_shared<WaitStateInfoWithInboundCall>()
+              : nullptr),
+      trace_holder_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       trace_(trace_holder_.get()),
+      instance_id_(NextInstanceId()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {
@@ -91,7 +135,15 @@ InboundCall::~InboundCall() {
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
+void InboundCall::InitializeWaitState() {
+  if (wait_state_) {
+    down_cast<WaitStateInfoWithInboundCall*>(wait_state_.get())->UseForTracing(this);
+  }
+  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
+}
+
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
+  SET_WAIT_STATUS_TO(wait_state_, Rpc_Done);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -112,7 +164,7 @@ void InboundCall::EnsureTraceCreated() {
     }
     trace = new Trace;
     trace_holder_ = trace;
-    trace_.store(trace.get(), std::memory_order_relaxed);
+    trace_.store(trace.get(), std::memory_order_release);
   }
 
   if (timing_.time_received.Initialized()) {
@@ -211,6 +263,8 @@ void InboundCall::QueueResponse(bool is_success) {
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
+  TRACE_FUNC();
+  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 
 std::string InboundCall::LogPrefix() const {
@@ -226,6 +280,13 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
   Clear();
 
   return true;
+}
+
+void InboundCall::SetCallProcessedListener(CallProcessedListener* call_processed_listener) {
+  DCHECK(call_processed_listener_ == nullptr)
+      << this << " Trying to overwrite non-null call processed listner "
+      << " existing : " << call_processed_listener_ << " trying to set " << call_processed_listener;
+  call_processed_listener_ = call_processed_listener;
 }
 
 void InboundCall::Clear() {

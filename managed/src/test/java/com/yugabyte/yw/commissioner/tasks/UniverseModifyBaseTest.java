@@ -5,26 +5,52 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.HookScope;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.yb.CommonTypes;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
 import play.libs.Json;
 
 public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
@@ -63,7 +89,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
             invocation -> {
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Precheck)) {
                 NodeTaskParams params = invocation.getArgument(1);
-                NodeInstance.getByName(params.nodeName); // verify node is picked
+                assertTrue(StringUtils.isNotBlank((params.nodeName)));
+                NodeInstance.getOrBadRequest(params.nodeUuid);
                 return preflightResponse;
               }
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
@@ -167,14 +194,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
           result.getUniverseUUID(),
           u -> {
             String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
-            Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
+            Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
             for (NodeDetails node : u.getNodes()) {
-              List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
+              Set<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
               nodeNames.add(node.nodeName);
               onpremAzToNodes.put(node.azUuid, nodeNames);
             }
+            Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
             Map<String, NodeInstance> nodeMap =
-                NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+                NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
             for (NodeDetails node : u.getNodes()) {
               NodeInstance nodeInstance = nodeMap.get(node.nodeName);
               if (nodeInstance != null) {
@@ -240,39 +268,35 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return accessKey;
   }
 
-  protected void mockGetMasterRegistrationResponses(List<String> masterIps) {
-    mockGetMasterRegistrationResponses(mockClient, masterIps);
+  public static void mockMasterAndPeerRoles(YBClient client, List<String> masters) {
+    mockMasterAndPeerRoles(client, masters.isEmpty() ? null : masters.get(0), masters);
   }
 
-  public static void mockGetMasterRegistrationResponses(YBClient client, List<String> masterIps) {
-    /* reimplement once correct RPC method is used
-    when(client.getMasterRegistrationResponseList())
-        .thenAnswer(
-            i -> {
-              addMasters = !addMasters;
-              List<GetMasterRegistrationResponse> responses =
-                  new ArrayList<>(
-                      masterIps.stream()
-                          .map(
-                              ip ->
-                                  new GetMasterRegistrationResponse(
-                                      5,
-                                      "",
-                                      addMasters
-                                          ? CommonTypes.PeerRole.FOLLOWER
-                                          : CommonTypes.PeerRole.NON_PARTICIPANT,
-                                      WireProtocol.ServerRegistrationPB.newBuilder()
-                                          .addPrivateRpcAddresses(
-                                              CommonNet.HostPortPB.newBuilder()
-                                                  .setHost(ip)
-                                                  .setPort(7100)
-                                                  .build())
-                                          .build(),
-                                      null))
-                          .toList());
-              return responses;
-            });
-     */
+  public static void mockMasterAndPeerRoles(
+      YBClient client, String masterLeaderIp, List<String> masters) {
+    when(client.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost(masterLeaderIp));
+    try {
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+
+      List<ServerInfo> serverInfos =
+          masters.stream()
+              .map(
+                  m ->
+                      new ServerInfo(
+                          UUID.randomUUID().toString(),
+                          m,
+                          0,
+                          m.equals(masterLeaderIp),
+                          "OK",
+                          m.equals(masterLeaderIp)
+                              ? CommonTypes.PeerRole.LEADER
+                              : CommonTypes.PeerRole.FOLLOWER))
+              .collect(Collectors.toList());
+      when(listMastersResponse.getMasters()).thenReturn(serverInfos);
+      when(client.listMasters()).thenReturn(listMastersResponse);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public void mockGetMasterRegistrationResponse(List<String> addedIps, List<String> removedIps) {

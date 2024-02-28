@@ -126,19 +126,21 @@ static inline int od_backend_startup(od_server_t *server,
 				 { route->id.user, route->id.user_len },
 				 { "database", 9 },
 				 { route->id.database, route->id.database_len },
+				 { "yb_use_tserver_key_auth", 24 },
+				 { "1", 2 },
 				 { "yb_is_client_ysqlconnmgr", 25 },
 				 { "1", 2 },
 				 { "replication", 12 },
 				 { NULL, 0 } };
-	int argc = 6;
+	int argc = 8;
 	if (route->id.physical_rep) {
-		argc = 8;
-		argv[7].name = "on";
-		argv[7].len = 3;
+		argc = 10;
+		argv[9].name = "on";
+		argv[9].len = 3;
 	} else if (route->id.logical_rep) {
-		argc = 8;
-		argv[7].name = "database";
-		argv[7].len = 9;
+		argc = 10;
+		argv[9].name = "database";
+		argv[9].len = 9;
 	}
 
 	machine_msg_t *msg;
@@ -308,7 +310,15 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 	struct addrinfo *ai = NULL;
 
 	/* resolve server address */
+#ifdef YB_SUPPORT_FOUND
+	/* 
+	 * In upstream odyssey, checking only host value if is null isn't sufficient to identify out of
+	 * host and unix socket.
+	 */
+	if (host && strlen(host) > 0) {
+#else
 	if (host) {
+#endif
 		/* assume IPv6 or IPv4 is specified */
 		int rc_resolve = -1;
 		if (strchr(host, ':')) {
@@ -354,6 +364,11 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 		od_snprintf(saddr_un.sun_path, sizeof(saddr_un.sun_path),
 			    "%s/.s.PGSQL.%d", instance->config.unix_socket_dir,
 			    port);
+#ifdef YB_SUPPORT_FOUND
+		od_debug(&instance->logger, context, server->client,
+			       server,
+			       "Ysql Connection Manager connecting to unix socket at %s", saddr_un.sun_path);
+#endif
 	}
 
 	uint64_t time_resolve = 0;

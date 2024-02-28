@@ -4,7 +4,7 @@ package node
 
 import (
 	"context"
-	"errors"
+	"net"
 	"node-agent/app/server"
 	"node-agent/util"
 
@@ -30,6 +30,7 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 	registerCmd.PersistentFlags().
 		StringP("api_token", "t", "", "API token for registering the node.")
 	registerCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
+	registerCmd.PersistentFlags().StringP("bind_ip", "b", "", "Bind IP")
 	registerCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
 	registerCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	registerCmd.PersistentFlags().Bool("skip_verify_cert", false,
@@ -38,6 +39,8 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 	unregisterCmd.PersistentFlags().
 		StringP("api_token", "t", "", "Optional API token for unregistering the node.")
 	unregisterCmd.PersistentFlags().StringP("node_id", "i", "", "Node ID")
+	unregisterCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
+	unregisterCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	unregisterCmd.PersistentFlags().Bool("skip_verify_cert", false,
 		"Skip Yugabyte Anywhere SSL cert verification.")
 	parentCmd.AddCommand(registerCmd)
@@ -53,11 +56,36 @@ func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
 		cmd,
 		"node_id",
 		util.NodeAgentIdKey,
+		nil,   /* default value */
 		false, /* isRequired */
 		nil,   /* validator */
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent ID - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"node_ip",
+		util.NodeIpKey,
+		nil,  /* default value */
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node IP - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"url",
+		util.PlatformUrlKey,
+		nil,  /* default value */
+		true, /* isRequired */
+		util.ExtractBaseURL,
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store platform URL - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagBool(
 		ctx,
@@ -73,17 +101,9 @@ func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
 }
 
 func unregisterHandler(ctx context.Context, apiToken string) error {
-	nodeAgentId := util.CurrentConfig().String(util.NodeAgentIdKey)
-	// Return error if there is no node agent id present in the config.
-	if nodeAgentId == "" {
-		err := errors.New(
-			"Node Agent Unregistration Failed - Node Agent ID not found in the config",
-		)
-		util.ConsoleLogger().Errorf(ctx, err.Error())
-		return err
-	}
-
-	util.ConsoleLogger().Infof(ctx, "Unregistering Node Agent - %s", nodeAgentId)
+	config := util.CurrentConfig()
+	nodeAgentIp := config.String(util.NodeIpKey)
+	util.ConsoleLogger().Infof(ctx, "Unregistering Node Agent with IP %s", nodeAgentIp)
 	err := server.UnregisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
 		util.ConsoleLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
@@ -105,17 +125,42 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		cmd,
 		"node_ip",
 		util.NodeIpKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		nil,  /* validator */
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node IP - %s", err.Error())
 	}
+	nodeIp := config.String(util.NodeIpKey)
+	parsedIp := net.ParseIP(nodeIp)
+	if parsedIp == nil {
+		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"bind_ip",
+			util.NodeBindIpKey,
+			&nodeIp,
+			true, /* isRequired */
+			nil,  /* validator */
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store bind IP - %s", err.Error())
+		}
+	} else {
+		// Use the node IP as the bind IP.
+		err = config.Update(util.NodeBindIpKey, nodeIp)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
+		}
+	}
 	_, err = config.StoreCommandFlagString(
 		ctx,
 		cmd,
 		"node_port",
 		util.NodePortKey,
+		nil,   /* default value */
 		false, /* isRequired */
 		nil,   /* validator */
 	)
@@ -127,6 +172,7 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		cmd,
 		"url",
 		util.PlatformUrlKey,
+		nil,  /* default value */
 		true, /* isRequired */
 		util.ExtractBaseURL,
 	)
@@ -147,6 +193,7 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 		util.ConsoleLogger().
 			Fatalf(ctx, "Error fetching the current user with the API key - %s", err)
 	}
+
 	err = server.RegisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())

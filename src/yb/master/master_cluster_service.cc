@@ -15,6 +15,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/tablet_health_manager.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -137,8 +138,14 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
       auto last_heartbeat = desc->LastHeartbeatTime();
       if (last_heartbeat) {
-        entry->set_millis_since_heartbeat(narrow_cast<int>(
-            MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds()));
+        auto ms_since_heartbeat = MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds();
+        if (ms_since_heartbeat > std::numeric_limits<int32_t>::max()) {
+          LOG(DFATAL) << entry->instance_id().permanent_uuid()
+                      << " has not heartbeated since "
+                      << ms_since_heartbeat;
+          ms_since_heartbeat = std::numeric_limits<int32_t>::max();
+        }
+        entry->set_millis_since_heartbeat(narrow_cast<int>(ms_since_heartbeat));
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
@@ -358,19 +365,6 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLoadMoveCompletionPercent);
   }
 
-  void GetAutoFlagsConfig(
-      const GetAutoFlagsConfigRequestPB* req, GetAutoFlagsConfigResponsePB* resp,
-      rpc::RpcContext rpc) override {
-    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
-    if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-      return;
-    }
-
-    *resp->mutable_config() = server_->GetAutoFlagsConfig();
-
-    rpc.RespondSuccess();
-  }
-
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
     TabletHealthManager,
     (CheckMasterTabletHealth)
@@ -382,6 +376,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalanced)
     (IsLoadBalancerIdle)
     (SetPreferredZones)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    MasterAutoFlagsManager,
+    (GetAutoFlagsConfig)
     (PromoteAutoFlags)
     (RollbackAutoFlags)
     (PromoteSingleAutoFlag)

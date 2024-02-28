@@ -30,6 +30,9 @@ public class UserTaskDetails {
     // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
 
+    // Rolling back software upgrade on Yugabyte Clusters.
+    RollingBackSoftware,
+
     // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
     FinalizingUpgrade,
 
@@ -64,6 +67,9 @@ public class UserTaskDetails {
 
     // Updating GFlags
     UpdatingGFlags,
+
+    // Updating YBC GFlags
+    UpdatingYbcGFlags,
 
     // Bootstrap Cloud
     BootstrappingCloud,
@@ -170,6 +176,9 @@ public class UserTaskDetails {
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
 
+    // Delete Kubernetes Volumes for a shell mode master before creating it.
+    KubernetesVolumeDeleteMasterShellMode,
+
     // Delete kubernetes namespace
     KubernetesNamespaceDelete,
 
@@ -249,7 +258,16 @@ public class UserTaskDetails {
     ValidateConfigurations,
 
     // Manage Otel Collector.
-    ManageOtelCollector
+    ManageOtelCollector,
+
+    // Validating nodes.
+    ValidatingNode,
+
+    // OS Patching.
+    OSPatching,
+
+    // Update Proxy Config
+    UpdateProxyConfig
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -278,6 +296,10 @@ public class UserTaskDetails {
       case UpgradingSoftware:
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
+        break;
+      case RollingBackSoftware:
+        title = "Rolling back Software";
+        description = "Rolling back software upgrade on existing clusters.";
         break;
       case FinalizingUpgrade:
         title = "Finalizing upgrade";
@@ -336,6 +358,10 @@ public class UserTaskDetails {
       case UpdatingGFlags:
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
+        break;
+      case UpdatingYbcGFlags:
+        title = "Updating YBC GFlags";
+        description = "Updating YBC GFlags on provisioned nodes.";
         break;
       case UpdatingKubernetesOverrides:
         title = "Updating kubernetes overrides";
@@ -467,6 +493,10 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
         break;
+      case KubernetesVolumeDeleteMasterShellMode:
+        title = "Delete Kubernetes Volumes for a master before creating it in shell mode";
+        description = "Delete Kubernetes Volumes for master pod before creating it in shell mode";
+        break;
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
@@ -581,6 +611,18 @@ public class UserTaskDetails {
       case ManageOtelCollector:
         title = "Managing OpenTelemetry Collector";
         description = "Managing OpenTelemetry Collector";
+        break;
+      case ValidatingNode:
+        title = "Validating node status";
+        description = "Validating node's current state before proceeding";
+        break;
+      case OSPatching:
+        title = "OS Patching";
+        description = "Performing OS Patching on the universe nodes";
+        break;
+      case UpdateProxyConfig:
+        title = "Updating Proxy config";
+        description = "Updating Proxy Config for Universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

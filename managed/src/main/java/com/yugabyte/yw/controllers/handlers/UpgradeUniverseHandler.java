@@ -9,6 +9,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -16,18 +17,20 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -39,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -51,10 +55,15 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
+import play.libs.Json;
 
 @Slf4j
 @Singleton
@@ -105,8 +114,8 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
-  public UUID upgradeSoftware(
-      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+  private SoftwareUpgradeParams setSoftwareUpgradeRequestParams(
+      SoftwareUpgradeParams requestParams, Universe universe, boolean rollbackSupport) {
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
@@ -124,12 +133,12 @@ public class UpgradeUniverseHandler {
 
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)
           && Util.compareYbVersions(
                   requestParams.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0
-          && !universe.isYbcEnabled()
-          && requestParams.isEnableYbc()) {
+          && !universe.isYbcEnabled()) {
+        requestParams.setEnableYbc(true);
         requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         requestParams.installYbc = true;
       } else if (universe.isYbcEnabled()) {
@@ -146,7 +155,8 @@ public class UpgradeUniverseHandler {
                 true)
             > 0
         && !universe.isYbcEnabled()
-        && requestParams.isEnableYbc()) {
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)) {
+      requestParams.setEnableYbc(true);
       requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       requestParams.installYbc = true;
     } else {
@@ -155,7 +165,13 @@ public class UpgradeUniverseHandler {
       requestParams.setEnableYbc(false);
     }
     requestParams.setYbcInstalled(universe.isYbcEnabled());
+    requestParams.rollbackSupport = rollbackSupport;
+    return requestParams;
+  }
 
+  private TaskType getSoftwareUpgradeTaskType(
+      Universe universe, SoftwareUpgradeParams requestParams) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.SoftwareKubernetesUpgrade
@@ -163,8 +179,7 @@ public class UpgradeUniverseHandler {
 
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
-        && CommonUtils.isReleaseEqualOrAfter(
+    if (CommonUtils.isReleaseEqualOrAfter(
             Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
         && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
       taskType =
@@ -172,15 +187,39 @@ public class UpgradeUniverseHandler {
               ? TaskType.SoftwareUpgradeYB
               : TaskType.SoftwareKubernetesUpgradeYB;
     }
+    return taskType;
+  }
+
+  /** Upgrades yugabyte DB software on a universe without rollback capabilities. */
+  public UUID upgradeSoftware(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams = setSoftwareUpgradeRequestParams(requestParams, universe, false);
+    TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
+
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
+  }
+
+  /**
+   * Upgrades yugabyte DB software on a version with rollback capabilities on supported versions.
+   */
+  public UUID upgradeDBVersion(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams = setSoftwareUpgradeRequestParams(requestParams, universe, true);
+    TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
+
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
   }
 
   public UUID finalizeUpgrade(
       FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
-
     requestParams.verifyParams(universe, true);
-
+    // update prev software version to track version in the task details.
+    requestParams.ybPrevSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     return submitUpgradeTask(
         TaskType.FinalizeUpgrade,
         CustomerTask.TaskType.FinalizeUpgrade,
@@ -214,7 +253,7 @@ public class UpgradeUniverseHandler {
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
     if (MapUtils.isEmpty(requestParams.masterGFlags)
-        && MapUtils.isEmpty(requestParams.masterGFlags)
+        && MapUtils.isEmpty(requestParams.tserverGFlags)
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
@@ -234,8 +273,19 @@ public class UpgradeUniverseHandler {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
     // Verify request params
-    requestParams.verifyParams(universe, true);
-
+    try {
+      requestParams.verifyParams(universe, true);
+    } catch (PlatformServiceException p) {
+      boolean oldChemaPossible =
+          p.getMessage().equals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR)
+              || p.getMessage().equals(UpgradeWithGFlags.EMPTY_SPECIFIC_GFLAGS);
+      if (!oldChemaPossible || !checkGFlagsProvidedInOldSchema(universe, requestParams)) {
+        throw p;
+      } else { // Used old maps to upgrade cluster in new scheme.
+        // Verify params again (to check for other errors)
+        requestParams.verifyParams(universe, true);
+      }
+    }
     if (userIntent.providerType.equals(CloudType.kubernetes)) {
       // Gflags upgrade does not change universe version. Check for current version of helm chart.
       checkHelmChartExists(
@@ -249,6 +299,83 @@ public class UpgradeUniverseHandler {
         requestParams,
         customer,
         universe);
+  }
+
+  /**
+   * To support old API for UI users, we can check if user provided gflags in old manner, and sync
+   * them into specificGFlags
+   *
+   * @param universe
+   * @param requestParams
+   * @return true if successfully synchronized old fields into specificGFlags.
+   */
+  private boolean checkGFlagsProvidedInOldSchema(
+      Universe universe, GFlagsUpgradeParams requestParams) {
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    Map<String, String> oldMasterGFlags =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags;
+    Map<String, String> oldTserverGFlags =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags;
+
+    if (!cloudEnabled
+        && requestParams.masterGFlags != null
+        && requestParams.tserverGFlags != null
+        && (!Objects.equals(requestParams.masterGFlags, oldMasterGFlags)
+            || !Objects.equals(requestParams.tserverGFlags, oldTserverGFlags))) {
+      UniverseDefinitionTaskParams.Cluster primaryCluster =
+          universe.getUniverseDetails().getPrimaryCluster();
+      Map<String, String> prevMasterGFlags =
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.MASTER,
+              primaryCluster,
+              universe.getUniverseDetails().clusters);
+      Map<String, String> prevTserverGFlags =
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.TSERVER,
+              primaryCluster,
+              universe.getUniverseDetails().clusters);
+      SpecificGFlags primarySpecificGFlags =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags;
+      if (!Objects.equals(requestParams.masterGFlags, prevMasterGFlags)
+          || !Objects.equals(requestParams.tserverGFlags, prevTserverGFlags)) {
+        if (primarySpecificGFlags.hasPerAZOverrides()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot upgrade gflags using old fields because there are overrides per az"
+                  + " in primary cluster. Please modify specificGFlags to do upgrade.");
+        }
+        if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
+          SpecificGFlags specificGFlagsForRR =
+              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.specificGFlags;
+          if (specificGFlagsForRR.hasPerAZOverrides()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot upgrade gflags using old fields because there are overrides per az"
+                    + " in readonly cluster. Please modify specificGFlags to do upgrade.");
+          }
+          if (specificGFlagsForRR != null && !specificGFlagsForRR.isInheritFromPrimary()) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cannot upgrade gflags using old fields because read replica has overriden "
+                    + "gflags. Please modify specificGFlags to do upgrade.");
+          }
+        }
+        UniverseDefinitionTaskParams.Cluster requestParamsCluster =
+            requestParams.getPrimaryCluster();
+        log.warn(
+            "GFlag request params are specified in old manner: specificGFlags: {}, masterGFlags:"
+                + " {}, tserverGFlags: {}",
+            Json.toJson(requestParamsCluster.userIntent.specificGFlags),
+            requestParams.masterGFlags,
+            requestParams.tserverGFlags);
+        requestParamsCluster.userIntent.specificGFlags =
+            SpecificGFlags.construct(requestParams.masterGFlags, requestParams.tserverGFlags);
+        return true;
+      }
+    }
+    return false;
   }
 
   public UUID upgradeKubernetesOverrides(
@@ -504,9 +631,21 @@ public class UpgradeUniverseHandler {
           BAD_REQUEST, "No finalize upgrade info available for this universe");
     }
     try {
-      response.setImpactedXClusterConnectedUniverse(
+      List<FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse> impactedUniverses =
+          new ArrayList<>();
+      for (UUID uuid :
           xClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
-              universe));
+              universe)) {
+        Universe univ = Universe.getOrBadRequest(uuid);
+        FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse details =
+            new FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse();
+        details.universeUUID = uuid;
+        details.universeName = univ.getName();
+        details.ybSoftwareVersion =
+            univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        impactedUniverses.add(details);
+      }
+      response.setImpactedXClusterConnectedUniverse(impactedUniverses);
     } catch (IOException e) {
       log.error("Error: ", e);
       throw new PlatformServiceException(
@@ -582,6 +721,18 @@ public class UpgradeUniverseHandler {
       baseTaskName += booleanToStr(clientToNode == null ? nodeToNode : clientToNode);
     }
     return baseTaskName;
+  }
+
+  public UUID updateProxyConfig(
+      ProxyConfigUpdateParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.UpdateProxyConfig,
+        CustomerTask.TaskType.UpdateProxyConfig,
+        requestParams,
+        customer,
+        universe);
   }
 
   private static String booleanToStr(boolean toggle) {

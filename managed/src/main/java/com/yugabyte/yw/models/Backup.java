@@ -38,12 +38,15 @@ import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
 import io.ebean.Query;
-import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.UpdatedTimestamp;
+import io.ebean.annotation.WhenCreated;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -55,9 +58,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
@@ -306,12 +306,12 @@ public class Backup extends Model {
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "Backup creation time", example = "2022-12-12T13:07:18Z")
-  @CreatedTimestamp
+  @WhenCreated
   private Date createTime;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "Backup update time", example = "2022-12-12T13:07:18Z")
-  @UpdatedTimestamp
+  @WhenModified
   private Date updateTime;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -935,13 +935,12 @@ public class Backup extends Model {
       query.endOr();
     }
     if (filter.isOnlyShowDeletedUniverses()) {
-      String universeNotExists =
-          "t0.universe_uuid not in" + "(select U.universe_uuid from universe U)";
+      String universeNotExists = "t0.universe_uuid not in (select U.universe_uuid from universe U)";
       query.raw(universeNotExists);
     }
     if (filter.isOnlyShowDeletedConfigs()) {
       String configNotExists =
-          "t0.storage_config_uuid not in" + "(select C.config_uuid from customer_config C)";
+          "t0.storage_config_uuid not in (select C.config_uuid from customer_config C)";
       query.raw(configNotExists);
     }
     return query;

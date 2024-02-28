@@ -29,7 +29,7 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "false");
-    flagMap.put("ysql_max_write_restart_attempts", Integer.toString(0));
+    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(0));
     // Verbose logging of intentsdb seeks/postgres statements
     flagMap.put("vmodule", "docdb=4,conflict_resolution=5");
     flagMap.put("ysql_log_statement", "all");
@@ -60,8 +60,12 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
       updateCounter(counter);
       final int seeks = counter.intentdbSeeks.get("t").value();
 
-      // - Expect one seek per conflict resolution.
-      assertEquals(seeks, 1);
+      // - Expect four seeks for the columns being updated (kStrongWrite intents)
+      // - Expect four seeks for the weak intents
+      //   - Two seeks for the range components
+      //   - One seek for the hash component
+      //   - One seek for the tablet/relation
+      assertEquals(seeks, 8);
       stmt.execute("COMMIT");
     }
   }

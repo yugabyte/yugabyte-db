@@ -5,29 +5,40 @@ package com.yugabyte.yw.commissioner.tasks.local;
 import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTask;
 import static org.junit.Assert.assertEquals;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
+@Slf4j
 public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
+
+  @Override
+  protected Pair<Integer, Integer> getIpRange() {
+    return new Pair(30, 60);
+  }
 
   @Test
   public void testNonRestartUpgrade() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = new SpecificGFlags();
     Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    initAndStartPayload(universe);
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
@@ -39,8 +50,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
-    initYSQL(universe);
     verifyYSQL(universe);
+    verifyPayload();
   }
 
   @Test
@@ -48,6 +59,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = new SpecificGFlags();
     Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
@@ -59,15 +71,16 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
-    initYSQL(universe);
     verifyYSQL(universe);
   }
 
   @Test
   public void testRollingUpgradeWithRRInherited() throws InterruptedException {
     Universe universe = createUniverse(getDefaultUserIntent());
-    addReadReplica(universe, getDefaultUserIntent());
-
+    doAddReadReplica(universe, getDefaultUserIntent());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    initYSQL(universe);
+    initAndStartPayload(universe);
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
@@ -87,15 +100,16 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
-    initYSQL(universe);
     verifyYSQL(universe);
+    verifyPayload();
   }
 
   @Test
   public void testRollingUpgradeWithRR() throws InterruptedException {
     Universe universe = createUniverse(getDefaultUserIntent());
     addReadReplica(universe, getDefaultUserIntent());
-
+    initYSQL(universe);
+    initAndStartPayload(universe);
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
@@ -115,8 +129,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
-    initYSQL(universe);
     verifyYSQL(universe);
+    verifyPayload();
   }
 
   protected TaskInfo doGflagsUpgrade(
@@ -154,35 +168,45 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   private void compareGFlags(Universe universe) {
-    SpecificGFlags specificGFlags =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags;
     for (NodeDetails node : universe.getNodes()) {
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
       for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
         Map<String, String> varz = getVarz(node, universe, serverType);
-        Map<String, String> gflags = specificGFlags.getGFlags(node, serverType);
+        Map<String, String> gflags =
+            GFlagsUtil.getGFlagsForNode(
+                node, serverType, cluster, universe.getUniverseDetails().clusters);
+        Map<String, String> gflagsOnDisk = getDiskFlags(node, universe, serverType);
         gflags.forEach(
             (k, v) -> {
               String actual = varz.getOrDefault(k, "?????");
-              assertEquals(v, actual);
+              assertEquals("Compare in memory gflags", v, actual);
+              String onDisk = gflagsOnDisk.getOrDefault(k, "?????");
+              assertEquals("Compare on disk gflags", v, onDisk);
             });
       }
     }
   }
 
-  private Map<String, String> getVarz(
+  private Map<String, String> getDiskFlags(
       NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    UniverseTaskParams.CommunicationPorts ports = universe.getUniverseDetails().communicationPorts;
-    int port =
-        serverType == UniverseTaskBase.ServerType.MASTER
-            ? ports.masterHttpPort
-            : ports.tserverHttpPort;
-    JsonNode varz =
-        nodeUIApiHelper.getRequest(
-            "http://" + nodeDetails.cloudInfo.private_ip + ":" + port + "/api/v1/varz");
-    Map<String, String> result = new HashMap<>();
-    for (JsonNode flag : varz.get("flags")) {
-      result.put(flag.get("name").asText(), flag.get("value").asText());
+    Map<String, String> results = new HashMap<>();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getCluster(nodeDetails.placementUuid).userIntent;
+    String gflagsFile =
+        localNodeManager.getNodeGFlagsFile(
+            userIntent, serverType, localNodeManager.getNodeInfo(nodeDetails));
+    try (FileReader fr = new FileReader(gflagsFile);
+        BufferedReader br = new BufferedReader(fr)) {
+      String line;
+      while ((line = br.readLine()) != null) {
+        String[] split = line.split("=");
+        String key = split[0].substring(2);
+        String val = split.length == 1 ? "" : split[1];
+        results.put(key, val);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
-    return result;
+    return results;
   }
 }

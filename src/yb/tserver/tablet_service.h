@@ -125,6 +125,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                           GetOldTransactionsResponsePB* resp,
                           rpc::RpcContext context) override;
 
+  void GetOldSingleShardWaiters(const GetOldSingleShardWaitersRequestPB* req,
+                                GetOldSingleShardWaitersResponsePB* resp,
+                                rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
@@ -216,9 +220,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   bool CheckWriteThrottlingOrRespond(
       double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context);
 
-  template <class Req, class Resp, class F>
-  void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
-
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
   Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
@@ -307,6 +308,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void CloneTablet(
+      const tablet::CloneTabletRequestPB* req,
+      CloneTabletResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -314,6 +320,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   TabletServer* const server_;
 
   Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+
+  Status SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                              ChangeMetadataResponsePB* resp,
+                              const tablet::TabletPeerPtr& peer);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is

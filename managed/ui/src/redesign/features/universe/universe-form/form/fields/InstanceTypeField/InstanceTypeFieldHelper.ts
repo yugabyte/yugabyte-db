@@ -80,6 +80,7 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
     };
   });
 
+
   // sort by group names and label
-  return _.sortBy(result, ['groupName', 'label']);
+  return _.sortBy(result, ['groupName', 'label', 'numCores']);
 };

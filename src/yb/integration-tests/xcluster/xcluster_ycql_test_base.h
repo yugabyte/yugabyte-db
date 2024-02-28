@@ -47,17 +47,33 @@ class XClusterYcqlTestBase : public XClusterTestBase {
   Result<client::YBTableName> CreateTable(
       uint32_t idx, uint32_t num_tablets, YBClient* client, const client::YBSchema& schema);
 
-  void WriteWorkload(
-      uint32_t start, uint32_t end, YBClient* client, const client::YBTableName& table,
+  Status WriteWorkload(
+      uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
       bool delete_op = false);
+
+  Status InsertRowsInProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
+
+  Status InsertRowsInConsumer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> consumer_table = {});
+
+  Status DeleteRows(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
+
+  Status VerifyNumRecords(
+      const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size);
+
+  Status VerifyNumRecordsOnProducer(size_t expected_size, size_t table_idx = 0);
+
+  Status VerifyNumRecordsOnConsumer(size_t expected_size, size_t table_idx = 0);
 
   Status DoVerifyWrittenRecords(
       const client::YBTableName& producer_table, const client::YBTableName& consumer_table,
       YBClient* prod_client = nullptr, YBClient* cons_client = nullptr,
       int timeout_secs = kRpcTimeout);
 
-  Status DoVerifyNumRecords(
-      const client::YBTableName& table, YBClient* client, size_t expected_size);
+  Status VerifyRowsMatch(
+      std::shared_ptr<client::YBTable> producer_table = {}, int timeout_secs = kRpcTimeout);
 
   server::ClockPtr GetClock() { return clock_; }
 

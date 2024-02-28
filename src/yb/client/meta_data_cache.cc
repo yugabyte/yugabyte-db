@@ -84,7 +84,7 @@ struct YBMetaDataCacheEntry {
   YBTablePtr table_;
   ScopedTrackedConsumption consumption_;
 
-  std::vector<FetchCallback> callbacks;
+  std::vector<FetchCallback> callbacks_;
 
   YBTablePtr GetFetched() {
     std::lock_guard lock(mutex_);
@@ -100,8 +100,8 @@ struct YBMetaDataCacheEntry {
       std::lock_guard lock(mutex_);
       table = table_;
       if (!table) {
-        bool was_empty = callbacks.empty();
-        callbacks.push_back(std::move(callback));
+        bool was_empty = callbacks_.empty();
+        callbacks_.push_back(std::move(callback));
         if (!was_empty) {
           return;
         }
@@ -109,7 +109,7 @@ struct YBMetaDataCacheEntry {
     }
 
     if (table) {
-      callback(table);
+      callback(table); // NOLINT(bugprone-use-after-move)
       return;
     }
 
@@ -122,7 +122,7 @@ struct YBMetaDataCacheEntry {
       std::vector<FetchCallback> to_notify;
       {
         std::lock_guard lock(mutex_);
-        to_notify.swap(callbacks);
+        to_notify.swap(callbacks_);
         if (open_result.ok()) {
           table_ = *open_result;
           if (cache->mem_tracker_) {

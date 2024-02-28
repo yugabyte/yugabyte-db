@@ -140,7 +140,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
         enableYSQL: values.enableYSQL ?? false,
         enableYSQLAuth: values.enableYSQL && values.enableYSQLAuth ? values.enableYSQLAuth : false,
         ysqlPassword: values.ysqlPassword ?? '',
-        CommunicationPorts: {
+        communicationPorts: {
           ysqlServerHttpPort: universeDetails.communicationPorts.ysqlServerHttpPort,
           ysqlServerRpcPort: universeDetails.communicationPorts.ysqlServerRpcPort
         }

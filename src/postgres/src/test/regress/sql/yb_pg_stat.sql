@@ -67,8 +67,6 @@ select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='materialized_view_idx';
 refresh materialized view materialized_maintable_view;
 select pg_sleep(1);
--- currently, after a refresh materialized view is called, idx_scan is reset 
--- this is not consistent with upstream PG and needs to be fixed
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='materialized_view_idx';
 
 -- test for joined table

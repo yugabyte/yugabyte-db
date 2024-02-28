@@ -41,12 +41,6 @@ class MemTracker;
 
 namespace cdc {
 
-using EnumOidLabelMap = std::unordered_map<uint32_t, std::string>;
-using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
-
-using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
-using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
-
 struct SchemaDetails {
   SchemaVersion schema_version;
   std::shared_ptr<Schema> schema;
@@ -66,6 +60,7 @@ Status GetChangesForCDCSDK(
     const std::shared_ptr<MemTracker>& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
+    CDCSDKRequestSource request_source,
     client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
@@ -73,6 +68,7 @@ Status GetChangesForCDCSDK(
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     const int64_t& safe_hybrid_time_req,
+    const std::optional<uint64_t> consistent_snapshot_time,
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",

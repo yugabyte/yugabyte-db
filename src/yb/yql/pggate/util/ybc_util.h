@@ -119,6 +119,16 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * Guc variable that enables replication slot consumption.
+ */
+extern bool yb_enable_replication_slot_consumption;
+
+/*
+ * GUC variable that enables ALTER TABLE rewrite operations.
+ */
+extern bool yb_enable_alter_table_rewrite;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -146,11 +156,13 @@ extern int yb_fetch_size_limit;
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);
+bool YBCStatusIsUnknownSession(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 bool YBCStatusIsSnapshotTooOld(YBCStatus s);
 bool YBCStatusIsTryAgain(YBCStatus s);
 bool YBCStatusIsAlreadyPresent(YBCStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s);
+bool YBCStatusIsFatalError(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
@@ -249,6 +261,12 @@ const char* YBCGetStackTrace();
 void YBCInitThreading();
 
 double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
+
+// Helper functions for Active Session History
+void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
+const char* YBCGetWaitEventName(uint32_t wait_event_info);
+const char* YBCGetWaitEventClass(uint32_t wait_event_info);
+const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"

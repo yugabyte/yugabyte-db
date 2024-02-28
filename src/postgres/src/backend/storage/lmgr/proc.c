@@ -66,6 +66,7 @@ bool		log_lock_waits = false;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
+int yb_max_query_layer_retries;
 
 /* Pointer to this process's PGPROC and PGXACT structs, if any */
 PGPROC	   *MyProc = NULL;
@@ -236,6 +237,7 @@ InitProcGlobal(void)
 			procs[i].sem = PGSemaphoreCreate();
 			InitSharedLatch(&(procs[i].procLatch));
 			LWLockInitialize(&(procs[i].backendLock), LWTRANCHE_PROC);
+			LWLockInitialize(&(procs[i].yb_ash_metadata_lock), LWTRANCHE_YB_ASH_METADATA);
 		}
 		procs[i].pgprocno = i;
 
@@ -382,6 +384,7 @@ InitProcess(void)
 	*/
 	MyProc->ybInitializationCompleted = false;
 	MyProc->ybTerminationStarted = false;
+	MyProc->ybEnteredCriticalSection = false;
 
 	/*
 	 * Initialize all fields of MyProc, except for those previously
@@ -448,6 +451,15 @@ InitProcess(void)
 
 	MyProc->ybLWLockAcquired = false;
 	MyProc->ybSpinLocksAcquired = 0;
+
+	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
+		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.query_id = 0;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
+		   sizeof(MyProc->yb_ash_metadata.client_addr));
+	MyProc->yb_ash_metadata.client_port = 0;
+	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MyProc->yb_is_ash_metadata_set = false;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -592,6 +604,7 @@ InitAuxiliaryProcess(void)
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
+	MyProc->yb_is_ash_metadata_set = false;
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;

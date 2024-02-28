@@ -1,0 +1,13 @@
+title: GFlags for a cluster
+description: GFlags for a cluster
+type: object
+properties:
+  per_process_gflags:
+    description: Gflags grouped by process
+    type: object
+    $ref: ./PerProcessGFlags.yaml
+  per_az:
+    description: Overrides for gflags per availability zone
+    type: object
+    additionalProperties:
+      $ref: ./PerProcessGFlags.yaml

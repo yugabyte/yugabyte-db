@@ -23,14 +23,20 @@
 extern "C" {
 #endif
 
+typedef void (*YBCAshAcquireBufferLock)(bool);
+typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
+
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count, YBCPgCallbacks pg_callbacks);
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
+                   YBCPgCallbacks pg_callbacks, uint64_t *session_id,
+                   const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
+bool YBCGetCurrentPgSessionId(uint64_t *session_id);
 
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
@@ -71,8 +77,15 @@ YBCStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
+// Return true if the pg_yb_catalog_version table has been updated to
+// have one row per database.
+YBCStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
+
+// Return UUID of the local tserver
+const unsigned char* YBCGetLocalTserverUuid();
 
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
@@ -218,7 +231,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const char *schema_name,
                               const char *table_name,
                               YBCPgOid database_oid,
-                              YBCPgOid table_oid,
+                              YBCPgOid table_relfilenode_oid,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
@@ -227,7 +240,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
                               bool is_matview,
-                              YBCPgOid matview_pg_table_oid,
+                              YBCPgOid pg_table_oid,
+                              YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -241,7 +255,7 @@ YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int exp
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
-                             YBCPgOid table_oid,
+                             YBCPgOid table_relfilenode_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
@@ -259,23 +273,23 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
 YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableSetTableId(
-    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid);
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
-                            YBCPgOid table_oid,
+                            YBCPgOid table_relfilenode_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgNewTruncateTable(YBCPgOid database_oid,
-                                YBCPgOid table_oid,
+                                YBCPgOid table_relfilenode_oid,
                                 YBCPgStatement *handle);
 
 YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgGetTableDesc(YBCPgOid database_oid,
-                            YBCPgOid table_oid,
+                            YBCPgOid table_relfilenode_oid,
                             YBCPgTableDesc *handle);
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
@@ -297,10 +311,10 @@ YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
                                         uint64_t version);
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
-                           const YBCPgOid table_oid,
+                           const YBCPgOid table_relfilenode_oid,
                            bool *exists);
 
-YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_relfilenode_oid,
                                 YBCPgOid database_oid,
                                 int64_t *size,
                                 int32_t *num_missing_tablets);
@@ -319,8 +333,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const char *schema_name,
                               const char *index_name,
                               YBCPgOid database_oid,
-                              YBCPgOid index_oid,
-                              YBCPgOid table_oid,
+                              YBCPgOid index_relfilenode_oid,
+                              YBCPgOid table_relfilenode_oid,
                               bool is_shared_index,
                               bool is_unique_index,
                               const bool skip_index_backfill,
@@ -329,6 +343,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
+                              YBCPgOid pg_table_oid,
+                              YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -340,7 +356,7 @@ YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_table
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
-                            YBCPgOid index_oid,
+                            YBCPgOid index_relfilenode_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
@@ -357,7 +373,7 @@ YBCStatus YBCPgWaitForBackendsCatalogVersion(
 
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
-    const YBCPgOid index_oid);
+    const YBCPgOid index_relfilenode_oid);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
@@ -423,12 +439,18 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
                                    int n_attr_values,
                                    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindColumnCondIsNotNull(YBCPgStatement handle, int attr_num);
+YBCStatus YBCPgDmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
                                 YBCPgBoundType start_type, uint64_t start_value,
                                 YBCPgBoundType end_type, uint64_t end_value);
+
+// For parallel scan only, limit fetch to specified range of ybctids
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
+                            const char *end_value, size_t end_value_len);
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
                                     YBCPgExpr *col_values, bool is_inclusive);
@@ -473,7 +495,7 @@ void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          int targrows,
                          bool is_region_local,
                          YBCPgStatement *handle);
@@ -487,8 +509,17 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle);
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
+
+// Allocate block of inserts to the same table.
+YBCStatus YBCPgNewInsertBlock(
+    YBCPgOid database_oid,
+    YBCPgOid table_oid,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting,
+    YBCPgStatement *handle);
+
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -503,7 +534,7 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -512,7 +543,7 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -523,7 +554,7 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
-                                    YBCPgOid table_oid,
+                                    YBCPgOid table_relfilenode_oid,
                                     bool is_region_local,
                                     YBCPgStatement *handle,
                                     YBCPgTransactionSetting transaction_setting);
@@ -532,7 +563,7 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          const YBCPgPrepareParameters *prepare_params,
                          bool is_region_local,
                          YBCPgStatement *handle);
@@ -542,6 +573,8 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 // Set prefix length for distinct index scans.
 YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
+
+YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
@@ -574,7 +607,7 @@ YBCStatus YBCPgSetEnableTracing(bool tracing);
 YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
-YBCStatus YBCPgExitSeparateDdlTxnMode();
+YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering);
 YBCStatus YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
@@ -643,8 +676,8 @@ YBCStatus YBCAppendDatumToKey(uint64_t data,  const YBCPgTypeEntity
 uint16_t YBCCompoundHash(const char *key, size_t length);
 
 // Referential Integrity Check Caching.
-void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
-void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid);
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
@@ -689,7 +722,7 @@ YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_relfilenode_oids, YBCPgOid* database_oids,
                                       uint64_t** backfill_statuses,
                                       int num_indexes);
 
@@ -713,22 +746,29 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
-YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
+uint64_t YBCPgGetReadTimeSerialNo();
+
+void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no);
+
+YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 
 // Breaks table data into ranges of approximately range_size_bytes each, at most into
 // `max_num_ranges`.
-// Returns (through callback) list of these ranges end keys.
+// Returns (through callback) list of these ranges end keys and fills current_tserver_ht if not
+// nullptr.
+
 // It is guaranteed that returned keys are at most max_key_length bytes.
 // lower_bound_key is inclusive, upper_bound_key is exclusive.
 // Iff we've reached the end of the table (or upper bound) then empty key is returned as the last
 // key.
 YBCStatus YBCGetTableKeyRanges(
-    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    uint64_t* current_tserver_ht,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
 
 //--------------------------------------------------------------------------------------------------
@@ -736,11 +776,16 @@ YBCStatus YBCGetTableKeyRanges(
 
 YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YBCPgOid database_oid,
+                                        YBCPgReplicationSlotSnapshotAction snapshot_action,
                                         YBCPgStatement *handle);
-YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle,
+                                         uint64_t *consistent_snapshot_time);
 
 YBCStatus YBCPgListReplicationSlots(
     YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
+
+YBCStatus YBCPgGetReplicationSlot(
+    const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
 YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
                                         bool *active);
@@ -749,14 +794,38 @@ YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
 
+YBCStatus YBCPgGetTabletListToPollForStreamAndTable(const char *stream_id,
+                                                    const YBCPgOid database_oid,
+                                                    const YBCPgOid table_oid,
+                                                    YBCPgTabletCheckpoint **tablet_checkpoints,
+                                                    size_t *numtablets);
+
+YBCStatus YBCPgSetCDCTabletCheckpoint(const char *stream_id,
+                                      const char *tablet_id,
+                                      const YBCPgCDCSDKCheckpoint *checkpoint,
+                                      uint64_t safe_time,
+                                      bool is_initial_checkpoint);
+
+YBCStatus YBCPgGetCDCChanges(const char *stream_id,
+                             const char *tablet_id,
+                             const YBCPgCDCSDKCheckpoint *checkpoint,
+                             YBCPgChangeRecordBatch **record_batch);
+
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
+
+// Active Session History
+void YBCStoreTServerAshSamples(
+    YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
+    uint64_t sample_time);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
 
 #ifdef __cplusplus
+#include <optional>
+
 namespace yb {
 namespace pggate {
 
@@ -764,7 +833,8 @@ struct PgApiContext;
 
 void YBCInitPgGateEx(
     const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
-    PgApiContext *context);
+    PgApiContext *context, std::optional<uint64_t> session_id,
+    const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set);
 
 } // namespace pggate
 } // namespace yb

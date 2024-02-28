@@ -15,6 +15,10 @@
 #include <atomic>
 #include <map>
 
+#include <boost/container/small_vector.hpp>
+
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
@@ -22,10 +26,12 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/docdb/doc_ql_filefilter.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/docdb_filter_policy.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
-#include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
@@ -52,8 +58,10 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-namespace yb {
-namespace docdb {
+DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
+    "Use hybrid time SST filter when checking for conflicts with committed transactions.");
+
+namespace yb::docdb {
 
 using dockv::IntentTypeSet;
 using dockv::KeyBytes;
@@ -97,7 +105,12 @@ class ConflictResolverContext {
       boost::iterator_range<TransactionConflictData*> transactions) = 0;
 
   // Check subtransaction data of pending transaction to determine if conflict can be avoided.
-  virtual bool CheckConflictWithPending(const TransactionConflictData& transaction_data) = 0;
+  bool CheckConflictWithPending(const TransactionConflictData& transaction_data) {
+    // We remove aborted subtransactions when processing the SubtxnSet stored locally or
+    // returned by the status tablet. If this is now empty, then all potentially conflicting
+    // intents have been aborted and there is no longer a conflict with this transaction.
+    return transaction_data.conflict_info->subtransactions.empty();
+  }
 
   // Check for conflict against committed transaction.
   // Returns true if transaction could be removed from list of conflicts.
@@ -122,6 +135,8 @@ class ConflictResolverContext {
 
   virtual Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const = 0;
 
+  virtual Status InitTxnMetadata(ConflictResolver* resolver) = 0;
+
   virtual ConflictManagementPolicy GetConflictManagementPolicy() const = 0;
 
   virtual bool IsSingleShardTransaction() const = 0;
@@ -129,6 +144,10 @@ class ConflictResolverContext {
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
+
+  // Returns the intents requested by the WriteQuery being processing.
+  virtual Result<IntentTypesContainer> GetRequestedIntents(
+      ConflictResolver* resolver, KeyBytes* buffer) = 0;
 
   virtual ~ConflictResolverContext() = default;
 };
@@ -142,6 +161,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
                    ResolutionCallback callback)
       : doc_db_(doc_db), status_manager_(*status_manager),
         partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         callback_(std::move(callback)) {}
 
   virtual ~ConflictResolver() = default;
@@ -168,6 +188,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void Resolve() {
+    SET_WAIT_STATUS(ConflictResolution_ResolveConficts);
     auto status = SetRequestScope();
     if (status.ok()) {
       auto start_time = CoarseMonoClock::Now();
@@ -197,7 +218,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   // Reads conflicts for specified intent from DB.
-  Status ReadIntentConflicts(IntentTypeSet type, bool first, KeyBytes* intent_key_prefix) {
+  Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
     EnsureIntentIteratorCreated();
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
@@ -221,12 +242,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in intents DB; Seek: "
                                  << intent_key_prefix->AsSlice().ToDebugHexString() << " for type "
                                  << ToString(type);
-    if (first) {
-      intent_iter_.Seek(intent_key_prefix->AsSlice());
-    } else {
-      intent_iter_.RevalidateAfterUpperBoundChange();
-      SeekForward(intent_key_prefix->AsSlice(), &intent_iter_);
-    }
+    intent_iter_.Seek(intent_key_prefix->AsSlice());
     int64_t num_keys_scanned = 0;
     while (intent_iter_.Valid()) {
       auto existing_key = intent_iter_.key();
@@ -300,6 +316,13 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
   }
 
+  Result<IntentTypesContainer> GetLockStatusInfo() {
+    const size_t kKeyBufferInitialSize = 512;
+    KeyBytes buffer;
+    buffer.Reserve(kKeyBufferInitialSize);
+    return context_->GetRequestedIntents(this, &buffer);
+  }
+
  protected:
   Status SetRequestScope() {
     request_scope_ = VERIFY_RESULT(RequestScope::Create(&status_manager()));
@@ -307,9 +330,13 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void InvokeCallback(const Result<HybridTime>& result) {
+    // ConflictResolution_ResolveConficts lasts until InvokeCallback.
+    ADOPT_WAIT_STATE(wait_state_);
+    SET_WAIT_STATUS(OnCpu_Passive);
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
-        result.ok() ? *result : HybridTime::kInvalid, conflict_data_->DumpConflicts());
+        result.ok() ? *result : HybridTime::kInvalid,
+        conflict_data_ ? conflict_data_->DumpConflicts() : Slice());
     intent_iter_.Reset();
     callback_(result);
   }
@@ -341,6 +368,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return;
     }
 
+    TRACE("Has conflicts.");
     conflict_data_ = std::make_shared<ConflictDataManager>(conflicts_.size());
     for (const auto& [id, conflict_info] : conflicts_) {
       conflict_data_->AddTransaction(id, conflict_info);
@@ -463,7 +491,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction, trace](Result<TransactionStatusResult> result) {
+        [self, &transaction, trace, wait_state = ash::WaitStateInfo::CurrentWaitState()](
+            Result<TransactionStatusResult> result) {
+          ADOPT_WAIT_STATE(std::move(wait_state));
           ADOPT_TRACE(trace.get());
           if (result.ok()) {
             transaction.ProcessStatus(*result);
@@ -496,6 +526,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   RequestScope request_scope_;
   PartialRangeKeyIntents partial_range_key_intents_;
   std::unique_ptr<ConflictResolverContext> context_;
+  const ash::WaitStateInfoPtr wait_state_;
   ResolutionCallback callback_;
 
   BoundedRocksDbIterator intent_iter_;
@@ -505,15 +536,6 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   std::shared_ptr<ConflictDataManager> conflict_data_;
 
   std::atomic<size_t> pending_requests_{0};
-};
-
-struct IntentData {
-  IntentTypeSet types;
-  bool full_doc_key;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(types, full_doc_key);
-  }
 };
 
 class FailOnConflictResolver : public ConflictResolver {
@@ -590,11 +612,13 @@ class WaitOnConflictResolver : public ConflictResolver {
       std::unique_ptr<ConflictResolverContext> context,
       ResolutionCallback callback,
       WaitQueue* wait_queue,
-      LockBatch* lock_batch)
+      LockBatch* lock_batch,
+      uint64_t request_start_us,
+      CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
-        trace_(Trace::CurrentTrace()) {}
+        trace_(Trace::CurrentTrace()), request_start_us_(request_start_us), deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -610,6 +634,14 @@ class WaitOnConflictResolver : public ConflictResolver {
   void Run() {
     if (context_->IsSingleShardTransaction()) {
       return ConflictResolver::Resolve();
+    }
+    // Populate the transaction metadata here since the request could enter the wait-queue in the
+    // 'TryPreWait' step itself. In such a case, we might need the metadata to populate the awaiting
+    // locks info of the waiter for incoming 'pg_locks' queries.
+    auto init_status = context_->InitTxnMetadata(this);
+    if (!init_status.ok()) {
+      InvokeCallback(init_status);
+      return;
     }
 
     auto status_tablet_res = context_->GetStatusTablet(this);
@@ -635,7 +667,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(),
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, deadline_,
+        std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
@@ -651,10 +684,13 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK_GT(conflict_data_->NumActiveTransactions(), 0);
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
+
     MaybeSetWaitStartTime();
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
-        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,  context_->GetTxnStartUs(),
+        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
+        context_->GetTxnStartUs(), request_start_us_, deadline_,
+        std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
 
@@ -695,9 +731,10 @@ class WaitOnConflictResolver : public ConflictResolver {
   TabletId status_tablet_id_;
   MonoTime wait_start_time_ = MonoTime::kUninitialized;
   TracePtr trace_;
+  // Stores the start time of the underlying rpc request that created this resolver.
+  uint64_t request_start_us_ = 0;
+  CoarseTimePoint deadline_;
 };
-
-using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
 
 class IntentProcessor {
  public:
@@ -751,6 +788,66 @@ class IntentProcessor {
   IntentTypesContainer& container_;
 };
 
+using DocPaths = boost::container::small_vector<RefCntPrefix, 8>;
+
+class DocPathProcessor {
+ public:
+  DocPathProcessor(IntentProcessor* processor, KeyBytes* buffer, PartialRangeKeyIntents partial)
+      : processor_(*processor), buffer_(*buffer), partial_(partial) {}
+
+  Status operator()(DocPaths* paths, dockv::IntentTypeSet intent_types) {
+    for (const auto& path : *paths) {
+      VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
+      RETURN_NOT_OK(EnumerateIntents(
+          path.as_slice(),
+          /*intent_value=*/ Slice(),
+          [&processor = processor_, &intent_types](
+              auto ancestor_doc_key, auto full_doc_key, auto, auto intent_key, auto, auto) {
+            processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
+            return Status::OK();
+          },
+          &buffer_,
+          partial_));
+    }
+    paths->clear();
+    return Status::OK();
+  }
+
+ private:
+  IntentProcessor& processor_;
+  KeyBytes& buffer_;
+  PartialRangeKeyIntents partial_;
+
+  DISALLOW_COPY_AND_ASSIGN(DocPathProcessor);
+};
+
+Result<IntentTypesContainer> GetWriteRequestIntents(
+    const DocOperations& doc_ops, KeyBytes* buffer, PartialRangeKeyIntents partial,
+    IsolationLevel isolation_level) {
+  static const dockv::IntentTypeSet kStrongReadIntentTypeSet{dockv::IntentType::kStrongRead};
+  dockv::IntentTypeSet intent_types;
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+    intent_types = dockv::GetIntentTypesForWrite(isolation_level);
+  }
+
+  IntentTypesContainer container;
+  IntentProcessor intent_processor(&container);
+  DocPathProcessor processor(&intent_processor, buffer, partial);
+  DocPaths doc_paths;
+  for (const auto& doc_op : doc_ops) {
+    IsolationLevel op_isolation;
+    RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &op_isolation));
+    RETURN_NOT_OK(processor(
+        &doc_paths,
+        intent_types.None() ? dockv::GetIntentTypesForWrite(op_isolation) : intent_types));
+
+    RETURN_NOT_OK(
+        doc_op->GetDocPaths(GetDocPathsMode::kStrongReadIntents, &doc_paths, &op_isolation));
+    RETURN_NOT_OK(processor(&doc_paths, kStrongReadIntentTypeSet));
+  }
+  return container;
+}
+
 class StrongConflictChecker {
  public:
   StrongConflictChecker(const TransactionId& transaction_id,
@@ -766,19 +863,22 @@ class StrongConflictChecker {
   {}
 
   Status Check(
-      Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy,
-      BloomFilterMode bloom_filter_mode) {
-    if (PREDICT_FALSE(!value_iter_.Initialized())) {
+      Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
+    const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
+    if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
+      auto hybrid_time_file_filter =
+          FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
+                                                        : nullptr;
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
-          bloom_filter_mode,
+          BloomFilterMode::USE_BLOOM_FILTER,
           intent_key,
-          rocksdb::kDefaultQueryId);
-      value_iter_.Seek(intent_key);
-    } else {
-      SeekForward(intent_key, &value_iter_);
+          rocksdb::kDefaultQueryId,
+          hybrid_time_file_filter);
+      value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
+    value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -839,7 +939,7 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      SeekForward(buffer_.AsSlice(), &value_iter_);
+      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();
@@ -858,6 +958,7 @@ class StrongConflictChecker {
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
   BoundedRocksDbIterator value_iter_;
+  Slice value_iter_bloom_filter_prefix_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {
@@ -987,62 +1088,49 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return std::move(*tablet_id_opt);
   }
 
+  Status InitTxnMetadata(ConflictResolver* resolver) override {
+    metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    return Status::OK();
+  }
+
  private:
+  Result<IntentTypesContainer> GetRequestedIntents(
+      ConflictResolver* resolver, KeyBytes* buffer) override {
+    auto container = VERIFY_RESULT(GetWriteRequestIntents(
+        doc_ops(), buffer, resolver->partial_range_key_intents(), metadata_.isolation));
+    const auto& pairs = write_batch_.read_pairs();
+    if (pairs.empty()) {
+      return container;
+    }
+    // Form the intents corresponding to the request's read pairs.
+    const auto read_intents =
+        dockv::GetIntentTypesForRead(metadata_.isolation, GetRowMarkTypeFromPB(write_batch_));
+    IntentProcessor intent_processor(&container);
+    RETURN_NOT_OK(EnumerateIntents(
+        pairs,
+        [&intent_processor, &read_intents](
+            auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
+            auto is_row_lock) {
+          intent_processor.Process(
+              ancestor_doc_key, full_doc_key, intent_key,
+              GetIntentTypes(read_intents, is_row_lock));
+          return Status::OK();
+        },
+        resolver->partial_range_key_intents()));
+    return container;
+  }
+
   Status ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
     VLOG_WITH_PREFIX(3) << "Resolve conflicts";
 
-    metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
+    RETURN_NOT_OK(InitTxnMetadata(resolver));
 
-    boost::container::small_vector<RefCntPrefix, 8> paths;
-
-    const size_t kKeyBufferInitialSize = 512;
+    constexpr size_t kKeyBufferInitialSize = 512;
     KeyBytes buffer;
     buffer.Reserve(kKeyBufferInitialSize);
-    const auto row_mark = GetRowMarkTypeFromPB(write_batch_);
-    IntentTypesContainer container;
-    auto intent_types = dockv::GetIntentTypesForWrite(metadata_.isolation);
-    IntentProcessor intent_processor(&container);
-    for (const auto& doc_op : doc_ops()) {
-      paths.clear();
-      IsolationLevel ignored_isolation_level;
-      RETURN_NOT_OK(doc_op->GetDocPaths(
-          GetDocPathsMode::kIntents, &paths, &ignored_isolation_level));
-
-      for (const auto& path : paths) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
-        RETURN_NOT_OK(EnumerateIntents(
-            path.as_slice(),
-            /* intent_value */ Slice(),
-            [&intent_processor, intent_types](
-                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto, auto) {
-              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
-              return Status::OK();
-            },
-            &buffer,
-            resolver->partial_range_key_intents()));
-      }
-    }
-
-    const auto& pairs = write_batch_.read_pairs();
-    if (!pairs.empty()) {
-      RETURN_NOT_OK(EnumerateIntents(
-          pairs,
-          [&intent_processor,
-           intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark)] (
-              auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
-              auto is_row_lock) {
-            intent_processor.Process(
-                ancestor_doc_key, full_doc_key, intent_key,
-                GetIntentTypes(intent_types, is_row_lock));
-            return Status::OK();
-          },
-          resolver->partial_range_key_intents()));
-    }
-
+    auto container = VERIFY_RESULT(GetRequestedIntents(resolver, &buffer));
     if (container.empty()) {
       return Status::OK();
     }
@@ -1058,43 +1146,20 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // DB where the provisional record has already been removed.
     resolver->EnsureIntentIteratorCreated();
 
-    // Check if we could use bloom filter for value_iter_.
-    auto bloom_filter_mode = BloomFilterMode::USE_BLOOM_FILTER;
-    // Whether we plan to instantiate value_iter_.
-    if (read_time_ != HybridTime::kMax) {
-      Slice bloom_filter_component;
-      for (const auto& [key_buffer, data] : container) {
-        const Slice intent_key = key_buffer.AsSlice();
-        if (data.full_doc_key || HasStrong(data.types)) {
-          if (bloom_filter_component.empty()) {
-            auto size_result = VERIFY_RESULT(dockv::DocKey::EncodedSize(
-                intent_key, dockv::DocKeyPart::kUpToHashOrFirstRange));
-            bloom_filter_component = intent_key.Prefix(size_result);
-          } else if (!intent_key.starts_with(bloom_filter_component)) {
-            bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER;
-            break;
-          }
-        }
-      }
-    }
-
-    bool first = true;
     for (const auto& i : container) {
+      const Slice intent_key = i.first.AsSlice();
       if (read_time_ != HybridTime::kMax) {
-        const Slice intent_key = i.first.AsSlice();
         bool strong = HasStrong(i.second.types);
         // For strong intents or weak intents at a full document key level (i.e. excluding intents
         // that omit some final range components of the document key), check for conflicts with
         // records in regular RocksDB. We need this because the row might have been deleted
         // concurrently by a single-shard transaction or a committed and applied transaction.
         if (strong || i.second.full_doc_key) {
-          RETURN_NOT_OK(checker.Check(
-              intent_key, strong, GetConflictManagementPolicy(), bloom_filter_mode));
+          RETURN_NOT_OK(checker.Check(intent_key, strong, GetConflictManagementPolicy()));
         }
       }
-      buffer.Reset(i.first.AsSlice());
-      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, first, &buffer));
-      first = false;
+      buffer.Reset(intent_key);
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, &buffer));
     }
 
     return Status::OK();
@@ -1104,14 +1169,6 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                        boost::iterator_range<TransactionConflictData*> transactions) override {
     return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
                                  metadata_.priority);
-  }
-
-  bool CheckConflictWithPending(const TransactionConflictData& transaction_data) override {
-    // We remove aborted subtransactions when processing the SubtxnSet stored
-    // locally or returned by the status tablet. If this is now empty, then all potentially
-    // conflicting intents have been aborted and there is no longer a conflict with this
-    // transaction.
-    return transaction_data.conflict_info->subtransactions.empty();
   }
 
   Result<bool> CheckConflictWithCommitted(
@@ -1210,51 +1267,26 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
         "Status tablets are not used for single tablet transactions.");
   }
 
+  Status InitTxnMetadata(ConflictResolver* resolver) override {
+    return STATUS(
+        NotSupported, "Transaction metadata isn't used for single shard transactions.");
+  }
+
+  Result<IntentTypesContainer> GetRequestedIntents(
+      ConflictResolver* resolver, KeyBytes* buffer) override {
+    return GetWriteRequestIntents(
+        doc_ops(), buffer, resolver->partial_range_key_intents(),
+        IsolationLevel::NON_TRANSACTIONAL);
+  }
+
   // Reads stored intents that could conflict with our operations.
   Status ReadConflicts(ConflictResolver* resolver) override {
-    boost::container::small_vector<RefCntPrefix, 8> doc_paths;
-    boost::container::small_vector<size_t, 32> key_prefix_lengths;
-    KeyBytes encoded_key_buffer;
-
-    IntentTypeSet intent_types;
-
-    IntentTypesContainer container;
-    IntentProcessor intent_processor(&container);
-    for (const auto& doc_op : doc_ops()) {
-      doc_paths.clear();
-      IsolationLevel isolation;
-      RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
-
-      intent_types = dockv::GetIntentTypesForWrite(isolation);
-
-      for (const auto& doc_path : doc_paths) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
-        RETURN_NOT_OK(EnumerateIntents(
-            doc_path.as_slice(),
-            /* intent_value */ Slice(),
-            [&intent_processor, intent_types](
-                auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto, auto) {
-              intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
-              return Status::OK();
-            },
-            &encoded_key_buffer,
-            resolver->partial_range_key_intents()));
-      }
-    }
-
-    if (container.empty()) {
-      return Status::OK();
-    }
-
-    bool first = true;
+    KeyBytes buffer;
+    auto container = VERIFY_RESULT(GetRequestedIntents(resolver, &buffer));
     for (const auto& [key, intent_data] : container) {
-      encoded_key_buffer.Reset(key.AsSlice());
-      RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, first, &encoded_key_buffer));
-      first = false;
+      buffer.Reset(key.AsSlice());
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, &buffer));
     }
-
     return Status::OK();
   }
 
@@ -1286,10 +1318,6 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     return "Operation Context";
   }
 
-  bool CheckConflictWithPending(const TransactionConflictData& transaction_data) override {
-    return false;
-  }
-
   Result<bool> CheckConflictWithCommitted(
       const TransactionConflictData& transaction_data, HybridTime commit_time) override {
     if (commit_time != HybridTime::kMax) {
@@ -1308,12 +1336,14 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    HybridTime resolution_ht,
                                    HybridTime read_time,
                                    int64_t txn_start_us,
+                                   uint64_t request_start_us,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
                                    tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
+                                   CoarseTimePoint deadline,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
@@ -1333,7 +1363,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch);
+        wait_queue, lock_batch, request_start_us, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1350,12 +1380,14 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
                                  HybridTime intial_resolution_ht,
                                  int64_t txn_start_us,
+                                 uint64_t request_start_us,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  tablet::TabletMetrics* tablet_metrics,
                                  LockBatch* lock_batch,
                                  WaitQueue* wait_queue,
+                                 CoarseTimePoint deadline,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
   VLOG_WITH_FUNC(3)
@@ -1371,7 +1403,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch);
+        wait_queue, lock_batch, request_start_us, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1508,5 +1540,4 @@ Status PopulateLockInfoFromParsedIntent(
   return Status::OK();
 }
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

@@ -4,7 +4,6 @@ headerTitle: Monitor cluster activity
 linkTitle: Cluster activity
 description: View the activity on your cluster.
 headcontent: View the activity on your cluster
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: monitor-activity
@@ -13,7 +12,7 @@ menu:
 type: docs
 ---
 
-Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.
+Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, start time, and end time.
 
 To review all account activity, use the [**Activity** tab](../../cloud-secure-clusters/cloud-activity/) on the **Security** page.
 

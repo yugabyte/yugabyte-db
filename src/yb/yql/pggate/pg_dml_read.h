@@ -77,6 +77,9 @@ class PgDmlRead : public PgDml {
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(const int distinct_prefix_length);
 
+  // Set scan bounds
+  void SetHashBounds(const uint16_t low_bound, const uint16_t high_bound);
+
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
                                bool start_inclusive,
@@ -90,6 +93,12 @@ class PgDmlRead : public PgDml {
   Status BindColumnCondIsNotNull(int attr_num);
 
   Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
+
+  // Limit scan to specific ybctid range for parallel scan.
+  // Sets underlying request's bounds to specified values, also resets any psql operations
+  // remaining from the previous range scan.
+  Status BindRange(const Slice &start_value, bool start_inclusive,
+                   const Slice &end_value, bool end_inclusive);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.

@@ -572,10 +572,12 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	 * perform an update on pg_yb_catalog_version table to force catalog cache
 	 * refresh.
 	 * NOTE: we may need to allow more system tables in YB context.
+	 *
+	 * TODO(#20143): Revisit if and when we introduce support for replica
+	 * identity.
 	 */
 	if (IsYugaByteEnabled() &&
-		yb_non_ddl_txn_for_sys_tables_allowed &&
-		RelationGetRelid(rel) == YBCatalogVersionRelationId)
+		yb_non_ddl_txn_for_sys_tables_allowed)
 		return;
 
 	/*

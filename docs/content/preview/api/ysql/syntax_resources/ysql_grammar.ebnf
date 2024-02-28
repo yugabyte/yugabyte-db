@@ -212,13 +212,13 @@ server_name = name ;
 server_version = name ;
 
 (* 'ALTER' 'TABLE' *)
-alter_table = 'ALTER' 'TABLE' table_expr
+alter_table = 'ALTER' 'TABLE' [ 'IF' 'EXISTS' ] table_expr
                         alter_table_action { ',' alter_table_action } ;
 
 alter_table_action =
-  ( 'ADD' [ 'COLUMN' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
+  ( 'ADD' [ 'COLUMN' ] [ 'IF' 'NOT' 'EXISTS' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
     | 'RENAME' 'TO' table_name
-    | 'DROP' [ 'COLUMN' ] column_name [ 'RESTRICT' | 'CASCADE' ]
+    | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
       'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
     | 'ADD' alter_table_constraint
@@ -228,6 +228,7 @@ alter_table_action =
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
+    | 'SET' 'TABLESPACE' tablespace_name
     | 'NO' 'FORCE' 'ROW' 'LEVEL' 'SECURITY' ) ;
 
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -244,6 +245,24 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'UNIQUE' index_parameters |
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
+
+(* 'ALTER' 'INDEX' *)
+alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
+                        alter_index_action { ',' alter_index_action } ;
+
+alter_index_action =
+  ( 'RENAME' 'TO' new_name
+    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' integer
+    | 'SET' 'TABLESPACE' tablespace_name ) ;
+
+
+(* 'ALTER' 'MATERIALIZED' 'VIEW' *)
+alter_materialized_view = 'ALTER' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name
+                        alter_materialized_view_action { ',' alter_materialized_view_action } ;
+
+alter_materialized_view_action =
+  ( 'RENAME' 'TO' new_name
+    | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 (* 'ALTER' 'SCHEMA' *)
 alter_schema = 'ALTER' 'SCHEMA' schema_name (
@@ -676,6 +695,16 @@ create_server = 'CREATE' 'SERVER' [ 'IF' 'NOT' 'EXISTS' ] server_name \
 
 server_type = text_literal ;
 
+
+(* 'CREATE' 'TABLESPACE' *)
+create_tablespace = 'CREATE' 'TABLESPACE' tablespace_name
+                 [ 'WITH' '(' ( 'tablespace_option' '=' value { ',' 'tablespace_option' '=' value }) ')'];
+
+(* 'DROP' 'TABLESPACE' *)
+drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
+
+
+
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'  \
@@ -694,6 +723,7 @@ column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
+                         | 'GENERATED' ('ALWAYS' | 'BY DEFAULT') 'AS' 'IDENTITY' [ ( sequence_options ) ]
                          | 'UNIQUE' index_parameters
                          | 'PRIMARY' 'KEY'
                          | references_clause ) \
@@ -972,12 +1002,14 @@ execute_statement = 'EXECUTE' name [ '(' expression { ',' expression } ')' ] ;
 explain = 'EXPLAIN' [ ( [ 'ANALYZE' ] [ 'VERBOSE' ] ) | '(' option { ',' option } ')' ] sql_stmt ;
 
 option = 'ANALYZE' [ boolean ]
-           | 'VERBOSE' [ boolean ]
-           | 'COSTS' [ boolean ]
            | 'BUFFERS' [ boolean ]
-           | 'TIMING' [ boolean ]
-           | 'SUMMARY' [ boolean ]
+           | 'COSTS' [ boolean ]
+           | 'DEBUG' [boolean]
+           | 'DIST' [boolean]
            | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'SUMMARY' [ boolean ]
+           | 'TIMING' [ boolean ]
+           | 'VERBOSE' [ boolean ]
 
 (* 'GRANT' *)
 grant = ( grant_table |
@@ -1047,6 +1079,7 @@ local_schema = text_literal ;
 
 insert = [ with_clause ] \
          'INSERT' 'INTO' table_name [ 'AS' alias ] [ '(' column_names ')' ] \
+         [ 'OVERRIDING' { 'SYSTEM' | 'USER' } 'VALUE' ]
          ( ( 'DEFAULT' 'VALUES' ) |
              'VALUES' '(' column_values ')' { ',' '(' column_values ')' } |
              subquery ) \

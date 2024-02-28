@@ -244,6 +244,10 @@ CreatePublication(CreatePublicationStmt *stmt)
 		CloseTableList(rels);
 	}
 
+	/* Log a NOTICE for unsupported relations. */
+	if (IsYugaByteEnabled() && stmt->for_all_tables)
+		yb_log_unsupported_publication_relations();
+
 	heap_close(rel, RowExclusiveLock);
 
 	InvokeObjectPostCreateHook(PublicationRelationId, puboid, 0);

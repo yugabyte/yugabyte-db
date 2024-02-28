@@ -117,7 +117,8 @@ extern Relation RelationBuildLocalRelation(const char *relname,
  * Routine to manage assignment of new relfilenode to a relation
  */
 extern void RelationSetNewRelfilenode(Relation relation, char persistence,
-						  TransactionId freezeXid, MultiXactId minmulti);
+						  TransactionId freezeXid, MultiXactId minmulti,
+						  bool yb_copy_split_options);
 
 /*
  * Routines for flushing/rebuilding relcache entries in various scenarios
@@ -142,6 +143,7 @@ extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFilePreInvalidate(void);
 extern void RelationCacheInitFilePostInvalidate(void);
 extern void RelationCacheInitFileRemove(void);
+extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
 
 /* should be used only by relcache.c and catcache.c */
 extern bool criticalRelcachesBuilt;

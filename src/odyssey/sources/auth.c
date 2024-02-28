@@ -9,8 +9,6 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
-#define YB_SHMEM_KEY_FORMAT "shmkey="
-
 #ifndef YB_SUPPORT_FOUND
 
 static inline int od_auth_frontend_cleartext(od_client_t *client)
@@ -657,223 +655,6 @@ static inline int od_auth_frontend_block(od_client_t *client)
 						client->startup.user.value);
 	return 0;
 }
-#else
-
-int yb_forward_auth_packets(od_server_t *server, od_client_t *client)
-{
-	od_instance_t *instance = server->global->instance;
-	int rc = 0;
-	machine_msg_t *ret_msg = NULL;
-	machine_msg_t *msg;
-	char client_address[128];
-	od_getpeername(client->io.io, client_address, sizeof(client_address), 1,
-		       0);
-
-	msg = kiwi_fe_write_authentication(NULL, client->startup.user.value,
-					   client->startup.database.value,
-					   client_address);
-
-	/* Send `Auth Passthrough Request` packet. */
-	rc = od_write(&server->io, msg);
-	if (rc == -1) {
-		od_debug(&instance->logger, "auth passthrough", client, server,
-			 "Unable to send `Auth Passthrough Request` packet");
-		goto server_failed;
-	} else {
-		od_debug(&instance->logger, "auth passthrough", client, server,
-			 "Sent `Auth Passthrough Request` packet");
-	}
-
-	for (;;) {
-		// Wait fot the packet from the server.
-		msg = od_read(&server->io, UINT32_MAX);
-		if (msg == NULL) {
-			if (!machine_timedout()) {
-				od_error(&instance->logger, "auth passthrough",
-					 server->client, server,
-					 "read error from server: %s",
-					 od_io_error(&server->io));
-				return -1;
-			}
-		}
-		int save_msg = 0;
-		kiwi_be_type_t type = *(char *)machine_msg_data(msg);
-
-		od_debug(&instance->logger, "auth passthrough", server->client,
-			 server, "%s", kiwi_be_type_to_string(type));
-
-		// Process the packet.
-		if (type == KIWI_BE_AUTHENTICATION) {
-			int is_authenticated = 0;
-			is_authenticated = yb_kiwi_fe_is_authok_packet(
-				machine_msg_data(msg), machine_msg_size(msg));
-			if (is_authenticated == -1) {
-				od_error(
-					&instance->logger, "auth passthrough",
-					NULL, server,
-					"failed to parse authentication message");
-				goto server_failed;
-			} else if (is_authenticated == 1) {
-				od_debug(&instance->logger, "auth passthrough",
-					 server->client, server,
-					 "Authenticated");
-				return 0;
-			}
-		} else if (type == KIWI_BE_ERROR_RESPONSE) {
-			// Forward the error packet to the client.
-			// TODO (janand): Convert error response into 'FATAL'.
-			rc = od_write(&client->io, msg);
-			return -1;
-		} else
-			continue;
-
-		if (msg == NULL)
-			return -1;
-
-		// Forward the packet to the client and wait for client's response.
-		rc = od_write(&client->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, "auth passthrough", client,
-				 NULL, "write error in middleware: %s",
-				 od_io_error(&client->io));
-			goto client_failed;
-		} else
-			od_log(&instance->logger, "auth passthrough", client,
-			       NULL, " Auth request sent");
-
-		/* Wait for password response packet from the client. */
-		while (1) {
-			msg = od_read(&client->io, UINT32_MAX);
-			if (msg == NULL) {
-				od_error(&instance->logger, "auth passthrough",
-					 client, NULL,
-					 "read error in middleware: %s",
-					 od_io_error(&client->io));
-				goto client_failed;
-			}
-			kiwi_fe_type_t type = *(char *)machine_msg_data(msg);
-			od_debug(&instance->logger, "auth passthrough", client,
-				 NULL, "%s", kiwi_fe_type_to_string(type));
-			/*
-			 * Packet type `KIWI_FE_PASSWORD_MESSAGE` is used by client
-			 * to respond to the server packet for:
-			 * 		GSSAPI, SSPI and password response messages
-			 */
-			if (type == KIWI_FE_PASSWORD_MESSAGE)
-				break;
-			machine_msg_free(msg);
-		}
-
-		// Forward the password response packet to the database.
-		rc = od_write(&server->io, msg);
-		if (rc == -1) {
-			od_error(
-				&instance->logger, "auth passthrough", client,
-				server,
-				"Unable to forward the password response to the server");
-			return -1;
-		} else
-			od_log(&instance->logger, "auth passthrough", client,
-			       server,
-			       "Forwaded the password response to the server");
-	}
-
-/*
- * Handle the situation in which client gets disconnected, while
- * the database is still waiting for password response packet.
- */
-client_failed : {
-	/*
-	 * Send an empty password response packet leading to an error at database side.
-	 * TODO (janand): Add tests related to this case.
-	 */
-	msg = kiwi_fe_write_password(NULL, NULL, 0);
-	if (od_write(&server->io, msg) == -1) {
-		od_error(&instance->logger, "auth passthrough", NULL, server,
-			 "write error in sever: %s", od_io_error(&server->io));
-		/* TODOD (janand): close this server connection. */
-	}
-
-	return -1;
-}
-
-server_failed : {
-	od_log(&instance->logger, "auth passthrough", client, server,
-	       "database connection failed");
-	/* TODOD (janand): close this server connection. */
-	/* Client authentication failed. */
-	return -1;
-}
-}
-
-bool yb_is_valid_get_client_id_msg(char *data)
-{
-	if (data != NULL)
-		return strncmp(data, YB_SHMEM_KEY_FORMAT, strlen(YB_SHMEM_KEY_FORMAT)) == 0;
-	return false;
-}
-
-int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
-{
-	od_global_t *global = client->global;
-	kiwi_var_t *user = &client->startup.user;
-	kiwi_password_t *password = &client->password;
-	od_instance_t *instance = global->instance;
-	od_router_t *router = global->router;
-
-	int rc = yb_forward_auth_packets(server, client);
-	int rc_auth = rc;
-	bool received_ready_for_query = false;
-	kiwi_be_type_t type;
-	machine_msg_t *msg;
-
-	/* Wait till the `READY_FOR_QUERY` packet is received. */
-	for (;;) {
-		msg = od_read(&server->io, UINT32_MAX);
-		if (msg == NULL) {
-			if (!machine_timedout()) {
-				od_error(&instance->logger, "auth passthrough",
-					 server->client, server,
-					 "read error from server: %s",
-					 od_io_error(&server->io));
-				return -1;
-			}
-		}
-
-		type = *(char *)machine_msg_data(msg);
-		od_debug(&instance->logger, "auth passthrough", server->client,
-			 server, "Got a packet of type: %s",
-			 kiwi_be_type_to_string(type));
-
-		if (type == KIWI_BE_NOTICE_RESPONSE) {
-			/* 
-			 * Received a NOTICE packet, it can be the HINT containing the
-			 * client id 
-			 */
-			kiwi_fe_error_t hint;
-			rc = kiwi_fe_read_notice(machine_msg_data(msg),
-						 machine_msg_size(msg), &hint);
-			if (rc == -1) {
-				od_debug(
-					&instance->logger, "get client_id",
-					client, server,
-					"failed to parse error message from server");
-			} else if (client->client_id == 0 &&
-				yb_is_valid_get_client_id_msg(hint.hint)) {
-				client->client_id = atoi(hint.hint + strlen(YB_SHMEM_KEY_FORMAT));
-			}
-		}
-		else if (type == KIWI_BE_READY_FOR_QUERY) {
-			if (client->client_id == 0)
-				return -1;
-			return rc_auth;
-		} else if (type == KIWI_BE_ERROR_RESPONSE) {
-			return -1;
-		}
-	}
-	return rc_auth;
-}
-
 #endif
 
 int od_auth_frontend(od_client_t *client)
@@ -885,8 +666,11 @@ int od_auth_frontend(od_client_t *client)
 #ifdef YB_SUPPORT_FOUND
 	rc = yb_execute_on_control_connection(client,
 					      yb_auth_frontend_passthrough);
+
+	/* AuthOk packet or Auth Failed FATAL response is already sent. */
 	if (rc == -1)
 		return -1;
+	return 0;
 #else
 
 	switch (client->rule->auth_mode) {

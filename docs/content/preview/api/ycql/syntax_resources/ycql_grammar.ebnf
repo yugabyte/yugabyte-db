@@ -2,7 +2,7 @@ alter_table ::= 'ALTER' 'TABLE' table_name ('ADD' ( column_name column_type ) { 
 
 column_type ::= '<type>';
 
-create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
+create_index ::= 'CREATE' [ 'UNIQUE' ] [ 'DEFERRED' ] 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
                      table_name '(' partition_key_columns ',' [ clustering_key_columns ] ')' \
                      [ covering_columns ] [ index_properties ] [ 'WHERE' index_predicate];
 

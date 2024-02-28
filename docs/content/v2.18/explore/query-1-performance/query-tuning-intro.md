@@ -3,7 +3,6 @@ title: Tune queries in YugabyteDB
 linkTitle: Introduction
 description: Tune queries in YugabyteDB
 headerTitle: Tune queries in YugabyteDB
-image: /images/section_icons/index/develop.png
 menu:
   v2.18:
     identifier: query-tuning-intro

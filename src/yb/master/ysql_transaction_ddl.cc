@@ -105,11 +105,12 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
   return result;
 }
 
+// Note: "relfilenode_oid" is only used for rewritten tables. For rewritten tables, we need to
+// check both the oid and the relfilenode columns in pg_class.
 Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
     const TableId& pg_table_id,
     PgOid entry_oid,
-    boost::optional<PgOid>
-        relfilenode_oid,
+    boost::optional<PgOid> relfilenode_oid,
     const ReadHybridTime& read_time,
     bool* result,
     HybridTime* read_restart_ht) {
@@ -120,8 +121,8 @@ Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
 
   dockv::ReaderProjection projection;
 
-  bool is_matview = relfilenode_oid.has_value();
-  if (is_matview) {
+  bool is_rewritten_table = relfilenode_oid.has_value();
+  if (is_rewritten_table) {
     relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode"));
     projection.Init(read_data.schema(), {oid_col, relfilenode_col});
   } else {
@@ -142,7 +143,7 @@ Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
 
   // The entry exists. Expect only one row.
   SCHECK(!VERIFY_RESULT(iter->FetchNext(nullptr)), Corruption, "Too many rows found");
-  if (is_matview) {
+  if (is_rewritten_table) {
     const auto& relfilenode = row.GetValue(relfilenode_col);
     if (relfilenode->uint32_value() != *relfilenode_oid) {
       *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
@@ -303,6 +304,7 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
     HybridTime* read_restart_ht) {
   PgOid oid = kPgInvalidOid;
   string pg_catalog_table_id, name_col;
+
   if (table->IsColocationParentTable()) {
     // The table we have is a dummy parent table, hence not present in YSQL.
     // We need to check a tablegroup instead.
@@ -315,7 +317,7 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   } else {
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
     pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-    oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    oid = VERIFY_RESULT(table->GetPgTableOid());
     name_col = kTableNameColName;
   }
 
@@ -324,15 +326,16 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
   dockv::ReaderProjection projection;
 
-  PgOid relfilenode_oid = kPgInvalidOid;
-  ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
-  if (table->matview_pg_table_id().empty()) {
-    projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
+  ColumnIdRep relfilenode_col_id = kInvalidColumnId.rep();
+
+  // If this isn't a system table, we need to check if the relfilenode in pg_class matches the
+  // DocDB table ID (as the table may have been rewritten).
+  bool check_relfilenode = !table->is_system();
+  if (check_relfilenode) {
+    relfilenode_col_id = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col_id});
   } else {
-    relfilenode_oid = oid;
-    oid = VERIFY_RESULT(GetPgsqlTableOid(table->matview_pg_table_id()));
-    relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
-    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col});
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   }
 
   RequestScope request_scope;
@@ -351,13 +354,12 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   bool table_found = false;
 
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    // One row found in pg_class matching the oid. If this is not a matview, then we have found this
-    // table in pg catalog. But if this table is a matview, we should also check whether the
-    // relfilenode exists.
+    // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
+    // required (as in the case of table rewrite).
     table_found = true;
-    if (relfilenode_oid != kPgInvalidOid) {
-      const auto& relfilenode = row.GetValue(relfilenode_col);
-      if (relfilenode->uint32_value() != relfilenode_oid) {
+    if (check_relfilenode) {
+      const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+      if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;
       }
     }
@@ -517,7 +519,7 @@ Status YsqlTransactionDdl::ReadPgAttributeWithReadTime(
   // Build schema using values read from pg_attribute.
 
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  const PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  const PgOid table_oid = VERIFY_RESULT(table->GetPgTableOid());
   auto read_data =
       VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgAttributeTableOid, read_time));
   const auto attrelid_col_id = VERIFY_RESULT(read_data.ColumnByName("attrelid")).rep();
@@ -527,10 +529,10 @@ Status YsqlTransactionDdl::ReadPgAttributeWithReadTime(
 
   dockv::ReaderProjection projection(
       read_data.schema(), { attrelid_col_id, attnum_col_id, attname_col_id, atttypid_col_id });
-  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
   RequestScope request_scope;
   auto iter =
-      VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection, &request_scope));
+      VERIFY_RESULT(GetPgCatalogTableScanIterator(
+          read_data, table_oid, projection, &request_scope));
 
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {

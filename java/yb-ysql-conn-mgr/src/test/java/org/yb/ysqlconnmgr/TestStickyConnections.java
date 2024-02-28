@@ -23,6 +23,7 @@ import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 import static org.yb.AssertionWrappers.*;
 
+// TODO (rbarigidad) GH #20350: Improve tests to handle more scenarios.
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestStickyConnections extends BaseYsqlConnMgr {
     private final int NUM_THREADS = 10;

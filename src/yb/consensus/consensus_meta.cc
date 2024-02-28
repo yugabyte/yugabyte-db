@@ -32,6 +32,8 @@
 
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -151,6 +153,22 @@ const TabletId& ConsensusMetadata::split_parent_tablet_id() const {
 void ConsensusMetadata::set_split_parent_tablet_id(const TabletId& split_parent_tablet_id) {
   DCHECK(!split_parent_tablet_id.empty());
   pb_.set_split_parent_tablet_id(split_parent_tablet_id);
+}
+
+const std::optional<CloneSourceInfo> ConsensusMetadata::clone_source_info() const {
+  DCHECK(pb_.has_clone_source_seq_no() == pb_.has_clone_source_tablet_id());
+  if (pb_.has_clone_source_seq_no() && pb_.has_clone_source_tablet_id()) {
+    return CloneSourceInfo{
+        .seq_no = pb_.clone_source_seq_no(),
+        .tablet_id = pb_.clone_source_tablet_id()};
+  }
+  return std::nullopt;
+}
+
+void ConsensusMetadata::set_clone_source_info(
+    uint32_t clone_source_seq_no, const TabletId& clone_source_tablet_id) {
+  pb_.set_clone_source_seq_no(clone_source_seq_no);
+  pb_.set_clone_source_tablet_id(clone_source_tablet_id);
 }
 
 bool ConsensusMetadata::has_voted_for() const {
@@ -280,6 +298,7 @@ Status ConsensusMetadata::Flush() {
                         "Invalid config in ConsensusMetadata, cannot flush to disk");
 
   string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
+  SCOPED_WAIT_STATUS(ConsensusMeta_Flush);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                           fs_manager_->encrypted_env(), meta_file_path, pb_,
                           pb_util::OVERWRITE,

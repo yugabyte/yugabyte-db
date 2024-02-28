@@ -30,13 +30,17 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_util.h"
 
 using namespace std::chrono_literals;
 
-DECLARE_int32(master_ts_rpc_timeout_ms);
+DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
+    60 * 1000, // 60s
+    "WaitForYsqlBackendsCatalogVersion master-to-tserver RPC timeout.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms, advanced);
 
 DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 2m
     "Expiration time in seconds for a YSQL BackendsCatalogVersionJob. Recommended to set several"
@@ -131,7 +135,8 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     Status s;
     // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make sure
     // to handle that case if initdb ever goes through this codepath.
-    if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    if (FLAGS_ysql_enable_db_catalog_version_mode &&
+        master_->catalog_manager_impl()->catalog_version_table_in_perdb_mode()) {
       s = master_->catalog_manager_impl()->GetYsqlDBCatalogVersion(
           db_oid, &master_version, nullptr /* last_breaking_version */);
     } else {
@@ -700,7 +705,7 @@ bool BackendsCatalogVersionJob::CompareAndSwapState(
   if (state_.compare_exchange_strong(old_state, new_state)) {
     if (IsStateTerminal(new_state)) {
       completion_timestamp_ = MonoTime::Now();
-      state_cv_.Broadcast();
+      YB_PROFILE(state_cv_.Broadcast());
     }
     return true;
   }
@@ -728,17 +733,25 @@ std::string BackendsCatalogVersionTS::description() const {
   return "BackendsCatalogVersionTS RPC";
 }
 
+MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
+  MonoTime timeout = MonoTime::Now() + MonoDelta::FromMilliseconds(
+      FLAGS_wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms);
+  return MonoTime::Earliest(timeout, deadline_);
+}
+
 TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
-  {
-    auto job = job_.lock();
+  if (auto job = job_.lock()) {
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
     req.set_prev_num_lagging_backends(prev_num_lagging_backends_);
+  } else {
+    AbortTask(STATUS(Aborted, "job was destroyed"));
+    return false;
   }
 
   ts_admin_proxy_->WaitForYsqlBackendsCatalogVersionAsync(req, &resp_, &rpc_, BindRpcCallback());

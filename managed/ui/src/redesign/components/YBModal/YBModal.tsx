@@ -37,7 +37,7 @@ export interface YBModalProps extends DialogProps {
   submitButtonTooltip?: React.ReactNode;
   submitTestId?: string;
   cancelLabel?: React.ReactNode;
-  cancelButtonTooltip?: string;
+  cancelButtonTooltip?: React.ReactNode;
   cancelTestId?: string;
   buttonProps?: OverrideButtonProps;
   customTitle?: React.ReactNode;
@@ -155,7 +155,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     submitButtonTooltip,
     cancelButtonTooltip,
     isSubmitting,
-    dialogContentProps = {},
+    dialogContentProps = { dividers: true },
     titleContentProps,
     ...dialogProps
   } = props;

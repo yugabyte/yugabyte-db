@@ -245,7 +245,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests(const TabletId& tablet_id) {
   // TODO(bojanserafimov): create MemoryMonitor?
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
@@ -254,12 +254,12 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
 
   regular_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ false);
   intents_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ true);
-  RETURN_NOT_OK(ReinitDBOptions());
+  RETURN_NOT_OK(ReinitDBOptions(tablet_id));
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad(const TabletId& tablet_id) {
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
@@ -269,7 +269,7 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
   // bulk load.
   regular_db_options_.statistics = nullptr;
   intents_db_options_.statistics = nullptr;
-  RETURN_NOT_OK(ReinitDBOptions());
+  RETURN_NOT_OK(ReinitDBOptions(tablet_id));
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();
 }
@@ -366,12 +366,30 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     const std::vector<ExternalIntent>& intents,
     const Uuid& involved_tablet,
     HybridTime hybrid_time) {
+  rocksdb::WriteBatch rocksdb_write_batch;
+  auto [key, value] = ProcessExternalIntents(txn_id, subtransaction_id, intents, involved_tablet);
+
+  DocHybridTimeBuffer doc_ht_buffer;
+  dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
+  auto key_value = value.AsSlice();
+  std::array<Slice, 2> key_parts = {{
+      key.AsSlice(),
+      doc_ht_buffer.EncodeWithValueType(hybrid_time, /*write_id=*/0),
+  }};
+  key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
+  constexpr size_t kNumValueParts = 1;
+  rocksdb_write_batch.Put(key_parts, {&key_value, kNumValueParts});
+
+  return intents_db_->Write(write_options(), &rocksdb_write_batch);
+}
+
+std::pair<dockv::KeyBytes, KeyBuffer> DocDBRocksDBUtil::ProcessExternalIntents(
+    const TransactionId& txn_id, SubTransactionId subtransaction_id,
+    const std::vector<ExternalIntent>& intents, const Uuid& involved_tablet) {
   class Provider : public ExternalIntentsProvider {
    public:
-    Provider(
-        const std::vector<ExternalIntent>* intents, const Uuid& involved_tablet,
-        HybridTime hybrid_time)
-        : intents_(*intents), involved_tablet_(involved_tablet), hybrid_time_(hybrid_time) {}
+    Provider(const std::vector<ExternalIntent>* intents, const Uuid& involved_tablet)
+        : intents_(*intents), involved_tablet_(involved_tablet) {}
 
     void SetKey(const Slice& slice) override {
       key_.AppendRawBytes(slice);
@@ -379,20 +397,6 @@ Status DocDBRocksDBUtil::AddExternalIntents(
 
     void SetValue(const Slice& slice) override {
       value_ = slice;
-    }
-
-    void Apply(rocksdb::WriteBatch* batch) {
-      DocHybridTimeBuffer doc_ht_buffer;
-      dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
-      auto key_value = value_.AsSlice();
-
-      std::array<Slice, 2> key_parts = {{
-          key_.AsSlice(),
-          doc_ht_buffer.EncodeWithValueType(hybrid_time_, /*write_id=*/0),
-      }};
-      key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
-      constexpr size_t kNumValueParts = 1;
-      batch->Put(key_parts, {&key_value, kNumValueParts});
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
@@ -417,25 +421,21 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       return involved_tablet_;
     }
 
+    dockv::KeyBytes key_;
+    KeyBuffer value_;
+
    private:
     const std::vector<ExternalIntent>& intents_;
     const Uuid involved_tablet_;
-    const HybridTime hybrid_time_;
     size_t next_idx_ = 0;
-    dockv::KeyBytes key_;
-    KeyBuffer value_;
 
     dockv::KeyBytes intent_key_;
     std::string intent_value_;
   };
 
-  Provider provider(&intents, involved_tablet, hybrid_time);
+  Provider provider(&intents, involved_tablet);
   CombineExternalIntents(txn_id, subtransaction_id, &provider);
-
-  rocksdb::WriteBatch rocksdb_write_batch;
-  provider.Apply(&rocksdb_write_batch);
-
-  return intents_db_->Write(write_options(), &rocksdb_write_batch);
+  return std::make_pair(provider.key_, provider.value_);
 }
 
 Status DocDBRocksDBUtil::InsertSubDocument(
@@ -509,15 +509,15 @@ Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
   return rocksdb()->Flush(flush_options);
 }
 
-Status DocDBRocksDBUtil::ReinitDBOptions() {
+Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   tablet::TabletOptions tablet_options;
   tablet_options.block_cache = block_cache_;
   docdb::InitRocksDBOptions(
-      &regular_db_options_, "[R] " /* log_prefix */, regular_db_options_.statistics,
-      tablet_options);
+      &regular_db_options_, yb::Format("[R] $0", tablet_id), tablet_id,
+      regular_db_options_.statistics, tablet_options);
   docdb::InitRocksDBOptions(
-      &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
-      tablet_options);
+      &intents_db_options_, yb::Format("[I] $0", tablet_id), tablet_id,
+      intents_db_options_.statistics, tablet_options);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {

@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: anywhere-automation
-    weight: 648
+    weight: 690
 type: indexpage
 ---
 

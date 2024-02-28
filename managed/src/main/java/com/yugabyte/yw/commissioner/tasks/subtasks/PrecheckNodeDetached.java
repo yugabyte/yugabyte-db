@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 public class PrecheckNodeDetached extends AbstractTaskBase {
@@ -49,6 +50,7 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
       NodeConfigValidator nodeConfigValidator,
       Provider provider,
       UUID nodeUuid,
+      String nodeName,
       boolean isDetached,
       ShellResponse response) {
     if (response.code == 0) {
@@ -81,7 +83,14 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
         }
       }
     }
-    response.processErrors();
+    String errMsg = null;
+    if (response.code != ShellResponse.ERROR_CODE_SUCCESS) {
+      errMsg =
+          String.format(
+              "Failed preflight checks for node %s",
+              StringUtils.isEmpty(nodeName) ? nodeUuid : nodeName);
+    }
+    response.processErrors(errMsg);
   }
 
   @Override
@@ -92,6 +101,7 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
         nodeConfigValidator,
         taskParams().getProvider(),
         taskParams().getNodeUuid(),
+        taskParams().getNodeName(),
         true,
         response);
   }

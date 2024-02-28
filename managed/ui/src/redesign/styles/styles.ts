@@ -6,6 +6,7 @@ export const usePillStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
     alignItems: 'center',
 
+    width: 'fit-content',
     padding: `${theme.spacing(0.5)}px ${theme.spacing(0.75)}px`,
 
     fontSize: '11.5px',
@@ -51,4 +52,19 @@ export const usePillStyles = makeStyles((theme) => ({
   warning: {},
   danger: {},
   inactive: {}
+}));
+
+export const useIconStyles = makeStyles(() => ({
+  interactiveIcon: {
+    '&:hover': {
+      cursor: 'pointer'
+    }
+  }
+}));
+
+export const useAnchorStyles = makeStyles(() => ({
+  iconAnchor: {
+    display: 'flex',
+    alignItems: 'center'
+  }
 }));

@@ -68,8 +68,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   rocksdb::DB* intents_db();
   DocDB doc_db() { return { rocksdb(), intents_db(), &KeyBounds::kNoBounds }; }
 
-  Status InitCommonRocksDBOptionsForTests();
-  Status InitCommonRocksDBOptionsForBulkLoad();
+  Status InitCommonRocksDBOptionsForTests(const TabletId& tablet_id);
+  Status InitCommonRocksDBOptionsForBulkLoad(const TabletId& tablet_id);
 
   const rocksdb::WriteOptions& write_options() const { return write_options_; }
 
@@ -152,6 +152,10 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const Uuid& involved_tablet,
       HybridTime hybrid_time);
 
+  std::pair<dockv::KeyBytes, KeyBuffer> ProcessExternalIntents(
+      const TransactionId& txn_id, SubTransactionId subtransaction_id,
+      const std::vector<ExternalIntent>& intents, const Uuid& involved_tablet);
+
   Status InsertSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
@@ -212,7 +216,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
     return ReopenRocksDB();
   }
 
-  Status ReinitDBOptions();
+  Status ReinitDBOptions(const TabletId& tablet_id);
 
   std::atomic<int64_t>& monotonic_counter() {
     return monotonic_counter_;

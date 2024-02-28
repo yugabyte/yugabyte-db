@@ -110,6 +110,8 @@ typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletMetadataValidator;
+
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
 #define TOMBSTONE_NOT_OK(expr, meta, uuid, msg, ts_manager_ptr) \
@@ -167,6 +169,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  rpc::ThreadPool* raft_notifications_pool() const {
+    return raft_notifications_pool_.get();
+  }
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
@@ -196,6 +201,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
       boost::optional<consensus::RaftConfigPB> committed_raft_config) override;
+
+  Status ApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -362,6 +371,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
 
+  docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
+
   Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
@@ -385,6 +396,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Get the metadata cache object.
   client::YBMetaDataCache* YBMetaDataCache() const;
+
+  MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -511,6 +524,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status DoHandleNonReadyTabletOnStartup(
       const tablet::RaftGroupMetadataPtr& meta,
       const scoped_refptr<TransitionInProgressDeleter>& deleter);
+
+  Status CleanUpSubtabletIfExistsOnDisk(
+      const tablet::RaftGroupMetadata& source_tablet_meta, const TabletId& tablet_id, Env* env);
 
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
@@ -670,6 +686,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for Raft-related operations, shared between all tablets.
   std::unique_ptr<ThreadPool> raft_pool_;
 
+  // Thread pool for Raft replication callback operations.
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
 
@@ -697,6 +716,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
+
+  // Used for verifying tablet metadata data integrity.
+  std::unique_ptr<TabletMetadataValidator> tablet_metadata_validator_;
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;

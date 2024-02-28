@@ -412,8 +412,10 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   // (i.e. range columns are present).
   if (need_pk) {
     if (request_.has_hash_code() && !hashed_column_values.empty()) {
+      // Ignore use-after-move warning since hashed_components was only moved if need_pk = false.
       pk_doc_key_.emplace(
-         request_.hash_code(), std::move(hashed_components), std::move(range_components));
+         request_.hash_code(), std::move(hashed_components), // NOLINT(bugprone-use-after-move)
+         std::move(range_components));
     } else {
       // In case of syscatalog tables, we don't have any hash components.
       pk_doc_key_.emplace(std::move(range_components));
@@ -426,6 +428,9 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
 
 Status QLWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
+  if (mode == GetDocPathsMode::kStrongReadIntents) {
+    return Status::OK();
+  }
   if (mode == GetDocPathsMode::kLock || request_.column_values().empty() || !index_map_.empty()) {
     if (encoded_hashed_doc_key_) {
       paths->push_back(encoded_hashed_doc_key_);

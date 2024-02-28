@@ -31,9 +31,42 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- Tablespaces
 --
 
-CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
-CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
-CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
+-- Set variable ignore_existing_tablespaces (if not already set)
+\if :{?ignore_existing_tablespaces}
+\else
+\set ignore_existing_tablespaces false
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp1') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp1 already exists.'
+\else
+    CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp2') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp2 already exists.'
+\else
+    CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+\endif
+
+\set tablespace_exists false
+\if :ignore_existing_tablespaces
+    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp_unused') AS tablespace_exists \gset
+\endif
+\if :tablespace_exists
+    \echo 'Tablespace tsp_unused already exists.'
+\else
+    CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
+\endif
+
 
 
 \connect template1
@@ -56,6 +89,12 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
@@ -100,6 +139,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
@@ -140,6 +185,12 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -212,6 +263,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
@@ -242,7 +299,9 @@ SET row_security = off;
 COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
@@ -256,7 +315,9 @@ CREATE TABLEGROUP grp_with_spc;
 
 ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
@@ -270,7 +331,9 @@ CREATE TABLEGROUP grp_without_spc;
 
 ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 SET default_with_oids = false;
 
@@ -294,7 +357,9 @@ SPLIT INTO 3 TABLETS;
 
 ALTER TABLE public.table1 OWNER TO yugabyte_test;
 
-SET default_tablespace = tsp2;
+\if :use_tablespaces
+    SET default_tablespace = tsp2;
+\endif
 
 --
 -- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -316,7 +381,9 @@ SPLIT INTO 3 TABLETS;
 
 ALTER TABLE public.table2 OWNER TO yugabyte_test;
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: tbl_with_grp_with_spc; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -363,7 +430,9 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 \.
 
 
-SET default_tablespace = tsp2;
+\if :use_tablespaces
+    SET default_tablespace = tsp2;
+\endif
 
 --
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
@@ -372,7 +441,9 @@ SET default_tablespace = tsp2;
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1

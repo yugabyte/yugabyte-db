@@ -11,22 +11,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.WhenCreated;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.SequenceGenerator;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.SequenceGenerator;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -175,7 +175,10 @@ public class Audit extends Model {
     Role,
 
     @EnumValue("RoleBinding")
-    RoleBinding
+    RoleBinding,
+
+    @EnumValue("OIDC Group Mapping")
+    OIDCGroupMapping
   }
 
   public enum ActionType {
@@ -545,6 +548,9 @@ public class Audit extends Model {
     @EnumValue("Install Ybc")
     InstallYbc,
 
+    @EnumValue("Upgrade Ybc GFlags")
+    UpgradeYbcGFlags,
+
     @EnumValue("Set YB-Controller throttle params")
     SetThrottleParams,
 
@@ -567,7 +573,10 @@ public class Audit extends Model {
     Unlock,
 
     @EnumValue("Sync Universe with LDAP server")
-    LdapUniverseSync
+    LdapUniverseSync,
+
+    @EnumValue("Update Universe's Proxy Configuration")
+    UpdateProxyConfig
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -600,7 +609,7 @@ public class Audit extends Model {
       value = "The task creation time.",
       accessMode = READ_ONLY,
       example = "2022-12-12T13:07:18Z")
-  @CreatedTimestamp
+  @WhenCreated
   private final Date timestamp;
 
   @ApiModelProperty(value = "Audit UUID", accessMode = READ_ONLY, dataType = "Object")

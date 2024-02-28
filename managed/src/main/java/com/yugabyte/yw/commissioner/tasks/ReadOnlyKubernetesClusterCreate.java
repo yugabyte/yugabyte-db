@@ -41,6 +41,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       preTaskActions(universe);
+      addBasicPrecheckTasks();
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -108,7 +109,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
             universe.getName(),
             tserversAdded,
             true,
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            readOnlyCluster.userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversAdded);
       }
 

@@ -22,7 +22,7 @@ const statusElementsIcons = {
   ),
   Failed: (
     <span className="status failed">
-      Creation Failed <i className="fa fa-spinner fa-spin" />
+      Creation Failed <i className="fa fa-exclamation-circle" />
     </span>
   ),
   Running: (

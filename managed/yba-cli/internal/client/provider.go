@@ -34,14 +34,6 @@ func (a *AuthAPIClient) List(pUUID string) (
 	return a.APIClient.AccessKeysApi.List(a.ctx, a.CustomerUUID, pUUID)
 }
 
-// ListOfInstanceType fetches the list of instance types
-// associated with the provider (for onprem)
-func (a *AuthAPIClient) ListOfInstanceType(pUUID string) (
-	ybaclient.InstanceTypesApiApiListOfInstanceTypeRequest,
-) {
-	return a.APIClient.InstanceTypesApi.ListOfInstanceType(a.ctx, a.CustomerUUID, pUUID)
-}
-
 // NewProviderYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) NewProviderYBAVersionCheck() (bool, string, error) {

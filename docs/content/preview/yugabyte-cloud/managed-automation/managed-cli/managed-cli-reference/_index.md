@@ -65,6 +65,7 @@ You can manage the following resources using ybm:
 | :--- | :--- |
 | [api-key](managed-cli-api-key/) | create, list, revoke |
 | [backup](managed-cli-backup/) | create, delete, list, restore |
+| [backup policy](managed-cli-backup-policy/) | disable, enable, list, update |
 | [cluster](managed-cli-cluster/) | cert download, create, delete, describe,</br>encryption list, encryption update,</br>list, node list, pause, resume, update |
 | [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign,</br>endpoint create, endpoint delete , endpoint describe,</br>endpoint list, endpoint update |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |

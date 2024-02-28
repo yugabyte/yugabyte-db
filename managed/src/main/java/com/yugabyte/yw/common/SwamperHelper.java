@@ -64,6 +64,7 @@ public class SwamperHelper {
 
   @VisibleForTesting static final String TARGET_FILE_NODE_PREFIX = "node.";
   @VisibleForTesting static final String TARGET_FILE_YUGABYTE_PREFIX = "yugabyte.";
+  @VisibleForTesting static final String TARGET_FILE_OTEL_PREFIX = "otel.";
   @VisibleForTesting static final String TARGET_FILE_PREFIX_PATTERN = "(node|yugabyte)\\.";
   @VisibleForTesting static final String TARGET_FILE_NODE_AGENT_PREFIX = "node-agent.";
   @VisibleForTesting static final String TARGET_FILE_NODE_AGENT_PREFIX_PATTERN = "node-agent\\.";
@@ -126,7 +127,8 @@ public class SwamperHelper {
     TSERVER_EXPORT(true),
     REDIS_EXPORT(true),
     CQL_EXPORT(true),
-    YSQL_EXPORT(true);
+    YSQL_EXPORT(true),
+    OTEL_EXPORT(false);
 
     private final boolean collectionLevelSupported;
 
@@ -150,6 +152,8 @@ public class SwamperHelper {
           return nodeDetails.yqlServerHttpPort;
         case YSQL_EXPORT:
           return nodeDetails.ysqlServerHttpPort;
+        case OTEL_EXPORT:
+          return nodeDetails.otelCollectorMetricsPort;
         default:
           return 0;
       }
@@ -270,6 +274,27 @@ public class SwamperHelper {
             });
     writeJsonFile(swamperFile, nodeTargets);
 
+    // Write out the otel specific file.
+    if (universe.getUniverseDetails().otelCollectorEnabled) {
+      ArrayNode otelTargets = Json.newArray();
+      swamperFile = getSwamperFile(universe.getUniverseUUID(), TARGET_FILE_OTEL_PREFIX);
+      universe
+          .getNodes()
+          .forEach(
+              (node) -> {
+                if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)) {
+                  // no otel collector on k8s pods yet
+                  return;
+                }
+                if (!node.isTserver || !node.isActive()) {
+                  // otel collector is only available on active TServers
+                  return;
+                }
+                otelTargets.add(getIndividualConfig(universe, TargetType.OTEL_EXPORT, node));
+              });
+      writeJsonFile(swamperFile, otelTargets);
+    }
+
     // Write out the yugabyte specific file.
     ArrayNode ybTargets = Json.newArray();
     swamperFile = getSwamperFile(universe.getUniverseUUID(), TARGET_FILE_YUGABYTE_PREFIX);
@@ -282,7 +307,9 @@ public class SwamperHelper {
               if (!node.isActive()) return;
 
               for (TargetType t : TargetType.values()) {
-                if (t == TargetType.NODE_EXPORT || t == TargetType.INVALID_EXPORT) {
+                if (t == TargetType.NODE_EXPORT
+                    || t == TargetType.OTEL_EXPORT
+                    || t == TargetType.INVALID_EXPORT) {
                   continue;
                 }
 
@@ -349,6 +376,7 @@ public class SwamperHelper {
   public void removeUniverseTargetJson(UUID universeUUID) {
     // TODO: make these constants / enums.
     removeTargetJson(universeUUID, TARGET_FILE_NODE_PREFIX);
+    removeTargetJson(universeUUID, TARGET_FILE_OTEL_PREFIX);
     removeTargetJson(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
   }
 

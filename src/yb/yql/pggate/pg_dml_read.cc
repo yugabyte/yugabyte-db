@@ -185,6 +185,14 @@ void PgDmlRead::SetDistinctPrefixLength(const int distinct_prefix_length) {
   }
 }
 
+void PgDmlRead::SetHashBounds(const uint16_t low_bound, const uint16_t high_bound) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->SetHashBounds(low_bound, high_bound);
+  }
+  read_req_->set_hash_code(low_bound);
+  read_req_->set_max_hash_code(high_bound);
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML support.
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
@@ -799,6 +807,36 @@ Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::opt
   }
   ApplyBound(read_req_.get(), start, true /* is_lower */);
   ApplyBound(read_req_.get(), end, false /* is_lower */);
+  return Status::OK();
+}
+
+Status PgDmlRead::BindRange(const Slice &start_value, bool start_inclusive,
+                            const Slice &end_value, bool end_inclusive) {
+  // Clean up operations remaining from the previous range's scan
+  if (has_doc_op()) {
+    RETURN_NOT_OK(down_cast<PgDocReadOp*>(doc_op_.get())->ResetPgsqlOps());
+  }
+  if (secondary_index_query_) {
+    secondary_index_query_->set_is_executed(false);
+    return secondary_index_query_->BindRange(
+      start_value, start_inclusive, end_value, end_inclusive);
+  }
+  // Set lower bound
+  if (start_value.empty()) {
+    read_req_->clear_lower_bound();
+  } else {
+    auto* mutable_bound = read_req_->mutable_lower_bound();
+    mutable_bound->dup_key(start_value);
+    mutable_bound->set_is_inclusive(start_inclusive);
+  }
+  // Set upper bound
+  if (end_value.empty()) {
+    read_req_->clear_upper_bound();
+  } else {
+    auto* mutable_bound = read_req_->mutable_upper_bound();
+    mutable_bound->dup_key(end_value);
+    mutable_bound->set_is_inclusive(end_inclusive);
+  }
   return Status::OK();
 }
 

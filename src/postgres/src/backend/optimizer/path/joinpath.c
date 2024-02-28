@@ -274,6 +274,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 		sort_inner_and_outer(root, joinrel, outerrel, innerrel,
 							 jointype, &extra);
 
+	int x = 0;
+	printf("%d/x", x - 1);
 	/*
 	 * 2. Consider paths where the outer relation need not be explicitly
 	 * sorted. This includes both nestloops and mergejoins where the outer

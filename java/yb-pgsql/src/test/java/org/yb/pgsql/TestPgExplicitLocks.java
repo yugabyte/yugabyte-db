@@ -39,7 +39,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.put("enable_wait_queues", "false");
+    flagMap.putAll(FailOnConflictTestGflags);
     return flagMap;
   }
 
@@ -439,8 +439,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
         assertTrue("Should not reach here since the statement is supposed to fail", false);
       } catch (SQLException e) {
         // If txn2 had a lower priority than txn1, instead of attempting retries for
-        // ysql_max_write_restart_attempts, it would fail immediately due to the NOWAIT clause
-        // with the appropriate message.
+        // yb_max_query_layer_retries, it would fail immediately due to the NOWAIT clause with the
+        // appropriate message.
         assertTrue(StringUtils.containsIgnoreCase(e.getMessage(),
           "ERROR: could not obtain lock on row in relation \"test\""));
 

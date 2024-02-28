@@ -36,8 +36,8 @@
 #include <limits>
 #include <list>
 #include <thread>
+#include <utility>
 
-#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
@@ -83,6 +83,7 @@
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
+#include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
@@ -103,6 +104,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::make_shared;
@@ -230,6 +232,9 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
     "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
+DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
 namespace yb::tserver {
 
 namespace {
@@ -266,6 +271,15 @@ void PostgresAndYsqlConnMgrPortValidator() {
 REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
     &PostgresAndYsqlConnMgrPortValidator);
 
+void ValidateEnableYsqlConnMgr() {
+  if (FLAGS_enable_ysql_conn_mgr && !(FLAGS_start_pgsql_proxy || FLAGS_enable_ysql)) {
+    LOG(FATAL) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
+    return;
+  }
+  return;
+}
+
+REGISTER_CALLBACK(enable_ysql_conn_mgr, "ValidateEnableYsqlConnMgr", &ValidateEnableYsqlConnMgr);
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
@@ -292,6 +306,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
   }
 
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
  private:
   TabletServer& tablet_server_;
 };
@@ -301,7 +319,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
-      auto_flags_manager_(new AutoFlagsManager("yb-tserver", clock(), fs_manager_.get())),
+      auto_flags_manager_(new TserverAutoFlagsManager(clock(), fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -496,16 +514,13 @@ Status TabletServer::Init() {
     shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
+  shared_object().SetTserverUuid(fs_manager()->uuid());
+
   return Status::OK();
 }
 
 Status TabletServer::InitAutoFlags() {
-  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
-
-  if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
-    RETURN_NOT_OK(
-        auto_flags_manager_->LoadFromMaster(options_.HostsString(), *opts_.GetMasterAddresses()));
-  }
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString(), *opts_.GetMasterAddresses()));
 
   return RpcAndWebServerBase::InitAutoFlags();
 }
@@ -897,6 +912,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
       std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1})));
+    if (ysql_db_catalog_version_map_.size() > 1) {
+      catalog_version_table_in_perdb_mode_ = true;
+      shared_object().SetCatalogVersionTableInPerdbMode();
+    }
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;
@@ -1173,9 +1192,24 @@ Status TabletServer::CreateXClusterConsumer() {
     }
     return tablet_peer->LeaderTerm();
   };
+  auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
+    return pgwrapper::CreateInternalPGConnBuilder(
+               pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
+               deadline)
+        .Connect();
+  };
+  auto get_namespace_info =
+      [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
+    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
+    SCHECK(tablet_peer, NotFound, "Could not find tablet $0", tablet_id);
+    return std::make_pair(
+        tablet_peer->tablet_metadata()->namespace_id(),
+        tablet_peer->tablet_metadata()->namespace_name());
+  };
 
-  xcluster_consumer_ = VERIFY_RESULT(
-      tserver::CreateXClusterConsumer(std::move(get_leader_term), proxy_cache_.get(), this));
+  xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
+      std::move(get_leader_term), std::move(connect_to_pg), std::move(get_namespace_info),
+      proxy_cache_.get(), this));
   return Status::OK();
 }
 
@@ -1317,6 +1351,22 @@ Status TabletServer::SetCDCServiceEnabled() {
 
 void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+}
+
+void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
+  DCHECK_EQ(cql_server_.load(), nullptr);
+  cql_server_.store(server);
+}
+
+rpc::Messenger* TabletServer::GetMessenger(ServerType server_type) const {
+  switch (server_type) {
+    case ServerType::TServer:
+      return messenger();
+    case ServerType::CQLServer:
+      auto cql_server = cql_server_.load();
+      return (cql_server ? cql_server->messenger() : nullptr);
+  }
+  FATAL_INVALID_ENUM_VALUE(ServerType, server_type);
 }
 
 }  // namespace yb::tserver

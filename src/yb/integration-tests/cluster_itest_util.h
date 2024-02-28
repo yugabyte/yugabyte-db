@@ -68,6 +68,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 
@@ -108,6 +109,7 @@ struct TServerDetails {
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
   std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
   std::unique_ptr<server::GenericServiceProxy> generic_proxy;
+  std::unique_ptr<tserver::TabletServerBackupServiceProxy> backup_proxy;
 
   TServerDetails();
   ~TServerDetails();

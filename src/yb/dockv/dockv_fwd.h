@@ -54,9 +54,6 @@ struct ValueControlFields;
 using DocKeyHash = uint16_t;
 using KeyEntryValues = std::vector<KeyEntryValue>;
 
-// TODO(packed_row) Remove after full support for packed row v2 is merged.
-using RowPacker = RowPackerV1;
-
 enum class KeyEntryType;
 enum class ValueEntryType;
 enum class YBHashSchema;

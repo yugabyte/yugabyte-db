@@ -46,7 +46,7 @@ var replicatedToYbaCtl = map[string]string{
 	"db_external_port":             "postgres.install.port",
 	"dbuser":                       "postgres.install.username",
 	"dbldapauth":                   "postgres.install.ldap_enabled",
-	"dbpass":												"postgres.install.password",
+	"dbpass":                       "postgres.install.password",
 	"ldap_server":                  "postgres.install.ldap_server",
 	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
 	"ldap_base_dn":                 "postgres.install.ldap_suffix",
@@ -58,10 +58,10 @@ var replicatedToYbaCtl = map[string]string{
 	"prometheus_query_max_samples": "prometheus.maxSamples",
 	"prometheus_query_concurrency": "prometheus.maxConcurrency",
 	"prometheus_external_port":     "prometheus.port",
-	"prometheus_enable_https":			"prometheus.enableHttps",
-	"prometheus_enable_auth":				"prometheus.enableAuth",
-	"prometheus_username":					"prometheus.authUsername",
-	"prometheus_password":					"prometheus.authPassword",
+	"prometheus_enable_https":      "prometheus.enableHttps",
+	"prometheus_enable_auth":       "prometheus.enableAuth",
+	"prometheus_username":          "prometheus.authUsername",
+	"prometheus_password":          "prometheus.authPassword",
 	"support_origin_url":           "platform.support_origin_url",
 }
 
@@ -74,7 +74,7 @@ func (ce ConfigEntry) Bool() (bool, error) {
 		return true, nil
 	default:
 		return false, fmt.Errorf(
-			"%w: %s cannot be converted from string to bool", ErrorConfigType, ce.Name)
+			"%w: %s '%s'cannot be converted from string to bool", ErrorConfigType, ce.Name, ce.Value)
 	}
 }
 
@@ -82,7 +82,8 @@ func (ce ConfigEntry) Bool() (bool, error) {
 func (ce ConfigEntry) Int() (int, error) {
 	i, err := strconv.Atoi(ce.Value)
 	if err != nil {
-		return i, fmt.Errorf("%w: %s cannot be converted to an int", ErrorConfigType, ce.Name)
+		return i, fmt.Errorf("%w: %s '%s' cannot be converted to an int", ErrorConfigType, ce.Name,
+			ce.Value)
 	}
 	return i, nil
 }
@@ -180,28 +181,26 @@ func (ac *AppConfig) ExportYbaCtl() error {
 		}
 		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
 			if b, err := e.Bool(); err == nil {
-				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, b)
 				if err != nil {
-					return fmt.Errorf("Error setting boolean value at %s: %s", ybaCtlPath, err.Error())
+					return fmt.Errorf("Error setting boolean value at %s to %s", ybaCtlPath, err.Error())
+				}
+			} else if i, err := e.Int(); err == nil {
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, i)
+				if err != nil {
+					return fmt.Errorf("Error setting integer value at %s to %s", ybaCtlPath, err.Error())
 				}
 			} else {
-				i, err := e.Int()
-				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i))
-					if err != nil {
-						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
+				// Special handling of installRoot
+				if ybaCtlPath == "installRoot" {
+					if e.Value == "/opt/ybanywhere" {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
+					} else {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
 					}
-				} else {
-					// Special handling of installRoot
-					if ybaCtlPath == "installRoot" {
-						if e.Value == "/opt/ybanywhere" {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
-						} else {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
-						}
-						continue
-					}
+					continue
 				}
+				common.SetYamlValue(common.InputFile(), ybaCtlPath, e.Value)
 			}
 		}
 	}

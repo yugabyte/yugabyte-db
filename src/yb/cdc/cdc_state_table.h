@@ -106,17 +106,16 @@ class CDCStateTableRange;
 // uses the YBClient and YBSession to access the table.
 class CDCStateTable {
  public:
-  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init)
-      : async_client_init_(async_client_init) {}
-  explicit CDCStateTable(client::YBClient* client) : client_(client) {}
+  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init);
+  explicit CDCStateTable(client::YBClient* client);
 
   static const std::string& GetNamespaceName();
   static const std::string& GetTableName();
   static Result<master::CreateTableRequestPB> GenerateCreateCdcStateTableRequest();
 
-  Status InsertEntries(
-      const std::vector<CDCStateTableEntry>& entries)
-      EXCLUDES(mutex_);
+  Status InsertEntries(const std::vector<CDCStateTableEntry>& entries) EXCLUDES(mutex_);
+  Status InsertEntriesAsync(
+      const std::vector<CDCStateTableEntry>& entries, StdStatusCallback callback) EXCLUDES(mutex_);
   Status UpdateEntries(
       const std::vector<CDCStateTableEntry>& entries, const bool replace_full_map = false,
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
@@ -127,6 +126,9 @@ class CDCStateTable {
 
   Result<CDCStateTableRange> GetTableRange(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
+  // Returns early if the CDC state table doesn't exist.
+  Result<CDCStateTableRange> GetTableRangeAsync(
+      CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
@@ -135,8 +137,17 @@ class CDCStateTable {
  private:
   Result<client::YBClient*> GetClient();
   Result<std::shared_ptr<client::YBSession>> GetSession();
+  Status WaitForCreateTableToFinishWithCache() REQUIRES(mutex_);
+  Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);
   Status OpenTable(client::TableHandle* cdc_table);
+  template <class CDCEntry>
+  Status WriteEntriesAsync(
+      const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
+      StdStatusCallback callback, QLOperator condition_op = QL_OP_NOOP,
+      const bool replace_full_map = false, const std::vector<std::string>& keys_to_delete = {})
+      EXCLUDES(mutex_);
+
   template <class CDCEntry>
   Status WriteEntries(
       const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
@@ -148,6 +159,7 @@ class CDCStateTable {
   client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
+  bool created_ GUARDED_BY(mutex_) = false;
 };
 
 class CdcStateTableIterator : public client::TableIterator {

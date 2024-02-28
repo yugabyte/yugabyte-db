@@ -1,3 +1,4 @@
+import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
@@ -141,6 +142,7 @@ export interface UserIntent {
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
   useSpotInstance?: boolean | null;
+  imageBundleUUID?: string;
 }
 
 export interface Cluster {
@@ -220,9 +222,11 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  arch: ArchitectureType;
   softwareUpgradeState: string;
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
+  xclusterInfo: any;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -418,6 +422,7 @@ export interface UniverseDetails {
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  xclusterInfo: any;
 }
 
 export interface Resources {
@@ -501,6 +506,8 @@ export interface InstanceConfigFormValue {
   ycqlConfirmPassword?: string;
   enableYEDIS: boolean;
   kmsConfig: string | null;
+  arch?: ArchitectureType | null;
+  imageBundleUUID?: string | null;
 }
 
 export interface AdvancedConfigFormValue {
@@ -594,7 +601,9 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   ycqlPassword: '',
   ycqlConfirmPassword: '',
   enableYEDIS: false,
-  kmsConfig: null
+  kmsConfig: null,
+  arch: null,
+  imageBundleUUID: ''
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
@@ -810,6 +819,33 @@ export interface UniverseResource {
 
 export interface UniverseFormConfigurationProps {
   runtimeConfigs: any;
+}
+
+export enum ImageBundleType {
+  YBA_ACTIVE = "YBA_ACTIVE",
+  YBA_DEPRECATED = "YBA_DEPRECATED",
+  CUSTOM = "CUSTOM"
+}
+export interface ImageBundle {
+  uuid: string,
+  name: string,
+  details: {
+    arch: ArchitectureType,
+    globalYbImage: string;
+    regions: {
+      [key: string]: {
+        ybImage: string;
+        sshUserOverride: string;
+        sshPortOverride: number;
+      }
+    }
+  },
+  useAsDefault: boolean,
+  metadata: {
+    type: ImageBundleType,
+    version: string
+  },
+  active: true
 }
 
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------

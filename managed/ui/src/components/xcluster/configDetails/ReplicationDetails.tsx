@@ -1,19 +1,19 @@
 import { useState } from 'react';
 import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-bootstrap';
-import { useMutation, useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { useInterval } from 'react-use';
 import _ from 'lodash';
 import { Box, Typography, useTheme } from '@material-ui/core';
+import moment from 'moment';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
   editXClusterState,
-  queryLagMetricsForTable,
   fetchTablesInUniverse
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
@@ -22,20 +22,23 @@ import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import {
   XClusterConfigAction,
-  REPLICATION_LAG_ALERT_NAME,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigState,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
-  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
+  AlertName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS,
+  MetricName,
+  liveMetricTimeRangeUnit,
+  liveMetricTimeRangeValue
 } from '../constants';
 import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getXClusterConfigTableType,
-  getLatestMaxNodeLag
+  getXClusterConfigTableType
 } from '../ReplicationUtils';
 import { EditConfigModal } from './EditConfigModal';
 import { LagGraph } from './LagGraph';
@@ -45,7 +48,13 @@ import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
-import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
+import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
 import { SyncXClusterConfigModal } from './SyncXClusterModal';
@@ -55,9 +64,9 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
-import { Metrics } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
-import { TableType, YBTable } from '../../../redesign/helpers/dtos';
+import { MetricsQueryParams, TableType, YBTable } from '../../../redesign/helpers/dtos';
+import { NodeAggregation, SplitType } from '../../metrics/dtos';
 
 import './ReplicationDetails.scss';
 
@@ -73,7 +82,7 @@ const ActionMenu = {
 } as const;
 
 export function ReplicationDetails({
-  params: { uuid: currentUniverseUUID, replicationUUID: xClusterConfigUUID }
+  params: { uuid: currentUniverseUuid, replicationUUID: xClusterConfigUuid }
 }: Props) {
   const [isActionDropdownOpen, setIsActionDropdownOpen] = useState(false);
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
@@ -81,8 +90,8 @@ export function ReplicationDetails({
   const queryClient = useQueryClient();
   const theme = useTheme();
 
-  const xClusterConfigQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUUID), () =>
-    fetchXClusterConfig(xClusterConfigUUID)
+  const xClusterConfigQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUuid), () =>
+    fetchXClusterConfig(xClusterConfigUuid)
   );
   const sourceUniverseQuery = useQuery(
     universeQueryKey.detail(xClusterConfigQuery.data?.sourceUniverseUUID),
@@ -97,43 +106,47 @@ export function ReplicationDetails({
   );
 
   const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfigQuery.data?.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(
+      xClusterConfigQuery.data?.sourceUniverseUUID,
+      XCLUSTER_UNIVERSE_TABLE_FILTERS
+    ),
     () =>
-      fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data),
+      fetchTablesInUniverse(
+        xClusterConfigQuery.data?.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
-  const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
-  const tableLagQueries = useQueries(
-    xClusterConfigTables.map((xClusterTable) => ({
-      queryKey: [
-        'xcluster-metric',
-        sourceUniverseQuery.data?.universeDetails.nodePrefix,
-        xClusterTable.tableId,
-        xClusterTable.streamId,
-        'metric'
-      ],
-      queryFn: () =>
-        queryLagMetricsForTable(
-          xClusterTable.streamId,
-          xClusterTable.tableId,
-          sourceUniverseQuery.data?.universeDetails.nodePrefix
-        ),
+  const replicationLagMetricSettings = {
+    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
+    nodeAggregation: NodeAggregation.MAX,
+    splitType: SplitType.TABLE
+  };
+  const replciationLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [replicationLagMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    xClusterConfigUuid: xClusterConfigUuid,
+    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
+    end: moment().format('X')
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.live(
+      replciationLagMetricRequestParams,
+      liveMetricTimeRangeValue,
+      liveMetricTimeRangeUnit
+    ),
+    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    {
       enabled: !!sourceUniverseQuery.data
-    }))
-  ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
+    }
+  );
 
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
-    targetUuid: currentUniverseUUID
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: currentUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -167,16 +180,17 @@ export function ReplicationDetails({
 
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric');
+    queryClient.invalidateQueries(metricQueryKey.live());
     if (
       xClusterConfigQuery.data !== undefined &&
       _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfigQuery.data.status)
     ) {
-      queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
+      queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
     }
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
   useInterval(() => {
-    queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
+    queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUuid));
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (xClusterConfigQuery.isLoading || xClusterConfigQuery.isIdle) {
@@ -193,7 +207,7 @@ export function ReplicationDetails({
       <>
         <div>{errorMessage}</div>
         <div>
-          Click <Link to={`/universes/${currentUniverseUUID}/replication`}>here</Link> to go back to
+          Click <Link to={`/universes/${currentUniverseUuid}/replication`}>here</Link> to go back to
           the xCluster configurations page.
         </div>
       </>
@@ -343,21 +357,19 @@ export function ReplicationDetails({
   }
 
   let numTablesAboveLagThreshold = 0;
-  if (maxAcceptableLagQuery.isSuccess) {
+  if (maxAcceptableLagQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
     // TODO: Add type for alert configurations.
     const maxAcceptableLag = Math.min(
       ...maxAcceptableLagQuery.data.map(
         (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
       )
     );
-    for (const tableLagQuery of tableLagQueries) {
-      if (tableLagQuery.isSuccess) {
-        const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
-        if (maxNodeLag && maxNodeLag > maxAcceptableLag) {
-          numTablesAboveLagThreshold += 1;
-        }
+
+    tableReplicationLagQuery.data.async_replication_sent_lag?.data.forEach((trace) => {
+      if (trace.y[trace.y.length - 1] && trace.y[trace.y.length - 1] > maxAcceptableLag) {
+        numTablesAboveLagThreshold += 1;
       }
-    }
+    });
   }
 
   const numTablesRequiringBootstrap = xClusterConfig.tableDetails.reduce(
@@ -369,9 +381,11 @@ export function ReplicationDetails({
     0
   );
 
+  const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
   const shouldShowTableLagWarning =
     maxAcceptableLagQuery.isSuccess &&
+    tableReplicationLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
   const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
@@ -387,7 +401,7 @@ export function ReplicationDetails({
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
             <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}/replication/`}>
-              Replication
+              xCluster Replication
             </Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {xClusterConfig.name}
@@ -653,9 +667,9 @@ export function ReplicationDetails({
                   <Col lg={6}>
                     <span className="lag-text">
                       <CurrentReplicationLag
-                        xClusterConfigUUID={xClusterConfig.uuid}
+                        xClusterConfigUuid={xClusterConfig.uuid}
                         xClusterConfigStatus={xClusterConfig.status}
-                        sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+                        sourceUniverseUuid={xClusterConfig.sourceUniverseUUID}
                       />
                     </span>
                   </Col>
@@ -690,13 +704,17 @@ export function ReplicationDetails({
                   )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationTables xClusterConfig={xClusterConfig} />
+                  <ReplicationTables
+                    xClusterConfig={xClusterConfig}
+                    isActive={window.location.search === '?tab=tables'}
+                    isDrInterface={false}
+                  />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer
                     sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                     hideHeader={true}
-                    replicationUUID={xClusterConfigUUID}
+                    replicationUUID={xClusterConfigUuid}
                   />
                 </Tab>
               </YBTabsPanel>
@@ -718,7 +736,7 @@ export function ReplicationDetails({
             xClusterConfigName={xClusterConfig.name}
             onHide={hideModal}
             visible={isDeleteConfigModalVisible}
-            redirectUrl={`/universes/${currentUniverseUUID}/replication`}
+            redirectUrl={`/universes/${currentUniverseUuid}/replication`}
           />
         )}
         {isRestartConfigModalVisible && (

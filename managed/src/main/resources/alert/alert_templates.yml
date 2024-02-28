@@ -96,8 +96,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Last backup task for universe '{{ $labels.source_name }}' failed
@@ -111,11 +111,11 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
-        threshold: 1.0
+        threshold: 0.0
     targetType: PLATFORM
-    defaultThresholdCondition: LESS_THAN
+    defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: STATUS
-    thresholdMaxValue: 1.0
+    thresholdMaxValue: 0.0
     thresholdReadOnly: true
     annotations:
       summary: >-
@@ -139,8 +139,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Last attempt to run scheduled backup for universe '{{ $labels.source_name }}'
@@ -162,9 +162,9 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (max_over_time(hybrid_clock_skew{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Max clock skew for universe '{{ $labels.source_name }}' is above
@@ -187,9 +187,9 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "min by (universe_uuid, node_name)
+        {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_c2n_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Client to node certificate for universe '{{ $labels.source_name }}'
@@ -212,9 +212,9 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "min by (universe_uuid, node_name)
+        {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_c2n_ca_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Client to node CA certificate for universe '{{ $labels.source_name }}'
@@ -237,9 +237,9 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name)
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
         (yb_node_core_files_check{universe_uuid='{{ $labels.universe_uuid }}'} < 1)
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Core files detected for universe '{{ $labels.source_name }}'
@@ -266,10 +266,10 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (changes(yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}'}[30m])
         and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid='{{ $labels.universe_uuid }}'}[35m])
-        == 0)) {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        == 0)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Universe '{{ $labels.source_name }}' Master or TServer is restarted
@@ -293,16 +293,14 @@ templates:
     thresholdUnitName: drive(s)
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name) (drive_fault{universe_uuid='{{ $labels.universe_uuid }}',
-        export_type='tserver_export'}) > 0" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (drive_fault{universe_uuid='{{ $labels.universe_uuid }}',
+        export_type='tserver_export'}) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         DB detected {{ $value | printf "%.0f" }} drive failure(s) for universe '{{ $labels.source_name }}':
 
-        {{ range query "drive_fault{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}" }}
-        {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}
-
-        {{ end }}
+        {{ range $index, $element := query "drive_fault{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}" }}
+        {{if $index}},{{end}}{{ $element.Labels.exported_instance }}:{{ $element.Labels.drive_path }}{{ end }}
 
   DB_ERROR_LOGS:
     name: DB error logs
@@ -321,11 +319,11 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "sum by (universe_uuid, node_name) ((ybp_health_check_node_master_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) ((ybp_health_check_node_master_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         == bool 1)) + sum by (universe_uuid, node_name) ((ybp_health_check_node_tserver_error_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) * ignoring (saved_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        == bool 1)) > 0" }}{{ .Labels.node_name }} {{ end }}
+        == bool 1)) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Error logs detected for universe '{{ $labels.source_name }}'
@@ -350,10 +348,10 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name) (max_over_time(up{export_type=~'master_export|tserver_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (max_over_time(up{export_type=~'master_export|tserver_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
         and on (universe_uuid, export_type, node_name)
         (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}'}[1m])
-        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         {{ $value | printf "%.0f" }} DB Master/TServer instance(s)
@@ -376,9 +374,9 @@ templates:
     thresholdUnitName: rejection(s)
     labels:
       affected_node_names: >-
-        {{ range query "sum by (universe_uuid, node_name)
+        {{ range $index, $element := query "sum by (universe_uuid, node_name)
         (increase(majority_sst_files_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        > 0" }}{{ .Labels.node_name }} {{ end }}
+        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         DB compaction rejections detected for universe '{{ $labels.source_name }}'.
@@ -401,9 +399,9 @@ templates:
     thresholdUnitName: occurrence(s)
     labels:
       affected_node_names: >-
-        {{ range query "sum by (universe_uuid, node_name) (increase(rpcs_queue_overflow{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(rpcs_queue_overflow{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         + sum by (universe_uuid, node_name) (increase(rpcs_timed_out_in_queue{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        > 0" }}{{ .Labels.node_name }} {{ end }}
+        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         DB queues overflow detected for universe '{{ $labels.source_name }}'.
@@ -426,8 +424,8 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "yb_node_ycql_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1"
-        }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "yb_node_ycql_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         CQLSH connection failure detected for universe '{{ $labels.source_name }}'
@@ -452,9 +450,9 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "(yb_node_ysql_write_read{universe_uuid='{{ $labels.universe_uuid }}'}
+        {{ range $index, $element := query "(yb_node_ysql_write_read{universe_uuid='{{ $labels.universe_uuid }}'}
         and on (universe_uuid) (max_over_time(ybp_universe_update_in_progress{universe_uuid='{{ $labels.universe_uuid }}'}[5m])
-        == 0)) {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        == 0)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Test YSQL write/read operation failed on {{ $value | printf "%.0f" }}
@@ -478,8 +476,8 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "yb_node_redis_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1"
-        }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "yb_node_redis_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Redis connection failure detected for universe '{{ $labels.source_name }}'
@@ -503,9 +501,9 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "sum by (universe_uuid, node_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) (ybp_health_check_node_master_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
         < bool 1) + sum by (universe_uuid, node_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid='{{ $labels.universe_uuid }}'}
-        < bool 1) > 0" }}{{ .Labels.node_name }} {{ end }}
+        < bool 1) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Fatal logs detected for universe '{{ $labels.source_name }}'
@@ -530,10 +528,10 @@ templates:
     thresholdUnitName: rejection(s)
     labels:
       affected_node_names: >-
-        {{ range query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         + sum by (universe_uuid, node_name) (increase(follower_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         + sum by (universe_uuid, node_name) (increase(operation_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         DB memory rejections detected for universe '{{ $labels.source_name }}'.
@@ -556,8 +554,8 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "yb_node_version_check{universe_uuid='{{ $labels.universe_uuid }}'}
-        < 1" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "yb_node_version_check{universe_uuid='{{ $labels.universe_uuid }}'}
+        < 1" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Version mismatch detected for universe '{{ $labels.source_name }}'
@@ -580,7 +578,7 @@ templates:
     thresholdUnitName: instance(s)
     labels:
       affected_node_names: >-
-        {{ range query "yb_node_ysql_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "yb_node_ysql_connect{universe_uuid='{{ $labels.universe_uuid }}'} < 1" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         YSQLSH connection failure detected for universe '{{ $labels.source_name }}'
@@ -603,8 +601,8 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Encryption At Rest config for universe '{{ $labels.source_name }}'
@@ -626,8 +624,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Failed to perform health check for universe '{{ $labels.source_name }}'
@@ -649,8 +647,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Failed to perform health check notification for universe
@@ -672,9 +670,9 @@ templates:
     thresholdConditionReadOnly: false
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (max_over_time(yb_node_ysql_connections_count{universe_uuid='{{ $labels.universe_uuid }}'}[5m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Number of YSQL connections for universe '{{ $labels.source_name }}'
@@ -696,9 +694,9 @@ templates:
     thresholdConditionReadOnly: false
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (max_over_time(rpc_connections_alive{universe_uuid='{{ $labels.universe_uuid }}',export_type='cql_export'}[5m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Number of YCQL connections for universe '{{ $labels.source_name }}'
@@ -720,9 +718,9 @@ templates:
     thresholdConditionReadOnly: false
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (max_over_time(rpc_connections_alive{universe_uuid='{{ $labels.universe_uuid }}',export_type="redis_export"}[5m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Number of YEDIS connections for universe '{{ $labels.source_name }}'
@@ -746,9 +744,9 @@ templates:
     thresholdUnitName: node(s)
     labels:
       affected_node_names: >-
-        {{ range query "ybp_universe_node_cron_status{universe_uuid='{{ $labels.universe_uuid }}'} < 1
+        {{ range $index, $element := query "ybp_universe_node_cron_status{universe_uuid='{{ $labels.universe_uuid }}'} < 1
         and on (universe_uuid) (ybp_universe_is_systemd{universe_uuid='{{ $labels.universe_uuid }}'} == 0)"
-        }}{{ .Labels.node_name }} {{ end }}
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         {{ $value | printf "%.0f" }} node(s) has inactive cronjob
@@ -773,9 +771,9 @@ templates:
     thresholdUnitName: sec
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (min_over_time(yb_node_leaderless_tablet_count{universe_uuid='{{ $labels.universe_uuid }}'}[{{
-        query_threshold }}s]) > 0)" }}{{ .Labels.node_name }} {{ end }}
+        query_threshold }}s]) > 0)" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Tablet leader is missing for more than {{ $labels.threshold }}
@@ -802,14 +800,14 @@ templates:
     thresholdUnitName: '%'
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
         - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
         - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m])))
         / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid='{{ $labels.universe_uuid }}'}[10m])))
-        * 100 {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        * 100 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average memory usage for universe '{{ $labels.source_name }}' nodes
@@ -821,12 +819,11 @@ templates:
     name: Under-replicated master
     description: Master is missing from raft group or has follower lag higher than
       threshold
-    queryTemplate: (min_over_time((ybp_universe_replication_factor{universe_uuid='{{ $labels.universe_uuid }}'}
+    queryTemplate: (min_over_time((ybp_universe_replication_factor{universe_uuid="__universeUuid__"}
       - on(universe_uuid) count by(universe_uuid) (count by (universe_uuid, exported_instance)
-      (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'})))[{{
+      (follower_lag_ms{export_type="master_export", universe_uuid="__universeUuid__"})))[{{
       query_threshold }}s:]) > 0 or (max by(universe_uuid) (follower_lag_ms{export_type="master_export",
-      universe_uuid='{{ $labels.universe_uuid }}'}) {{ query_condition }} ({{ query_threshold }} *
-      1000)))
+      universe_uuid="__universeUuid__"}) {{ query_condition }} ({{ query_threshold }} * 1000)))
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
@@ -838,8 +835,8 @@ templates:
     thresholdUnitName: sec
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='master_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='master_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Master is missing from raft group or has follower lag higher
@@ -862,8 +859,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='master_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='master_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Master Leader is missing for universe '{{ $labels.source_name }}'.
@@ -883,9 +880,9 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "min by (universe_uuid, node_name)
+        {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_n2n_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Node to node certificate for universe '{{ $labels.source_name }}'
@@ -894,9 +891,8 @@ templates:
         Affected nodes: {{ $labels.affected_node_names }}
 
   NEW_YSQL_TABLES_ADDED:
-    name: New Ysql Tables Added
-    description: New ysql tables added to source universe in db associated with existing
-      xcluster replication config but not added to replication
+    name: YSQL Tables in DR/Xcluster Config Inconsistent With Primary/Source
+    description: YSQL tables were added or dropped from the primary/source universe database but were not updated on the DR/Xcluster config in YBA.
     queryTemplate: ((count by (namespace_name, universe_uuid)(count by(namespace_name,
       table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"})))
       - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid,
@@ -914,8 +910,8 @@ templates:
     thresholdUnitName: table(s)
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         New ysql tables are added to the source universe '{{ $labels.source_name }}'
@@ -938,9 +934,9 @@ templates:
     thresholdUnitName: node(s)
     labels:
       affected_node_names: >-
-        {{ range query "max_over_time(up{export_type='node_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        {{ range $index, $element := query "max_over_time(up{export_type='node_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
         and on (universe_uuid, export_type, node_name) (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}'}[1m])
-        == 1)" }}{{ .Labels.node_name }} {{ end }}
+        == 1)" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         {{ $value | printf "%.0f" }} DB node(s) are down for more
@@ -968,9 +964,9 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name)
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
         (yb_node_oom_kills_10min{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}) > 0" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         More than {{ $labels.threshold }} OOM kills detected for universe
@@ -1001,11 +997,11 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "avg by (universe_uuid, node_name)
+        {{ range $index, $element := query "avg by (universe_uuid, node_name)
         (sum by (universe_uuid, node_name, cpu)
         (rate(node_cpu_seconds_total{job='node',mode!='idle',
         universe_uuid='{{ $labels.universe_uuid }}'}[30m])* 100))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average node CPU usage for universe '{{ $labels.source_name }}'
@@ -1030,9 +1026,9 @@ templates:
     thresholdUnitName: restart(s)
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (changes(node_boot_time_seconds{universe_uuid='{{ $labels.universe_uuid }}'}[30m]))
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Universe '{{ $labels.source_name }}' DB node is restarted
@@ -1055,9 +1051,9 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "min by (universe_uuid, node_name)
+        {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Node to node CA certificate for universe '{{ $labels.source_name }}'
@@ -1086,16 +1082,14 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name)
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
         (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
         universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.mount_points }}',
-        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
       affected_volumes: >-
-        {{ range query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        {{ range $index, $element := query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
         universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.mount_points }}',
-        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }}:{{ .Labels.mountpoint }}
-
-        {{ end }}
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}:{{ $element.Labels.mountpoint }}{{ end }}
     annotations:
       summary: >-
         Node data disk usage for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} node(s).
@@ -1126,16 +1120,14 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "count by (universe_uuid, node_name)
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
         (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
         universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
-        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
       affected_volumes: >-
-        {{ range query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
+        {{ range $index, $element := query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
         universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
-        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }}:{{ .Labels.mountpoint }}
-
-        {{ end }}
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}:{{ $element.Labels.mountpoint }}{{ end }}
     annotations:
       summary: >-
         Node system disk usage for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} node(s).
@@ -1163,8 +1155,8 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "ybp_health_check_used_fd_pct{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "ybp_health_check_used_fd_pct{universe_uuid='{{ $labels.universe_uuid }}'}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Node file descriptors usage for universe '{{ $labels.source_name }}'
@@ -1188,8 +1180,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Last Snapshot task for universe '{{ $labels.source_name }}'
@@ -1211,8 +1203,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Invalid Permissions of private access key file for universe
@@ -1234,10 +1226,10 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (avg_over_time(async_replication_committed_lag_micros{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) or
         avg_over_time(async_replication_sent_lag_micros{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average replication lag for universe '{{ $labels.source_name }}' is above
@@ -1259,8 +1251,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Last SSH Key Rotation task for universe '{{ $labels.source_name }}'
@@ -1271,7 +1263,6 @@ templates:
     description: SSH Key expires soon
     queryTemplate: ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"}
       {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.ssh_key_config_expiry_days_severe
@@ -1281,8 +1272,8 @@ templates:
     thresholdUnitName: day(s)
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         SSH Key for universe '{{ $labels.source_name }}' will expire
@@ -1304,9 +1295,9 @@ templates:
     thresholdUnitName: sec
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (min_over_time(yb_node_underreplicated_tablet_count{universe_uuid='{{ $labels.universe_uuid }}'}[{{ query_threshold }}s])
-        > 0)" }}{{ .Labels.node_name }} {{ end }}
+        > 0)" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         {{ $value | printf "%.0f" }} tablet(s) remain under-replicated
@@ -1328,8 +1319,8 @@ templates:
     thresholdReadOnly: true
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Failed to collect metric for universe '{{ $labels.source_name}}' -
@@ -1351,10 +1342,10 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
         (rpc_latency{universe_uuid='{{ $labels.universe_uuid }}',server_type='yb_ysqlserver',service_type='SQLProcessor',
         service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions',quantile='p99'})
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         YSQL P99 latency for universe '{{ $labels.source_name }}' is
@@ -1379,8 +1370,8 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average YSQL operations latency for universe '{{ $labels.source_name }}'
@@ -1401,8 +1392,8 @@ templates:
     thresholdConditionReadOnly: false
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Maximum throughput for YSQL operations for universe '{{ $labels.source_name }}'
@@ -1425,8 +1416,8 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Average YCQL operations latency for universe '{{ $labels.source_name }}'
@@ -1447,9 +1438,9 @@ templates:
     thresholdUnitName: ms
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)(rpc_latency{universe_uuid='{{ $labels.universe_uuid }}',server_type='yb_cqlserver',
+        {{ range $index, $element := query "max by (universe_uuid, node_name)(rpc_latency{universe_uuid='{{ $labels.universe_uuid }}',server_type='yb_cqlserver',
         service_type='SQLProcessor',service_method=~'SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction',quantile='p99'})
-        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         YCQL P99 latency for universe '{{ $labels.source_name }}' is
@@ -1473,8 +1464,8 @@ templates:
     thresholdConditionReadOnly: false
     labels:
       affected_node_names: >-
-        {{ range query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{ .Labels.node_name }} {{ end }}
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Maximum throughput for YCQL operations for universe '{{ $labels.source_name }}'
@@ -1498,3 +1489,201 @@ templates:
       summary: >-
         More recent OS version is recommended for this universe. Consider running VM image
         upgrade for the nodes to incorporate security patches and address vulnerabilities.
+
+  DB_YSQL_WEB_SERVER_DOWN:
+    name: DB YSQL web server down
+    description: DB YSQL web server is down for 15 minutes
+    queryTemplate: count by (universe_uuid) (max_over_time(up{export_type="ysql_export",universe_uuid="__universeUuid__"}[15m]) < 1 and on (universe_uuid,
+      node_address) (min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__", export_type="tserver_export"}[1m])
+      * on(universe_uuid, node_address) min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__",export_type="ysql_export"}[1m])
+      == 1)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (max_over_time(up{export_type='ysql_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        and on (universe_uuid, node_name)
+        (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'}[1m])
+        * on(universe_uuid, node_name, node_address) min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}', export_type='ysql_export'}[1m])
+        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} DB YSQL web server are down for more than 15 minutes for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  DB_YCQL_WEB_SERVER_DOWN:
+    name: DB YCQL web server down
+    description: DB YCQL web server is down for 15 minutes
+    queryTemplate: count by (universe_uuid) (max_over_time(up{export_type="cql_export",universe_uuid="__universeUuid__"}[15m]) < 1 and on (universe_uuid,
+      node_address) (min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__", export_type="tserver_export"}[1m])
+      * on(universe_uuid, node_address) min_over_time(ybp_universe_node_function{universe_uuid="__universeUuid__",export_type="cql_export"}[1m])
+      == 1)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name) (max_over_time(up{export_type='cql_export',universe_uuid='{{ $labels.universe_uuid }}'}[15m]) < 1
+        and on (universe_uuid, node_name)
+        (min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}',export_type='tserver_export'}[1m])
+        * on(universe_uuid, node_name, node_address) min_over_time(ybp_universe_node_function{universe_uuid='{{ $labels.universe_uuid }}', export_type='cql_export'}[1m])
+        == 1)) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} DB YCQL web server are down for more than 15 minutes for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  INCREASED_REMOTE_BOOTSTRAPS:
+    name: Increase in remote bootstraps
+    description: Increase in remote bootstraps detected during last 5 minutes
+    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export", service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus", service_method="StartRemoteBootstrap"}[5m]))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: bootstrap(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "sum by (universe_uuid, node_name)
+        (increase(rpc_latency_count{export_type='tserver_export', service_type='ConsensusService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_consensus', service_method='StartRemoteBootstrap'}[5m]))
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Increase in remote bootstraps detected for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  TABLET_SERVER_AVG_READ_LATENCY:
+    name: Tablet server average read latency is high
+    description: Average read latency of tablet server is above threshold
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m]))) 
+      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 500.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average read latency of tablet server for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+        Affected nodes: {{ $labels.affected_node_names }}
+  
+  
+  TABLET_SERVER_AVG_WRITE_LATENCY:
+    name: Tablet server average write latency is high
+    description: Average write latency of tablet server is above threshold
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m]))) 
+      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 500.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average write latency of tablet server for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  REACTOR_DELAYS:
+    name: Reactor delays are high
+    description: Number of milliseconds incoming RPC requests or outbound calls spend in the worker queue before the beginning of processing
+    queryTemplate: max by (universe_uuid) (avg by (universe_uuid, saved_name)(label_replace(rate(rpc_incoming_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "rpc_incoming_queue_time_count", "saved_name", "(.*)")) 
+      / (avg by (universe_uuid, saved_name)(rate(rpc_incoming_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+      or (avg by (universe_uuid, saved_name)(label_replace(rate(handler_latency_outbound_call_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "handler_latency_outbound_call_queue_time_count", "saved_name", "(.*)"))) 
+      / (avg by (universe_uuid, saved_name)(rate(handler_latency_outbound_call_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 30.0
+      SEVERE:
+        threshold: 50.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_count{universe_uuid={{ $labels.universe_uuid }}, export_type='tserver_export'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}
+        or (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))) 
+        / (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Reactor delays for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }} ms.
+        Current value is {{ $value | printf "%.0f" }} ms.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  RPC_QUEUE_SIZE:
+    name: RPC queue size is high
+    description: Number of RPCs in service queue is high. Queue size is an indicator of incoming traffic and throughput.
+    queryTemplate: max by (universe_uuid) (min_over_time({universe_uuid="__universeUuid__", saved_name=~"rpcs_in_queue_.*", export_type="tserver_export"}[5m]) {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 30.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: rpc(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        max by (universe_uuid, node_name) (min_over_time({universe_uuid='{{ $labels.universe_uuid }}', saved_name=~'rpcs_in_queue_.*', export_type='tserver_export'}[5m])
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        RPC queue size is high for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}

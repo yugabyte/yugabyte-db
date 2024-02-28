@@ -46,11 +46,10 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/cdc/cdc_producer.h"
 #include "yb/client/client_fwd.h"
-#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
@@ -66,9 +65,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -83,6 +82,24 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
+
+#define DECLARE_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
+  Result<master::BOOST_PP_CAT(method, ResponsePB)> method( \
+      const master::BOOST_PP_CAT(method, RequestPB)& req);
+
+#define DECLARE_SYNC_LEADER_MASTER_RPC(i, data, set) DECLARE_SYNC_LEADER_MASTER_RPC_IMP set
+
+#define DECLARE_SYNC_LEADER_MASTER_RPCS(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(DECLARE_SYNC_LEADER_MASTER_RPC, ~, rpcs)
+
+// Add the methods that we want to invoke on master leader here.
+// These functions will take a const reference to the request of the corresponding type as input and
+// return a Result of the appropriate response.
+// Ex: Result<SetupUniverseReplicationResponsePB>
+// SetupUniverseReplication(SetupUniverseReplicationRequestPB req);
+#define CLIENT_SYNC_LEADER_MASTER_RPC_LIST \
+  ((Replication, SetupUniverseReplication)) \
+  ((Replication, IsSetupUniverseReplicationDone)) \
 
 template<class T> class scoped_refptr;
 
@@ -103,7 +120,13 @@ class LocalTabletServer;
 class TabletServerServiceProxy;
 }
 
+namespace xcluster {
+YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
+}
+
 namespace client {
+
+YB_STRONGLY_TYPED_BOOL(IncludeNonrunningNamespaces);
 
 struct NamespaceInfo {
     master::NamespaceIdentifierPB id;
@@ -155,6 +178,9 @@ using GetTableLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
+using GetXClusterStreamsCallback =
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)>;
+using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
@@ -335,6 +361,9 @@ class YBClient {
       const std::vector<TableId>& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
 
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+      const std::vector<std::string_view>& table_ids);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -495,9 +524,9 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<NamespaceInfo>> ListNamespaces();
   Result<std::vector<NamespaceInfo>> ListNamespaces(
-      const boost::optional<YQLDatabase>& database_type);
+      IncludeNonrunningNamespaces include_nonrunning = IncludeNonrunningNamespaces::kFalse,
+      std::optional<YQLDatabase> database_type = std::nullopt);
 
   // Get namespace information.
   Status GetNamespaceInfo(const std::string& namespace_id,
@@ -508,9 +537,9 @@ class YBClient {
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
-                               const boost::optional<YQLDatabase>& database_type = boost::none);
+                               const std::optional<YQLDatabase>& database_type = std::nullopt);
   Result<bool> NamespaceIdExists(const std::string& namespace_id,
-                                 const boost::optional<YQLDatabase>& database_type = boost::none);
+                                 const std::optional<YQLDatabase>& database_type = std::nullopt);
 
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
@@ -595,7 +624,9 @@ class YBClient {
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
-      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt);
+      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      uint64_t *consistent_snapshot_time = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -630,11 +661,12 @@ class YBClient {
       NamespaceId* ns_id,
       std::vector<TableId>* table_ids,
       std::unordered_map<std::string, std::string>* options,
-      cdc::StreamModeTransactional* transactional);
+      cdc::StreamModeTransactional* transactional,
+      std::optional<uint64_t>* consistent_snapshot_time = nullptr,
+      std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
+      std::optional<uint64_t>* stream_creation_time = nullptr);
 
-  Status GetCDCStream(
-      const ReplicationSlotName& replication_slot_name,
-      xrepl::StreamId* stream_id);
+  Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
@@ -665,21 +697,51 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
+  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceName>& namespace_names);
+
+  Status GetXClusterStreams(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+
+  Status IsXClusterBootstrapRequired(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
+
+  Status XClusterDeleteOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceName& namespace_name);
+
+  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
+
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const xrepl::StreamId& stream_id,
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
       const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const xrepl::StreamId& stream_id,
-      const tablet::ChangeMetadataRequestPB& meta_info,
-      uint32_t colocation_id,
-      uint32_t producer_schema_version,
-      uint32_t consumer_schema_version,
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+      const tablet::ChangeMetadataRequestPB& meta_info, uint32_t colocation_id,
+      uint32_t producer_schema_version, uint32_t consumer_schema_version,
       master::UpdateConsumerOnProducerMetadataResponsePB* resp);
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const xcluster::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
+
+  Status AddTablesToUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+  Status RemoveTablesFromUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const NamespaceId& namespace_id, const master::XClusterSafeTimeFilter& filter);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -961,6 +1023,8 @@ class YBClient {
   Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
+  DECLARE_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
+
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
@@ -1051,3 +1115,7 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
+
+#undef DECLARE_SYNC_LEADER_MASTER_RPC_IMP
+#undef DECLARE_SYNC_LEADER_MASTER_RPC
+#undef DECLARE_SYNC_LEADER_MASTER_RPCS

@@ -23,6 +23,7 @@ export const NonEditableInUseProviderField: {
 } = {
   [ProviderCode.AWS]: [
     'enableHostedZone',
+    'useIMDSv2',
     'hostedZoneId',
     'vpcSetupType',
     'sshUser',
@@ -47,6 +48,7 @@ export const NonEditableInUseProviderField: {
   ],
   [ProviderCode.GCP]: [
     'gceProject',
+    'sharedVPCProject',
     'vpcSetupType',
     'destVpcId',
     'sshUser',

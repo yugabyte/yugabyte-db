@@ -5576,6 +5576,9 @@ UPDATE alter_table_under_transition_tables
 -- now change 'name' to an integer to see what happens...
 ALTER TABLE alter_table_under_transition_tables
   ALTER COLUMN name TYPE int USING name::integer;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 UPDATE alter_table_under_transition_tables
   SET name = (name::text || name::text)::integer;
 -- now drop column 'name'

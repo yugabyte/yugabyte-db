@@ -4,7 +4,6 @@ headerTitle: Rate limiting connections
 linkTitle: Rate limiting connections
 description: Rate limiting connections in YugabyteDB.
 headcontent: Rate limiting connections in YugabyteDB.
-image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   stable:
     name: Rate limiting connections
@@ -121,3 +120,7 @@ The second connection should fail.
 ```output
 ysqlsh: FATAL:  too many connections for database "test_connection"
 ```
+
+## Learn more
+
+- [YSQL Connection Manager](../../../explore/connection-manager/connection-mgr-ysql/)

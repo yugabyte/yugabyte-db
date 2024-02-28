@@ -4,7 +4,6 @@ import React, { Component, Fragment } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
-
 import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
@@ -17,9 +16,9 @@ import {
   DEFAULT_OUTLIER_NUM_NODES,
   MIN_OUTLIER_NUM_NODES,
   MAX_OUTLIER_NUM_NODES,
-  MAX_OUTLIER_NUM_TABLES,
-  SplitType
+  MAX_OUTLIER_NUM_TABLES
 } from '../../metrics/constants';
+import { SplitType } from '../dtos';
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
@@ -34,8 +33,9 @@ import { NodeTypeSelector } from '../NodeTypeSelector/NodeTypeSelector';
 import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
-
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -70,7 +70,6 @@ const metricMeasureTypes = [
   { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes', k8label: 'Outlier Pods' },
   { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' }
 ];
-
 const DEFAULT_FILTER_KEY = 0;
 const DEFAULT_INTERVAL_KEY = 0;
 const DEFAULT_METRIC_MEASURE_KEY = 0;
@@ -554,7 +553,7 @@ class GraphPanelHeader extends Component {
       origin,
       universe: { currentUniverse },
       prometheusQueryEnabled,
-      customer: { currentUser },
+      customer: { currentUser, runtimeConfigs },
       showModal,
       closeModal,
       visibleModal,
@@ -640,7 +639,6 @@ class GraphPanelHeader extends Component {
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
     const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
-
     return (
       <div className="graph-panel-header">
         <YBPanelItem

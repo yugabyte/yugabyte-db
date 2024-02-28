@@ -194,6 +194,7 @@ DROP TYPE mood;
 -- test basic pushdown on a table with one primary hash key column
 CREATE TABLE test_table_one_primary (x INT PRIMARY KEY, y INT);
 INSERT INTO test_table_one_primary SELECT i,i FROM generate_series(1, 10000) i;
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
                                            QUERY PLAN
 ------------------------------------------------------------------------------------------------
@@ -229,7 +230,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) 
 ------------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
    Sort Key: x
-   Sort Method: quicksort  Memory: 25kB
+   Sort Method: quicksort
    ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=3 loops=1)
          Index Cond: ((x = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(x) < 50000))
          Rows Removed by Index Recheck: 1
@@ -357,7 +358,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 512)
-   Remote Filter: (x < 90)
+   Storage Filter: (x < 90)
 (3 rows)
 
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
@@ -584,7 +585,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
 ----------------------------------------------------------------------------------------------------------
  Sort (actual rows=8 loops=1)
    Sort Key: h1
-   Sort Method: quicksort  Memory: 26kB
+   Sort Method: quicksort
    ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
          Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (5 rows)
@@ -608,7 +609,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
  Limit (actual rows=3 loops=1)
    ->  Sort (actual rows=3 loops=1)
          Sort Key: h1
-         Sort Method: top-N heapsort  Memory: 25kB
+         Sort Method: top-N heapsort
          ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
                Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (6 rows)

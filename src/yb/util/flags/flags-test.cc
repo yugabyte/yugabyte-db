@@ -61,23 +61,22 @@ TEST_F(FlagsTest, TestVmodule) {
 
   // Set to invalid value
   string old_value, output_msg;
-  auto res = SetFlag("vmodule", "BadValue", SetFlagForce::kFalse, &old_value, &output_msg);
-  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+  ASSERT_DEATH(
+      SetFlag("vmodule", "BadValue", SetFlagForce::kFalse, &old_value, &output_msg),
+      "'BadValue' is not valid");
 
-  res = SetFlag("vmodule", "files=", SetFlagForce::kFalse, &old_value, &output_msg);
-  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+  ASSERT_DEATH(
+      SetFlag("vmodule", "files=", SetFlagForce::kFalse, &old_value, &output_msg),
+      "'files=' is not valid");
 
-  res =
-      SetFlag("vmodule", "biggerThanInt=2147483648", SetFlagForce::kFalse, &old_value, &output_msg);
-  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
-
-  res = SetFlag("vmodule", "files=-1b", SetFlagForce::kFalse, &old_value, &output_msg);
-  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+  ASSERT_DEATH(
+      SetFlag("vmodule", "biggerThanInt=2147483648", SetFlagForce::kFalse, &old_value, &output_msg),
+      "'2147483648' is not a valid integer number");
 
   ASSERT_EQ(FLAGS_vmodule, expected_old);
   ASSERT_FALSE(VLOG_IS_ON(1));
 
-  res = SetFlag("vmodule", "", SetFlagForce::kFalse, &old_value, &output_msg);
+  auto res = SetFlag("vmodule", "", SetFlagForce::kFalse, &old_value, &output_msg);
   ASSERT_EQ(res, SetFlagResult::SUCCESS);
   ASSERT_EQ(old_value, expected_old);
   ASSERT_EQ(FLAGS_vmodule, "");

@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Users.UserType;
+import static com.yugabyte.yw.common.Util.getRandomPassword;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -42,7 +41,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -60,8 +58,6 @@ import play.mvc.Result;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
-  private static final List<String> specialCharacters =
-      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   @Inject private RuntimeConfGetter confGetter;
 
@@ -173,19 +169,13 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, UserRegisterFormData.class);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
-      byte[] passwordOidc = new byte[16];
-      new Random().nextBytes(passwordOidc);
-      String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
-      // To be consistent with password policy
-      Integer randomInt = new Random().nextInt(26);
-      String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-      String uppercaseLetter = lowercaseLetter.toUpperCase();
-      generatedPassword +=
-          (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
-              + lowercaseLetter
-              + uppercaseLetter
-              + String.valueOf(randomInt));
-      formData.setPassword(generatedPassword); // Password is not used.
+
+      if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Manual user creation not allowed with OIDC setup!");
+      }
+
+      formData.setPassword(getRandomPassword()); // Password is not used.
     }
 
     // Validate password.
@@ -206,8 +196,6 @@ public class UsersController extends AuthenticatedController {
       // Case 1:
       // Check the role field. Original API use case. To be deprecated.
       if (formData.getRole() != null && formData.getRoleResourceDefinitions() == null) {
-        // Get the built-in role UUID by name.
-        Role role = Role.getOrBadRequest(customerUUID, formData.getRole().toString());
         // Create the user.
         user =
             Users.create(
@@ -216,21 +204,7 @@ public class UsersController extends AuthenticatedController {
                 formData.getRole(),
                 customerUUID,
                 false);
-        // Need to define all available resources in resource group as default.
-        ResourceGroup resourceGroup =
-            ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
-        // Create a single role binding for the user.
-        List<RoleBinding> createdRoleBindings =
-            roleBindingUtil.setUserRoleBindings(
-                user.getUuid(),
-                Arrays.asList(new RoleResourceDefinition(role.getRoleUUID(), resourceGroup)),
-                RoleBindingType.Custom);
-
-        LOG.info(
-            "Created user '{}', email '{}', default role bindings '{}'.",
-            user.getUuid(),
-            user.getEmail(),
-            createdRoleBindings.toString());
+        roleBindingUtil.createRoleBindingsForSystemRole(user);
       }
 
       // Case 2:
@@ -382,6 +356,11 @@ public class UsersController extends AuthenticatedController {
     if (UserType.ldap == user.getUserType() && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
+    // If OIDC is setup, the IdP should be the single source of truth for users' roles
+    if (user.getUserType().equals(UserType.oidc)
+        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for OIDC user.");
+    }
     if (Users.Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
@@ -518,7 +497,11 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request, UserProfileFormData.class);
 
     UserProfileFormData formData = form.get();
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    Users loggedInUser = getLoggedInUser(request);
 
+    // Password validation for both old RBAC and new RBAC is same.
     if (StringUtils.isNotEmpty(formData.getPassword())) {
       if (UserType.ldap == user.getUserType()) {
         throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
@@ -537,36 +520,58 @@ public class UsersController extends AuthenticatedController {
       user.setPassword(formData.getPassword());
     }
 
-    Users loggedInUser = getLoggedInUser(request);
-    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
-        && formData.getRole() != user.getRole()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
-    }
-
-    if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
-        && !formData.getTimezone().equals(user.getTimezone())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
-    }
-
-    if (!formData.getTimezone().equals(user.getTimezone())) {
-      user.setTimezone(formData.getTimezone());
-    }
-    if (formData.getRole() != user.getRole()) {
-      if (Users.Role.SuperAdmin == user.getRole()) {
-        throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+    if (useNewAuthz) {
+      // Timezone validation for new RBAC.
+      // No explicit validation required as the API is already authorized with the required
+      // permissions.
+      if (formData.getTimezone() != null && !formData.getTimezone().equals(user.getTimezone())) {
+        user.setTimezone(formData.getTimezone());
       }
-
-      if (formData.getRole() == Users.Role.SuperAdmin) {
+    } else {
+      // Timezone validation for old RBAC.
+      if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+          && !formData.getTimezone().equals(user.getTimezone())) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+            BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
       }
 
-      if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
-        throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+      // Set the timezone if edited to a correct value.
+      if (formData.getTimezone() != null && !formData.getTimezone().equals(user.getTimezone())) {
+        user.setTimezone(formData.getTimezone());
       }
-      user.setRole(formData.getRole());
+    }
+
+    if (useNewAuthz) {
+      // Role validation for new RBAC.
+      if (formData.getRole() != null && formData.getRole() != user.getRole()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Wrong API to change users role when new authz is enabled. "
+                + "Use setRoleBinding API(/customers/:cUUID/rbac/role_binding/:userUUID) instead");
+      }
+    } else {
+      // Role validation for old RBAC.
+      if (loggedInUser.getRole().compareTo(Users.Role.BackupAdmin) <= 0
+          && formData.getRole() != user.getRole()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "ConnectOnly/ReadOnly/BackupAdmin users can't change their assigned roles");
+      }
+      if (formData.getRole() != user.getRole()) {
+        if (Users.Role.SuperAdmin == user.getRole()) {
+          throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+        }
+
+        if (formData.getRole() == Users.Role.SuperAdmin) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Can't Assign the role of SuperAdmin to another user.");
+        }
+
+        if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
+          throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+        }
+        user.setRole(formData.getRole());
+      }
     }
     auditService()
         .createAuditEntryWithReqBody(

@@ -3,7 +3,6 @@ title: Create a Sandbox cluster
 linkTitle: Sandbox
 description: Create Sandbox clusters in YugabyteDB Managed.
 headcontent: Free forever
-image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
   - /preview/yugabyte-cloud/free-tier/
@@ -104,5 +103,5 @@ YugabyteDB is a distributed database optimized for deployment across multiple no
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../develop/build-apps/)
+- [Build an application](../../../../tutorials/build-apps/)
 - [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)

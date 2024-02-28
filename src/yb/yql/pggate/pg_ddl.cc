@@ -177,7 +177,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
                              bool is_matview,
-                             const PgObjectId& matview_pg_table_oid)
+                             const PgObjectId& pg_table_oid,
+                             const PgObjectId& old_relfilenode_oid)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
   req_.set_database_name(database_name);
@@ -195,7 +196,8 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
   req_.set_is_matview(is_matview);
-  matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
+  pg_table_oid.ToPB(req_.mutable_pg_table_oid());
+  old_relfilenode_oid.ToPB(req_.mutable_old_relfilenode_oid());
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
@@ -442,13 +444,27 @@ Status PgDropDBSequences::Exec() {
 
 PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                                                  const char *slot_name,
-                                                 PgOid database_oid)
+                                                 PgOid database_oid,
+                                                 YBCPgReplicationSlotSnapshotAction snapshot_action)
     : PgDdl(pg_session) {
   req_.set_database_oid(database_oid);
   req_.set_replication_slot_name(slot_name);
+
+  switch (snapshot_action) {
+    case YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_NOEXPORT_SNAPSHOT);
+      break;
+    case YB_REPLICATION_SLOT_USE_SNAPSHOT:
+      req_.set_snapshot_action(
+          tserver::PgReplicationSlotSnapshotActionPB::REPLICATION_SLOT_USE_SNAPSHOT);
+      break;
+    default:
+      DCHECK(false) << "Unknown snapshot_action " << snapshot_action;
+  }
 }
 
-Status PgCreateReplicationSlot::Exec() {
+Result<tserver::PgCreateReplicationSlotResponsePB> PgCreateReplicationSlot::Exec() {
   return pg_session_->pg_client().CreateReplicationSlot(&req_, DdlDeadline());
 }
 

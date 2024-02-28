@@ -148,7 +148,8 @@ class PgCreateTable : public PgDdl {
                 const ColocationId colocation_id,
                 const PgObjectId& tablespace_oid,
                 bool is_matview,
-                const PgObjectId& matview_pg_table_oid);
+                const PgObjectId& pg_table_oid,
+                const PgObjectId& old_relfilenode_oid);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
@@ -317,9 +318,10 @@ class PgCreateReplicationSlot : public PgDdl {
  public:
   PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                           const char *slot_name,
-                          PgOid database_oid);
+                          PgOid database_oid,
+                          YBCPgReplicationSlotSnapshotAction snapshot_action);
 
-  Status Exec();
+  Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 
   virtual ~PgCreateReplicationSlot();
 

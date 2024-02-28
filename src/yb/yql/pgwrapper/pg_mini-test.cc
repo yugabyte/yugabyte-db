@@ -37,6 +37,8 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -88,6 +90,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
@@ -116,7 +119,7 @@ namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<int32>(Format(
+    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
     return conn->FetchRow<PGUint64>(
         Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
@@ -177,7 +180,7 @@ class PgMiniTestFailOnConflict : public PgMiniTest {
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    EnableFailOnConflict();
     PgMiniTest::SetUp();
   }
 };
@@ -384,6 +387,85 @@ TEST_F(PgMiniTest, Simple) {
 
   auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+class PgMiniAsh : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_ash) = true;
+    PgMiniTestSingleNode::SetUp();
+  }
+};
+
+TEST_F(PgMiniAsh, YB_DISABLE_TEST_IN_TSAN(Ash)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i++) {
+      ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+    }
+  });
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i++) {
+      auto values = ASSERT_RESULT(
+          conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
+    }
+  });
+
+  auto pg_proxy = std::make_unique<tserver::PgClientServiceProxy>(
+      &client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+
+  int kNumCalls = 100;
+  tserver::PgActiveSessionHistoryRequestPB req;
+  req.set_fetch_tserver_states(true);
+  req.set_fetch_flush_and_compaction_states(true);
+  req.set_fetch_cql_states(true);
+  tserver::PgActiveSessionHistoryResponsePB resp;
+  rpc::RpcController controller;
+  std::unordered_map<std::string, size_t> method_counts;
+  int calls_without_aux_info_details = 0;
+  for (int i = 0; i < kNumCalls; ++i) {
+    ASSERT_OK(pg_proxy->ActiveSessionHistory(req, &resp, &controller));
+    VLOG(1) << "Call " << i << " got " << yb::ToString(resp);
+    controller.Reset();
+    SleepFor(10ms);
+    int idx = 0;
+    for (auto& entry : resp.tserver_wait_states().wait_states()) {
+      VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
+      if (entry.has_aux_info() && entry.aux_info().has_method()) {
+        ++method_counts[entry.aux_info().method()];
+      } else {
+        LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
+        // If an RPC does not have the aux/method information, it shouldn't have progressed much.
+        if (entry.has_wait_status_code_as_string()) {
+          ASSERT_EQ(entry.wait_status_code_as_string(), "OnCpu_Passive");
+        }
+        ++calls_without_aux_info_details;
+      }
+    }
+  }
+  thread_holder.Stop();
+
+  ASSERT_LE(method_counts["Read"], kNumCalls);
+  ASSERT_LE(method_counts["Write"], kNumCalls);
+  ASSERT_LE(method_counts["Perform"], 2 * kNumCalls);
+  // Given that we have explicitly slowed down the WriteRpc, we hope to catch it
+  // at least half the time.
+  constexpr float kProbCatchPerform = 0.5;
+  ASSERT_GE(method_counts["Write"], kNumCalls * kProbCatchPerform);
+  ASSERT_GE(method_counts["Perform"], kNumCalls * kProbCatchPerform);
+
+  // It is acceptable that some calls may not have populated their aux_info yet.
+  // This probability should be very low.
+  constexpr float kProbNoMethod = 0.1;
+  ASSERT_LE(calls_without_aux_info_details, 2 * kNumCalls * kProbNoMethod);
 }
 
 TEST_F(PgMiniTest, Tracing) {
@@ -800,6 +882,29 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
               kTableName, ++key, RandomHumanReadableString(kValueSize)));
     return false;
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
+}
+
+TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
+  const std::string kDatabaseName = "testdb";
+  constexpr auto kNumRows = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocation=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int, primary key(k ASC)) with (colocation=true)"));
+
+  LOG(INFO) << "Loading data";
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series(1, $0) i", kNumRows));
+
+  ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 10"));
+  ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+  ASSERT_OK(conn.Execute("SET force_parallel_mode = TRUE"));
+
+  LOG(INFO) << "Starting scan";
+  auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
@@ -1884,8 +1989,8 @@ int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
 TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (h int, r int, primary key(h, r))"));
-  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i / 10, i % 10"
-                         "FROM generate_series(1, 500) i"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i / 10, i % 10 FROM generate_series(1, 500) i"));
 
   FlushAndCompactTablets();
 

@@ -34,7 +34,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
  protected:
   ConnectionContextWithCallId();
 
-  Status Store(InboundCall* call);
+  Status Store(const InboundCallPtr& call);
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
 
   uint64_t ProcessedCallCount() override {
@@ -53,7 +53,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
 
   // Calls which have been received on the server and are currently
   // being handled.
-  std::unordered_map<uint64_t, InboundCall*> calls_being_handled_;
+  std::unordered_map<uint64_t, InboundCallWeakPtr> calls_being_handled_;
   std::atomic<uint64_t> processed_call_count_{0};
   IdleListener idle_listener_;
 };

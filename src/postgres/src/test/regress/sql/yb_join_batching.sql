@@ -88,6 +88,54 @@ DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
 
+CREATE TABLE strtable(a varchar(26), b varchar(23), primary key(a, b));
+CREATE TABLE strtable2(a varchar(26), b varchar(23), primary key(a, b));
+INSERT INTO strtable VALUES ('123', 'abc'), ('1234', 'abcd'), ('123', 'pqr');
+INSERT INTO strtable2 VALUES ('123', 'abc'), ('123', 'abcd'), ('123', 'pqr');
+
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
+SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a;
+
+EXPLAIN (COSTS OFF) SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
+SELECT * FROM strtable, strtable2 WHERE strtable.a = strtable2.a AND strtable.b = strtable2.b;
+
+DROP TABLE strtable;
+DROP TABLE strtable2;
+
+create table q1 (a double precision, b double precision, primary key (a, b));
+insert into q1 values (12.34, 99.99), (12.345, 99.99);
+create table q2 (a decimal(6, 2), b decimal(6, 2), primary key (a, b));
+insert into q2 values (12.34, 99.99), (12.345, 99.99);
+explain (costs off) select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
+select * from q1, q2 where q1.a = q2.a and q1.b = q2.b;
+
+create table q3 (a char(6), b char(6), primary key (a, b));
+insert into q3 values ('abc', 'def'), ('xyz', 'uvw');
+create table q4 (a varchar(6), b varchar(6), primary key (a, b));
+insert into q4 values ('abc  ', 'def  '), ('xyz', 'uvw');
+explain (costs off) select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+
+explain (costs off) select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
+select * from q1, q2 where q1.a::decimal = q2.a and q1.b::decimal = q2.b;
+explain (costs off) select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
+select * from q1, q2 where q1.a = q2.a::decimal and q1.b = q2.b::decimal;
+explain (costs off) select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+explain (costs off) select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
+select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
+
+explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
+
+explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+/*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a::text = q4.a and q3.b::text = q4.b;
+
+drop table q1;
+drop table q2;
+drop table q3;
+drop table q4;
+
 create table d1(a int, primary key(a));
 create table d2(a int, primary key(a));
 create table d3(a int, primary key(a));
@@ -148,14 +196,60 @@ CREATE TABLE int2type (a int2, PRIMARY KEY(a ASC));
 INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 
 -- testing batching on join conditions across different types (int2, int4)
--- We shouldn't cause any casting on inner expressions.
 /*+Leading((i2 p))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 /*+Leading((i2 p))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
--- This shouldn't be batched as the LHS of the batched IN expression would
--- have a cast.
 /*+Leading((p i2))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 /*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 DROP TABLE int2type;
+
+create table floattable1(a float8, b float4, primary key(a asc, b asc));
+create table floattable2(a float4, b float8, primary key(a asc, b asc));
+insert into floattable2 values (1.12312, 29401.212931231);
+insert into floattable2 values (1.12312, 2941.212931231);
+insert into floattable1 select * from floattable2;
+explain (costs off) /*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+/*+Leading((f2 f1)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+
+-- We don't support float4 IN <float8 values> yet
+explain (costs off) /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+/*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from floattable1 f1, floattable2 f2 where f1.a = f2.a;
+
+drop table floattable1;
+drop table floattable2;
+
+create table ss1(a bigint, b int, primary key(a asc, b asc));
+create table ss2(a int, b bigint, primary key(a asc, b asc));
+-- 0x8000000000000001 should not join with 1 and 0x8000000000000002 should not join with 2
+insert into ss1 values (1,2), (3,4), (x'8000000000000001'::bigint, 1);
+insert into ss2 values (1,2), (3,4), (1,1), (1, x'8000000000000002'::bigint);
+explain (costs off) /*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+/*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+/*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+drop table ss1;
+drop table ss2;
+
+create table ss1(a int, b float8, primary key(a asc, b asc));
+create table ss2(a bigint, b float4, primary key(a asc, b asc));
+insert into ss1 values (1, 0.0), (1, 0.5), (3, 0.625), (2, 0.625 + POW(2, -25)), (2, 0.625);
+insert into ss2 values (1, 0.0), (1, 0.5), (x'8000000000000001'::bigint, 0.5), (2, 0.625);
+explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+/*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+drop table ss1;
+drop table ss2;
+
+create table ss1(a timestamp primary key);
+create table ss2(a date primary key);
+insert into ss1 values (to_timestamp('27 Nov 2100 08:14:30', 'DD MON YYYY HH:MI:SS')), (to_timestamp('27 Nov 2100', 'DD MON YYYY'));
+insert into ss2 values (to_date('27 Nov 2100 08:14:30', 'DD MON YYYY')), (to_date('27 Feb 2010 08:14:30', 'DD MON YYYY'));
+explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a;
+/*+YbBatchedNL(ss1 ss2) Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a;
+explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a;
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a;
+drop table ss1;
+drop table ss2;
 
 CREATE TABLE q1(a int);
 CREATE TABLE q2(a int);
@@ -265,6 +359,39 @@ SET yb_bnl_batch_size = 3;
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+
+create index on q2(c1 asc);
+create table q3(c1 int, c2 int, c3 int, primary key(c3 desc));
+insert into q3 select i, i, i from generate_series(0,999) i;
+
+/*+Leading((q3 q2))*/explain (costs off) select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+/*+Leading((q3 q2))*/select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+
+drop index q2_c1_idx;
+drop table q3;
+CREATE TABLE q1nulls (a int, b int);
+CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
+INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
+INSERT INTO q1nulls VALUES (null, 9), (null, 8), (null, 8);
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+
+DROP TABLE q1nulls;
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 
@@ -283,6 +410,19 @@ explain (costs off) SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 =
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+
+create table ss1(a int, primary key(a asc));
+insert into ss1 select generate_series(1,5);
+create table ss2(a int, b int, primary key(a asc, b asc));
+insert into ss2 select i, i from generate_series(1,5) i;
+insert into ss2 select i, i+1 from generate_series(1,5) i;
+analyze ss1;
+analyze ss2;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+
+drop table ss1;
+drop table ss2;
 
 create table q1(a int, b int);
 create table q2(a int, b int);
@@ -352,6 +492,8 @@ analyze p1;
 analyze p2;
 analyze p3;
 
+set yb_prefer_bnl = off;
+
 -- The following hints try to force an illegal BNL
 /*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
@@ -366,9 +508,79 @@ p3.a = p1.a + p2.a;
 /*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
 
+set yb_prefer_bnl = on;
+
 drop table p1;
 drop table p2;
 drop table p3;
+
+-- Test the scenarios where parameterized column values from the outer most
+-- loop (x1) are used at difference nesting levels (x2 and x3).
+CREATE TABLE x1 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x1_b ON x1 (b);
+INSERT INTO x1 VALUES (1, 0), (2, 1), (3, 0), (4, 1), (5, 2), (6, 3);
+
+CREATE TABLE x2 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x2_b ON x2 (b);
+INSERT INTO x2 VALUES (1, 0), (2, 1), (3, 0), (4, 1);
+
+CREATE TABLE x3 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x3_b ON x3 (b);
+INSERT INTO x3 VALUES (1, 0), (2, 1), (5, 2), (6, 3);
+
+ANALYZE x1;
+ANALYZE x2;
+ANALYZE x3;
+
+-- Before 8ac82f4247 (2.21.0.0-b227), the planner was producing incorrect plans
+-- for the following queries, but the results happened to be correct with smaller
+-- batch size e.g. 2, 3, etc.
+SET yb_bnl_batch_size = 10;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+
+DROP TABLE x1;
+DROP TABLE x2;
+DROP TABLE x3;
+
+SET yb_bnl_batch_size = 3;
+
 --
 --
 -- Inner joins (equi-joins)
@@ -617,3 +829,27 @@ EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT 
 
 /*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
 EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);
+
+create table ss1 (a int, b int);
+create table ss2(a int, b int);
+create table ss3(a int, b int);
+create index on ss3(a asc);
+insert into ss1 values (1,1), (1,2);
+insert into ss2 values (1,1), (1,2);
+insert into ss3 values (1,1), (1,3);
+
+explain (costs off) /*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+
+/*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+
+drop table ss1;
+drop table ss2;
+drop table ss3;

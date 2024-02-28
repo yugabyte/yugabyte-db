@@ -2,7 +2,6 @@
 title: Partial indexes
 linkTitle: Partial indexes
 description: Using Partial indexes in YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: partial-index-ycql

@@ -108,11 +108,11 @@ public class AccessKeyController extends AuthenticatedController {
   // TODO: Move this endpoint under region since this api is per region
   @ApiOperation(
       nickname = "createAccesskey",
-      value =
-          "Deprecated since YBA version 2.20.0.0, "
+      value = "Create/Upload Access Key for onprem provider region - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
               + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/edit instead"
               + " for adding the key",
-      notes = "UNSTABLE - This API will undergo changes in future.",
       response = AccessKey.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -147,7 +147,8 @@ public class AccessKeyController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "editAccesskey",
-      value = "WARNING: This is a preview API that could change. Modify the existing access Key",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Modify the existing access Key",
       response = AccessKey.class)
   @ApiImplicitParams(
       @ApiImplicitParam(

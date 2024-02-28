@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
 import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
-import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
@@ -14,7 +14,7 @@ import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
-  XClusterConfigType
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
   getTablesForBootstrapping,
@@ -99,15 +99,12 @@ export const AddTableModal = ({
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
 
   const configTablesMutation = useMutation(
@@ -273,7 +270,8 @@ export const AddTableModal = ({
           sourceUniverse,
           sourceUniverseTables,
           isTableSelectionValidated,
-          xClusterConfig.type,
+          xClusterConfig,
+          xClusterConfigTableType,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -349,7 +347,8 @@ const validateForm = async (
   sourceUniverse: Universe,
   sourceUniverseTables: YBTable[],
   isTableSelectionValidated: boolean,
-  xClusterConfigType: XClusterConfigType,
+  xClusterConfig: XClusterConfig,
+  tableType: TableType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -367,9 +366,14 @@ const validateForm = async (
       }
       if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
         errors.tableUUIDs = {
-          title: 'No tables selected.',
-          body: 'Select at least 1 table to proceed'
+          title: `No ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+          } selected.`,
+          body: `Select at least 1 ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+          } to proceed`
         };
+        throw errors;
       }
       let bootstrapTableUUIDs: string[] | null = null;
       try {
@@ -380,7 +384,9 @@ const validateForm = async (
           sourceUniverse.universeUUID,
           null /* targetUniverseUUID */,
           sourceUniverseTables,
-          xClusterConfigType
+          xClusterConfig.tables,
+          xClusterConfig.type,
+          xClusterConfig.usedForDr
         );
       } catch (error: any) {
         toast.error(
@@ -417,8 +423,8 @@ const validateForm = async (
 
           if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
             warning.tableUUIDs = {
-              title: 'Insufficient disk space.',
-              body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+              title: 'Warning: You may need additional disk space.',
+              body: `Some selected tables require a full copy. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
             };
           }
         }
@@ -451,11 +457,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Bootstrap';
+        return 'Next: Configure Full Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Bootstrap and Enable Replication';
+      return 'Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }

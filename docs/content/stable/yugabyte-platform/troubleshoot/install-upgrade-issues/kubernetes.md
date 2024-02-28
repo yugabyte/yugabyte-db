@@ -1,6 +1,6 @@
 ---
 title: Install and upgrade issues on Kubernetes
-headerTitle: Install and upgrade issues on Kubernetes
+headerTitle: Install and upgrade issues
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on Kubernetes.
 menu:
@@ -13,13 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
- <li>
-    <a href="../vm/" class="nav-link">
+  <li>
+    <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
+  <li>
+    <a href="../vm/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
       Virtual machine </a>
   </li>
 
-<li>
+  <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
@@ -30,7 +36,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues.
 
-If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 For more information, see the following:
 
@@ -121,7 +127,7 @@ If the issue you are experiencing is due to the incorrect setting for the storag
 Events:
   Type     Reason             Age                From                Message
   ----     ------             ----               ----                -------
-Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes are available: 19 Insufficient cpu, 36 node(s) didn't match Pod's node affinity/selector
+Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/10 nodes are available: 3 node(s) had volume node affinity conflict, 7 node(s) didn't match Pod's node affinity/selector.
 ```
 
 You can obtain information related to storage classes, as follows:

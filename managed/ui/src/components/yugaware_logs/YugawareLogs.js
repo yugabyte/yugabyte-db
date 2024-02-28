@@ -123,7 +123,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
       endDateFromParam
     );
     fetchUniverseList().then((resp) => {
-      const universesOptions = resp.map((uni) => {
+      const universesOptions = resp?.map((uni) => {
         return {
           label: uni.name,
           value: uni.name

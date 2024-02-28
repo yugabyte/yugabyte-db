@@ -48,7 +48,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -355,10 +355,9 @@ public class GCPProjectApiClient {
   public Compute buildComputeClient(GCPCloudInfo cloudInfo)
       throws GeneralSecurityException, IOException {
     ObjectMapper mapper = Json.mapper();
-    JsonNode gcpCredentials = cloudInfo.getGceApplicationCredentials();
+    JsonNode gceCreds = mapper.readTree(cloudInfo.getGceApplicationCredentials());
     GoogleCredentials credentials =
-        GoogleCredentials.fromStream(
-            new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));
+        GoogleCredentials.fromStream(new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
     HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
     HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
     // Create Compute Engine object.

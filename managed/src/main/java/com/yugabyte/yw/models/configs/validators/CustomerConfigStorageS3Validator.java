@@ -9,8 +9,9 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.BeanValidator;
-import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
+import com.yugabyte.yw.common.CloudUtil.CloudLocationInfo;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
@@ -60,7 +61,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     if (StringUtils.isEmpty(s3data.awsAccessKeyId)
         || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
       if (!s3data.isIAMInstanceProfile) {
-        throwBeanValidatorError(
+        throwBeanConfigDataValidatorError(
             CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
             "Aws credentials are null and IAM profile is not used.");
       }
@@ -76,15 +77,19 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         s3Client = factory.createS3Client(s3data);
       } catch (AmazonS3Exception s3Exception) {
         exceptionMsg = s3Exception.getErrorMessage();
-        throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
+        throwBeanConfigDataValidatorError(
+            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
       }
 
       validateBucket(
-          s3Client, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, s3data.backupLocation);
+          s3Client,
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
+          s3data,
+          YbcBackupUtil.DEFAULT_REGION_STRING);
       if (s3data.regionLocations != null) {
         for (RegionLocations location : s3data.regionLocations) {
           if (StringUtils.isEmpty(location.region)) {
-            throwBeanValidatorError(
+            throwBeanConfigDataValidatorError(
                 CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
           }
           validateUrl(
@@ -92,7 +97,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
           validateUrl(
               CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
           validateBucket(
-              s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
+              s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, s3data, location.region);
         }
       }
 
@@ -104,26 +109,27 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     }
   }
 
-  private void validateBucket(AmazonS3 client, String fieldName, String s3UriPath) {
-    String s3Uri = s3UriPath;
-
+  private void validateBucket(
+      AmazonS3 client, String fieldName, CustomerConfigStorageS3Data s3Data, String region) {
+    String s3UriPath = awsUtil.getRegionLocationsMap(s3Data).get(region);
     // Assuming bucket name will always start with s3:// otherwise that will be
     // invalid.
     if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
       String exceptionMsg = "Invalid s3UriPath format: " + s3UriPath;
-      throwBeanValidatorError(fieldName, exceptionMsg);
+      throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
     } else {
       try {
-        ConfigLocationInfo configLocationInfo = awsUtil.getConfigLocationInfo(s3UriPath);
+        CloudLocationInfo configLocationInfo =
+            awsUtil.getCloudLocationInfo(region, s3Data, s3UriPath);
         awsUtil.validateOnBucket(
             client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
       } catch (AmazonS3Exception s3Exception) {
         String exceptionMsg = s3Exception.getErrorMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))
-          exceptionMsg += " " + s3Uri;
-        throwBeanValidatorError(fieldName, exceptionMsg);
+          exceptionMsg += " " + s3UriPath;
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
       } catch (SdkClientException e) {
-        throwBeanValidatorError(fieldName, e.getMessage());
+        throwBeanConfigDataValidatorError(fieldName, e.getMessage());
       }
     }
   }

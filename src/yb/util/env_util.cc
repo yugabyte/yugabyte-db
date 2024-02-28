@@ -54,10 +54,16 @@ namespace env_util {
 // ~/code/yugabyte__build. This will prevent IDEs from trying to parse build artifacts.
 const string kExternalBuildDirSuffix = "__build";
 
-std::string GetRootDir(const string& search_for_dir) {
+namespace {
+
+// FindRootDir returns both a Status and a path. When the Status is not OK, we have failed to find
+// the suitable "Yugabyte distribution root" directory, and the path returned is a default path
+// ("" if we could not get the directory of the current executable, or the directory
+// of the current executable) which is returned by GetRootDir.
+std::pair<Status, std::string> FindRootDir(const std::string& search_for_dir) {
   char* yb_home = getenv("YB_HOME");
   if (yb_home) {
-    return yb_home;
+    return {Status::OK(), yb_home};
   }
 
   // If YB_HOME is not set, we use the path where the binary is located
@@ -66,11 +72,10 @@ std::string GetRootDir(const string& search_for_dir) {
   // the directory where the current binary (yb-tserver, or yb-master) is located.
   // During each iteration, we keep going up one directory and do the search again.
   // If we can't find a directory that contains "www", we return a default value for now.
-  string executable_path;
+  std::string executable_path;
   auto status = Env::Default()->GetExecutablePath(&executable_path);
   if (!status.ok()) {
-    LOG(WARNING) << "Ignoring status error: " << status.ToString();
-    return "";
+    return {status, ""};
   }
 
   auto path = executable_path;
@@ -93,17 +98,35 @@ std::string GetRootDir(const string& search_for_dir) {
         continue;
       }
       if (is_dir) {
-        return candidate_path;
+        return {Status::OK(), candidate_path};
       }
     }
   }
 
-  LOG(ERROR) << "Unable to find '" << search_for_dir
-             << "' directory by starting the search at path " << DirName(executable_path)
-             << " and walking up the directory structure";
+  return {
+      STATUS_SUBSTITUTE(
+          NotFound,
+          "Unable to find '$0' directory by starting the search at path $1 and walking up "
+          "directory structure",
+          search_for_dir,
+          DirName(executable_path)),
+      DirName(DirName(executable_path))};
+}
 
-  // Return a path.
-  return DirName(DirName(executable_path));
+} // namespace
+
+std::string GetRootDir(const std::string& search_for_dir) {
+  auto [status, path] = FindRootDir(search_for_dir);
+  if (!status.ok()) {
+    LOG(ERROR) << status.ToString();
+  }
+  return path;
+}
+
+Result<std::string> GetRootDirResult(const std::string& search_for_dir) {
+  auto [status, path] = FindRootDir(search_for_dir);
+  RETURN_NOT_OK(status);
+  return path;
 }
 
 Status OpenFileForWrite(Env* env, const string& path,

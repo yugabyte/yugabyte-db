@@ -48,6 +48,8 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -59,6 +61,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
@@ -230,7 +233,7 @@ class TransactionParticipant::Impl
 
   void CompleteShutdown() EXCLUDES(mutex_, status_resolvers_mutex_) {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
-
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::CompleteShutdown");
     if (wait_queue_) {
       wait_queue_->CompleteShutdown();
     }
@@ -254,12 +257,11 @@ class TransactionParticipant::Impl
       std::lock_guard lock(status_resolvers_mutex_);
       status_resolvers.swap(status_resolvers_);
     }
-
-    rpcs_.Shutdown();
     loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
+    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
@@ -353,7 +355,7 @@ class TransactionParticipant::Impl
       return STATUS(NotFound, "RocksDB has been shut down.");
     }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
-                                             key_bounds_,
+                                             db_.key_bounds,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
@@ -491,7 +493,7 @@ class TransactionParticipant::Impl
     }
 
     if (notify_completed) {
-      requests_completed_cond_.notify_all();
+      YB_PROFILE(requests_completed_cond_.notify_all());
     }
   }
 
@@ -862,6 +864,20 @@ class TransactionParticipant::Impl
       return;
     }
 
+    auto client_future = participant_context_.client_future();
+    if (!IsReady(client_future)) {
+      std::lock_guard lock(pending_applies_mutex_);
+      if (!IsReady(client_future)) {
+        pending_applies_.emplace_back(status_tablet, transaction_id);
+        return;
+      }
+    }
+
+    DoNotifyApplied(client_future.get(), status_tablet, transaction_id);
+  }
+
+  void DoNotifyApplied(client::YBClient* client, const TabletId& status_tablet,
+                       const TransactionId& transaction_id) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet);
     req.set_propagated_hybrid_time(participant_context_.Now().ToUint64());
@@ -869,18 +885,13 @@ class TransactionParticipant::Impl
     state.set_transaction_id(transaction_id.data(), transaction_id.size());
     state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
     state.add_tablets(participant_context_.tablet_id());
-    auto client_result = participant_context_.client();
-    if (!client_result.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Get client failed: " << client_result.status();
-      return;
-    }
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
       *handle = UpdateTransaction(
           TransactionRpcDeadline(),
           nullptr /* remote_tablet */,
-          *client_result,
+          client,
           &req,
           [this, handle](const Status& status,
                          const tserver::UpdateTransactionRequestPB& req,
@@ -942,11 +953,10 @@ class TransactionParticipant::Impl
   }
 
   Status SetDB(
-      const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
+      const docdb::DocDB& db,
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
     bool had_db = db_.intents != nullptr;
     db_ = db;
-    key_bounds_ = key_bounds;
     pending_op_counter_blocking_rocksdb_shutdown_start_ =
         pending_op_counter_blocking_rocksdb_shutdown_start;
 
@@ -1237,6 +1247,17 @@ class TransactionParticipant::Impl
   }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    // Once a WriteQuery passes conflict resolution, it performs all the required read operations
+    // as part of docdb::AssembleDocWriteBatch. While iterating over the relevant intents, it
+    // requests statuses of the corresponding transactions as of the picked read time. On seeing
+    // an ABORTED status, it decides to wait until the coordinator returned safe time so as to not
+    // wrongly interpret a COMMITTED transaction as aborted. A shutdown request could arrive in
+    // the meanwhile and change the state of the tablet peer. If so, return a retryable error
+    // instead of invoking the downstream code which eventually does a blocking wait until the
+    // deadline passes.
+    if (Closing()) {
+      return STATUS_FORMAT(IllegalState, "$0Transaction Participant is shutting down", LogPrefix());
+    }
     return participant_context_.WaitForSafeTime(safe_time, deadline);
   }
 
@@ -1813,6 +1834,18 @@ class TransactionParticipant::Impl
   }
 
   void Poll() {
+    if (!pending_applied_notified_) {
+      auto& client_future = participant_context_.client_future();
+      if (IsReady(client_future)) {
+        pending_applied_notified_ = true;
+        auto client = client_future.get();
+        std::lock_guard lock(pending_applies_mutex_);
+        for (const auto& [status_tablet, transaction_id] : pending_applies_) {
+          DoNotifyApplied(client, status_tablet, transaction_id);
+        }
+        decltype(pending_applies_)().swap(pending_applies_);
+      }
+    }
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard lock(mutex_);
@@ -1944,7 +1977,6 @@ class TransactionParticipant::Impl
   std::string log_prefix_;
 
   docdb::DocDB db_;
-  const docdb::KeyBounds* key_bounds_;
   // Owned externally, should be guaranteed that would not be destroyed before this.
   RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start_ = nullptr;
 
@@ -2031,6 +2063,11 @@ class TransactionParticipant::Impl
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
+
+  bool pending_applied_notified_ = false;
+  std::mutex pending_applies_mutex_;
+  std::vector<std::pair<TabletId, TransactionId>> pending_applies_
+      GUARDED_BY(pending_applies_mutex_);
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -2131,9 +2168,9 @@ Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
 }
 
 Status TransactionParticipant::SetDB(
-    const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
+    const docdb::DocDB& db,
     RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
-  return impl_->SetDB(db, key_bounds, pending_op_counter_blocking_rocksdb_shutdown_start);
+  return impl_->SetDB(db, pending_op_counter_blocking_rocksdb_shutdown_start);
 }
 
 void TransactionParticipant::GetStatus(

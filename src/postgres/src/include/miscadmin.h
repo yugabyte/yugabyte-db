@@ -30,6 +30,10 @@
 #include "postgres.h"			/* for HeapTuple */
 #include "access/htup.h"		/* for HeapTuple */
 
+#ifndef FRONTEND
+#include "storage/proc.h"		/* for MyProc */
+#endif
+
 #define InvalidPid				(-1)
 
 
@@ -84,6 +88,7 @@ extern PGDLLIMPORT volatile sig_atomic_t QueryCancelPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcDiePending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ConfigReloadPending;
+extern PGDLLIMPORT volatile sig_atomic_t LogMemoryContextPending;
 
 extern volatile sig_atomic_t ClientConnectionLost;
 
@@ -130,6 +135,7 @@ do { \
 	QueryCancelHoldoffCount--; \
 } while(0)
 
+#ifdef FRONTEND
 #define START_CRIT_SECTION()  (CritSectionCount++)
 
 #define END_CRIT_SECTION() \
@@ -137,6 +143,24 @@ do { \
 	Assert(CritSectionCount > 0); \
 	CritSectionCount--; \
 } while(0)
+
+#else /* !FRONTEND */
+
+#define START_CRIT_SECTION()  \
+do { \
+	if (MyProc) \
+		MyProc->ybEnteredCriticalSection = true; \
+	CritSectionCount++; \
+} while(0)
+
+#define END_CRIT_SECTION() \
+do { \
+	Assert(CritSectionCount > 0); \
+	CritSectionCount--; \
+	if (MyProc && CritSectionCount == 0) \
+		MyProc->ybEnteredCriticalSection = false; \
+} while(0)
+#endif /* FRONTEND */
 
 
 /*****************************************************************************
@@ -437,7 +461,8 @@ extern AuxProcType MyAuxProcType;
 extern void pg_split_opts(char **argv, int *argcp, const char *optstr);
 extern void InitializeMaxBackends(void);
 extern void InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-			 Oid useroid, char *out_dbname, bool override_allow_connections);
+			 Oid useroid, char *out_dbname, uint64_t *session_id,
+			 bool override_allow_connections);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

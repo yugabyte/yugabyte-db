@@ -3,9 +3,12 @@ import { Trans, useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 
 import { YBButton } from '../../../redesign/components';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import { YBErrorIndicator } from '../../common/indicators';
 import { XClusterTableStatus } from '../constants';
+
 import { DrConfig, DrConfigState } from './dtos';
 
 interface DrBannerSectionProps {
@@ -16,6 +19,7 @@ interface DrBannerSectionProps {
 
 const useStyles = makeStyles((theme) => ({
   bannerContainer: {
+    marginBottom: theme.spacing(2),
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1)
@@ -75,7 +79,7 @@ export const DrBannerSection = ({
           <div className={classes.bannerContent}>
             <Typography variant="body2">
               <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.enablingDr`}
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.initializingDr`}
                 components={{ bold: <b /> }}
               />
             </Typography>
@@ -147,6 +151,7 @@ export const DrBannerSection = ({
                 components={{ bold: <b /> }}
               />
             </Typography>
+
             <div className={classes.bannerActionButtonContainer}>
               <YBButton variant="secondary" size="large" onClick={openRepairConfigModal}>
                 {t('actionButton.repairDr')}
@@ -165,9 +170,15 @@ export const DrBannerSection = ({
               />
             </Typography>
             <div className={classes.bannerActionButtonContainer}>
-              <YBButton variant="secondary" size="large" onClick={openRestartConfigModal}>
-                {t('actionButton.restartReplication')}
-              </YBButton>
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                overrideStyle={{ display: 'block' }}
+                isControl
+              >
+                <YBButton variant="secondary" size="large" onClick={openRestartConfigModal}>
+                  {t('actionButton.restartReplication')}
+                </YBButton>
+              </RbacValidator>
             </div>
           </div>
         </YBBanner>

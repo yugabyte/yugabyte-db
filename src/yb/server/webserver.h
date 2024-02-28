@@ -79,6 +79,8 @@ class Webserver : public WebCallbackRegistry {
   // Return the single HostPort that this server was asked to bind on
   Status GetInputHostPort(HostPort* hp) const;
 
+  void SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging);
+
   void RegisterPathHandler(const std::string& path,
                            const std::string& alias,
                            const PathHandlerCallback& callback,

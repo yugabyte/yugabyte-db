@@ -113,12 +113,14 @@ SmallestKeyHeap create_level_heap(Compaction* c, const Comparator* ucmp) {
           input_file.level = 0;
           input_file.index = i;
           smallest_key_priority_q.push(std::move(input_file));
+          input_file = InputFileInfo();
         }
       } else {
         input_file.f = c->input(l, 0);
         input_file.level = l;
         input_file.index = 0;
         smallest_key_priority_q.push(std::move(input_file));
+        input_file = InputFileInfo();
       }
     }
   }
@@ -1497,6 +1499,7 @@ bool CompactionPicker::IsInputNonOverlapping(Compaction* c) {
 
     if (next.f) {
       smallest_key_priority_q.push(std::move(next));
+      next = InputFileInfo();
     }
   }
   return true;

@@ -10,6 +10,8 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -24,14 +26,16 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
   @Inject
   protected UpdateKubernetesDiskSize(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory,
-      KubernetesManagerFactory kubernetesManagerFactory) {
-    super(baseTaskDependencies, statusUpdaterFactory, kubernetesManagerFactory);
+      KubernetesManagerFactory kubernetesManagerFactory,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, kubernetesManagerFactory, operatorStatusUpdaterFactory);
   }
 
   @Override
@@ -49,6 +53,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
+      addBasicPrecheckTasks();
 
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize

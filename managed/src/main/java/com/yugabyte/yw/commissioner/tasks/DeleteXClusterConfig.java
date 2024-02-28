@@ -3,10 +3,12 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
@@ -102,7 +104,10 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
     // to them if any.
     createDeleteXClusterConfigSubtasks(
-        xClusterConfig, false /* keepEntry */, taskParams().isForced());
+        xClusterConfig,
+        false /* keepEntry */,
+        taskParams().isForced(),
+        true /* deletePitrConfigs */);
 
     // Fetch all universes that are connected through xCluster config to source and
     // target universe.
@@ -119,15 +124,22 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       alreadyLockedUniverseUUIDSet.add(targetUniverse.getUniverseUUID());
     }
 
-    // Promote auto flags on all connected universes which were blocked
-    // due to the xCluster config.
-    createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-        xClusterConnectedUniverseSet.stream()
-            .map(Universe::getUniverseUUID)
-            .collect(Collectors.toSet()),
-        alreadyLockedUniverseUUIDSet,
-        xClusterUniverseService,
-        Collections.singleton(xClusterConfig.getUuid()),
-        taskParams().isForced());
+    if (xClusterConnectedUniverseSet.stream()
+        .anyMatch(
+            univ ->
+                CommonUtils.isReleaseBefore(
+                    Util.YBDB_ROLLBACK_DB_VERSION,
+                    univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion))) {
+      // Promote auto flags on all connected universes which were blocked
+      // due to the xCluster config.
+      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+          xClusterConnectedUniverseSet.stream()
+              .map(Universe::getUniverseUUID)
+              .collect(Collectors.toSet()),
+          alreadyLockedUniverseUUIDSet,
+          xClusterUniverseService,
+          Collections.singleton(xClusterConfig.getUuid()),
+          taskParams().isForced());
+    }
   }
 }

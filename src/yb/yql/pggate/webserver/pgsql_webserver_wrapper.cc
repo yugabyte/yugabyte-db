@@ -15,6 +15,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <math.h>
+#include <cassert>
 
 #include <map>
 #include <vector>
@@ -22,11 +23,16 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/server/default-path-handlers.h"
+#include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -65,6 +71,7 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
+static const char *USER = "user";
 
 namespace {
 
@@ -129,7 +136,8 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
-static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
+                                uint64_t *last_updated_timestamp) {
   char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if(stats_shm_key == NULL)
     return;
@@ -151,9 +159,15 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
   }
 
   for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0)
+    if (strcmp(shmp[itr].database_name, "") == 0
+      || strcmp(shmp[itr].user_name, "") == 0 )
       break;
     stats->push_back(shmp[itr]);
+  }
+
+  if (last_updated_timestamp != NULL) {
+    // Read last updated timestamp from control connection pool struct, present at index 0.
+    *last_updated_timestamp = shmp[0].last_updated_timestamp;
   }
 
   shmdt(shmp);
@@ -162,7 +176,27 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  uint64_t num_pools = 0, last_updated_timestamp = 0;
+
+  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp);
+  num_pools = stats_list.size();
+
+  ysql_conn_mgr_prometheus_attr.erase(DATABASE);
+  ysql_conn_mgr_prometheus_attr.erase(USER);
+
+  // Publish the count for number of pools.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
+      AggregationFunction::kSum, kServerLevel),
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  // Publish the last time ysql conn mgr metrics are emitted.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
+      last_updated_timestamp, AggregationFunction::kSum, kServerLevel),
+      "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
@@ -175,14 +209,15 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
-    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
+    ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 
     // Publish collected metrics for the current pool.
     for (auto entry : ysql_conn_mgr_metrics) {
       WARN_NOT_OK(
         pwriter->WriteSingleEntry(
             ysql_conn_mgr_prometheus_attr, entry.first, entry.second,
-            AggregationFunction::kSum),
+            AggregationFunction::kSum, kServerLevel),
         "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
     }
     // Clear the collected metrics for the metrics collected for the next pool.
@@ -391,7 +426,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  GetYsqlConnMgrStats(&stats_list, NULL);
 
   writer.StartObject();
   writer.String("pools");
@@ -402,8 +437,11 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
     // "control".
-    writer.String("pool");
-    writer.String(stat.pool_name);
+    writer.String("database_name");
+    writer.String(stat.database_name);
+
+    writer.String("user_name");
+    writer.String(stat.user_name);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.
@@ -450,21 +488,17 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output, ExportHelpAndType::kFalse);
+  MetricPrometheusOptions opts;
+  PrometheusWriter writer(output, opts);
 
-  // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
-  char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].calls, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].total_time, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
+    std::string name = ybpgm_table[i].name;
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
+        ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
+        ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
   }
 
   // Publish sql server connection related metrics
@@ -559,7 +593,22 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
   webserver->RegisterPathHandler(
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  webserver->RegisterPathHandler("/webserver-heap-snapshot", "",
+      PprofHeapSnapshotHandler, true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
+
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+
+void SetWebserverConfig(
+    WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
+    int webserver_profiler_sample_freq_bytes) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
+
+  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
+    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  }
 }
 }  // extern "C"
 

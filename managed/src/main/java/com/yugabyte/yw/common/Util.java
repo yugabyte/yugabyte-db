@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -32,10 +33,20 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
+import java.net.Socket;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -44,7 +55,19 @@ import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -55,7 +78,7 @@ import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -105,7 +128,7 @@ public class Util {
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
-  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -119,6 +142,9 @@ public class Util {
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
+  private static final List<String> specialCharacters =
+      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
@@ -134,6 +160,10 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static final String HTTP_SCHEME = "http://";
+
+  public static final String HTTPS_SCHEME = "https://";
 
   public static volatile String YBA_VERSION;
 
@@ -880,7 +910,8 @@ public class Util {
     }
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
-        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+        new DigestInputStream(
+            new BufferedInputStream(new FileInputStream(filePath.toFile())), md)) {
       while (dis.read() != -1)
         ; // Empty loop to clear the data
       md = dis.getMessageDigest();
@@ -1011,5 +1042,45 @@ public class Util {
   public static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
+  }
+
+  /** Get randomly generated password inline with YB's password policy */
+  public static String getRandomPassword() {
+    byte[] password = new byte[16];
+    new Random().nextBytes(password);
+    String generatedPassword = new String(password, Charset.forName("UTF-8"));
+    // To be consistent with password policy
+    Integer randomInt = new Random().nextInt(26);
+    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
+    String uppercaseLetter = lowercaseLetter.toUpperCase();
+    generatedPassword +=
+        (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+            + lowercaseLetter
+            + uppercaseLetter
+            + String.valueOf(randomInt));
+    return generatedPassword;
+  }
+
+  /**
+   * Validate url string and get URL object
+   *
+   * @param url
+   * @param defaultHttpScheme
+   * @return
+   */
+  public static URL validateAndGetURL(String url, boolean defaultHttpScheme) {
+    String urlString = url;
+    if (!urlString.startsWith(HTTP_SCHEME) && !urlString.startsWith(HTTPS_SCHEME)) {
+      urlString = (defaultHttpScheme ? HTTP_SCHEME : HTTPS_SCHEME) + urlString;
+    }
+    try {
+      URL urlInstance = new URL(urlString);
+      if (StringUtils.isBlank(urlInstance.getHost())) {
+        throw new RuntimeException("Malformed URL: " + urlString);
+      }
+      return urlInstance;
+    } catch (MalformedURLException e) {
+      throw new RuntimeException("Malformed URL: " + urlString);
+    }
   }
 }

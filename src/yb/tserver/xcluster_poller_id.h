@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_types.h"
 
 namespace yb {
 
@@ -25,13 +25,13 @@ namespace yb {
 // and consumer do not match, a single Poller can write to multiple consumer tablets, and multiple
 // Pollers belonging to the same ReplicationGroup can write to the same consumer tablet.
 struct XClusterPollerId {
-  cdc::ReplicationGroupId replication_group_id;
+  xcluster::ReplicationGroupId replication_group_id;
   TableId consumer_table_id;
   TabletId producer_tablet_id;
   int64 leader_term;
 
   explicit XClusterPollerId(
-      cdc::ReplicationGroupId replication_group_id, TableId consumer_table_id,
+      xcluster::ReplicationGroupId replication_group_id, TableId consumer_table_id,
       TabletId producer_tablet_id, int64 leader_term);
 
   bool operator==(const XClusterPollerId& other) const;

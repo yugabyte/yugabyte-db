@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -132,6 +133,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromParts("1.1.1.1", 1234));
       setMockLiveTabletServers();
     } catch (Exception e) {
       fail();
@@ -143,6 +146,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
         mockClient, ImmutableList.of("10.0.0.4", "10.0.0.6"), Collections.emptyList());
 
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -158,6 +162,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -169,6 +175,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -180,6 +188,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -210,6 +220,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -244,6 +256,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -264,6 +278,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -363,6 +379,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
+
+    List<String> masters =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.nodeName.equals("host-n1"))
+            .filter(n -> n.isMaster || n.nodeName.equals("host-n4"))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masters);
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
@@ -487,8 +512,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
+    List<String> masters =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.nodeName.equals("host-n1"))
+            .filter(n -> n.isMaster || n.nodeName.equals("host-n6"))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masters);
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -514,6 +547,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testRemoveNodeRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     setUp(true, 4, 3, false);
     String nodeToRemove = "host-n1";
     NodeDetails node = defaultUniverse.getNode(nodeToRemove);

@@ -45,8 +45,8 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 You can install YugabyteDB Anywhere using YBA Installer on the following Linux distributions:
 
 - CentOS 7
-- Alma Linux 8
-- Alma Linux 9
+- AlmaLinux 8
+- AlmaLinux 9
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
@@ -56,7 +56,22 @@ YugabyteDB Anywhere may also work on other Linux distributions; contact your Yug
 
 ## Software requirements
 
-- Python v3.8 to 3.11 must be installed.
+- Python v3.8 to 3.11 must be installed, and both `python` and `python3` must point to Python 3. One way to achieve this is to use `alternatives`. For example:
+
+    ```sh
+    sudo yum install @python38 -y
+    sudo alternatives --config python
+    # choose Python 3.8 from list
+
+    sudo alternatives --config python3
+    # choose Python 3.8 from list
+
+    python -V
+    # output: Python 3.8.16
+
+    python3 -V
+    # output: Python 3.8.16
+    ```
 
 ## Hardware requirements
 

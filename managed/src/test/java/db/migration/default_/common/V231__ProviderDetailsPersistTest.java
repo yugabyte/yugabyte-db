@@ -54,6 +54,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
           {
             put("client_email", "Client Email");
             put("project_id", "GCP Project ID");
+            put("GCE_HOST_PROJECT", "GCP Host project ID");
             put("auth_provider_x509_cert_url", "Cert URL");
             put("private_key", "GCP Provider Private key");
             put("private_key_id", "GCP Private Key ID");
@@ -78,6 +79,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
     GCPCloudInfo gcpCloudInfo = gcpProvider.getDetails().getCloudInfo().gcp;
     assertNotNull(gcpCloudInfo);
     assertEquals("GCP Project ID", gcpCloudInfo.getGceProject());
+    assertEquals("GCP Host project ID", gcpCloudInfo.getSharedVPCProject());
     assertEquals("GCP Custom network", gcpCloudInfo.getDestVpcId());
     assertNotNull(gcpCloudInfo.getGceApplicationCredentials());
 

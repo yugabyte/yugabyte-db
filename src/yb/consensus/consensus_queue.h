@@ -45,13 +45,16 @@
 #include "yb/common/placement_info.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log_cache.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/server/clock.h"
+
+#include "yb/rpc/strand.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
@@ -218,7 +221,7 @@ class PeerMessageQueue {
                    const std::string& tablet_id,
                    const server::ClockPtr& clock,
                    ConsensusContext* context,
-                   std::unique_ptr<ThreadPoolToken> raft_pool_observers_token);
+                   std::unique_ptr<rpc::Strand> observers_strand);
 
   // Initialize the queue.
   virtual void Init(const OpId& last_locally_replicated);
@@ -415,6 +418,8 @@ class PeerMessageQueue {
 
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
+  std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() const;
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
@@ -573,10 +578,12 @@ class PeerMessageQueue {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false);
 
+  void TEST_WaitForNotificationToFinish();
+
   std::vector<PeerMessageQueueObserver*> observers_;
 
   // The pool token which executes observer notifications.
-  std::unique_ptr<ThreadPoolToken> raft_pool_observers_token_;
+  std::unique_ptr<rpc::Strand> notifications_strand_;
 
   // PB containing identifying information about the local peer.
   const RaftPeerPB local_peer_pb_;

@@ -24,6 +24,7 @@ import pathlib
 import re
 import semantic_version  # type: ignore
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -69,6 +70,7 @@ from yugabyte.common_util import get_target_arch
 ALLOW_REMOTE_COMPILATION = True
 BUILD_STEPS = (
     'configure',
+    'genbki',
     'make',
 )
 CONFIG_ENV_VARS = [
@@ -298,6 +300,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
         self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
+        self.should_genbki = self.args.step is None or self.args.step == 'genbki'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.cmake_cache.get_or_raise('YB_THIRDPARTY_DIR')
 
@@ -570,13 +573,12 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend'
         ]
-        if (local_sys_conf().short_os_name_and_version() != 'ubuntu23.04' or
-                get_target_arch() != 'x86_64' or
-                self.compiler_type != 'gcc13'):
+        if (not re.search(r'ubuntu2[23]\.04', local_sys_conf().short_os_name_and_version()) or
+                shutil.which('msgfmt')):
             # With GCC 13 build on Ubuntu 23.04, we run into an error where Postgres configure
             # complains about not finding the msgfmt tool if we try to build Postgres with NLS.
             # This fails on our Ubuntu 23.04 x86_64 build infra Docker image but might work in a
-            # different environment.
+            # different environment. Also affects clang on Ubuntu 22.04 x86_64 infra Docker image.
             #
             # TODO(mbautin): fix the root cause of this.
             configure_cmd_line.append('--enable-nls')
@@ -1043,6 +1045,13 @@ class PostgresBuilder(YbBuildToolBase):
                 self.configure_postgres()
                 logging.info("The configure step of building PostgreSQL took %.1f sec",
                              time.time() - configure_start_time_sec)
+            if self.should_genbki:
+                make_start_time_sec = time.time()
+                self.run_make_with_retries(
+                    self.pg_build_root,
+                    shlex_join(['make', '-C', 'src/backend/catalog', 'bki-stamp']))
+                logging.info("The genbki step of building PostgreSQL took %.1f sec",
+                             time.time() - make_start_time_sec)
             if self.should_make:
                 make_start_time_sec = time.time()
                 self.make_postgres()

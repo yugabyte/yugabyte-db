@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
   rocksdb::Options options;
   yb::tablet::TabletOptions t_options;
   yb::docdb::InitRocksDBOptions(
-      &options, "" /* log_prefix */, nullptr /* statistics */, t_options);
+      &options, "" /* log_prefix */, "" /* tablet_id */, nullptr /* statistics */, t_options);
   rocksdb::LDBTool tool;
   tool.Run(argc, argv, options);
   return 0;

@@ -155,6 +155,10 @@ enum ReplicationErrorPb {
 
   // Replication is healthy.
   REPLICATION_OK = 5;
+
+  // The AutoFlags config has changed and the new version is not compatible, or
+  // has not yet been validated.
+  REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH = 6;
 }
 
 // Stateful services.

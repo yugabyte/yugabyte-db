@@ -3,7 +3,6 @@ title: Billing and invoices
 linkTitle: Manage billing
 description: Manage your YugabyteDB Managed billing profile and payment methods and view invoices.
 headcontent: Manage your billing profile and payment method
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-billing-profile

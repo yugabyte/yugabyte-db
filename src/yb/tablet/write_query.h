@@ -115,6 +115,10 @@ class WriteQuery {
 
   std::unique_ptr<WriteOperation> PrepareSubmit();
 
+  void SetRequestStartUs(uint64_t request_start_us) { request_start_us_ = request_start_us; }
+
+  uint64_t request_start_us() const { return request_start_us_; }
+
  private:
   friend struct UpdateQLIndexesTask;
   enum class ExecuteMode;
@@ -225,6 +229,9 @@ class WriteQuery {
   // Indicates whether this WriteQuery object is currently contributing to the
   // 'kActiveWriteQueryObjects' tablet metric.
   bool did_update_active_write_queries_metric_ = false;
+  // Stores the start time of the underlying rpc request that created this WriteQuery.
+  // The field is consistent across failed ReadRpc/WriteRpc retries.
+  uint64_t request_start_us_ = 0;
 };
 
 }  // namespace tablet

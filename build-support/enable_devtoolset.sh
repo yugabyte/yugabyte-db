@@ -45,5 +45,6 @@ if [[ "$OSTYPE" =~ ^linux ]] && \
 else
   # No quotes around $@ because we pass multiple commands in one parameter to this script
   # (see build-and-test.sh for usage).
+  # shellcheck disable=SC2068
   $@
 fi

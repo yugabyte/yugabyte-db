@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -37,6 +38,15 @@ import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostRemove;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -52,16 +62,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.PostRemove;
-import javax.persistence.Table;
-import javax.persistence.Transient;
-import javax.persistence.UniqueConstraint;
 import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -447,8 +449,9 @@ public class Universe extends Model {
 
   /** Config parameters for the universe updater. */
   @Builder
-  @Getter
+  @Data
   public static class UniverseUpdaterConfig {
+    @Builder.Default private int expectedUniverseVersion = -1;
     private boolean checkSuccess;
     private boolean forceUpdate;
     @Builder.Default private boolean freezeUniverse = true;
@@ -999,10 +1002,26 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return the host (private_ip) and port of the current master leader in the universe or null if
-   *     not found
+   *     not found, catches Exceptions and returns null in case of exceptions.
    */
   @JsonIgnore
   public HostAndPort getMasterLeader() {
+    try {
+      return getMasterLeaderInternal();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader", e);
+      return null;
+    }
+  }
+
+  /**
+   * Find the current master leader in the universe
+   *
+   * @return the host (private_ip) and port of the current master leader in the universe or null if
+   *     not found, does not do any exception handling.
+   */
+  @JsonIgnore
+  private HostAndPort getMasterLeaderInternal() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService =
@@ -1031,13 +1050,20 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
-   *     string if not found
+   *     string if not found, returns empty string if master leader is missing due to an exception
    */
   @JsonIgnore
   public String getMasterLeaderHostText() {
-    final HostAndPort masterLeader = getMasterLeader();
-    if (masterLeader == null) return "";
-    return masterLeader.getHost();
+    try {
+      final HostAndPort masterLeader = getMasterLeader();
+      if (masterLeader == null) {
+        return "";
+      }
+      return masterLeader.getHost();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader host text", e);
+      return "";
+    }
   }
 
   public void updateUniverseSoftwareUpgradeState(
@@ -1175,6 +1201,21 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @JsonIgnore
+  public Map<NodeDetails, ProxyConfig> getNodeProxyConfigMap() {
+    Map<NodeDetails, ProxyConfig> nodeProxyConfigMap = new HashMap<>();
+    getNodes().stream()
+        .forEach(
+            nD ->
+                nodeProxyConfigMap.put(
+                    nD,
+                    getUniverseDetails()
+                        .getClusterByUuid(nD.placementUuid)
+                        .userIntent
+                        .getProxyConfig(nD.getAzUuid())));
+    return nodeProxyConfigMap;
   }
 
   @PostRemove

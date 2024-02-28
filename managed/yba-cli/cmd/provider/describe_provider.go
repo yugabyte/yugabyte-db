@@ -18,10 +18,11 @@ import (
 )
 
 var describeProviderCmd = &cobra.Command{
-	Use:   "describe [provider-name]",
-	Short: "Describe a YugabyteDB Anywhere provider",
-	Long:  "Describe a provider in YugabyteDB Anywhere",
-	Args:  cobra.MaximumNArgs(1),
+	Use:     "describe [provider-name]",
+	Aliases: []string{"get"},
+	Short:   "Describe a YugabyteDB Anywhere provider",
+	Long:    "Describe a provider in YugabyteDB Anywhere",
+	Args:    cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerNameFlag, _ := cmd.Flags().GetString("name")
 		if len(args) == 0 && len(providerNameFlag) == 0 {

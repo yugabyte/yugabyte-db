@@ -36,7 +36,7 @@
 
 #include <boost/container/static_vector.hpp>
 
-#include "yb/client/auto_flags_manager.h"
+#include "yb/server/auto_flags_manager_base.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -56,6 +56,7 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
@@ -114,11 +115,11 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -263,6 +264,10 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
        "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
        "scheduled and unscheduled compactions are run before the full compaction and no other "
        "compactions will get scheduled during a full compaction.");
+
+DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
+                     "Duration for which CDCSDK retention barriers cannot be revised from the "
+                     "cdcsdk_block_barrier_revision_start_time");
 
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
@@ -594,7 +599,8 @@ Tablet::Tablet(const TabletInitData& data)
       transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
         client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL),
+        data.messenger));
     }
   }
 
@@ -884,6 +890,7 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb::Options intents_rocksdb_options(rocksdb_options);
     intents_rocksdb_options.compaction_context_factory = {};
     docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
+    intents_rocksdb_options.tablet_id = tablet_id();
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1, _2);
@@ -920,7 +927,7 @@ Status Tablet::OpenKeyValueTablet() {
         metadata_->cdc_sdk_min_checkpoint_op_id(),
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
-        doc_db(), &key_bounds_, &pending_op_counter_blocking_rocksdb_shutdown_start_));
+        doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -1855,9 +1862,9 @@ void SetBackfillSpecForYsqlBackfill(
     response->set_is_backfill_batch_done(true);
   }
 
-  VLOG(2) << "Got input spec " << yb::ToString(in_spec)
-          << " set output spec " << yb::ToString(out_spec)
-          << " batch_done=" << response->is_backfill_batch_done();
+  VLOG(2) << "Got input spec { " << in_spec.ShortDebugString()
+          << " } set output spec { " << out_spec.ShortDebugString()
+          << " } batch_done=" << response->is_backfill_batch_done();
   string serialized_pb;
   out_spec.SerializeToString(&serialized_pb);
   response->set_backfill_spec(b2a_hex(serialized_pb));
@@ -2101,6 +2108,111 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   return std::move(iter);
 }
 
+Status Tablet::SetAllCDCRetentionBarriersUnlocked(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    bool initial_retention_barrier) {
+
+  // WAL, History, Intents Retention
+  if (VERIFY_RESULT(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
+                                                          cdc_sdk_intents_op_id,
+                                                          cdc_sdk_history_cutoff,
+                                                          require_history_cutoff,
+                                                          initial_retention_barrier))) {
+    // Intents Retention setting on txn_participant
+    // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    auto txn_participant = transaction_participant();
+    if (txn_participant) {
+
+      VLOG_WITH_PREFIX(1) << "Intents opid retention duration = " << cdc_sdk_op_id_expiration;
+      txn_participant->SetIntentRetainOpIdAndTime(
+          cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration);
+    }
+  }
+
+  return Status::OK();
+}
+
+// Applies to both CDCSDK and XCluster streams attempting to set their initial
+// retention barrier
+Status Tablet::SetAllInitialCDCRetentionBarriers(
+    log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
+  std::lock_guard lock(cdcsdk_retention_barrier_lock_);
+
+  cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
+
+  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+    log->set_cdc_min_replicated_index(cdc_wal_index);
+  }
+  auto intent_retention_duration =
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  return SetAllCDCRetentionBarriersUnlocked(
+      cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
+      require_history_cutoff, true /* initial_retention_barrier */);
+}
+
+// This is called From ChangeMetadaOperation::Apply during the
+// creation of the CDCSDK stream and also possibly during Tablet Bootstrap.
+//
+// One thing to note here is that the retention barrier on the consensus layer
+// is not set in both these situations. This is no different from the
+// current behaviour during Tablet Bootstrap. This is alright since
+// that is only for the Log Cache's eviction policy. The Cache will reload
+// from the Log segments if there is a cache miss.
+//
+// Here, a stream is setting its initial retention barrier on the tablet.
+// It will be conservative. That is, it will reset the barrier only if
+// the current barrier is ahead of its requirement. If there is already
+// another slower consumer with a stricter barrier requirement, that
+// will be left alone and the barrier will not be reset.
+Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
+    log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
+
+  VLOG_WITH_PREFIX(1) << "CDCSDK Retention barrier initialization request";
+  RETURN_NOT_OK(SetAllInitialCDCRetentionBarriers(
+      log, cdc_sdk_op_id.index, cdc_sdk_op_id, cdc_sdk_history_cutoff, require_history_cutoff));
+  TEST_SYNC_POINT("Tablet::SetAllInitialCDCSDKRetentionBarriers::End");
+  return Status::OK();
+}
+
+// Applies to the combined requirement of both CDCSDK and XCluster streams.
+Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
+    log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+    MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
+
+  VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
+  std::lock_guard lock(cdcsdk_retention_barrier_lock_);
+
+  // Retention barriers cannot be moved forward if the barrier revision
+  // has been recently blocked
+  auto duration_since_last_blocked =
+      MonoTime::Now().GetDeltaSince(cdcsdk_block_barrier_revision_start_time).ToSeconds();
+  VLOG_WITH_PREFIX(1) << "Duration since last blocked: " << duration_since_last_blocked;
+
+  if (duration_since_last_blocked >
+      GetAtomicFlag(&FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs)) {
+    VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
+
+    if (log) {
+      log->set_cdc_min_replicated_index(cdc_wal_index);
+    }
+    RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
+        cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+        require_history_cutoff, false /* initial_retention_barrier */));
+    return true;
+  } else {
+    VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
+  }
+
+  return false;
+}
+
 Status Tablet::CreatePreparedChangeMetadata(
     ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {
@@ -2139,7 +2251,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
-      table_info.schema_version(), op_id);
+      table_info.schema_version(), op_id, table_info.pg_table_id());
 
   return Status::OK();
 }
@@ -2173,8 +2285,12 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
 }
 
 Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting backfill as done.";
-  metadata_->OnBackfillDone(op_id, table_id);
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
+  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
+    return status;
+  }
   return metadata_->Flush();
 }
 
@@ -2284,35 +2400,6 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
 
 namespace {
 
-Result<pgwrapper::PGConn> ConnectToPostgres(
-    const HostPort& pgsql_proxy_bind_address,
-    const std::string& database_name,
-    uint64_t postgres_auth_key,
-    const CoarseTimePoint& deadline) {
-  // Note that the plain password in the connection string will be sent over the wire, but since
-  // it only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
-  //
-  // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
-  // it to at least 2 in the first place. See connectDBComplete.
-  auto conn_res = pgwrapper::PGConnBuilder({
-    .host = PgDeriveSocketDir(pgsql_proxy_bind_address),
-    .port = pgsql_proxy_bind_address.port(),
-    .dbname = database_name,
-    .user = "postgres",
-    .password = UInt64ToString(postgres_auth_key),
-    .connect_timeout = static_cast<size_t>(std::max(
-        2, static_cast<int>(ToSeconds(deadline - CoarseMonoClock::Now()))))
-  }).Connect();
-  if (!conn_res) {
-    auto libpq_error_message = AuxilaryMessage(conn_res.status()).value();
-    if (libpq_error_message.empty()) {
-      return STATUS(IllegalState, "backfill failed to connect to DB");
-    }
-    return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", libpq_error_message);
-  }
-  return conn_res;
-}
-
 string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_to_backfill) {
   PgsqlBackfillSpecPB backfill_spec;
   std::string serialized_backfill_spec;
@@ -2323,11 +2410,10 @@ string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_
   backfill_spec.set_limit(batch_size);
   backfill_spec.set_next_row_key(next_row_to_backfill);
   backfill_spec.SerializeToString(&serialized_backfill_spec);
-  VLOG(2) << "Generating backfill_spec " << yb::ToString(backfill_spec)
-          << (VLOG_IS_ON(3) ? Format(" encoded as $0 a string of length $1",
-                                     b2a_hex(serialized_backfill_spec),
-                                     serialized_backfill_spec.length())
-                            : "");
+  VLOG(2) << "Generating backfill_spec { " << yb::ToString(backfill_spec)
+          << (VLOG_IS_ON(3) ? Format(" } encoded as $0",
+                                     b2a_hex(serialized_backfill_spec))
+                            : " }");
   return serialized_backfill_spec;
 }
 
@@ -2344,10 +2430,11 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   CHECK_EQ(PQntuples(res.get()), 1);
   CHECK_EQ(PQnfields(res.get()), 1);
   const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
-  VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
 
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
+  VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
   return spec;
 }
 
@@ -2422,6 +2509,13 @@ bool CanProceedToBackfillMoreRows(
   return CanProceedToBackfillMoreRows(backfill_params, number_of_rows_processed);
 }
 
+void SlowdownBackfillForTests() {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
+  }
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -2435,17 +2529,16 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
-  LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
-            << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
-            << " for " << AsString(indexes);
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for indexes " << AsString(indexes);
+  SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline);
-  auto conn = VERIFY_RESULT(ConnectToPostgres(
-    pgsql_proxy_bind_address, database_name, postgres_auth_key, backfill_params.modified_deadline));
+  auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
+                                pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                                backfill_params.modified_deadline)
+                                .Connect());
 
   // Construct query string.
   std::string index_oids;
@@ -2481,18 +2574,15 @@ Status Tablet::BackfillIndexesForYsql(
     *number_of_rows_processed += spec.count();
     *backfilled_until = spec.next_row_key();
 
-    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows. "
-            << "Setting backfilled_until to "
-            << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until)) << " of length "
-            << backfilled_until->length();
+    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   } while (CanProceedToBackfillMoreRows(
       backfill_params, *backfilled_until, *number_of_rows_processed));
 
-  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows. "
-          << "Set backfilled_until to "
-          << (backfilled_until->empty() ? "(empty)" : b2a_hex(*backfilled_until));
+  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows in this chunk. "
+          << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
   return Status::OK();
 }
 
@@ -2573,11 +2663,8 @@ Status Tablet::BackfillIndexes(
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
+  SlowdownBackfillForTests();
 
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   auto columns = GetColumnSchemasForIndex(indexes);
@@ -3132,7 +3219,7 @@ Status Tablet::ModifyFlushedFrontier(
     });
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_,
+        &rocksdb_options, LogPrefix(), tablet_id(), /* statistics */ nullptr, tablet_options_,
         rocksdb::BlockBasedTableOptions(), hash_for_data_root_dir(metadata_->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     LOG_WITH_PREFIX(INFO) << "Opening the test RocksDB at " << checkpoint_dir_for_test
@@ -3805,7 +3892,7 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, db_info.db_type),
-        /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
+        tablet_id, /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
         hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
@@ -3882,8 +3969,8 @@ void Tablet::InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     rocksdb::BlockBasedTableOptions table_options) {
   docdb::InitRocksDBOptions(
-      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options),
-      hash_for_data_root_dir(metadata_->data_root_dir()));
+      options, log_prefix, tablet_id(), regulardb_statistics_, tablet_options_,
+      std::move(table_options), hash_for_data_root_dir(metadata_->data_root_dir()));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {
@@ -4323,7 +4410,7 @@ Status Tablet::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config) 
 Status PopulateLockInfoFromIntent(
     Slice key, Slice val, const TableInfoProvider& table_info_provider,
     const std::map<TransactionId, SubtxnSet>& aborted_subtxn_info,
-    TransactionLockInfoManager* lock_info_manager) {
+    TransactionLockInfoManager* lock_info_manager, uint32_t max_txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
@@ -4339,12 +4426,18 @@ Status PopulateLockInfoFromIntent(
   }
 
   auto& lock_entry = *lock_info_manager->GetOrAddTransactionLockInfo(decoded_value.transaction_id);
+  if (max_txn_locks && static_cast<uint32_t>(lock_entry.granted_locks().size()) >= max_txn_locks) {
+    lock_entry.set_has_additional_granted_locks(true);
+    return Status::OK();
+  }
   return docdb::PopulateLockInfoFromParsedIntent(
       parsed_intent, decoded_value, table_info_provider, lock_entry.add_granted_locks());
 }
 
 Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
-                             TabletLockInfoPB* tablet_lock_info) const {
+                             TabletLockInfoPB* tablet_lock_info,
+                             uint64_t max_single_shard_waiter_start_time_us,
+                             uint32_t max_txn_locks_per_tablet) const {
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4384,7 +4477,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), *this, transactions, &lock_info_manager));
+          key, intent_iter->value(), *this, transactions, &lock_info_manager,
+          max_txn_locks_per_tablet));
 
       intent_iter->Next();
     }
@@ -4439,13 +4533,16 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       DCHECK_EQ(intent_iter->key(), key);
 
       auto val = intent_iter->value();
-      RETURN_NOT_OK(PopulateLockInfoFromIntent(key, val, *this, transactions, &lock_info_manager));
+      RETURN_NOT_OK(PopulateLockInfoFromIntent(
+          key, val, *this, transactions, &lock_info_manager, max_txn_locks_per_tablet));
     }
   }
 
-  const auto& wait_queue = transaction_participant()->wait_queue();
+  const auto* wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
-    RETURN_NOT_OK(wait_queue->GetLockStatus(transactions, *this, &lock_info_manager));
+    RETURN_NOT_OK(wait_queue->GetLockStatus(
+        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager,
+        max_txn_locks_per_tablet));
   }
 
   return Status::OK();
@@ -4514,6 +4611,16 @@ std::string IncrementedCopy(Slice key) {
 }
 
 } // namespace
+
+Status Tablet::AbortSQLTransactions(CoarseTimePoint deadline) const {
+  if (table_type() != TableType::PGSQL_TABLE_TYPE || transaction_participant() == nullptr) {
+    return Status::OK();
+  }
+  HybridTime max_cutoff = HybridTime::kMax;
+  LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff << " for tablet id "
+            << tablet_id();
+  return transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline);
+}
 
 Status Tablet::GetTabletKeyRanges(
     const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,

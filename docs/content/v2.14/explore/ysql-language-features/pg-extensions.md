@@ -3,7 +3,6 @@ title: PostgreSQL extensions
 headerTitle: PostgreSQL extensions
 linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
-image: /images/section_icons/secure/create-roles.png
 summary: Reference for YSQL extensions
 menu:
   v2.14:

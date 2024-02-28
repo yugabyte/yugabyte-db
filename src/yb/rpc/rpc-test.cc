@@ -957,6 +957,36 @@ TEST_F(TestRpc, DumpTimedOutCall) {
   thread.join();
 }
 
+TEST_F(TestRpc, DumpLocalCall) {
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+  auto* messenger = server_messenger();
+  HostPort empty_addr;
+  Proxy p(messenger, empty_addr);
+
+  // Make a call which sleeps longer than the keepalive.
+  RpcController controller;
+  rpc_test::SleepRequestPB req;
+  req.set_sleep_micros(2 * 1000000);
+  req.set_deferred(true);
+  rpc_test::SleepResponsePB resp;
+  CountDownLatch latch(1);
+  p.AsyncRequest(
+      CalculatorServiceMethods::SleepMethod(), nullptr, req, &resp, &controller,
+      latch.CountDownCallback());
+
+  DumpRunningRpcsRequestPB dump_req;
+  dump_req.set_get_local_calls(true);
+  DumpRunningRpcsResponsePB dump_resp;
+  ASSERT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp));
+  LOG(INFO) << " Got " << yb::ToString(dump_resp);
+  ASSERT_TRUE(dump_resp.has_local_calls());
+  ASSERT_EQ(dump_resp.local_calls().calls_in_flight_size(), 1);
+  ASSERT_EQ(
+      dump_resp.local_calls().calls_in_flight(0).header().remote_method().method_name(), "Sleep");
+  latch.Wait();
+}
+
 #if YB_GPERFTOOLS_TCMALLOC
 
 namespace {
@@ -1147,7 +1177,7 @@ class TestRpcSecure : public RpcTestBase {
     RpcTestBase::SetUp();
     secure_context_ = std::make_unique<SecureContext>(
         RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kTrue));
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(2048, "127.0.0.1", MatchingCertKeyPair::kTrue));
   }
 
  protected:

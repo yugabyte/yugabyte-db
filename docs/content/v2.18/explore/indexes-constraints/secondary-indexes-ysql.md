@@ -4,7 +4,6 @@ headerTitle: Secondary indexes
 linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL and YCQL
 headContent: Explore secondary indexes in YugabyteDB using YSQL and YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.18:
     identifier: secondary-indexes

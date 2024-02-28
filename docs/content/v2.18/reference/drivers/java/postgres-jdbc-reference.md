@@ -4,7 +4,6 @@ headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: Java JDBC Driver for YSQL
 headcontent: JDBC Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     name: JDBC Drivers
@@ -63,11 +62,6 @@ implementation 'org.postgresql:postgresql:42.2.14'
 ## Fundamentals
 
 Learn how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
-
-<!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
-* [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
-* [Create Table](/postgres-jdbc-fundamentals/#create-table)
-* [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
 
 ### Connect to YugabyteDB database
 

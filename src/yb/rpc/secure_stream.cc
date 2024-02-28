@@ -14,6 +14,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include <openssl/err.h>
+#include <openssl/provider.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
@@ -35,9 +36,14 @@
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/flags.h"
+#include "yb/util/env.h"
+#include "yb/util/env_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/subprocess.h"
 
 using namespace std::literals;
 
+DECLARE_string(fs_data_dirs);
 DEFINE_UNKNOWN_bool(allow_insecure_connections, true,
     "Whether we should allow insecure connections.");
 DEFINE_UNKNOWN_bool(dump_certificate_entries, false, "Whether we should dump certificate entries.");
@@ -46,6 +52,8 @@ DEFINE_UNKNOWN_bool(verify_server_endpoint, true, "Whether server endpoint shoul
 DEFINE_UNKNOWN_string(ssl_protocols, "",
               "List of allowed SSL protocols (ssl2, ssl3, tls10, tls11, tls12). "
                   "Empty to allow TLS only.");
+
+DEFINE_NON_RUNTIME_bool(openssl_require_fips, false, "Use OpenSSL FIPS Provider.");
 
 DEFINE_UNKNOWN_string(cipher_list, "",
               "Define the list of available ciphers (TLSv1.2 and below).");
@@ -256,9 +264,48 @@ int64_t ProtocolsOption() {
   return result;
 }
 
+Result<std::string> ProviderSearchPath() {
+  // This is the provider search path for release package. For development builds,
+  // GetRootDirResult will result non-OK status, since we don't copy ossl-modules from
+  // thirdparty into the build directory. We instead rely on rpath to find providers
+  // within the thirdparty directory.
+  auto root = VERIFY_RESULT(env_util::GetRootDirResult("lib/ossl-modules"));
+  return JoinPathSegments(root, "lib", "ossl-modules");
+}
+
+Result<std::string> FIPSConfigPath() {
+  auto root = VERIFY_RESULT(env_util::GetRootDirResult("openssl-config"));
+  return JoinPathSegments(root, "openssl-config", "openssl-fips.cnf");
+}
+
 class OpenSSLInitializer {
  public:
+
   OpenSSLInitializer() {
+    if (FLAGS_openssl_require_fips) {
+      auto provider_path = ProviderSearchPath();
+      if (provider_path.ok()) {
+        LOG(INFO) << "Setting OpenSSL provider search path: " << provider_path;
+        if (!OSSL_PROVIDER_set_default_search_path(/* libctx= */ NULL, provider_path->c_str())) {
+          LOG(FATAL) << "Failed to set OpenSSL provider search path: "
+                     << SSLErrorMessage(ERR_get_error());
+        }
+      }
+
+      auto config_path = FIPSConfigPath();
+      CHECK_OK(config_path);
+      LOG(INFO) << "Loading OpenSSL config: " << config_path;
+      if (CONF_modules_load_file(config_path->c_str(), /* appname= */ NULL, /* flags= */ 0) <= 0) {
+        LOG(FATAL) << "Failed to load OpenSSL config: " << SSLErrorMessage(ERR_get_error());
+      }
+
+      CHECK(OSSL_PROVIDER_available(/* libctx= */ NULL, "fips"));
+      CHECK(OSSL_PROVIDER_available(/* libctx= */ NULL, "base"));
+      CHECK(!OSSL_PROVIDER_available(/* libctx= */ NULL, "default"));
+
+      LOG(INFO) << "OpenSSL FIPS enabled";
+    }
+
     SSL_library_init();
     SSL_load_error_strings();
     OpenSSL_add_all_algorithms();
@@ -275,10 +322,6 @@ class OpenSSLInitializer {
 };
 
 YB_STRONGLY_TYPED_BOOL(UseCertificateKeyPair);
-
-} // namespace
-
-namespace {
 
 // Matches pattern from RFC 2818:
 // Names may contain the wildcard character * which is considered to match any single domain name
@@ -375,6 +418,17 @@ std::string X509CertToString(X509* cert) {
 
 } // namespace
 
+void SetOpenSSLEnv(Subprocess* proc) {
+  if (FLAGS_openssl_require_fips) {
+    auto provider_path = ProviderSearchPath();
+    if (provider_path.ok()) {
+      proc->SetEnv("OPENSSL_MODULES", *provider_path);
+    }
+    auto config_path = FIPSConfigPath();
+    CHECK_OK(config_path);
+    proc->SetEnv("OPENSSL_CONF", *config_path);
+  }
+}
 
 bool AllowInsecureConnections() {
   return FLAGS_allow_insecure_connections;

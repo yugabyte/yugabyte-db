@@ -205,12 +205,11 @@ export default class TableAction extends Component {
       );
     }
 
-    const getRbacCreateBackup = () => {
-      const canCreateBackup = hasNecessaryPerm({ ...ApiPermissionMap.CREATE_BACKUP, onResource: this.props.universeUUID });
+    const getRbacWrappedComp = (hasPerm) => {
       return (
-        <RbacValidator customValidateFunction={() => canCreateBackup} isControl>
+        <RbacValidator customValidateFunction={() => hasPerm} isControl overrideStyle={{ display: 'block' }}>
           <Fragment>
-            <MenuItem eventKey={btnId} onClick={!canCreateBackup ? null : this.openModal} disabled={!canCreateBackup}>
+            <MenuItem eventKey={btnId} onClick={!hasPerm ? null : this.openModal} disabled={!hasPerm}>
               <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>
             </MenuItem>
             {modalContainer}
@@ -219,10 +218,16 @@ export default class TableAction extends Component {
       );
     };
 
+
+
     const btnId = _.uniqueId('table_action_btn_');
 
     if (actionType === 'create-backup') {
-      return getRbacCreateBackup();
+      return getRbacWrappedComp(hasNecessaryPerm({ ...ApiPermissionMap.CREATE_BACKUP, onResource: this.props.universeUUID }));
+    }
+
+    if (actionType === 'import') {
+      return getRbacWrappedComp(hasNecessaryPerm({ ...ApiPermissionMap.BULK_IMPORT_TABLES, onResource: this.props.universeUUID }));
     }
 
     if (isMenuItem) {

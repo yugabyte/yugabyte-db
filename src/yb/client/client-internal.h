@@ -200,6 +200,10 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids,
+    const CoarseTimePoint deadline);
+
   Status AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     CoarseTimePoint deadline);
@@ -439,6 +443,17 @@ class YBClient::Data {
       const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
+
+  Status GetXClusterStreams(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      GetXClusterStreamsCallback user_cb);
+
+  Status IsXClusterBootstrapRequired(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      IsXClusterBootstrapRequiredCallback user_cb);
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 
@@ -76,7 +76,8 @@ class CatalogManagerIf {
 
   virtual void NotifyTabletDeleteFinished(
       const TabletServerId& tserver_uuid, const TabletId& tablet_id,
-      const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
+      const TableInfoPtr& table, const LeaderEpoch& epoch,
+      server::MonitoredTaskState task_state) = 0;
 
   virtual std::string GenerateId() = 0;
 
@@ -126,6 +127,7 @@ class CatalogManagerIf {
       uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
+  virtual bool catalog_version_table_in_perdb_mode() const = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
@@ -308,11 +310,17 @@ class CatalogManagerIf {
   virtual Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
 
   virtual Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+      const scoped_refptr<TableInfo>& table,
       const yb::TabletId& tablet_id,
       const xrepl::StreamId& cdc_sdk_stream_id,
       const yb::OpIdPB& safe_opid,
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
+
+  virtual Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

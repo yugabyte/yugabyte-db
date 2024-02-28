@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -151,6 +152,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
+  protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
+    {
+      {
+          put("enable_wait_queues", "false");
+          // The retries are set to 2 to speed up the tests.
+          put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+      }
+    };
+
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
 
@@ -254,8 +264,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     flagMap.put("ysql_beta_features", "true");
-    flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "false");
-    flagMap.put("ysql_max_write_restart_attempts", "2");
     flagMap.put("ysql_enable_reindex", "true");
 
     return flagMap;
@@ -1565,7 +1573,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Whether or not this query pushes down a filter condition */
   protected boolean doesPushdownCondition(Statement stmt, String query) throws SQLException {
-    return doesQueryPlanContainsSubstring(stmt, query, "Remote Filter:");
+    return doesQueryPlanContainsSubstring(stmt, query, "Storage Filter:");
   }
 
   /**

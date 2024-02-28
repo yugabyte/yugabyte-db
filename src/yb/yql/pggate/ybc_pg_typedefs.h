@@ -234,14 +234,17 @@ typedef struct PgSysColumns {
 //
 // Index-related parameters are used to describe different types of scan.
 //   - Sequential scan: Index parameter is not used.
-//     { index_oid, index_only_scan, use_secondary_index } = { kInvalidOid, false, false }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { kInvalidRelfileNodeOid, false, false }
 //   - IndexScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, false, true }
 //   - IndexOnlyScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, true, true }
 //   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
 //     primary-index database object from table object.
-//       index_oid = TableOid
+//       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //       use_secondary_index = false
 //
@@ -250,7 +253,7 @@ typedef struct PgSysColumns {
 //   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
 //     system-tables.
 typedef struct PgPrepareParameters {
-  YBCPgOid index_oid;
+  YBCPgOid index_relfilenode_oid;
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
@@ -364,6 +367,8 @@ typedef struct PgCallbacks {
   void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
+  /* pgstat.h */
+  uint32_t (*PgstatReportWaitStart)(uint32_t);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -372,8 +377,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
-  const int32_t*  ysql_max_read_restart_attempts;
-  const int32_t*  ysql_max_write_restart_attempts;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
@@ -388,6 +391,7 @@ typedef struct PgGFlagsAccessor {
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
+  const bool*     ysql_enable_db_catalog_version_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -403,7 +407,7 @@ typedef struct YbTablePropertiesData* YbTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
-  YBCPgOid table_oid;
+  YBCPgOid table_relfilenode_oid;
   size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
@@ -440,6 +444,7 @@ typedef struct PgExecReadWriteStats {
   uint64_t reads;
   uint64_t writes;
   uint64_t read_wait;
+  uint64_t rows_scanned;
 } YBCPgExecReadWriteStats;
 
 typedef struct PgExecEventMetric {
@@ -544,6 +549,127 @@ typedef struct PgReplicationSlotDescriptor {
   YBCPgOid database_oid;
   bool active;
 } YBCReplicationSlotDescriptor;
+
+typedef struct PgCDCSDKCheckpoint {
+  int64_t term;
+  int64_t index;
+  const char *key;
+  int32_t write_id;
+} YBCPgCDCSDKCheckpoint;
+
+typedef struct PgTabletLocationsDescriptor {
+  const char *tablet_id;
+} YBCPgTabletLocationsDescriptor;
+
+typedef struct PgTabletCheckpoint {
+  YBCPgTabletLocationsDescriptor *location;
+  YBCPgCDCSDKCheckpoint *checkpoint;
+  YBCPgOid table_oid;
+} YBCPgTabletCheckpoint;
+
+typedef struct PgDatumMessage {
+  const char* column_name;
+  uint64_t column_type;
+  uint64_t datum;
+  bool is_null;
+} YBCPgDatumMessage;
+
+typedef enum PgRowMessageAction {
+  YB_PG_ROW_MESSAGE_ACTION_UNKNOWN = 0,
+  YB_PG_ROW_MESSAGE_ACTION_BEGIN = 1,
+  YB_PG_ROW_MESSAGE_ACTION_COMMIT = 2,
+  YB_PG_ROW_MESSAGE_ACTION_INSERT = 3,
+  YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
+  YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
+  YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+} YBCPgRowMessageAction;
+
+typedef struct PgRowMessage {
+  int col_count;
+  YBCPgDatumMessage* cols;
+  uint64_t commit_time;
+  YBCPgRowMessageAction action;
+} YBCPgRowMessage;
+
+typedef struct PgChangeRecordBatch {
+  int row_count;
+  YBCPgRowMessage* rows;
+  YBCPgCDCSDKCheckpoint* checkpoint;
+  YBCPgOid table_oid;
+} YBCPgChangeRecordBatch;
+
+// A struct to store ASH metadata in PG's procarray
+typedef struct AshMetadata {
+  // A unique id corresponding to a YSQL query in bytes.
+  unsigned char root_request_id[16];
+
+  // Query id as seen on pg_stat_statements to identify identical
+  // normalized queries. There might be many queries with different
+  // root_request_id but with the same query_id.
+  uint64_t query_id;
+
+  // PgClient session id.
+  uint64_t session_id;
+
+  // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
+  // the ipv4/ipv6 address and client_port stores the port of the PG process
+  // where the YSQL query originated. In case of AF_INET, the first 4 bytes
+  // of client_addr are used to store the ipv4 address as raw bytes.
+  // In case of AF_INET6, all the 16 bytes are used to store the ipv6 address
+  // as raw bytes.
+  // If addr_family is AF_UNIX, client_addr and client_port are nulled out.
+  unsigned char client_addr[16];
+  uint16_t client_port;
+  uint8_t addr_family;
+} YBCAshMetadata;
+
+// Struct to store ASH samples in the circular buffer.
+typedef struct AshSample {
+  // Metadata of the sample.
+  // yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
+  // but the reason to not store them inside YBCAshMetadata is that these remain
+  // constant in PG for all the samples of a particular node. So we don't store it
+  // in YBCAshMetadata, which is stored in the procarray to save shared memory.
+  YBCAshMetadata metadata;
+
+  // UUID of the TServer where the query generated.
+  // This remains constant for PG samples on a node, but can differ for TServer
+  // samples as TServer can be processing requests from other nodes.
+  unsigned char yql_endpoint_tserver_uuid[16];
+
+  // A single query can generate multiple RPCs, this is used to differentiate
+  // those RPCs. This will always be 0 for PG samples
+  int64_t rpc_request_id;
+
+  // Auxiliary information about the sample.
+  char aux_info[16];
+
+  // 32-bit wait event code of the sample.
+  uint32_t wait_event_code;
+
+  // If a certain number of samples are available and we capture a portion of
+  // them, the sample weight is the reciprocal of the captured portion or 1,
+  // whichever is maximum.
+  double sample_weight;
+
+  // Timestamp when the sample was captured.
+  uint64_t sample_time;
+} YBCAshSample;
+
+typedef struct YBCBindColumn {
+  int attr_num;
+  const YBCPgTypeEntity* type_entity;
+  YBCPgCollationInfo collation_info;
+  bool is_null;
+  uint64_t datum;
+} YBCBindColumn;
+
+// Postgres replication slot snapshot action defined in Postgres' walsender.h
+// It does not include EXPORT_SNAPSHOT since it isn't supported yet.
+typedef enum PgReplicationSlotSnapshotAction {
+  YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT,
+  YB_REPLICATION_SLOT_USE_SNAPSHOT
+} YBCPgReplicationSlotSnapshotAction;
 
 #ifdef __cplusplus
 }  // extern "C"

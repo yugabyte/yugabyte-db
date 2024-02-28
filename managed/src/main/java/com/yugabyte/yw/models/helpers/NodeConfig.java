@@ -78,6 +78,8 @@ public class NodeConfig {
 
     CHRONYD_RUNNING("Chronyd running"),
 
+    LOCALE_PRESENT("Locale is present"),
+
     SSH_PORT("SSH port is open"),
 
     SUDO_ACCESS("Sudo access available"),

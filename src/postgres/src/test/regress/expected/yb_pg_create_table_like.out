@@ -39,6 +39,9 @@ SELECT * FROM inhf; /* Single entry with value 'text' */
 
 ALTER TABLE inhx add constraint foo CHECK (xx = 'text');
 ALTER TABLE inhx ADD PRIMARY KEY (xx);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE TABLE inhg (LIKE inhx); /* Doesn't copy constraint */
 INSERT INTO inhg VALUES ('foo');
 DROP TABLE inhg;

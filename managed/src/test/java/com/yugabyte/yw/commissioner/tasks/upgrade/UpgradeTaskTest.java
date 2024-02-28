@@ -67,10 +67,12 @@ import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.RollbackAutoFlagsResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -223,6 +225,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(
               new PromoteAutoFlagsResponse(
                   0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      lenient()
+          .when(mockClient.rollbackAutoFlags(anyInt()))
+          .thenReturn(
+              new RollbackAutoFlagsResponse(
+                  0, "uuid", RollbackAutoFlagsResponsePB.getDefaultInstance()));
       lenient().when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       lenient()
           .when(mockClient.changeMasterClusterConfig(any()))
@@ -487,6 +494,34 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask, position);
       position++;
     }
+  }
+
+  // Configures default universe to have 5 nodes with RF=3.
+  protected void updateDefaultUniverseTo5Nodes(boolean enableYSQL) {
+    updateDefaultUniverseTo5Nodes(enableYSQL, "2.21.0.0-b1");
+  }
+
+  protected void updateDefaultUniverseTo5Nodes(boolean enableYSQL, String ybSoftwareVersion) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 5;
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.provider = defaultProvider.getUuid().toString();
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(
+                userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
   }
 
   protected void attachHooks(String className) {

@@ -69,7 +69,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
       if (existingEncryptionKey != null && existingEncryptionKey.length > 0) {
         final String errMsg =
             String.format(
-                "Encryption key for universe %s already exists" + " with provider %s",
+                "Encryption key for universe %s already exists with provider %s",
                 universeUUID.toString(), this.keyProvider.name());
         LOG.error(errMsg);
         throw new IllegalArgumentException(errMsg);

@@ -144,9 +144,15 @@ public class AssertHelper {
   }
 
   public static void assertJsonEqual(JsonNode expectedJson, JsonNode actualJson) {
+    assertJsonEqual(null, expectedJson, actualJson);
+  }
+
+  public static void assertJsonEqual(
+      String failMessage, JsonNode expectedJson, JsonNode actualJson) {
     expectedJson
         .fieldNames()
-        .forEachRemaining(field -> assertEquals(expectedJson.get(field), actualJson.get(field)));
+        .forEachRemaining(
+            field -> assertEquals(failMessage, expectedJson.get(field), actualJson.get(field)));
   }
 
   public static void assertAuditEntry(int expectedNumEntries, UUID customerUUID) {

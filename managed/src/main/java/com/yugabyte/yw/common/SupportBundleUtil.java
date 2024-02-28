@@ -12,13 +12,20 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -63,6 +70,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.joda.time.DateTime;
+import play.libs.Json;
 
 @Slf4j
 @Singleton
@@ -157,6 +165,16 @@ public class SupportBundleUtil {
     } else {
       log.info("Failed to delete file with path: {}", filePath);
     }
+  }
+
+  public void deleteSupportBundle(SupportBundle supportBundle) {
+    // Delete the actual archive file
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
   /**
@@ -722,5 +740,103 @@ public class SupportBundleUtil {
         nodeHomeDir,
         sourceNodeFiles,
         componentName);
+  }
+
+  public void ignoreExceptions(Runnable r) {
+    try {
+      r.run();
+    } catch (Exception e) {
+      log.error("Error while trying to collect YBA Metadata subcomponent: ", e);
+    }
+  }
+
+  public void saveMetadata(Customer customer, String destDir, JsonNode jsonData, String fileName) {
+    // Declare file path.
+    String metadataFilePath = Paths.get(destDir, fileName).toString();
+
+    // Save the collected metadata to above file.
+    writeStringToFile(jsonData.toPrettyString(), metadataFilePath);
+    log.info(
+        "Gathered '{}' data for customer '{}', at path '{}'.",
+        fileName,
+        customer.getUuid(),
+        metadataFilePath);
+  }
+
+  public void getCustomerMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "customer.json");
+  }
+
+  public void getUniversesMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<UniverseResp> universes =
+        customer.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "universes.json");
+  }
+
+  public void getProvidersMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<Provider> providers = Provider.getAll(customer.getUuid());
+    providers.forEach(CloudInfoInterface::mayBeMassageResponse);
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "providers.json");
+  }
+
+  public void getUsersMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<Users> users = Users.getAll(customer.getUuid());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "users.json");
+  }
+
+  public void getTaskMetadata(Customer customer, String destDir) {
+    // Gather metadata for customer_task table.
+    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customer.getUuid());
+    // Save the above collected metadata.
+    JsonNode customerTaskJsonData =
+        RedactingService.filterSecretFields(Json.toJson(customerTasks), RedactionTarget.APIS);
+    saveMetadata(customer, destDir, customerTaskJsonData, "customer_task.json");
+
+    // Gather metadata for task_info table later.
+  }
+
+  public void getInstanceTypeMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    Set<UUID> providerUUIDs =
+        Provider.getAll(customer.getUuid()).stream()
+            .map(Provider::getUuid)
+            .collect(Collectors.toSet());
+    List<InstanceType> instanceTypes =
+        InstanceType.getAllInstanceTypes().stream()
+            .filter(it -> providerUUIDs.contains(it.getProvider().getUuid()))
+            .collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "instance_type.json");
+  }
+
+  public void gatherAndSaveAllMetadata(Customer customer, String destDir) {
+    ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
+    ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
+    ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
+    ignoreExceptions(() -> getUsersMetadata(customer, destDir));
+    ignoreExceptions(() -> getTaskMetadata(customer, destDir));
   }
 }

@@ -2,7 +2,6 @@
 title: Data manipulation
 linkTitle: Data manipulation
 description: Data manipulation in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-features-data-manipulation
@@ -176,7 +175,7 @@ yugabyte=# \i mydb
 
 ## Define NOT NULL constraint
 
-YSQL lets you define various constraints on columns. One of these constraints is [NOT NULL](../../indexes-constraints/other-constraints/#not-null-constraint). You can use it to specify that a column value cannot be null. Typically, you apply this constraint when creating a table, as the following example demonstrates:
+YSQL lets you define various constraints on columns. One of these constraints is [NOT NULL](../indexes-constraints/other-constraints/#not-null-constraint). You can use it to specify that a column value cannot be null. Typically, you apply this constraint when creating a table, as the following example demonstrates:
 
 ```sql
 CREATE TABLE employees (

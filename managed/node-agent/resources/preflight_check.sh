@@ -105,6 +105,14 @@ preflight_provision_check() {
   else
     update_result_json "sudo_access" false
   fi
+
+  # Check Locale
+  result=$(locale -a | grep -q -E "en_US.utf8|en_US.UTF-8")
+  if [[ "$?" -eq 0 ]]; then
+    update_result_json "locale_present" true
+  else
+    update_result_json "locale_present" false
+  fi
 }
 
 check_ntp_synchronization() {
@@ -242,11 +250,17 @@ preflight_configure_check() {
   update_result_json "ulimit_user_processes" "$ulimit_user_processes"
 
   # Check systemd sudoers.
-  timeout 5 /bin/systemctl --no-ask-password enable yb-master
+  # TODO change the check name appropriately.
+  timeout 5 sudo -n /bin/systemctl --no-ask-password enable yb-master
   if [[ "$?" = 0 ]]; then
     update_result_json "systemd_sudoer_entry" true
   else
-    update_result_json "systemd_sudoer_entry" false
+    timeout 5 systemctl --user --no-ask-password enable yb-master
+    if [[ "$?" = 0 ]]; then
+      update_result_json "systemd_sudoer_entry" true
+    else
+      update_result_json "systemd_sudoer_entry" false
+    fi
   fi
 
   # Check virtual memory max map limit.

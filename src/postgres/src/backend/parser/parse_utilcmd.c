@@ -3470,11 +3470,23 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						switch (constraint->contype)
 						{
 							case CONSTR_IDENTITY:
-							case CONSTR_PRIMARY:
 								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 											errmsg("This ALTER TABLE command is not yet supported.")));
 								break;
-
+							case CONSTR_PRIMARY:
+								/*
+								 * Adding a primary key column may fail due to a constraint
+								 * violation. Only permit this if DDL atomicity is enabled, so that
+								 * in the case of failure, we aren't left with orphaned DocDB
+								 * columns.
+								 */
+								if (!ddl_rollback_enabled)
+									ereport(ERROR,
+											(errcode(
+												ERRCODE_FEATURE_NOT_SUPPORTED),
+											errmsg("This ALTER TABLE command is"
+												   " not yet supported.")));
+								break;
 							case CONSTR_UNIQUE:
 								// TODO(alex): Since we can't transactionally rollback adding column
 								//             on DocDB side yet, only support the simplest form

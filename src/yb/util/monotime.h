@@ -148,7 +148,12 @@ inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
 // This time is monotonic, meaning that if the user changes his or her system
 // clock, the monotime does not change.
 class MonoTime {
+  using Clock = std::chrono::steady_clock;
+  using Duration = Clock::duration;
+
  public:
+  using TimePoint = Clock::time_point;
+
   static constexpr int64_t kNanosecondsPerMicrosecond = 1000L;
   static constexpr int64_t kMicrosecondsPerMillisecond = 1000L;
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
@@ -199,9 +204,9 @@ class MonoTime {
   static const MonoTime& Earliest(const MonoTime& a, const MonoTime& b);
 
   MonoTime() noexcept {}
-  MonoTime(std::chrono::steady_clock::time_point value) : value_(value) {} // NOLINT
+  MonoTime(TimePoint value) : value_(value) {} // NOLINT
 
-  bool Initialized() const { return value_ != std::chrono::steady_clock::time_point(); }
+  bool Initialized() const { return value_ != TimePoint(); }
 
   MonoDelta GetDeltaSince(const MonoTime &rhs) const;
   MonoDelta GetDeltaSinceMin() const { return GetDeltaSince(Min()); }
@@ -214,10 +219,14 @@ class MonoTime {
   bool IsMax() const;
   bool IsMin() const;
 
+  template <class Rep, class Period>
+  static MonoTime FromDuration(const std::chrono::duration<Rep, Period>& dur) {
+    return TimePoint{std::chrono::duration_cast<Duration>(dur)};
+  }
+
   uint64_t ToUint64() const { return value_.time_since_epoch().count(); }
   static MonoTime FromUint64(uint64_t value) {
-    return MonoTime(std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(
-        value)));
+    return TimePoint{Duration{value}};
   }
 
   explicit operator bool() const { return Initialized(); }
@@ -226,14 +235,14 @@ class MonoTime {
   // Set this time to the given value if it is lower than that or uninitialized.
   void MakeAtLeast(MonoTime rhs);
 
-  std::chrono::steady_clock::time_point ToSteadyTimePoint() const {
+  TimePoint ToSteadyTimePoint() const {
     return value_;
   }
 
  private:
   double ToSeconds() const;
 
-  std::chrono::steady_clock::time_point value_;
+  TimePoint value_;
 };
 
 inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT

@@ -5,7 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
@@ -34,13 +34,11 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.Config;
-import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.NamedAuthInfo;
 import io.fabric8.kubernetes.api.model.NamedCluster;
 import io.fabric8.kubernetes.api.model.NamedContext;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
 import java.lang.annotation.Annotation;
@@ -60,7 +58,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
 import play.libs.Json;
@@ -464,10 +462,10 @@ public class CloudProviderHelper {
 
   private void updateGCPProviderConfig(Provider provider, Map<String, String> config) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    JsonNode gcpCredentials = gcpCloudInfo.getGceApplicationCredentials();
-    if (gcpCredentials != null) {
+    if (StringUtils.isNotEmpty(gcpCloudInfo.getGceApplicationCredentials())) {
       String gcpCredentialsFile =
-          accessManager.createGCPCredentialsFile(provider.getUuid(), gcpCredentials);
+          accessManager.createGCPCredentialsFile(
+              provider.getUuid(), gcpCloudInfo.getGceApplicationCredentials());
       if (gcpCredentialsFile != null) {
         gcpCloudInfo.setGceApplicationCredentialsPath(gcpCredentialsFile);
       }
@@ -539,9 +537,20 @@ public class CloudProviderHelper {
        * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in gcp
        * credentials user provided. 3. Metadata query to fetch the same.
        */
-      ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
-      if (credentialJSON != null && credentialJSON.has("project_id")) {
-        gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+      try {
+        String credentials = gcpCloudInfo.getGceApplicationCredentials();
+        if (StringUtils.isNotEmpty(credentials)) {
+          ObjectMapper objectMapper = Json.mapper();
+          JsonNode gceCreds = objectMapper.readTree(credentials);
+          if (gceCreds != null && gceCreds.has("project_id")) {
+            gcpCloudInfo.setGceProject(gceCreds.get("project_id").asText());
+          }
+        }
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to retrieve GCP project information, %s", e.getLocalizedMessage()));
       }
     }
   }
@@ -740,43 +749,30 @@ public class CloudProviderHelper {
     return metadata.get("name").asText();
   }
 
-  public String getKubernetesImageRepository() {
-    String podName = System.getenv("HOSTNAME");
-    if (podName == null) {
-      podName = "yugaware-0";
-    }
-
-    String containerName = System.getenv("container");
-    if (containerName == null) {
-      containerName = "yugaware";
-    }
-    // Container Name can change between yugaware and yugaware-docker.
-    containerName = containerName.split("-")[0];
-
-    Pod podObject = kubernetesManagerFactory.getManager().getPodObject(null, null, podName);
-    if (podObject == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching pod details for yugaware");
-    }
-    String imageName = null;
-    List<Container> containers = podObject.getSpec().getContainers();
-    for (Container c : containers) {
-      if (containerName.equals(c.getName())) {
-        imageName = c.getImage();
-      }
-    }
-    if (imageName == null) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching image details for yugaware");
-    }
-    String[] parsed = imageName.split("/");
-    /* Algorithm Used
-    Take last element, split it with ":", take the 0th element of that list.
+  public String getKubernetesImageRepository(String yugawareImageRepository) {
+    /*
+    Algorithm Used - Take last element, split it with ":", take the 0th element of that list.
     in that element replace string yugaware with yugabyte.
+    in case this is a yugabyte-k8s-operator build do the same with yugabyte-k8s-operator string.
+    if not found replace it with yugabyte, and join the list with "/"
     gcr.io/yugabyte/dev-ci-yugaware:2.17.2.0-b9999480 -> gcr.io/yugabyte/dev-ci-yugabyte */
+    if (StringUtils.isBlank(yugawareImageRepository)) {
+      // It can be empty for test cases or where we might not be running in k8s.
+      return "";
+    }
+    String[] parsed = yugawareImageRepository.split("/");
     parsed[parsed.length - 1] = parsed[parsed.length - 1].split(":")[0];
-    parsed[parsed.length - 1] = parsed[parsed.length - 1].replace("yugaware", "yugabyte");
-    return String.join("/", parsed);
+    if (parsed[parsed.length - 1].contains("yugaware")) {
+      parsed[parsed.length - 1] = parsed[parsed.length - 1].replace("yugaware", "yugabyte");
+    } else if (parsed[parsed.length - 1].contains("yugabyte-k8s-operator")) {
+      parsed[parsed.length - 1] =
+          parsed[parsed.length - 1].replace("yugabyte-k8s-operator", "yugabyte");
+    } else {
+      parsed[parsed.length - 1] = "yugabyte";
+    }
+    String imageRegistry = String.join("/", parsed);
+    log.info("Image Registry is: {}", imageRegistry);
+    return imageRegistry;
   }
 
   public Set<Region> checkIfRegionsToAdd(Provider editProviderReq, Provider provider) {
@@ -829,6 +825,17 @@ public class CloudProviderHelper {
 
     CloudInfoInterface providerCloudInfo = CloudInfoInterface.get(provider);
     CloudInfoInterface editProviderCloudInfo = CloudInfoInterface.get(editProviderReq);
+    if (provider.getCloudCode() == CloudType.gcp) {
+      GCPCloudInfo editProviderReqCloudInfo = (GCPCloudInfo) editProviderCloudInfo;
+      GCPCloudInfo providerReqCloudInfo = (GCPCloudInfo) providerCloudInfo;
+      // For providers created prior to 2.16, `useHostVPC` is not set in case they are using
+      // EXISTING VPCs. Explicitly setting the same here.
+      if (providerReqCloudInfo.getVpcType() == CloudInfoInterface.VPCType.EXISTING
+          && editProviderReqCloudInfo.getUseHostVPC() != null
+          && editProviderReqCloudInfo.getUseHostVPC()) {
+        providerReqCloudInfo.setUseHostVPC(editProviderReqCloudInfo.getUseHostVPC());
+      }
+    }
     checkCloudInfoFieldsInUseProvider(providerCloudInfo, editProviderCloudInfo);
 
     // Collect existing and current regions into maps

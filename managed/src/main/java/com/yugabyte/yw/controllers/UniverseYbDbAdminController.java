@@ -45,7 +45,6 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
-import play.data.Form;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -56,7 +55,8 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @Inject private UniverseYbDbAdminHandler universeYbDbAdminHandler;
 
   @ApiOperation(
-      value = "YbaApi Internal. Set a universe's database credentials",
+      notes = "YbaApi Internal.",
+      value = "Set a universe's database credentials",
       nickname = "setDatabaseCredentials",
       response = YBPSuccess.class)
   @ApiImplicitParams(
@@ -92,7 +92,8 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Drop a database user for a universe",
+      notes = "YbaApi Internal.",
+      value = "Drop a database user for a universe",
       nickname = "dropUserInDB",
       response = YBPSuccess.class,
       hidden = true)
@@ -129,7 +130,8 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Create a restricted user for a universe",
+      notes = "YbaApi Internal.",
+      value = "Create a restricted user for a universe",
       nickname = "createRestrictedUserInDB",
       response = YBPSuccess.class,
       hidden = true)
@@ -167,7 +169,8 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Create a database user for a universe",
+      notes = "YbaApi Internal.",
+      value = "Create a database user for a universe",
       nickname = "createUserInDB",
       response = YBPSuccess.class)
   @ApiImplicitParams(
@@ -205,8 +208,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   @VisibleForTesting static final String DEPRECATED = "Deprecated.";
 
   @ApiOperation(
-      value = "YbaApi Internal. Run a YSQL query in a universe",
-      notes = "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
+      notes =
+          "YbaApi Internal. Runs a YSQL query. Only valid when the platform is running in `OSS`"
+              + " mode.",
+      value = "Run a YSQL query in a universe",
       nickname = "runYsqlQueryUniverse",
       response = Object.class)
   @ApiImplicitParams(
@@ -225,11 +230,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    Form<RunQueryFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
+    RunQueryFormData formData = parseJsonAndValidate(request, RunQueryFormData.class);
 
     JsonNode queryResult =
-        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get(), request);
+        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -247,8 +251,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
    * @return Result of update operation with task id
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Configure YSQL",
-      notes = "Queues a task to configure ysql in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to configure ysql in a"
+              + " universe.",
+      value = "Configure YSQL",
       nickname = "configureYSQL",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -289,8 +295,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
    * @return Result of update operation with task id
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Configure YCQL",
-      notes = "Queues a task to configure ycql in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to configure ycql in a"
+              + " universe.",
+      value = "Configure YCQL",
       nickname = "configureYCQL",
       response = YBPTask.class)
   @ApiImplicitParams(

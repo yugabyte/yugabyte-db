@@ -1224,6 +1224,7 @@ $$;
 create event trigger event_rewrite on table_rewrite
   execute procedure trig_rewrite();
 ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) collate "en-US-x-icu"; -- rewrite
+NOTICE:  table rewrite may lead to inconsistencies
 NOTICE:  rewriting table
 \d tab1
                     Table "collate_tests.tab1"

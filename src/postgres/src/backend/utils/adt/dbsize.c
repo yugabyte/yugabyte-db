@@ -401,16 +401,14 @@ calculate_table_size(Relation rel)
 		if (rel->rd_index && rel->rd_index->indisprimary)
 			return -1;
 
-		Oid relOid = YbGetStorageRelid(rel);
-
 		/* Colcoated tables do not have size info */
 		if (YbGetTableProperties(rel)->is_colocated)
 			return -1;
 
 		int32 num_missing_tablets = 0;
 
-		HandleYBStatus(YBCPgGetTableDiskSize(relOid, MyDatabaseId,
-						(int64_t *)&size, &num_missing_tablets));
+		HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(rel),
+			MyDatabaseId, (int64_t *)&size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
 			elog(NOTICE, "%d tablets of relation %s did not provide disk size "

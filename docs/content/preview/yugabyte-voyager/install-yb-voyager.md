@@ -3,7 +3,6 @@ title: Install yb-voyager
 headerTitle: Install
 linkTitle: Install
 description: Prerequisites and installation instructions for YugabyteDB Voyager.
-image: /images/section_icons/develop/learn.png
 menu:
   preview_yugabyte-voyager:
     identifier: install-yb-voyager

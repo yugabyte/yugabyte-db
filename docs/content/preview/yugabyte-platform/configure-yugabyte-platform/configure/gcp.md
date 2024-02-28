@@ -1,9 +1,8 @@
----
+<!---
 title: Configure YugabyteDB Anywhere on GCP
 headerTitle: Overview
 linkTitle: Overview
 description: Configure YugabyteDB Anywhere on Google Cloud Platform
-image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere on GCP
 menu:
   preview_yugabyte-platform:
@@ -11,7 +10,8 @@ menu:
     parent: configure-yugabyte-platform
     weight: 5
 type: docs
----
+private: true
+--->
 
 For overview of how to configure database nodes, select one of the following cloud providers:
 

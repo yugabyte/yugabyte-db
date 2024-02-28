@@ -26,7 +26,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import play.mvc.Http;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = GFlagsUpgradeParams.Converter.class)
@@ -46,23 +47,23 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
 
     runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
-    if (universe
-            .getUniverseDetails()
-            .softwareUpgradeState
-            .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)
         && !runtimeConfGetter.getConfForScope(
             universe, UniverseConfKeys.allowGFlagsOverrideDuringPreFinalize)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
+          BAD_REQUEST,
+          "Cannot upgrade gflags on universe in state "
+              + universe.getUniverseDetails().softwareUpgradeState);
     }
-
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }
     if (tserverGFlags == null) {
       tserverGFlags = new HashMap<>();
     }
-    verifyGFlags(universe, isFirstTry);
+    if (!verifyGFlagsHasChanges(universe) && isFirstTry) {
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
+    }
   }
 
   public void checkXClusterAutoFlags(

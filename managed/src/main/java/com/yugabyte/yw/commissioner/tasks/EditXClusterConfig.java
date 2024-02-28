@@ -182,7 +182,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 taskParams().getTableIdsToAdd(),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
-                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+                false /*isForceBootstrap*/);
 
     // Add the subtasks to set up replication for tables that do not need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
@@ -194,6 +195,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           requestedTableInfoList,
           true /* isReplicationConfigCreated */,
           taskParams().getPitrParams());
+
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Replicating,
+                SourceUniverseState.ReplicatingData,
+                TargetUniverseState.ReceivingData,
+                null /* keyspacePending */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
     }
 
     // Add the subtasks to set up replication for tables that need bootstrapping if any.
@@ -232,7 +243,10 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
         // Delete the xCluster config.
         createDeleteXClusterConfigSubtasks(
-            xClusterConfig, true /* keepEntry */, taskParams().isForced());
+            xClusterConfig,
+            true /* keepEntry */,
+            taskParams().isForced(),
+            false /* deletePitrConfigs */);
 
         if (xClusterConfig.isUsedForDr()) {
           createSetDrStatesTask(

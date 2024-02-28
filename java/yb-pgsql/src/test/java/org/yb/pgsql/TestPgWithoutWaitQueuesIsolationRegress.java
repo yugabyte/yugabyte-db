@@ -26,19 +26,17 @@ public class TestPgWithoutWaitQueuesIsolationRegress extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "false");
-    flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("ysql_max_write_restart_attempts", "20");
     return flagMap;
   }
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 180;
+    return 800;
   }
 
   @Test
-  public void runPgTransparentRestartsRegressTest() throws Exception {
+  public void runPgWithoutWaitQueuesRegressTest() throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR, "yb_without_wait_queues_schedule",
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);

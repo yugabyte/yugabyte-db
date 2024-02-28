@@ -2,6 +2,7 @@
 package com.yugabyte.yw.metrics;
 
 import static com.yugabyte.yw.metrics.MetricQueryHelper.EXPORTED_INSTANCE;
+import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_NAME;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.TABLE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.TABLE_NAME;
@@ -79,6 +80,7 @@ public class MetricQueryResponse {
       metricGraphData.tableId = getAndRemoveLabelValue(metricInfo, TABLE_ID);
       metricGraphData.tableName = getAndRemoveLabelValue(metricInfo, TABLE_NAME);
       metricGraphData.namespaceName = getAndRemoveLabelValue(metricInfo, NAMESPACE_NAME);
+      metricGraphData.namespaceId = getAndRemoveLabelValue(metricInfo, NAMESPACE_ID);
       if (metricInfo.has("node_prefix")) {
         metricGraphData.name = metricInfo.get("node_prefix").asText();
       } else if (metricInfo.size() == 1) {

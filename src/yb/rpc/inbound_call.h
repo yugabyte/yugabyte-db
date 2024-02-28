@@ -35,7 +35,8 @@
 #include <vector>
 
 #include <boost/optional/optional.hpp>
-#include "yb/util/logging.h"
+
+#include "yb/ash/wait_state.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
@@ -53,6 +54,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
@@ -110,6 +112,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
 
+  // Is this a local call?
+  virtual bool IsLocalCall() const { return false; }
+
   // Return the serialized request parameter protobuf.
   Slice serialized_request() const {
     return serialized_request_;
@@ -130,7 +135,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionContext& connection_context() const;
 
   inline Trace* trace() const EXCLUDES(mutex_) {
-    return trace_.load(std::memory_order_relaxed);
+    return trace_.load(std::memory_order_acquire);
   }
 
   // When this InboundCall was received (instantiated).
@@ -207,6 +212,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     // See #17726 for this bug and #17759 to track the "proper" fix in ServicePoolImpl.
     auto* call_ptr = new T(std::forward<Args>(args)...);
     auto result = std::shared_ptr<T>(call_ptr);
+    // Needs to be done after assigning it to a shared_ptr.
+    result->InitializeWaitState();
     result->RecordCallReceived();
     return result;
   }
@@ -223,6 +230,20 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // that trace_ is not null and can be used for collecting the requested data.
   void EnsureTraceCreated() EXCLUDES(mutex_);
 
+  // Allows us to set a call processed listener if not already set.
+  // Used in the context of a local inbound call to track pending local calls.
+  void SetCallProcessedListener(CallProcessedListener* call_processed_listener);
+
+  // Returns the WaitStateInfo associated with this call. This is used to
+  // track what this RPC is currently waiting on.
+  const ash::WaitStateInfoPtr& wait_state() const {
+    return wait_state_;
+  }
+
+  int64_t instance_id() const {
+    return instance_id_;
+  }
+
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
@@ -237,6 +258,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   virtual void LogTrace() const = 0;
 
   void QueueResponse(bool is_success);
+
+  void InitializeWaitState();
 
   // The serialized bytes of the request param protobuf. Set by ParseFrom().
   // This references memory held by 'request_data_'.
@@ -258,10 +281,14 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   mutable simple_spinlock mutex_;
   bool cleared_ GUARDED_BY(mutex_) = false;
 
+  const ash::WaitStateInfoPtr wait_state_;
+
  private:
   // The trace buffer.
   scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
   std::atomic<Trace*> trace_ = nullptr;
+
+  const int64_t instance_id_;
 
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;

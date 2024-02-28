@@ -55,7 +55,8 @@ public class TokenAuthenticator extends Action.Simple {
           "/fetch_package",
           "/performance_recommendations/page",
           "/performance_recommendation_state_change/page",
-          "/node_agents/page");
+          "/node_agents/page",
+          "/login");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -162,7 +163,7 @@ public class TokenAuthenticator extends Action.Simple {
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
       String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
       String patternForHost = ".+:[0-9]{4,5}";
 
       // Allow for disabling authentication on proxy endpoint so that

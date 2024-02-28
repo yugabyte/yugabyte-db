@@ -125,7 +125,7 @@ Status CQLConnectionContext::HandleCall(
     }
   }
 
-  s = Store(call.get());
+  s = Store(call);
   if (!s.ok()) {
     return s;
   }
@@ -353,6 +353,11 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
+  }
+  if (req.get_wait_state()) {
+    if (wait_state()) {
+      wait_state()->ToPB(resp->mutable_wait_state());
+    }
   }
   resp->set_elapsed_millis(
       MonoTime::Now().GetDeltaSince(timing_.time_received).ToMilliseconds());

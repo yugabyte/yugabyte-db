@@ -32,6 +32,8 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
+#include "yb/cdc/cdc_service.h"
+
 namespace yb {
 namespace cdc {
 
@@ -138,5 +140,20 @@ Status CorrectlyPollingAllTablets(
       timeout, "Num producer tablets being polled");
 }
 
+Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> GetXClusterTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create) {
+  auto tablet_peer = VERIFY_RESULT(cdc_service.GetServingTablet(tablet_id));
+  SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
+  return cdc_service.GetXClusterTabletMetrics(*tablet_peer.get(), stream_id, create);
+}
+
+Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create) {
+  auto tablet_peer = VERIFY_RESULT(cdc_service.GetServingTablet(tablet_id));
+  SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
+  return cdc_service.GetCDCSDKTabletMetrics(*tablet_peer.get(), stream_id, create);
+}
 } // namespace cdc
 } // namespace yb

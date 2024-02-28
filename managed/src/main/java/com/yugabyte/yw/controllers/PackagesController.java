@@ -41,7 +41,8 @@ public class PackagesController extends AbstractPlatformController {
   })
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Fetch a package",
+      notes = "YbaApi Internal.",
+      value = "Fetch a package",
       nickname = "fetchPackage",
       response = String.class,
       produces = "application/gzip")

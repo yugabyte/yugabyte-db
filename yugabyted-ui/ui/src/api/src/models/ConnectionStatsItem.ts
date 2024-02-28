@@ -25,7 +25,13 @@ export interface ConnectionStatsItem  {
    * @type {string}
    * @memberof ConnectionStatsItem
    */
-  pool?: string;
+  database_name?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof ConnectionStatsItem
+   */
+  user_name?: string;
   /**
    * 
    * @type {number}

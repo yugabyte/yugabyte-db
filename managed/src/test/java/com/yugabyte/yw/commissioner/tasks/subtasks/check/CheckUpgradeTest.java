@@ -4,15 +4,15 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
@@ -27,17 +27,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.WireProtocol.AutoFlagsConfigPB;
-import org.yb.WireProtocol.PromotedFlagsPerProcessPB;
-import org.yb.client.GetAutoFlagsConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CheckUpgradeTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
 
   @Override
   @Before
@@ -46,12 +40,6 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
-    mockClient = mock(YBClient.class);
-    try {
-      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    } catch (Exception ignored) {
-      fail();
-    }
   }
 
   @Test
@@ -99,7 +87,9 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
-    when(mockClient.autoFlagsConfig()).thenThrow(new Exception("Unable to get auto flags config"));
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenThrow(
+            new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to get auto flags config"));
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     PlatformServiceException exception =
@@ -113,27 +103,8 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
-    PromotedFlagsPerProcessPB masterFlagPB =
-        PromotedFlagsPerProcessPB.newBuilder()
-            .addFlags("FLAG_1")
-            .setProcessName("yb-master")
-            .build();
-    PromotedFlagsPerProcessPB tserverFlagPB =
-        PromotedFlagsPerProcessPB.newBuilder()
-            .addFlags("FLAG_1")
-            .setProcessName("yb-tserver")
-            .build();
-    AutoFlagsConfigPB config =
-        GetAutoFlagsConfigResponsePB.newBuilder()
-            .getConfigBuilder()
-            .addPromotedFlags(masterFlagPB)
-            .addPromotedFlags(tserverFlagPB)
-            .setConfigVersion(1)
-            .build();
-    GetAutoFlagsConfigResponsePB responsePB =
-        GetAutoFlagsConfigResponsePB.newBuilder().setConfig(config).build();
-    GetAutoFlagsConfigResponse resp = new GetAutoFlagsConfigResponse(0, null, responsePB);
-    when(mockClient.autoFlagsConfig()).thenReturn(resp);
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1", "FLAG_2"));
     AutoFlagDetails flag = new AutoFlagDetails();
     flag.name = "FLAG_2";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
@@ -153,27 +124,8 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     CheckUpgrade.Params params = new CheckUpgrade.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "new-version";
-    PromotedFlagsPerProcessPB masterFlagPB =
-        PromotedFlagsPerProcessPB.newBuilder()
-            .addFlags("FLAG_1")
-            .setProcessName("yb-master")
-            .build();
-    PromotedFlagsPerProcessPB tserverFlagPB =
-        PromotedFlagsPerProcessPB.newBuilder()
-            .addFlags("FLAG_1")
-            .setProcessName("yb-tserver")
-            .build();
-    AutoFlagsConfigPB config =
-        GetAutoFlagsConfigResponsePB.newBuilder()
-            .getConfigBuilder()
-            .addPromotedFlags(masterFlagPB)
-            .addPromotedFlags(tserverFlagPB)
-            .setConfigVersion(1)
-            .build();
-    GetAutoFlagsConfigResponsePB responsePB =
-        GetAutoFlagsConfigResponsePB.newBuilder().setConfig(config).build();
-    GetAutoFlagsConfigResponse resp = new GetAutoFlagsConfigResponse(0, null, responsePB);
-    when(mockClient.autoFlagsConfig()).thenReturn(resp);
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of("FLAG_1"));
     AutoFlagDetails flag = new AutoFlagDetails();
     flag.name = "FLAG_1";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();

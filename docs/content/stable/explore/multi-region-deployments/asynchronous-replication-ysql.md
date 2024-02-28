@@ -20,6 +20,7 @@ For more information, see the following:
 
 - [xCluster replication architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication commands](../../../admin/yb-admin/#xcluster-replication-commands)
+- [xCluster replication limitations](../../../architecture/docdb-replication/async-replication/#limitations)
 - [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
 
 ## Create two data centers
@@ -96,8 +97,8 @@ To configure "Data Center - West" to be the target of data changes from the "Dat
 
 ```sh.output
 yb-admin -master_addresses <target-master-addresses> \
-    setup_universe_replication <source-universe_uuid> \
-    <source_master_addresses> <source-table-ids>
+    setup_universe_replication <source-universe-uuid> \
+    <source-master-addresses> <source-table-ids>
 ```
 
 - *target-master-addresses*: a comma-separated list of the target YB-Master servers. For this simulation, you have one YB-Master server for the target, 127.0.0.2:7100.
@@ -227,7 +228,7 @@ You can add more tables to an existing replication using the yb-admin command `a
 
 ```sh.output
 yb-admin -master_addresses <target-master-addresses> \
-        alter_universe_replication <source-universe_uuid> \
+        alter_universe_replication <source-universe-uuid> \
         add_table <source-table-ids>
 ```
 

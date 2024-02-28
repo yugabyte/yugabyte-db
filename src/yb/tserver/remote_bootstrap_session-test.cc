@@ -40,6 +40,10 @@ namespace tserver {
 
 void RemoteBootstrapSessionTest::SetUp() {
   ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
   ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
   ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
   YBTabletTest::SetUp();
@@ -143,6 +147,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       table_metric_entity,
       tablet_metric_entity,
       raft_pool_.get(),
+      raft_notifications_pool_.get(),
       tablet_prepare_pool_.get(),
       &retryable_requests_manager,
       nullptr /* consensus_meta */,

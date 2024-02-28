@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.rbac.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -102,7 +103,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. List all the permissions available",
+      notes = "YbaApi Internal.",
+      value = "List all the permissions available",
       nickname = "listPermissions",
       response = PermissionInfo.class,
       responseContainer = "List")
@@ -135,7 +137,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Get a role's information",
+      notes = "YbaApi Internal.",
+      value = "Get a role's information",
       nickname = "getRole",
       response = Role.class)
   @AuthzPath({
@@ -159,12 +162,10 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
-  @YbaApi(
-      visibility = YbaApiVisibility.INTERNAL,
-      sinceYBAVersion = "2.19.3.0",
-      runtimeConfig = newAuthzRuntimeFlagPath)
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
   @ApiOperation(
-      value = "YbaApi Internal. List all the roles available",
+      notes = "YbaApi Internal.",
+      value = "List all the roles available",
       nickname = "listRoles",
       response = Role.class,
       responseContainer = "List")
@@ -210,7 +211,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Create a custom role",
+      notes = "YbaApi Internal.",
+      value = "Create a custom role",
       nickname = "createRole",
       response = Role.class)
   @ApiImplicitParams(
@@ -287,7 +289,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Edit a custom role",
+      notes = "YbaApi Internal.",
+      value = "Edit a custom role",
       nickname = "editRole",
       response = Role.class)
   @ApiImplicitParams(
@@ -373,7 +376,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Delete a custom role",
+      notes = "YbaApi Internal.",
+      value = "Delete a custom role",
       nickname = "deleteRole",
       response = YBPSuccess.class)
   @AuthzPath({
@@ -433,7 +437,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Get all the role bindings available",
+      notes = "YbaApi Internal.",
+      value = "Get all the role bindings available",
       nickname = "getRoleBindings",
       response = RoleBinding.class,
       responseContainer = "Map")
@@ -441,13 +446,17 @@ public class RBACController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = "userUUID", sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = "userUUID", sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
   })
   public Result listRoleBinding(
       UUID customerUUID,
       @ApiParam(value = "Optional user UUID to filter role binding map") UUID userUUID) {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
 
     Map<UUID, List<RoleBinding>> roleBindingMap = new HashMap<>();
     if (userUUID != null) {
@@ -459,7 +468,9 @@ public class RBACController extends AuthenticatedController {
       // Merge all the role bindings for users of the customer.
       List<Users> usersInCustomer = Users.getAll(customerUUID);
       for (Users user : usersInCustomer) {
-        roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+        if (resourceUUIDs.contains(user.getUuid())) {
+          roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+        }
       }
     }
     return PlatformResults.withData(roleBindingMap);
@@ -470,7 +481,8 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. Set the role bindings of a user",
+      notes = "YbaApi Internal.",
+      value = "Set the role bindings of a user",
       nickname = "setRoleBinding",
       response = RoleBinding.class)
   @ApiImplicitParams(
@@ -493,7 +505,12 @@ public class RBACController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     // Check if user UUID exists within the above customer
-    Users.getOrBadRequest(customerUUID, userUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+
+    // Validate that the user does not have LDAP specified role.
+    if (UserType.ldap.equals(user.getUserType()) && user.isLdapSpecifiedRole()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for LDAP user.");
+    }
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
@@ -529,12 +546,12 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. UI_ONLY",
+      notes = "YbaApi Internal. UI_ONLY",
       nickname = "getUserResourcePermissions",
       response = ResourcePermissionData.class,
       responseContainer = "Set",
       hidden = true,
-      notes = "Get all the resource permissions that a user has.")
+      value = "Get all the resource permissions that a user has.")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -565,10 +582,10 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "YbaApi Internal. UI_ONLY",
+      notes = "YbaApi Internal. UI_ONLY",
       nickname = "fetchRoutesPermissionDetails",
       hidden = true,
-      notes = "Get all the authorized routes permission details")
+      value = "Get all the authorized routes permission details")
   public Result fetchRoutesPermissionDetails() {
     List<Router.RouteDocumentation> routesList = routerProvider.get().documentation();
     Map<String, String> routesMap = new HashMap<>();

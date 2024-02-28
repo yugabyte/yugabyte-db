@@ -67,6 +67,10 @@ service CDCService {
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
+  rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
+      returns (DestroyVirtualWALForCDCResponsePB);
 }
 
 message CDCErrorPB {
@@ -89,6 +93,7 @@ message CDCErrorPB {
     INVALID_REQUEST = 10;
     TABLET_SPLIT = 12;
     OPERATION_DISALLOWED = 13;
+    AUTO_FLAGS_CONFIG_VERSION_MISMATCH = 14;
   }
 
   // The error code.
@@ -148,6 +153,34 @@ enum CDCRequestSource {
 enum CDCCheckpointType {
   IMPLICIT = 1; // Used for 2DC and CDC
   EXPLICIT = 2; // Used for CDC
+}
+
+message InitVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  repeated string table_id = 3;
+}
+
+message InitVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message GetConsistentChangesRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+}
+
+message GetConsistentChangesResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
+}
+
+message DestroyVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+}
+
+message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
 }
 
 message CreateCDCStreamRequestPB {
@@ -217,6 +250,13 @@ message CDCCheckpointPB {
   optional OpIdPB op_id = 1;
 }
 
+enum CDCSDKRequestSource {
+  // Debezium connector directly calling CDC Service.
+  DEBEZIUM = 1;
+  // Walsender calling CDC service.
+  WALSENDER = 2;
+}
+
 message GetChangesRequestPB {
   optional bytes stream_id = 1;
   // Tablet to get the changes for.
@@ -247,6 +287,11 @@ message GetChangesRequestPB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 12 [default = 0];
+
+  // Used only in xCluster streams.
+  optional uint32 auto_flags_config_version = 13;
+
+  optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
 }
 
 message KeyValuePairPB {
@@ -414,6 +459,8 @@ message RowMessage {
   // truncate info
   optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
   optional uint64 record_time = 14;
+  optional uint64 pg_lsn = 15;
+  optional uint32 pg_transaction_id = 16;
 }
 
 message CDCSDKProtoRecordPB {
@@ -451,6 +498,9 @@ message GetChangesResponsePB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 11 [default = 0];
+
+  // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
+  optional uint32 auto_flags_config_version = 12;
 }
 
 message GetCheckpointRequestPB {
@@ -487,6 +537,8 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated bytes stream_ids = 9;
   optional fixed64 cdc_sdk_safe_time = 10;
   repeated fixed64 cdc_sdk_safe_times = 11;
+  // Is this an initial retention barrier setting request
+  optional bool initial_retention_barrier = 12;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
@@ -495,13 +547,20 @@ message UpdateCdcReplicatedIndexResponsePB {
 
 message BootstrapProducerRequestPB {
   repeated string table_ids = 1;
+  // If the stream_ids are not provided, a new stream for each table will be created.
+  repeated bytes xrepl_stream_ids = 2;
+  // Check if data bootstrap is required. Equivalent to the IsBootstrapRequired RPC.
+  optional bool check_if_bootstrap_required = 3; // [default = false]
 }
 
 message BootstrapProducerResponsePB {
   optional CDCErrorPB error = 1;
+  // New streams that were created. Only happens if the request does not have xrepl_stream_ids.
   repeated bytes cdc_bootstrap_ids = 2;
   // Minimum time after which data is available on all the bootstrapped streams.
   optional fixed64 bootstrap_time = 3;
+  // Only set if check_if_bootstrap_required is set on the request.
+  optional bool bootstrap_required = 4; // [default = false]
 }
 
 message GetLatestEntryOpIdRequestPB {
@@ -531,6 +590,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional bytes namespace_id = 2;
   repeated TableInfo table_info = 3;
 }
+
 message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;

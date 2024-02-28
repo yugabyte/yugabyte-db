@@ -20,13 +20,15 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -41,6 +43,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
@@ -269,8 +272,9 @@ rocksdb::ReadOptions PrepareReadOptions(
   if (FLAGS_use_docdb_aware_bloom_filter &&
     bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
-    read_opts.table_aware_file_filter = rocksdb->GetOptions().table_factory->
-        NewTableAwareReadFileFilter(read_opts, user_key_for_filter.get());
+    static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+    read_opts.table_aware_file_filter = &bloom_filter_aware_file_filter;
+    read_opts.user_key_for_filter = *user_key_for_filter;
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
@@ -592,12 +596,14 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
+    const TabletId& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
+  options->tablet_id = tablet_id;
   options->create_if_missing = true;
   // We should always sync data to ensure we can recover rocksdb from crash.
   options->disableDataSync = false;

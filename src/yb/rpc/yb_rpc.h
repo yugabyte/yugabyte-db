@@ -121,9 +121,6 @@ class YBInboundCall : public InboundCall {
   explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
   virtual ~YBInboundCall();
 
-  // Is this a local call?
-  virtual bool IsLocalCall() const { return false; }
-
   // Parse an inbound call message.
   //
   // This only deserializes the call header, populating the 'header_' and
@@ -206,6 +203,8 @@ class YBInboundCall : public InboundCall {
 
   // Serialize and queue the response.
   virtual void Respond(AnyMessageConstPtr response, bool is_success);
+
+  void UpdateWaitStateInfo();
 
  private:
   // Serialize a response message for either success or failure. If it is a success,

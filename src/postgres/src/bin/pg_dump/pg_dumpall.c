@@ -1213,7 +1213,16 @@ dumpTablespaces(PGconn *conn)
 						   "ORDER BY 1");
 
 	if (PQntuples(res) > 0)
+	{
 		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
+
+		if (include_yb_metadata)
+			fprintf(OPF, "-- Set variable ignore_existing_tablespaces (if not already set)\n"
+						 "\\if :{?ignore_existing_tablespaces}\n"
+						 "\\else\n"
+						 "\\set ignore_existing_tablespaces false\n"
+						 "\\endif\n\n");
+	}
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
@@ -1231,6 +1240,17 @@ dumpTablespaces(PGconn *conn)
 		/* needed for buildACLCommands() */
 		fspcname = pg_strdup(fmtId(spcname));
 
+		if (include_yb_metadata)
+			appendPQExpBuffer(buf,
+				"\\set tablespace_exists false\n"
+				"\\if :ignore_existing_tablespaces\n"
+				"    SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = '%s')"
+				" AS tablespace_exists \\gset\n"
+				"\\endif\n"
+				"\\if :tablespace_exists\n"
+				"    \\echo 'Tablespace %s already exists.'\n"
+				"\\else\n    ", fspcname, fspcname);
+
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
 
@@ -1238,11 +1258,14 @@ dumpTablespaces(PGconn *conn)
 		appendStringLiteralConn(buf, spclocation, conn);
 		if (spcoptions && spcoptions[0] != '\0')
 		{
-			appendPQExpBuffer(buf, " WITH (");
+			appendPQExpBufferStr(buf, " WITH (");
 			ybProcessTablespaceSpcOptions(conn, &buf, spcoptions);
 			appendPQExpBufferStr(buf, ")");
 		}
 		appendPQExpBufferStr(buf, ";\n");
+
+		if (include_yb_metadata)
+			appendPQExpBufferStr(buf, "\\endif\n");
 
 		if (!skip_acls &&
 			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
@@ -1266,6 +1289,9 @@ dumpTablespaces(PGconn *conn)
 			buildShSecLabels(conn, "pg_tablespace", spcoid,
 							 "TABLESPACE", spcname,
 							 buf);
+
+		if (include_yb_metadata)
+			appendPQExpBufferStr(buf, "\n");
 
 		fprintf(OPF, "%s", buf->data);
 

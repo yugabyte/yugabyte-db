@@ -67,6 +67,13 @@ ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
+YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
+# This temporary variable enables the features:
+# 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+# 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+#    instead of old 'use_tablespaces'
+ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
+
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*/table-*/tablet-*.snapshots/*'
@@ -145,6 +152,11 @@ class CompatibilityException(BackupException):
 class YbAdminOpNotSupportedException(BackupException):
     """Exception raised if the attempted operation is not supported by the version of yb-admin we
     are using."""
+    pass
+
+
+class YsqlDumpApplyFailedException(BackupException):
+    """Exception raised if 'ysqlsh' tool failed to apply the YSQL dump file."""
     pass
 
 
@@ -912,7 +924,7 @@ class YBManifest:
           "storage-type": "nfs",
 
           # Was additional 'YSQLDump_tablespaces' dump file created?
-          "use-tablespaces": true,
+          "backup-tablespaces": true,
 
           # Parallelism level - number of worker threads.
           "parallelism": 8,
@@ -977,7 +989,9 @@ class YBManifest:
         properties = self.body['properties']
         properties['platform-version'] = get_yb_backup_version_string()
         properties['parallelism'] = self.backup.args.parallelism
-        properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        if not ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        properties['backup-tablespaces'] = self.backup.args.backup_tablespaces
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
@@ -1208,8 +1222,14 @@ class YBBackup:
             '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
             help="Path to the remote ysql shell binary")
         parser.add_argument(
-            '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
-                                                                          "pg based backup.")
+            '--pg_based_backup', action='store_true', default=False,
+            help="Use it to trigger pg based backup.")
+        parser.add_argument(
+            '--ysql_ignore_restore_errors', action='store_true', default=False,
+            help="Do NOT use ON_ERROR_STOP mode when applying YSQL dumps in backup-restore.")
+        parser.add_argument(
+            '--ysql_disable_db_drop_on_restore_errors', action='store_true', default=False,
+            help="Do NOT drop just created (or existing) YSQL DB if YSQL dump apply failed.")
         parser.add_argument(
             '--disable_xxhash_checksum', action='store_true', default=False,
             help="Disables xxhash algorithm for checksum computation.")
@@ -1243,6 +1263,8 @@ class YBBackup:
             '--disable_checksums', action='store_true', default=False,
             help="Whether checksums will be created and checked. If specified, will skip using "
                  "checksums.")
+        parser.add_argument('--useTserver', action='store_true', required=False, default=False,
+                            help="use tserver instead of master for backup operations")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -1312,9 +1334,21 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+
+        parser.add_argument(
+            '--backup_tablespaces', required=False, action='store_true', default=False,
+            help='Backup YSQL TABLESPACE objects into the backup.')
+        parser.add_argument(
+            '--restore_tablespaces', required=False, action='store_true', default=False,
+            help='Restore YSQL TABLESPACE objects from the backup.')
+        parser.add_argument(
+            '--ignore_existing_tablespaces', required=False, action='store_true', default=False,
+            help='Whether to skip tablespace creation if tablespace already exists.')
         parser.add_argument(
             '--use_tablespaces', required=False, action='store_true', default=False,
-            help='Backup/restore YSQL TABLESPACE objects into/from the backup.')
+            help="Use the restored YSQL TABLESPACE objects for the tables "
+                 "via 'SET default_tablespace=...' syntax.")
+
         parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
         # style to keep it in sync with YB processes G-flags.
@@ -1525,7 +1559,7 @@ class YBBackup:
                         xxh64_bin = XXH64_X86_BIN
                     self.xxhash_checksum_path = os.path.join(xxhash_tool_path, xxh64_bin)
                 except Exception:
-                    logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
+                    logging.warning("[app] xxhsum tool missing on the host, continuing with sha256")
             else:
                 raise BackupException("No Live TServer exists. "
                                       "Check the TServer nodes status & try again.")
@@ -1591,7 +1625,7 @@ class YBBackup:
         return self.args.ssh_user != self.args.remote_user
 
     def get_main_host_ip(self):
-        if self.is_k8s():
+        if self.args.useTserver:
             return self.get_live_tserver_ip()
         else:
             return self.get_leader_master_ip()
@@ -1796,7 +1830,7 @@ class YBBackup:
         :return: the standard output of the tool
         """
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         return self.run_tool(None, cli_tool_with_args, [], [], run_ip=run_at_ip)
 
     def run_dump_tool(self, local_tool_binary, remote_tool_binary, cmd_line_args):
@@ -1814,7 +1848,7 @@ class YBBackup:
                 'FLAGS_use_node_hostname_for_local_tserver': 'true',
             }
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
         local_binary = None if self.args.ysql_enable_auth else local_tool_binary
 
@@ -1841,7 +1875,7 @@ class YBBackup:
         :return: the standard output of ysql shell
         """
         run_at_ip = None
-        if self.is_k8s():
+        if self.args.useTserver:
             run_at_ip = self.get_live_tserver_ip()
 
         return self.run_tool(
@@ -3013,12 +3047,21 @@ class YBBackup:
         """
         :return: snapshot_id and list of sql_dump files
         """
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            if self.args.use_tablespaces:
+                raise BackupException("--use_tablespaces can be used in RESTORE mode only")
+
         snapshot_id = None
         dump_files = []
         pg_based_backup = self.args.pg_based_backup
         if self.is_ysql_keyspace():
-            sql_tbsp_dump_path = os.path.join(
-                self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME) if self.args.use_tablespaces else None
+            if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+                backup_tablespaces = self.args.backup_tablespaces
+            else:
+                backup_tablespaces = self.args.use_tablespaces or self.args.backup_tablespaces
+
+            sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)\
+                if backup_tablespaces else None
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
@@ -3026,7 +3069,8 @@ class YBBackup:
             if sql_tbsp_dump_path:
                 logging.info("[app] Creating ysql dump for tablespaces to {}".format(
                     sql_tbsp_dump_path))
-                self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
+                self.run_ysql_dumpall(['--tablespaces-only', '--include-yb-metadata',
+                                       '--file=' + sql_tbsp_dump_path])
                 dump_files.append(sql_tbsp_dump_path)
             else:
                 ysql_dump_args.append('--no-tablespaces')
@@ -3381,7 +3425,12 @@ class YBBackup:
         self.load_or_create_manifest()
         dump_files = []
 
-        if self.args.use_tablespaces:
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            restore_tablespaces = self.args.restore_tablespaces
+        else:
+            restore_tablespaces = self.args.use_tablespaces or self.args.restore_tablespaces
+
+        if restore_tablespaces:
             src_sql_tbsp_dump_path = os.path.join(
                 self.args.backup_location, SQL_TBSP_DUMP_FILE_NAME)
             sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)
@@ -3429,8 +3478,12 @@ class YBBackup:
         """
         Import the YSQL dump using the provided file.
         """
-        new_db_name = None
-        if self.args.keyspace:
+        on_error_stop = (not self.args.ysql_ignore_restore_errors and
+                         ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR)
+
+        old_db_name = None
+        if self.args.keyspace or on_error_stop:
+            # Get YSQL DB name from the dump file.
             cmd = get_db_name_cmd(dump_file_path)
 
             if self.args.local_yb_admin_binary:
@@ -3443,6 +3496,8 @@ class YBBackup:
                 # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
                 old_db_name = old_db_name.splitlines()[-1].strip()
 
+        new_db_name = None
+        if self.args.keyspace:
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])
                 if new_db_name == old_db_name:
@@ -3472,7 +3527,54 @@ class YBBackup:
             else:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
-        self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
+        ysql_shell_args = ['--echo-all', '--file=' + dump_file_path]
+
+        if self.args.ignore_existing_tablespaces:
+            ysql_shell_args.append('--variable=ignore_existing_tablespaces=1')
+
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            if self.args.use_tablespaces:
+                ysql_shell_args.append('--variable=use_tablespaces=1')
+        else:  # Always enabled in old semantics
+            ysql_shell_args.append('--variable=use_tablespaces=1')
+
+        if on_error_stop:
+            logging.info(
+                "[app] Enable ON_ERROR_STOP mode when applying '{}'".format(dump_file_path))
+            ysql_shell_args.append('--variable=ON_ERROR_STOP=1')
+            error_msg = None
+            try:
+                self.run_ysql_shell(ysql_shell_args)
+            except subprocess.CalledProcessError as ex:
+                output = str(ex.output.decode('utf-8', errors='replace')
+                                      .encode("ascii", "ignore")
+                                      .decode("ascii"))
+                errors = []
+                for line in output.splitlines():
+                    if YSQL_SHELL_ERROR_RE.match(line):
+                        errors.append(line)
+
+                error_msg = "Failed to apply YSQL dump '{}' with RC={}: {}".format(
+                    dump_file_path, ex.returncode, '; '.join(errors))
+            except Exception as ex:
+                error_msg = "Failed to apply YSQL dump '{}': {}".format(dump_file_path, ex)
+
+            if error_msg:
+                logging.error("[app] {}".format(error_msg))
+                db_name_to_drop = new_db_name if new_db_name else old_db_name
+                if db_name_to_drop:
+                    logging.info("[app] YSQL DB '{}' will be deleted at exit...".format(
+                                 db_name_to_drop))
+                    atexit.register(self.delete_created_ysql_db, db_name_to_drop)
+                else:
+                    logging.warning("[app] Skip new YSQL DB drop because YSQL DB name "
+                                    "was not found in file '{}'".format(dump_file_path))
+
+                raise YsqlDumpApplyFailedException(error_msg)
+        else:
+            logging.warning("[app] Ignoring YSQL errors when applying '{}'".format(dump_file_path))
+            self.run_ysql_shell(ysql_shell_args)
+
         return new_db_name
 
     def import_snapshot(self, metadata_file_path):
@@ -3871,6 +3973,21 @@ class YBBackup:
             logging.info("Deleting snapshot %s ...", snapshot_id)
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
+
+    def delete_created_ysql_db(self, db_name):
+        """
+        Callback run on exit to delete incomplete/partly created YSQL DB.
+        """
+        if db_name:
+            if self.args.ysql_disable_db_drop_on_restore_errors:
+                logging.warning("[app] Skip YSQL DB '{}' drop because "
+                                "the clean-up is disabled".format(db_name))
+            else:
+                ysql_shell_args = ['-c', 'DROP DATABASE {};'.format(db_name)]
+                logging.info("[app] Do clean-up due to previous error: "
+                             "'{}'".format(' '.join(ysql_shell_args)))
+                output = self.run_ysql_shell(ysql_shell_args)
+                logging.info("YSQL DB drop result: {}".format(output.replace('\n', ' ')))
 
     def TEST_yb_admin_unsupported_commands(self):
         try:

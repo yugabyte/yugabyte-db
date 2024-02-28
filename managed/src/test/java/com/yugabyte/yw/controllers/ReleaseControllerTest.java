@@ -78,7 +78,6 @@ public class ReleaseControllerTest extends FakeDBApplication {
     if (arch != null) {
       uri += String.format("?arch=%s", arch.toString());
     }
-    System.out.println("uri here: " + uri);
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 

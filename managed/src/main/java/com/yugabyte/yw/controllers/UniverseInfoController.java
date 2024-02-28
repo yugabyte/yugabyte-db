@@ -91,8 +91,10 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return result of the universe status operation.
    */
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Get a universe's status",
-      notes = "This will return a Map of node name to its status in json format",
+      notes =
+          "Available since YBA version 2.2.0.0. This will return a Map of node name to its status"
+              + " in json format.",
+      value = "Get a universe's status",
       responseContainer = "Map",
       response = Object.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
@@ -139,10 +141,11 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.20.0.0. Get a resource usage estimate for a universe",
       notes =
-          "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
+          "Available since YBA version 2.20.0.0. "
+              + "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
               + "estimate for NodeDetailsSet in that.",
+      value = "Get a resource usage estimate for a universe",
       response = UniverseResourceDetails.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
@@ -159,9 +162,10 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0(use /universe_resources). "
-              + "Get a cost estimate for a universe.",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>Use"
+              + " /universe_resources",
+      value = "Get a cost estimate for a universe - deprecated",
       nickname = "getUniverseCost",
       response = UniverseResourceDetails.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
@@ -184,9 +188,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "YbaApi Internal. Get a cost estimate for all universes"
-              + "(Will be removed in next iteration)",
+      notes = "YbaApi Internal." + " (Will be removed in next iteration)",
+      value = "Get a cost estimate for all universes",
       nickname = "getUniverseCostForAll",
       responseContainer = "List",
       response = UniverseResourceDetails.class)
@@ -210,7 +213,8 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return The private IP of the master leader.
    */
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Get IP address of a universe's master leader",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "Get IP address of a universe's master leader",
       nickname = "getMasterLeaderIP",
       response = Object.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
@@ -230,7 +234,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.4.0.0. Get live queries for a universe",
+      notes = "Available since YBA version 2.4.0.0.",
+      value = "Get live queries for a universe",
       nickname = "getLiveQueries",
       response = Object.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.4.0.0")
@@ -256,7 +261,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.6.0.0. Get slow queries for a universe",
+      notes = "Available since YBA version 2.6.0.0.",
+      value = "Get slow queries for a universe",
       nickname = "getSlowQueries",
       response = Object.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
@@ -279,7 +285,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.6.0.0. Reset slow queries for a universe",
+      notes = "Available since YBA version 2.6.0.0.",
+      value = "Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
@@ -314,11 +321,11 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return result of the checker script
    */
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Return results for the last health check",
       notes =
-          "Checks the health of all tablet servers and masters in the universe, as well as certain"
-              + " conditions on the machines themselves, including disk utilization, presence of"
-              + " FATAL or core files, and more.",
+          "Available since YBA version 2.2.0.0. Checks the health of all tablet servers and masters"
+              + " in the universe, as well as certain conditions on the machines themselves,"
+              + " including disk utilization, presence of FATAL or core files, and more.",
+      value = "Return results for the last health check",
       nickname = "healthCheckUniverse",
       responseContainer = "List",
       response = Details.class)
@@ -338,8 +345,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Trigger a universe health check",
-      notes = "Trigger a universe health check and return the trigger time.",
+      notes = "YbaApi Internal. Trigger a universe health check and return the trigger time.",
+      value = "Trigger a universe health check",
       response = TriggerHealthCheckResult.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")
   @AuthzPath({
@@ -376,8 +383,10 @@ public class UniverseInfoController extends AuthenticatedController {
    * @return tar file of the tserver and master log files (if the node is a master server).
    */
   @ApiOperation(
-      value = "Deprecated since YBA version 2.20.0.0 (use support bundle). Download a node's logs.",
-      notes = "Downloads the log files from a given node.",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>User Support"
+              + " bundle. Downloads the log files from a given node.",
+      value = "Download a node's logs - deprecated",
       nickname = "downloadNodeLogs",
       response = String.class,
       produces = "application/x-compressed")
@@ -414,7 +423,8 @@ public class UniverseInfoController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Get master information list",
+      notes = "YbaApi Internal.",
+      value = "Get master information list",
       nickname = "getMasterInfos",
       response = MasterInfo.class,
       responseContainer = "List")

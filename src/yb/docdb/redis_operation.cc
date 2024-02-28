@@ -81,6 +81,9 @@ ValueEntryType ValueTypeFromRedisType(RedisDataType dt) {
 
 Status RedisWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock* paths, IsolationLevel *level) const {
+  if (mode == GetDocPathsMode::kStrongReadIntents) {
+    return Status::OK();
+  }
   paths->push_back(DocKey::FromRedisKey(
       request_.key_value().hash_code(), request_.key_value().key()).EncodeAsRefCntPrefix());
   *level = IsolationLevel::SNAPSHOT_ISOLATION;

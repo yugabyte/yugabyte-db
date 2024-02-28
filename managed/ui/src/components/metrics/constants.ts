@@ -9,6 +9,7 @@ export const MetricTypes = {
   YCQL_OPS: 'ycql_ops',
   YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
+  DISK_IO: 'disk_io',
   TSERVER: 'tserver',
   MASTER: 'master',
   MASTER_ADVANCED: 'master_advanced',
@@ -37,7 +38,8 @@ export const MetricTypesWithOperations = {
     title: 'YCQL',
     metrics: [
       'cql_server_rpc_per_second',
-      'cql_sql_latency', 'cql_server_rpc_p99',
+      'cql_sql_latency',
+      'cql_server_rpc_p99',
       'cql_sql_latency_breakdown',
       'cql_yb_local_vs_remote',
       'cql_yb_latency',
@@ -84,11 +86,31 @@ export const MetricTypesWithOperations = {
       'disk_volume_usage_percent',
       'disk_volume_used',
       'disk_bytes_per_second_per_node',
+      'disk_io_time',
+      'disk_io_queue_depth',
+      'disk_io_read_latency',
+      'disk_io_write_latency',
       'network_packets',
       'network_bytes',
       'network_errors',
       'system_load_over_time',
       'node_clock_skew'
+    ]
+  },
+  disk_io: {
+    title: 'Disk I/O',
+    metrics: [
+      'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
+      'disk_volume_usage_percent',
+      'disk_volume_used',
+      'disk_bytes_per_second_per_node',
+      'lsm_rocksdb_flush_size',
+      'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_time',
+      'tserver_log_bytes_read',
+      'tserver_log_bytes_written',
     ]
   },
   tserver: {
@@ -202,7 +224,8 @@ export const MetricTypesWithOperations = {
       'container_cpu_usage',
       'container_memory_usage',
       'container_volume_stats',
-      'container_volume_usage_percent']
+      'container_volume_usage_percent'
+    ]
   },
   tserver_table: {
     title: 'Tablet Server',
@@ -263,6 +286,7 @@ export const MetricTypesByOrigin = {
       'ysql_ops',
       'ycql_ops',
       'yedis_ops',
+      'disk_io',
       'container',
       'server',
       'tserver',
@@ -277,6 +301,7 @@ export const MetricTypesByOrigin = {
       'ysql_ops',
       'ycql_ops',
       'yedis_ops',
+      'disk_io',
       'container',
       'server',
       'tserver',
@@ -322,18 +347,7 @@ export const NodeType = {
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
-  OUTLIER_TABLES = "Outlier_Tables"
-}
-
-export enum SplitType {
-  NODE = 'NODE',
-  TABLE = 'TABLE'
-}
-
-export enum NodeAggregation {
-  AVERAGE = 'AVG',
-  MAX = 'MAX',
-  MIN = 'MIN'
+  OUTLIER_TABLES = 'Outlier_Tables'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;

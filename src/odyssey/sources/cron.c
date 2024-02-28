@@ -10,21 +10,22 @@
 #include <odyssey.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 static int yb_get_stats_index(struct ConnectionStats *yb_stats,
-			      const char *db_name)
+			      const char *db_name, const char *user_name)
 {
 	if (strlen(db_name) >= DB_NAME_MAX_LEN)
 		return -1;
 
 	for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
-		if (strncmp(yb_stats[i].pool_name, db_name, DB_NAME_MAX_LEN) ==
-		    0)
+		if (strncmp(yb_stats[i].database_name, db_name, DB_NAME_MAX_LEN) == 0 &&
+			strncmp(yb_stats[i].user_name, user_name, USER_NAME_MAX_LEN) == 0)
 			return i;
 
-		if (strncmp(yb_stats[i].pool_name, "", DB_NAME_MAX_LEN) == 0)
+		if (strncmp(yb_stats[i].database_name, "", DB_NAME_MAX_LEN) == 0)
 			return i;
 	}
 
@@ -47,17 +48,22 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		// OD_RULE_POOL_INTERVAL identifies the pool as a control connection.
 		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
 			index = 0;
-			strcpy(instance->yb_stats[index].pool_name,
+			strcpy(instance->yb_stats[index].database_name,
+			       "control_connection");
+			strcpy(instance->yb_stats[index].user_name,
 			       "control_connection");
 		} else {
 			if (route->id.yb_stats_index == -1) {
 				route->id.yb_stats_index = yb_get_stats_index(
-					instance->yb_stats, route->id.database);
+					instance->yb_stats, route->id.database,
+					route->id.user);
 			}
 
 			index = route->id.yb_stats_index;
-			strcpy(instance->yb_stats[index].pool_name,
-			       route->id.database);
+			strncpy(instance->yb_stats[index].database_name,
+				route->id.database, DB_NAME_MAX_LEN);
+			strncpy(instance->yb_stats[index].user_name,
+				route->id.user, USER_NAME_MAX_LEN);
 		}
 
 		od_debug(&instance->logger, "stats", NULL, NULL,
@@ -169,6 +175,13 @@ static inline void od_cron_stat(od_cron_t *cron)
 	od_router_t *router = cron->global->router;
 	od_instance_t *instance = cron->global->instance;
 	od_worker_pool_t *worker_pool = cron->global->worker_pool;
+
+	/* Update last updated timestamp */
+	if (instance->yb_stats != NULL) {
+		struct timespec t;
+		clock_gettime(CLOCK_REALTIME, &t);
+		instance->yb_stats[0].last_updated_timestamp = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+	}
 
 	if (instance->config.log_stats) {
 		/* system worker stats */

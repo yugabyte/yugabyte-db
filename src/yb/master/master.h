@@ -62,7 +62,7 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
-class AutoFlagsManager;
+class AutoFlagsManagerBase;
 class AutoFlagsConfigPB;
 
 namespace server {
@@ -78,6 +78,8 @@ class SecureContext;
 }
 
 namespace master {
+
+class MasterAutoFlagsManager;
 
 class Master : public tserver::DbServerBase {
  public:
@@ -123,11 +125,11 @@ class Master : public tserver::DbServerBase {
     return ysql_backends_manager_.get();
   }
 
-  AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
-
   PermissionsManager& permissions_manager();
 
   EncryptionManager& encryption_manager();
+
+  MasterAutoFlagsManager* GetAutoFlagsManagerImpl() { return auto_flags_manager_.get(); }
 
   scoped_refptr<MetricEntity> metric_entity_cluster();
 
@@ -193,7 +195,7 @@ class Master : public tserver::DbServerBase {
     AttemptMetric,
   };
 
-  // Function that returns an object pointer to a RPC's histogram metric. If a histogram
+  // Function that returns an object pointer to an RPC's histogram metric. If a histogram
   // metric pointer is not created, it will create a new object pointer and return it.
   scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
                                      Master::MasterMetricType type,
@@ -247,9 +249,9 @@ class Master : public tserver::DbServerBase {
 
   std::atomic<MasterState> state_;
 
-  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
+  std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;

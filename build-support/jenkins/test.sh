@@ -76,6 +76,7 @@ echo "Build script ${BASH_SOURCE[0]} is running"
 # -------------------------------------------------------------------------------------------------
 # Functions
 
+# shellcheck disable=SC2317
 cleanup() {
   if [[ -n ${BUILD_ROOT:-} && ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
     log "Running the script to clean up build artifacts..."
@@ -246,7 +247,7 @@ fi
 export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 
 if [[ ${YB_ENABLE_YSQL_CONN_MGR:-} == "1" ]]; then
-  YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
+  export YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
 fi
 
 # -------------------------------------------------------------------------------------------------

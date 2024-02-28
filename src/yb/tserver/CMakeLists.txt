@@ -236,8 +236,10 @@ set(TSERVER_SRCS
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
+  tablet_validator.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
+  tserver_auto_flags_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
@@ -246,7 +248,9 @@ set(TSERVER_SRCS
   xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
+  xcluster_consumer_auto_flags_info.cc
   xcluster_consumer_replication_error.cc
+  xcluster_ddl_queue_handler.cc
   xcluster_poller.cc
   xcluster_poller_id.cc
   xcluster_poller_stats.cc
@@ -270,12 +274,15 @@ set(TSERVER_DEPS
   server_common
   server_process
   tablet
+  yb_ash
   yb_client
   yb_pggate_flags
   ysql_upgrade
   cdc
   cdc_consumer_proto
-  xcluster_producer_proto)
+  xcluster_producer_proto
+  auto_flags_manager_common
+)
 
 ADD_YB_LIBRARY(tserver
   SRCS ${TSERVER_SRCS}
@@ -300,6 +307,7 @@ ADD_YB_LIBRARY(yb-tserver_util
 set(TSERVER_MAIN_DEPS
     tserver
     yb-tserver_util
+    yb_ash
     yb-cql
     yb-redis
     yb_process_wrapper
@@ -358,6 +366,7 @@ ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
+ADD_YB_TEST(clone_operation-test)
 
 ADD_YB_TEST(encrypted_sstable-test)
 YB_TEST_TARGET_LINK_LIBRARIES(encrypted_sstable-test encryption_test_util tserver_test_util tserver)
@@ -367,3 +376,5 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_session-test_ent)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
+ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
+ADD_YB_TEST(xcluster_ddl_queue_handler-test)

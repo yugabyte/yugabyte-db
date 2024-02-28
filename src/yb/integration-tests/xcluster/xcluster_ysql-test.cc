@@ -99,10 +99,12 @@ DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint32(external_intent_cleanup_secs);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -123,6 +125,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -152,38 +155,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   void ValidateSimpleReplicationWithPackedRowsUpgrade(
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
-
-  Status SetUpWithParams(
-      const std::vector<uint32_t>& num_consumer_tablets,
-      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
-      uint32_t num_masters = 1, const bool ranged_partitioned = false) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
-
-    SCHECK_EQ(
-        num_consumer_tablets.size(), num_producer_tablets.size(), IllegalState,
-        Format(
-            "Num consumer tables: $0 num producer tables: $1 must be equal.",
-            num_consumer_tablets.size(), num_producer_tablets.size()));
-
-    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-      const auto* num_tablets = &num_producer_tablets;
-      if (cluster == &consumer_cluster_) {
-        num_tablets = &num_consumer_tablets;
-      }
-
-      for (uint32_t i = 0; i < num_tablets->size(); i++) {
-        auto table_name = VERIFY_RESULT(CreateYsqlTable(
-            i, num_tablets->at(i), cluster, boost::none /* tablegroup */, false /* colocated */,
-            ranged_partitioned));
-        std::shared_ptr<client::YBTable> table;
-        RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
-        cluster->tables_.push_back(table);
-      }
-      return Status::OK();
-    }));
-
-    return PostSetUp();
-  }
 
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
@@ -377,6 +348,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   }
 
   Status SplitSingleTablet(MiniCluster* cluster, const client::YBTablePtr& table) {
+    RETURN_NOT_OK(cluster->FlushTablets());
     auto tablets = ListTableActiveTabletLeadersPeers(cluster, table->id());
     if (tablets.size() != 1) {
       return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
@@ -414,6 +386,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         },
         MonoDelta::FromSeconds(30), "Intents cleaned up");
   }
+
+  Status RunInsertUpdateDeleteTransactionWithSplitTest(int num_tablets);
 };
 
 class XClusterYSqlTestConsistentTransactionsWithAutomaticTabletSplitTest
@@ -470,6 +444,15 @@ TEST_F(
       ListActiveTabletIdsForTable(producer_cluster(), producer_table_->id()).size();
   auto consumer_tablets_size =
       ListActiveTabletIdsForTable(consumer_cluster(), consumer_table_->id()).size();
+
+  // Setting low phase shards count per node explicitly to guarantee a table can split at least
+  // up to max(producer_tablets_size, consumer_tablets_size) tablets within the low phase.
+  const auto low_phase_shard_count_per_node = std::ceil(
+      static_cast<double>(std::max(producer_tablets_size, consumer_tablets_size)) /
+      std::min(producer_cluster_.mini_cluster_->num_tablet_servers(),
+               consumer_cluster_.mini_cluster_->num_tablet_servers()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node)
+      = low_phase_shard_count_per_node;
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
       100, 50, producer_table_, consumer_table_, true /* commit_all_transactions */,
@@ -632,15 +615,12 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBa
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
-  // Write a transactional workload of updates with valdation for 30s and ensure there are no
+  // Write a transactional workload of updates with validation for 30s and ensure there are no
   // FATALs and that we maintain consistent reads.
-  const auto namespace_name = "demo";
   const auto table_name = "account_balance";
 
   ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */));
 
-  ASSERT_OK(
-      RunOnBothClusters([&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
     return conn.ExecuteFormat("create table $0(id int, name text, salary int);", table_name);
@@ -667,12 +647,44 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
         "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
   }
 
-  auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(
-      "SELECT SUM(salary) FROM account_balance"));
+  auto print_table = [this](Cluster& cluster) {
+    auto conn = ASSERT_RESULT(cluster.ConnectToDB(namespace_name));
+    const auto select_all_query = "SELECT * FROM account_balance";
+    auto results = ASSERT_RESULT(conn.Fetch(select_all_query));
+    std::stringstream result_string;
+    for (int i = 0; i < PQntuples(results.get()); ++i) {
+      result_string << "\n";
+      for (int col_num = 0; col_num < 3; col_num++) {
+        if (col_num != 0) {
+          result_string << ", ";
+        }
+        result_string << ASSERT_RESULT(pgwrapper::ToString(results.get(), i, col_num));
+      }
+    }
+    LOG(INFO) << result_string.str();
+  };
+
+  LOG(INFO) << "Initial data inserted: ";
+  print_table(producer_cluster_);
+
+  const auto select_salary_sum_query = "SELECT SUM(salary) FROM account_balance";
+  const auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(select_salary_sum_query));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        // TODO(#20254) : Replace the warning with Assert.
+        auto consumer_salary = consumer_conn.FetchRow<int64_t>(select_salary_sum_query);
+        if (!consumer_salary) {
+          LOG(WARNING) << consumer_salary;
+        }
+        return consumer_salary && *consumer_salary == total_salary;
+      },
+      30s, "Initial data not replicated"));
 
   // Transactional workload
   auto test_thread_holder = TestThreadHolder();
-  test_thread_holder.AddThread([this, namespace_name]() {
+  test_thread_holder.AddThread([&producer_conn]() {
     std::string update_query;
     for (int i = 0; i < num_users - 1; i++) {
       update_query +=
@@ -681,28 +693,41 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
     update_query += Format(
         "UPDATE account_balance SET salary = salary + $0 WHERE name = 'user$1';",
         500 * (num_users - 1), num_users - 1);
-    auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-    auto now = CoarseMonoClock::Now();
-    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      ASSERT_OK(producer_conn.ExecuteFormat("BEGIN TRANSACTION; $0; COMMIT;", update_query));
+    auto transactional_update_query = Format("BEGIN TRANSACTION; $0; COMMIT;", update_query);
+    LOG(INFO) << "Running producer workload in a loop: " << transactional_update_query;
+
+    auto deadline = CoarseMonoClock::Now() + 30s;
+    while (CoarseMonoClock::Now() < deadline) {
+      ASSERT_OK(producer_conn.Execute(transactional_update_query));
     }
   });
 
   // Read validate workload.
-  test_thread_holder.AddThread([this, namespace_name, total_salary]() {
-    auto now = CoarseMonoClock::Now();
+  test_thread_holder.AddThread([&]() {
     auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      auto current_salary_result = consumer_conn.FetchRow<int64_t>(
-          "select sum(salary) from account_balance");
+    auto deadline = CoarseMonoClock::Now() + 30s;
+    LOG(INFO) << "Running consumer workload in a loop: " << select_salary_sum_query;
+    while (CoarseMonoClock::Now() < deadline) {
+      // TODO(#20254) : Replace the warning with Assert.
+      auto current_salary_result = consumer_conn.FetchRow<int64_t>(select_salary_sum_query);
       if (!current_salary_result.ok()) {
+        LOG(WARNING) << "Failed to fetch salary sum: " << current_salary_result.status();
         continue;
+      }
+
+      if (total_salary != *current_salary_result) {
+        LOG(ERROR) << "Consumer data: ";
+        print_table(consumer_cluster_);
       }
       ASSERT_EQ(total_salary, *current_salary_result);
     }
   });
 
   test_thread_holder.JoinAll();
+
+  LOG(INFO) << "Final producer data: ";
+  print_table(producer_cluster_);
+
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
   ASSERT_OK(DeleteUniverseReplication());
 }
@@ -1701,8 +1726,8 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
 
   // 4. Setup replication with data should fail.
-  ASSERT_NOK(
-      SetupUniverseReplication(cdc::ReplicationGroupId("replication-group-2"), producer_tables_));
+  ASSERT_NOK(SetupUniverseReplication(
+      xcluster::ReplicationGroupId("replication-group-2"), producer_tables_));
 }
 
 // Checks that with missing logs, replication will require bootstrapping
@@ -2380,8 +2405,8 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
       auto table = ASSERT_RESULT(CreateYsqlTable(
           &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
           boost::none /* tablegroup */, kNTabletsPerTable));
-      // For now, only replicate the second table for test_namespace.
-      if (is_replicated_producer && i == 1) {
+      // For now, skip the first table and replicate the rest.
+      if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
         ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
         producer_tables_.push_back(yb_table);
@@ -2409,6 +2434,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
+  // Delete a table on the source and target so that there are dropped tables in syscatalog.
+  ASSERT_OK(producer_client()->DeleteTable(producer_tables_[0]->id()));
+  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[0]->id()));
   ASSERT_NOK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_NOK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
@@ -2659,6 +2687,11 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
     ASSERT_STR_CONTAINS(
         res.ToString(),
         "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+    res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(
+        res.ToString(),
+        "cannot rewrite a table that is a part of CDC or XCluster replication");
   }
 }
 
@@ -2687,6 +2720,129 @@ TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {
   }
   ASSERT_OK(WaitForRowCount(producer_table_->name(), batch_count * kBatchSize, &producer_cluster_));
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+TEST_F(XClusterYsqlTest, InsertUpdateDeleteTransactionsWithUnevenTabletPartitions) {
+  // This test will setup uneven tablets and then run transactions on the producer that touch the
+  // same row within the txn. We want to ensure that even if the txn is split into multiple batches,
+  // no records are missed or overwritten due to write_id resetting on later batches.
+
+  // Create table with 2 tablets on producer, and 1 tablet on consumer.
+  const auto kProducerTabletCount = 2;
+  const auto kConsumerTabletCount = 1;
+  ASSERT_OK(
+      SetUpWithParams({kConsumerTabletCount}, {kProducerTabletCount}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = false;
+
+  const auto producer_table_name = producer_table_->name();
+  const auto table_name = GetCompleteTableName(producer_table_name);
+  const auto new_col_name = "new_col";
+  // Add an extra column to the tables so that we can also test updates.
+  auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(p_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(c_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+  ASSERT_OK(CorrectlyPollingAllTablets(kProducerTabletCount));
+
+  const auto kNumBatches = 10;
+  const auto kBatchSize = 10;
+  for (int i = 0; i < kNumBatches; ++i) {
+    const auto start = kBatchSize * i;
+    const auto end = kBatchSize * (i + 1) - 1;
+    ASSERT_OK(p_conn.Execute("BEGIN"));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT id, 'i' FROM generate_series($1, $2) id", table_name, start, end));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = 'u' WHERE $2 >= $3 AND $2 <= $4", table_name, new_col_name,
+        kKeyColumnName, start, end));
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, end));
+    ASSERT_OK(p_conn.Execute("COMMIT"));
+    }
+
+  ASSERT_OK(VerifyWrittenRecords());
+}
+
+Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransactionWithSplitTest(
+    int num_tablets) {
+  const auto producer_table_name = producer_table_->name();
+  const auto table_name = GetCompleteTableName(producer_table_name);
+  const auto new_col_name = "new_col";
+  {
+    // Add an extra column to the tables so that we can also test updates.
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    RETURN_NOT_OK(
+        p_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    RETURN_NOT_OK(
+        c_conn.ExecuteFormat("alter table $0 add column $1 text", table_name, new_col_name));
+  }
+
+  RETURN_NOT_OK(SetupUniverseReplication(producer_tables_));
+  RETURN_NOT_OK(CorrectlyPollingAllTablets(num_tablets));
+
+  // Insert some initial data and flush so that we have a tablet to flush.
+  auto conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(producer_table_name.namespace_name()));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT id, 'x' FROM generate_series($1, $2) id", table_name, 1000, 2000));
+
+  // Begin the transaction.
+  const auto start = 0;
+  const auto end = 100;
+  RETURN_NOT_OK(conn.Execute("BEGIN"));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT id, 'i' FROM generate_series($1, $2) id", table_name, start, end));
+
+  // Split the tablet in the middle of the txn.
+  RETURN_NOT_OK(SplitSingleTablet(producer_cluster(), producer_table_));
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::vector<TabletId> tablet_ids;
+        RETURN_NOT_OK(producer_cluster_.client_->GetTablets(
+            producer_table_->name(), 0 /* max_tablets */, &tablet_ids, NULL));
+        return tablet_ids.size() == 2;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Wait for tablet to be split."));
+
+  // Complete the rest of the txn.
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 'u' WHERE $2 >= $3 AND $2 <= $4", table_name, new_col_name,
+      kKeyColumnName, start, end));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "DELETE FROM $0 WHERE $1 >= $2 AND $1 <= $3", table_name, kKeyColumnName, start, 300));
+  RETURN_NOT_OK(conn.Execute("COMMIT"));
+
+  return VerifyWrittenRecords();
+}
+
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, InsertUpdateDeleteTransactionWithSplit) {
+  const auto kNumTablets = 1;
+  // Set before creating clusters so that the first run doesn't wait 30s.
+  // Lowering to 5s here to speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ASSERT_OK(RunInsertUpdateDeleteTransactionWithSplitTest(kNumTablets));
+}
+
+TEST_F(
+    XClusterYSqlTestConsistentTransactionsTest, InsertUpdateDeleteTransactionWithSplitWithPacked) {
+  const auto kNumTablets = 1;
+  // Set before creating clusters so that the first run doesn't wait 30s.
+  // Lowering to 5s here to speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /* replication_factor */ 1));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  ASSERT_OK(RunInsertUpdateDeleteTransactionWithSplitTest(kNumTablets));
 }
 
 }  // namespace yb

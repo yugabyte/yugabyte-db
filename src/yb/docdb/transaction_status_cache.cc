@@ -16,8 +16,12 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/transaction_dump.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -120,6 +124,7 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
               TransactionLoadFlags{TransactionLoadFlag::kCleanup},
               callback});
     auto wait_start = CoarseMonoClock::now();
+    SCOPED_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
     auto future_status = future.wait_until(
         TEST_retry_allowed ? wait_start + kRequestTimeout : deadline_);
     if (future_status == std::future_status::ready) {

@@ -8,7 +8,7 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { find } from 'lodash';
 
 import {
   getUniversePendingTask,
@@ -55,9 +55,15 @@ import ellipsisIcon from '../../common/media/more.svg';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import {
+  customPermValidateFunction,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
 import './UniverseView.scss';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -244,7 +250,7 @@ export const UniverseView = (props) => {
           {getUniverseStatusIcon(status)}
           <span>
             {status.text === 'Error' && failedTask
-              ? `${failedTask.type} ${failedTask.target} failed`
+              ? `${failedTask?.type} ${failedTask?.target} failed`
               : status.text}
           </span>
         </div>
@@ -576,6 +582,14 @@ export const UniverseView = (props) => {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
       }
     });
+  }
+
+  if (
+    !customPermValidateFunction(() => {
+      return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
+    })
+  ) {
+    return getWrappedChildren({});
   }
 
   return (

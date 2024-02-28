@@ -109,6 +109,10 @@ public class TestLDAPAuth extends BasePgSQLTest {
 
   @Parameterized.Parameters
   public static List<ConnectionEndpoint> parameters() {
+    final String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    if (enableYsqlConnMgr != null && enableYsqlConnMgr.equalsIgnoreCase("true"))
+    return Arrays.asList(ConnectionEndpoint.YSQL_CONN_MGR);
+
     if (SystemUtil.IS_LINUX)
       return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
     else
@@ -122,10 +126,10 @@ public class TestLDAPAuth extends BasePgSQLTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR)
+    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR) {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
-
+    }
   }
 
   @ClassRule

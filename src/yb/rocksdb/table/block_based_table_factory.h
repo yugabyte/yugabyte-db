@@ -79,9 +79,6 @@ class BlockBasedTableFactory : public TableFactory {
 
   void* GetOptions() override { return &table_options_; }
 
-  std::shared_ptr<TableAwareReadFileFilter> NewTableAwareReadFileFilter(
-      const ReadOptions &read_options, const Slice &user_key) const override;
-
  private:
   BlockBasedTableOptions table_options_;
 };

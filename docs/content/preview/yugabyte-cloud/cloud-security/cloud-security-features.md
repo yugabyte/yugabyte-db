@@ -2,7 +2,6 @@
 title: Security architecture drilldown
 linkTitle: Security architecture drilldown
 description: Explore the security architecture of YugabyteDB Managed data, our fully managed YugabyteDB-as-a-Service.
-image: /images/section_icons/index/secure.png
 menu:
   preview_yugabyte-cloud:
     parent: cloud-security

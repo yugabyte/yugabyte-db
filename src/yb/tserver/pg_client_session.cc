@@ -82,6 +82,7 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
 namespace tserver {
@@ -553,6 +554,10 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
   return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
+Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
+  return txn->CommitFuture().get();
+}
+
 } // namespace
 
 PgClientSession::PgClientSession(
@@ -703,11 +708,31 @@ Status PgClientSession::CreateReplicationSlot(
   options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
   options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::EXPLICIT));
 
+  std::optional<CDCSDKSnapshotOption> snapshot_option;
+  if (FLAGS_yb_enable_cdc_consistent_snapshot_streams) {
+    switch (req.snapshot_action()) {
+      case REPLICATION_SLOT_NOEXPORT_SNAPSHOT:
+        snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
+        break;
+      case REPLICATION_SLOT_USE_SNAPSHOT:
+        snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT;
+        break;
+      case REPLICATION_SLOT_UNKNOWN_SNAPSHOT:
+        // Crash in debug and return InvalidArgument in release mode.
+        RSTATUS_DCHECK(false, InvalidArgument, "invalid snapshot_action UNKNOWN");
+      default:
+        return STATUS_FORMAT(InvalidArgument, "invalid snapshot_action $0", req.snapshot_action());
+    }
+  }
+
+  uint64_t consistent_snapshot_time;
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
-      ReplicationSlotName(req.replication_slot_name())));
+      ReplicationSlotName(req.replication_slot_name()),
+      snapshot_option, context->GetClientDeadline(), &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
+  resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
 }
 
@@ -895,11 +920,15 @@ Status PgClientSession::FinishTransaction(
   auto is_ddl = false;
   auto kind = PgClientSessionKind::kPlain;
   auto has_docdb_schema_changes = false;
+  std::optional<uint32_t> silently_altered_db;
   if (req.has_ddl_mode()) {
     const auto& ddl_mode = req.ddl_mode();
     is_ddl = true;
     kind = PgClientSessionKind::kDdl;
     has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
+    if (ddl_mode.has_silently_altered_db()) {
+      silently_altered_db = ddl_mode.silently_altered_db().value();
+    }
   }
   auto& txn = Transaction(kind);
   if (!txn) {
@@ -917,7 +946,11 @@ Status PgClientSession::FinishTransaction(
   Session(kind)->SetTransaction(nullptr);
 
   if (req.commit()) {
-    const auto commit_status = txn_value->CommitFuture().get();
+    const auto commit_status = Commit(
+        txn_value.get(),
+        silently_altered_db ? response_cache_.Disable(*silently_altered_db)
+                            : PgResponseCache::Disabler());
+
     VLOG_WITH_PREFIX_AND_FUNC(2)
         << "ddl: " << is_ddl << ", txn: " << txn_value->id()
         << ", commit: " << commit_status;
@@ -983,6 +1016,11 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    if (options.has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(options.ash_metadata(), /* use_hex */ false);
+    }
+  }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
   if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
@@ -1156,7 +1194,9 @@ PgClientSession::SetupSession(
   const auto read_time_serial_no = options.read_time_serial_no();
   UsedReadTimePtr used_read_time;
   if (options.restart_transaction()) {
-    RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Restarting a DDL transaction not supported");
+    if (options.ddl_mode()) {
+      return STATUS(NotSupported, "Restarting a DDL transaction not supported");
+    }
     Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
     transaction = Transaction(kind).get();
   } else {
@@ -1693,6 +1733,7 @@ void PgClientSession::GetTableKeyRanges(
     yb::tserver::PgGetTableKeyRangesRequestPB const& req,
     yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
   const auto table = table_cache_.Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  resp->set_current_ht(clock_->Now().ToUint64());
   if (!table.ok()) {
     StatusToPB(table.status(), resp->mutable_status());
     context.RespondSuccess();
@@ -1701,6 +1742,11 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  client::YBTransaction* transaction = Transaction(PgClientSessionKind::kPlain).get();
+  if (!transaction && (read_time_serial_no_ != req.read_time_serial_no())) {
+    ResetReadPoint(PgClientSessionKind::kPlain);
+  }
+  read_time_serial_no_ = req.read_time_serial_no();
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),

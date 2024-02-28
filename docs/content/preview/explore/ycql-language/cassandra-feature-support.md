@@ -3,7 +3,6 @@ title: Cassandra feature support
 linkTitle: Cassandra feature support
 description: Summary of YugabyteDB's parity to Cassandra features
 headcontent: YugabyteDB supports most standard Cassandra features
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ycql-language-feature-support
@@ -76,7 +75,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Partial indexes              | [Partial indexes](../../../api/ycql/ddl_create_index#partial-index)                               |
 | {{<icon/yes>}} | Covering indexes             | [Covering indexes](../../../api/ycql/ddl_create_index#included-columns)                           |
 | {{<icon/yes>}} | Unique indexes               | [Unique indexes](../../../api/ycql/ddl_create_index#unique-index)                                 |
-| {{<icon/no>}}  | Adding indexes on Collection | Cannot create index on  `map/list/set/full jsonb/udt` and the keys,values,entries of a collection |
+| {{<icon/no>}}  | Adding indexes on Collection | Cannot create index on `map/list/set/full jsonb/udt` and the keys,values,entries of a collection |
 {.sno-1}
 
 ## DML

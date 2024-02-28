@@ -3,7 +3,6 @@ title: Node.js Driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js driver for YCQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: ycql-node-driver

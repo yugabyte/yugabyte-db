@@ -12,6 +12,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -43,17 +45,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -61,8 +53,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
@@ -172,6 +164,10 @@ public class GFlagsUtil {
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
   public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
+
+  private static final Pattern LOG_LINE_PREFIX_PATTERN =
+      Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
+  private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -300,7 +296,7 @@ public class GFlagsUtil {
           getMasterDefaultGFlags(
               taskParam, universe, useHostname, useSecondaryIp, isDualNet, confGetter);
       // Merge into masterGFlags.
-      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK);
+      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK, false);
       extra_gflags.putAll(masterGFlags);
     }
 
@@ -346,7 +342,8 @@ public class GFlagsUtil {
       Universe universe,
       AnsibleConfigureServers.Params taskParam,
       RuntimeConfGetter confGetter,
-      Config config) {
+      Config config,
+      Map<String, String> customYbcGflags) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
@@ -365,13 +362,28 @@ public class GFlagsUtil {
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", serverAddresses);
-    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
+    ybcFlags.put(
+        "server_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.ybControllerrRpcPort
+                : node.ybControllerRpcPort));
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
-    ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
-    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+    ybcFlags.put(
+        "yb_master_webserver_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.masterHttpPort
+                : node.masterHttpPort));
+    ybcFlags.put(
+        "yb_tserver_webserver_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.tserverHttpPort
+                : node.tserverHttpPort));
 
     // For "yb_tserver_address", private_ip works for cloud cases,
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
@@ -410,12 +422,22 @@ public class GFlagsUtil {
     }
     String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
     ybcFlags.put("nfs_dirs", nfsDirs);
+    ybcFlags.putAll(customYbcGflags);
+    if (userIntent.providerType == CloudType.local) {
+      // In case of local provider, we want ybc to use /tmp directory
+      // inside the respective node folder.
+      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+    }
     return ybcFlags;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
+      UUID universeUUID,
+      String nodeName,
+      boolean listenOnAllInterfaces,
+      int hardwareConcurrency,
+      Map<String, String> customYbcGflags) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -452,6 +474,7 @@ public class GFlagsUtil {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
       ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
+    ybcFlags.putAll(customYbcGflags);
     return ybcFlags;
   }
 
@@ -474,25 +497,36 @@ public class GFlagsUtil {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
+    int tserverRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.tserverRpcPort
+            : node.tserverRpcPort;
+    int tserverHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.tserverHttpPort
+            : node.tserverHttpPort;
+    int redisServerHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.redisServerHttpPort
+            : node.redisServerHttpPort;
+    int redisServerRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.redisServerRpcPort
+            : node.redisServerRpcPort;
 
     if (useHostname) {
-      gflags.put(
-          SERVER_BROADCAST_ADDRESSES,
-          String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+      gflags.put(SERVER_BROADCAST_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
       gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }
-    gflags.put(
-        RPC_BIND_ADDRESSES,
-        String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+    gflags.put(RPC_BIND_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
     gflags.put(TSERVER_MASTER_ADDRS, masterAddresses);
 
     if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.tserverRpcPort);
+      String bindAddressPrimary = String.format("%s:%s", node.cloudInfo.private_ip, tserverRpcPort);
       String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, tserverRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put(RPC_BIND_ADDRESSES, bindAddresses);
     } else if (isDualNet) {
@@ -502,15 +536,13 @@ public class GFlagsUtil {
       gflags.put(USE_PRIVATE_IP, "cloud");
     }
 
-    gflags.put(WEBSERVER_PORT, Integer.toString(node.tserverHttpPort));
+    gflags.put(WEBSERVER_PORT, Integer.toString(tserverHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
     gflags.put(
         REDIS_PROXY_BIND_ADDRESS,
-        String.format("%s:%s", privateIp, Integer.toString(node.redisServerRpcPort)));
+        String.format("%s:%s", privateIp, Integer.toString(redisServerRpcPort)));
     if (userIntent.enableYEDIS) {
-      gflags.put(
-          REDIS_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.redisServerHttpPort));
+      gflags.put(REDIS_PROXY_WEBSERVER_PORT, Integer.toString(redisServerHttpPort));
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
@@ -543,6 +575,32 @@ public class GFlagsUtil {
     return res.getOrDefault(TMP_DIRECTORY, "/tmp");
   }
 
+  public static String getCustomTmpDirectory(
+      Universe universe,
+      Cluster cluster,
+      @Nullable UUID azUuid,
+      boolean isMaster,
+      boolean isTserver) {
+    Map<String, String> res = new HashMap<>();
+    if (isMaster) {
+      res.putAll(
+          getGFlagsForAZ(
+              azUuid,
+              UniverseTaskBase.ServerType.MASTER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+    if (isTserver) {
+      res.putAll(
+          getGFlagsForAZ(
+              azUuid,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters));
+    }
+    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+  }
+
   private static Map<String, String> getYSQLGFlags(
       AnsibleConfigureServers.Params taskParam,
       Universe universe,
@@ -559,8 +617,18 @@ public class GFlagsUtil {
       gflags.put(ENABLE_YSQL, "true");
       gflags.put(
           PSQL_PROXY_BIND_ADDRESS,
-          String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(PSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.ysqlServerHttpPort));
+          String.format(
+              "%s:%s",
+              pgsqlProxyBindAddress,
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.ysqlServerRpcPort
+                  : node.ysqlServerRpcPort));
+      gflags.put(
+          PSQL_PROXY_WEBSERVER_PORT,
+          Integer.toString(
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.ysqlServerHttpPort
+                  : node.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put(YSQL_ENABLE_AUTH, "true");
         gflags.put(YSQL_HBA_CONF_CSV, "local all yugabyte trust");
@@ -582,7 +650,7 @@ public class GFlagsUtil {
     AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
-          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+          && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
         YSQLAuditConfig ysqlAuditConfig = auditLogConfig.getYsqlAuditConfig();
         if (CollectionUtils.isNotEmpty(ysqlAuditConfig.getClasses())) {
           ysqlPgConfCsvEntries.add(
@@ -639,8 +707,18 @@ public class GFlagsUtil {
       gflags.put(START_CQL_PROXY, "true");
       gflags.put(
           CSQL_PROXY_BIND_ADDRESS,
-          String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(CSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.yqlServerHttpPort));
+          String.format(
+              "%s:%s",
+              cqlProxyBindAddress,
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.yqlServerRpcPort
+                  : node.yqlServerRpcPort));
+      gflags.put(
+          CSQL_PROXY_WEBSERVER_PORT,
+          Integer.toString(
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.yqlServerHttpPort
+                  : node.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "true");
       } else {
@@ -660,6 +738,7 @@ public class GFlagsUtil {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
         YCQLAuditConfig ycqlAuditConfig = auditLogConfig.getYcqlAuditConfig();
+        result.put("ycql_enable_audit_log", "true");
         if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedCategories())) {
           result.put(
               "ycql_audit_included_categories",
@@ -750,11 +829,19 @@ public class GFlagsUtil {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
+    int masterRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.masterRpcPort
+            : node.masterRpcPort;
+    int masterHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.masterHttpPort
+            : node.masterHttpPort;
 
     if (useHostname) {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
-          String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+          String.format("%s:%s", privateIp, Integer.toString(masterRpcPort)));
       gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
@@ -766,22 +853,19 @@ public class GFlagsUtil {
       gflags.put(MASTER_ADDRESSES, "");
     }
 
-    gflags.put(
-        RPC_BIND_ADDRESSES,
-        String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+    gflags.put(RPC_BIND_ADDRESSES, String.format("%s:%s", privateIp, masterRpcPort));
 
     if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.masterRpcPort);
+      String bindAddressPrimary = String.format("%s:%s", node.cloudInfo.private_ip, masterRpcPort);
       String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put(RPC_BIND_ADDRESSES, bindAddresses);
     } else if (isDualNet) {
       gflags.put(USE_PRIVATE_IP, "cloud");
     }
 
-    gflags.put(WEBSERVER_PORT, Integer.toString(node.masterHttpPort));
+    gflags.put(WEBSERVER_PORT, Integer.toString(masterHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
 
     boolean notifyPeerOnRemoval =
@@ -795,7 +879,7 @@ public class GFlagsUtil {
       // Always set this to true in shell mode to avoid forming a cluster even if the master
       // addresses are set by mistake. Once the master joins an existing cluster, this is ignored.
       gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
-      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2));
+      gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2, false));
     }
     return gflags;
   }
@@ -868,7 +952,7 @@ public class GFlagsUtil {
       boolean allowOverrideAll,
       RuntimeConfGetter confGetter,
       AnsibleConfigureServers.Params taskParams) {
-    mergeCSVs(userGFlags, platformGFlags, UNDEFOK);
+    mergeCSVs(userGFlags, platformGFlags, UNDEFOK, false);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
           gflag -> {
@@ -904,7 +988,8 @@ public class GFlagsUtil {
       processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams.getUniverseUUID());
     }
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
-    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
+    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
+    mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
   }
 
   /**
@@ -962,6 +1047,19 @@ public class GFlagsUtil {
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster cluster,
       Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    return getGFlagsForAZ(node != null ? node.azUuid : null, serverType, cluster, allClusters);
+  }
+
+  public static Map<String, String> getGFlagsForAZ(
+      @Nullable UUID azUuid,
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    // We need to always verify that we return a copy from here and not the original map.
+    // in case of classic gflags we are making a copy here in this function.
+    // in case of specific gflags we are making a copy in the in the getGFlags function that we
+    // call.
+
     UserIntent userIntent = cluster.userIntent;
     UniverseDefinitionTaskParams.Cluster primary =
         allClusters.stream()
@@ -973,16 +1071,21 @@ public class GFlagsUtil {
         if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
           throw new IllegalStateException("Primary cluster has inherit gflags");
         }
-        return getGFlagsForNode(node, serverType, primary, allClusters);
+        return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return userIntent.specificGFlags.getGFlags(node, serverType);
+      return userIntent.specificGFlags.getGFlags(azUuid, serverType);
     } else {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
-        return getGFlagsForNode(node, serverType, primary, allClusters);
+        return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return serverType == UniverseTaskBase.ServerType.MASTER
-          ? userIntent.masterGFlags
-          : userIntent.tserverGFlags;
+      Map<String, String> retFlags =
+          (serverType == UniverseTaskBase.ServerType.MASTER)
+              ? userIntent.masterGFlags
+              : userIntent.tserverGFlags;
+      if (retFlags == null) {
+        retFlags = new HashMap<>();
+      }
+      return new HashMap<>(retFlags);
     }
   }
 
@@ -1035,19 +1138,20 @@ public class GFlagsUtil {
     return trimData;
   }
 
-  public static String mergeCSVs(String csv1, String csv2) {
+  public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {
     StringWriter writer = new StringWriter();
     try {
       CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
       try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+        Set<String> existingKeys = new HashSet<>();
         Set<String> records = new LinkedHashSet<>();
         CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
         for (CSVRecord record : parser) {
-          records.addAll(record.toList());
+          appendEntries(record, records, existingKeys, mergeKeyValues);
         }
         parser = new CSVParser(new StringReader(csv2), csvFormat);
         for (CSVRecord record : parser) {
-          records.addAll(record.toList());
+          appendEntries(record, records, existingKeys, mergeKeyValues);
         }
         csvPrinter.printRecord(records);
         csvPrinter.flush();
@@ -1058,11 +1162,45 @@ public class GFlagsUtil {
     return writer.toString();
   }
 
+  private static void appendEntries(
+      CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
+    record
+        .toList()
+        .forEach(
+            entry -> {
+              if (mergeKeyValues) {
+                Optional<String> key = getKey(entry);
+                if (key.isPresent()) {
+                  if (existingKeys.contains(key.get())) {
+                    return;
+                  }
+                  existingKeys.add(key.get());
+                }
+              }
+              result.add(entry);
+            });
+  }
+
+  private static Optional<String> getKey(String keyValue) {
+    if (StringUtils.isEmpty(keyValue)) {
+      return Optional.empty();
+    }
+    int equalIndex = keyValue.indexOf("=");
+    if (equalIndex > 0) {
+      return Optional.of(keyValue.substring(0, equalIndex).trim());
+    }
+    return Optional.empty();
+  }
+
   public static void mergeCSVs(
-      Map<String, String> userGFlags, Map<String, String> platformGFlags, String key) {
+      Map<String, String> userGFlags,
+      Map<String, String> platformGFlags,
+      String key,
+      boolean mergeKeyValues) {
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key);
-      userGFlags.put(key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, "")));
+      userGFlags.put(
+          key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
   }
 
@@ -1353,5 +1491,25 @@ public class GFlagsUtil {
       return true;
     }
     return cluster.userIntent.specificGFlags.isInheritFromPrimary();
+  }
+
+  public static String getLogLinePrefix(String pgConfCsv) {
+    if (StringUtils.isEmpty(pgConfCsv)) {
+      return DEFAULT_LOG_LINE_PREFIX;
+    }
+    try {
+      CSVParser parser = new CSVParser(new StringReader(pgConfCsv), CSVFormat.DEFAULT);
+      for (CSVRecord record : parser) {
+        for (String entry : record.toList()) {
+          Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
+          if (matcher.matches()) {
+            return matcher.group(1);
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to parse CSV", e);
+    }
+    return DEFAULT_LOG_LINE_PREFIX;
   }
 }

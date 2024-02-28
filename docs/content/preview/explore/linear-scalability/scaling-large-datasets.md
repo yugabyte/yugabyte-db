@@ -15,7 +15,15 @@ type: docs
 
 With ever-growing data workloads, such as time series metrics and IoT sensor events, databases need to handle large data (larger than 10 TB). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost-efficiency standpoint. But spinning up new data nodes to get more storage-per-node leads to significant wastage of expensive compute resources.
 
-YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](../../../architecture/docdb/). Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in YugabyteDB when compared to the eventually-consistent Cassandra-compatible databases.
+YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and storage architecture. [DocDB](../../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered from the ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
+
+- Scan-resistant global block cache
+- Bloom/index data splitting
+- Global memstore limit
+- Separate compaction queues to reduce read amplification
+- Smart load balancing across disks
+
+Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in YugabyteDB when compared to the eventually-consistent Cassandra-compatible databases.
 
 The following scenario shows how YugabyteDB handles a total of 18 TB on just four general-purpose machines.
 
@@ -32,7 +40,7 @@ The following scenario shows how YugabyteDB handles a total of 18 TB on just fou
 | Value size                     | 256 Bytes (deliberately chosen to be not very compressible) |
 | Logical Data Set Size          | 20 Billion keys * 300 Bytes = 6000 GB                       |
 | Raw Data including Replication | 6000 GB * 3 = **18 TB**                                     |
-| Data Per Node                  | 18TB / 4 = **4.5 TB**                                       |
+| Data Per Node                  | 18 TB / 4 = **4.5 TB**                                       |
 
 ## Data load
 
@@ -57,7 +65,7 @@ On a read-heavy workload with 32 readers and 2 writers, YugabyteDB serviced 19K 
 
 {{</table>}}
 
-Note that this is a random-read workload, with only 30GB of RAM for 4.5TB of data per node. So every read will be forced to go to disk, and this workload is bottlenecked by the IO the EBS volume can support.
+Note that this is a random-read workload, with only 30 GB of RAM for 4.5 TB of data per node. So every read will be forced to go to disk, and this workload is bottlenecked by the IO the EBS volume can support.
 
 As expected, CPU was not the bottleneck in this workload, and CPU use was under 7%.
 
@@ -72,23 +80,23 @@ On a write-heavy workload with 2 readers and 64 writers, YugabyteDB serviced 25K
 | ![Latency](https://www.yugabyte.com/wp-content/uploads/2018/08/Picture12.png) |
 {{</table>}}
 
-For a write-heavy workload, there is more variability because of the use of general-purpose SSD (gp2) EBS volumes. This variability arises from the need to perform periodic compactions. Note that for time series data such as IoT or KairosDB-like workloads, YugabyteDB doesn't need to perform aggressive compactions, and the results will be even better. But this particular experiment is running an arbitrary KV workload, and as expected puts a higher demand on the system.
+For a write-heavy workload, there is more variability because of the use of general-purpose SSD (gp2) EBS volumes. This variability arises from the need to perform periodic compaction. Note that for time series data such as IoT or KairosDB-like workloads, YugabyteDB doesn't need to perform aggressive compaction, and the results will be even better. But this particular experiment is running an arbitrary KV workload, and as expected puts a higher demand on the system.
 
-Instead of using 1x6000GB EBS volume per node, using 2x3000GB EBS volumes might be a better choice to get more throughput. When the disk R + W throughput reaches its maximum (around 150MB/sec) during compactions, the latencies also go up a bit.
+Instead of using 1x6000GB EBS volume per node, using 2x3000GB EBS volumes might be a better choice to get more throughput. When the disk R + W throughput reaches its maximum (around 150 MB/sec) during compaction, the latencies also go up a bit.
 
-To allow sufficient room for foreground operations on a low-end gp2 SSD volume-based setup, we reduced the default quota settings for compaction/flush rate from 100MB/sec to 30MB/sec.
+To allow sufficient room for foreground operations on a low-end gp2 SSD volume-based setup, we reduced the default quota settings for compaction/flush rate from 100 MB/sec to 30 MB/sec.
 
 On i3* instance types with directly attached NVMe SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
 
 ## Customer use cases
 
-### 20TB
+### 20 TB
 
-In a customer installation, Yugabyte DB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and Yugabyte DB was able to handle sustained `450K ops/sec` with CPU use at `~40%` maximum.
+In a customer installation, YugabyteDB has been loaded with ~20 TB of compressed data (~50 TB uncompressed) per node and YugabyteDB was able to handle sustained 450K ops/sec with CPU use at ~40% maximum.
 
-### 80TB
+### 80 TB
 
-One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an average latency of `1.7s`. Their setup is:
+One customer uses the YCQL interface to store and retrieve about 80 TB of event data from different vehicles clocked at 1.25 M Ops/s with an average latency of 1.7s. Their setup is as follows:
 
 |                          |             |
 | -----------------------: | :---------- |
@@ -96,15 +104,15 @@ One of our customers uses YCQL interface to store and retrieve about `80TB` of e
 |                    Zones | 5           |
 |       Replication Factor | 5           |
 |                      CPU | 64vCPU      |
-|                   Memory | 256GB RAM   |
-|                  Storage | 6x 4TB NVMe |
+|                   Memory | 256 GB RAM   |
+|                  Storage | 6x4 TB NVMe |
 |                Data Size | **80 TB**   |
 |        Data Density/node | **10 TB**   |
-| Data Size (+Replication) | **450TB**   |
+| Data Size (+Replication) | **450 TB**   |
 
 ## Operational efficiency
 
-Scaling up and down with Yugabyte DB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compactions automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
+Scaling up and down with YugabyteDB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compaction automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
 
 ## Learn more
 

@@ -38,15 +38,7 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunner.class)
 public class TestPgWriteRestart extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgWriteRestart.class);
-  private static final int SLEEP_DURATION = 5000;
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
-    flags.put("ysql_max_write_restart_attempts", "20");
-    return flags;
-  }
+  private static final int SLEEP_DURATION = 500;
 
   private class ParallelRun implements Runnable {
     public ParallelRun(Statement s, List<String> queries) {

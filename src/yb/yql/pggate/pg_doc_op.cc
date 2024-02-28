@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 
@@ -36,10 +38,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-using std::string;
-
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 namespace {
 
 struct PgDocReadOpCachedHelper {
@@ -128,7 +127,7 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
 // Helper function to determine the type of relation that the given Pgsql operation is being
 // performed on. This function classifies the operation into one of three buckets: system catalog,
 // secondary index or user table requests.
-TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
+[[nodiscard]] TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
   if (table->schema().table_properties().is_ysql_catalog_table()) {
     // We don't distinguish between table reads and index reads for a catalog table.
     return TableType::SYSTEM;
@@ -148,6 +147,35 @@ TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
   }
 
   return TableType::USER;
+}
+
+[[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(TableType table_type) {
+  switch (table_type) {
+    case TableType::SYSTEM: return ash::WaitStateCode::kCatalogRead;
+    case TableType::INDEX: return ash::WaitStateCode::kIndexRead;
+    case TableType::USER: return ash::WaitStateCode::kStorageRead;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+Result<PgDocResponse::Data> FetchResponseData(
+    PgDocResponse* response, PgSession* session, TableType table_type, bool is_write) {
+  if (is_write) {
+    return response->Get();
+  }
+  // Update session stats instrumentation only for read requests. Reads are executed
+  // synchronously with respect to Postgres query execution, and thus it is possible to
+  // correlate wait/execution times directly with the request. We update instrumentation for
+  // reads exactly once, upon receiving a success response from the underlying storage layer.
+  auto& metrics = session->metrics();
+  uint64_t wait_time = 0;
+  const auto result = VERIFY_RESULT(metrics.CallWithDuration(
+      [response,
+       event_watcher = session->StartWaitEvent(ResolveWaitEventCode(table_type))] {
+        return response->Get(); },
+      &wait_time));
+  metrics.ReadRequest(table_type, wait_time);
+  return result;
 }
 
 } // namespace
@@ -283,18 +311,8 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
-    uint64_t wait_time = 0;
-    auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
-        [&response = response_] { return response.Get(); }, &wait_time));
-
-    // Update session stats instrumentation only for read requests. Reads are executed
-    // synchronously with respect to Postgres query execution, and thus it is possible to
-    // correlate wait/execution times directly with the request. We update instrumentation for
-    // reads exactly once, upon receiving a success response from the underlying storage layer.
-    if (!IsWrite()) {
-      pg_session_->metrics().ReadRequest(
-          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
-    }
+    const auto result_data = VERIFY_RESULT(FetchResponseData(
+        &response_, &*pg_session_, ResolveRelationType(*pgsql_ops_.front(), table_), IsWrite()));
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
 
@@ -334,13 +352,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  // Currently, send and receive individual request of a batch is not yet supported
-  // - Among statements, only queries by BASE-YBCTIDs need to be sent and received in batches
-  //   to honor the order of how the BASE-YBCTIDs are kept in the database.
-  // - For other type of statements, it could be more efficient to send them individually.
-  SCHECK(wait_for_batch_completion_, InternalError,
-         "Only send and receive the whole batch is supported");
-
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   VLOG(1) << "Number of operations to send: " << send_count;
@@ -350,7 +361,7 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
 
   // Update session stats instrumentation for write requests only. Writes are buffered and flushed
   // asynchronously, and thus it is not possible to correlate wait/execution times directly with
-  // the request. We update instrumentation for writes sexactly once, after successfully sending an
+  // the request. We update instrumentation for writes exactly once, after successfully sending an
   // RPC request to the underlying storage layer.
   if (IsWrite()) {
     pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
@@ -362,8 +373,27 @@ void PgDocOp::RecordRequestMetrics() {
   auto& metrics = pg_session_->metrics();
   for (const auto& op : pgsql_ops_) {
     auto* response = op->response();
-    if (response && response->has_metrics()) {
+    if (op->is_active() && response && response->has_metrics()) {
       metrics.RecordRequestMetrics(op->response()->metrics());
+
+      // Record the number of DocDB rows read.
+      // Index Scans on secondary indexes in colocated tables need special handling: the target
+      // table for such ops is the secondary index, however the scanned_table_rows field returns
+      // the number of main table rows scanned scanned. Hence, if a request has both table and index
+      // rows_scanned set, then we do not resolve the target table type. In all other cases, the
+      // index_rows_scanned field is not populated and the table type can be resolved to figure out
+      // the kind of rows scanned.
+      if (!response->metrics().has_scanned_table_rows()) {
+        continue;
+      }
+
+      if (table_->IsColocated() && response->metrics().has_scanned_index_rows()) {
+        metrics.RecordStorageRowsRead(TableType::USER, response->metrics().scanned_table_rows());
+        metrics.RecordStorageRowsRead(TableType::INDEX, response->metrics().scanned_index_rows());
+      } else {
+        metrics.RecordStorageRowsRead(
+            ResolveRelationType(*op, table_), response->metrics().scanned_table_rows());
+      }
     }
   }
 }
@@ -393,8 +423,6 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
 
   if (data.used_in_txn_limit) {
-    VLOG(5) << "Received used_in_txn_limit_ht in resp=" << data.used_in_txn_limit
-            << ", existing in_txn_limit_ht: " << GetInTxnLimitHt();
     GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
   }
   RETURN_NOT_OK(CompleteProcessResponse());
@@ -559,14 +587,14 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
         return false;
       }
     }
-    pgsql_ops_.emplace_back(read_op_);
-    pgsql_ops_.back()->set_active(true);
+    ClonePgsqlOps(1);
+    auto& read_op = GetReadOp(0);
+    read_op.set_active(true);
     active_op_count_ = 1;
     if (req.has_ybctid_column_value()) {
-      const Slice& ybctid =
-        read_op_->read_request().mutable_ybctid_column_value()->mutable_value()->binary_value();
+      const Slice& ybctid = req.ybctid_column_value().value().binary_value();
       const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-      return SetLowerUpperBound(&read_op_->read_request(), partition);
+      return SetLowerUpperBound(&read_op.read_request(), partition);
     }
     return true;
   }
@@ -645,16 +673,17 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
 }
 
 void PgDocReadOp::InitializeYbctidOperators() {
-  if (pgsql_ops_.empty()) {
-    // First batch.
-    // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
-    // in the batch and then order them before returning result to Postgres layer.
-    wait_for_batch_completion_ = true;
-    ClonePgsqlOps(table_->GetPartitionListSize());
-  } else {
-    // Second and later batches. Reuse all state variables.
-    ResetInactivePgsqlOps();
+  if (!pgsql_op_arena_) {
+    // First batch, create arena for operations
+    DCHECK(pgsql_ops_.empty());
+    pgsql_op_arena_ = SharedArena();
+  } else if (active_op_count_ == 0) {
+    // All past operations are done, can perform full reset to release memory
+    pgsql_ops_.clear();
+    pgsql_op_arena_->Reset(ResetMode::kKeepLast);
   }
+  ResetInactivePgsqlOps();
+  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 LWPgsqlReadRequestPB* PgDocReadOp::PrepareReadReq() {
@@ -1183,7 +1212,7 @@ Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 
   // Seek upper bound (Beginning of next tablet).
-  string upper_bound;
+  std::string upper_bound;
   const auto& next_partition_key = std::next(partition_key, 1);
   if (next_partition_key != partition_keys.end()) {
     upper_bound = *next_partition_key;
@@ -1401,6 +1430,15 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
   }
 }
 
+Status PgDocReadOp::ResetPgsqlOps() {
+  SCHECK_EQ(active_op_count_, 0,
+            IllegalState,
+            "Can't reset operations when some of them are active");
+  pgsql_ops_.clear();
+  request_population_completed_ = false;
+  return Status::OK();
+}
+
 void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req) {
   if (read_req->batch_arguments().empty()) {
     return;
@@ -1445,8 +1483,9 @@ void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   DCHECK_GT(op_count, 0);
   pgsql_ops_.reserve(op_count);
+  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
   while (pgsql_ops_.size() < op_count) {
-    pgsql_ops_.push_back(read_op_->DeepCopy(read_op_));
+    pgsql_ops_.push_back(read_op_->DeepCopy(arena));
     // Initialize as inactive. Turn it on when setup argument for a specific partition.
     pgsql_ops_.back()->set_active(false);
   }
@@ -1491,5 +1530,4 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
   return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

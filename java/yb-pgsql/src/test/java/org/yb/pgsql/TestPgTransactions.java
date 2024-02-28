@@ -77,6 +77,13 @@ public class TestPgTransactions extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+    return flags;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
@@ -85,10 +92,8 @@ public class TestPgTransactions extends BasePgSQLTest {
   void runWithFailOnConflict() throws Exception {
     // Some of these tests depend on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    Map<String, String> disableWaitOnConflict = new TreeMap<String, String>();
-    disableWaitOnConflict.put("enable_wait_queues", "false");
     markClusterNeedsRecreation();
-    restartClusterWithFlags(disableWaitOnConflict, disableWaitOnConflict);
+    restartClusterWithFlags(FailOnConflictTestGflags, FailOnConflictTestGflags);
   }
 
   @Test

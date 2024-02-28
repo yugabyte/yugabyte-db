@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -22,5 +24,6 @@
 namespace yb::docdb {
 
 std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec);
+std::shared_ptr<rocksdb::ReadFileFilter> CreateHybridTimeFileFilter(HybridTime min_hybrid_Time);
 
 }  // namespace yb::docdb

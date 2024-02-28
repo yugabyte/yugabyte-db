@@ -47,14 +47,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.RollbackAutoFlagsResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
@@ -62,9 +65,15 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   protected Universe defaultUniverse;
   protected static final String NODE_PREFIX = "demo-universe";
-  protected static final String YB_SOFTWARE_VERSION_OLD = "old-version";
-  protected static final String YB_SOFTWARE_VERSION_NEW = "new-version";
+  protected static final String YB_SOFTWARE_VERSION_OLD = "2.15.0.0-b1";
+  protected static final String YB_SOFTWARE_VERSION_NEW = "2.17.0.0-b1";
   protected Map<String, String> config = new HashMap<>();
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+  }
 
   protected void setupUniverse(
       boolean setMasters,
@@ -127,14 +136,19 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(
               new PromoteAutoFlagsResponse(
                   0, "uuid", PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      lenient()
+          .when(mockClient.rollbackAutoFlags(anyInt()))
+          .thenReturn(
+              new RollbackAutoFlagsResponse(
+                  0,
+                  "uuid",
+                  MasterClusterOuterClass.RollbackAutoFlagsResponsePB.getDefaultInstance()));
       String masterLeaderName = "yb-master-0.yb-masters.demo-universe.svc.cluster.local";
       if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
         masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
       }
-      if (mockGetLeaderMaster) {
-        when(mockClient.getLeaderMasterHostAndPort())
-            .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
-      }
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
 
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
@@ -144,6 +158,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
+    setLeaderlessTabletsMock();
   }
 
   protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {

@@ -29,7 +29,7 @@ ADD_YB_LIBRARY(docdb_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
@@ -85,6 +85,7 @@ set(DOCDB_SRCS
 set(DOCDB_DEPS
         yb_dockv
         rocksdb
+        yb_ash
         yb_util
         yb_rocksutil
         yb_common
@@ -135,6 +136,7 @@ ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(external_intents_batch_writer-test)
 ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)

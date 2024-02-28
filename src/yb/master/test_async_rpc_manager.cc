@@ -20,9 +20,10 @@ class Master;
 class CatalogManager;
 
 Status TestAsyncRpcManager::SendMasterTestRetryRequest(
-    const consensus::RaftPeerPB& peer, const int32_t num_retries, StdStatusCallback callback) {
+    consensus::RaftPeerPB&& peer, const int32_t num_retries, StdStatusCallback callback) {
   auto task = std::make_shared<AsyncMasterTestRetry>(
-      master_, catalog_manager_->AsyncTaskPool(), peer, num_retries, std::move(callback));
+      master_, catalog_manager_->AsyncTaskPool(), std::move(peer), num_retries,
+      std::move(callback));
   return catalog_manager_->ScheduleTask(task);
 }
 

@@ -22,11 +22,19 @@ class XClusterYsqlTestBase : public XClusterTestBase {
  public:
   void SetUp() override;
   Status InitClusters(const MiniClusterOptions& opts) override;
+
+  Status SetUpWithParams(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters = 1, const bool ranged_partitioned = false);
+
+  Status InitProducerClusterOnly(const MiniClusterOptions& opts);
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1);
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
-  Result<std::string> GetNamespaceId(YBClient* client);
+  Result<NamespaceId> GetNamespaceId(YBClient* client);
+  Result<NamespaceId> GetNamespaceId(YBClient* client, const NamespaceName& ns_name);
   Result<std::string> GetUniverseId(Cluster* cluster);
 
   Result<client::YBTableName> CreateYsqlTable(
@@ -108,10 +116,17 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
+  Status CheckpointReplicationGroup();
+  Status CreateReplicationFromCheckpoint();
+  Result<bool> IsCreateXClusterReplicationDone();
+  Status WaitForCreateReplicationToFinish();
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 
  private:
+  void InitFlags(const MiniClusterOptions& opts);
+
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);

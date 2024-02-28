@@ -36,6 +36,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -320,6 +321,8 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status GetAutoFlagsConfig();
+
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
@@ -328,7 +331,7 @@ class ClusterAdminClient {
   Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
   Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
 
-  Status ListAllNamespaces();
+  Status ListAllNamespaces(bool include_nonrunning = false);
 
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
@@ -356,13 +359,11 @@ class ClusterAdminClient {
 
   Status DeleteSnapshot(const std::string& snapshot_id);
   Status AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id);
+  Status CreateSnapshotMetaFile(const std::string& snapshot_id, const std::string& file_name);
 
-  Status CreateSnapshotMetaFile(const std::string& snapshot_id,
-                                const std::string& file_name);
-  Status ImportSnapshotMetaFile(const std::string& file_name,
-                                const TypedNamespaceName& keyspace,
-                                const std::vector<client::YBTableName>& tables,
-                                bool selective_import);
+  Status ImportSnapshotMetaFile(
+      const std::string& file_name, const TypedNamespaceName& keyspace,
+      const std::vector<client::YBTableName>& tables, bool selective_import);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
   Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
@@ -388,7 +389,8 @@ class ClusterAdminClient {
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
-      const cdc::CDCRecordType RecordType);
+      const cdc::CDCRecordType RecordType,
+      const std::string& ConsistentSnapshotOption);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -399,6 +401,9 @@ class ClusterAdminClient {
   Status ListCDCSDKStreams(const std::string& namespace_name);
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
+
+  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      const std::string& stream_id, const std::string& replication_slot_name);
 
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,
@@ -583,7 +588,7 @@ class ClusterAdminClient {
       const MonoDelta timeout = MonoDelta());
 
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
-  Result<const NamespaceMap&> GetNamespaceMap();
+  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

@@ -203,6 +203,7 @@ TupleQueueReaderNext(TupleQueueReader *reader, bool nowait, bool *done)
 	htup.t_tableOid = InvalidOid;
 	htup.t_len = nbytes;
 	htup.t_data = data;
+	htup.t_ybctid = (Datum) 0;
 
 	return heap_copytuple(&htup);
 }

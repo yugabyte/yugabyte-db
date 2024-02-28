@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
@@ -184,10 +185,10 @@ public class SessionController extends AbstractPlatformController {
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
     Customer cust = Customer.get(user.getCustomerUUID());
-    Cookie authCookie = request.cookie(AUTH_TOKEN);
+    Optional<Cookie> authCookie = request.cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
-            authCookie == null ? null : authCookie.value(),
+            authCookie.isPresent() ? authCookie.get().value() : null,
             user.getOrCreateApiToken(),
             user.getApiTokenVersion(),
             cust.getUuid(),
@@ -330,7 +331,7 @@ public class SessionController extends AbstractPlatformController {
     String authToken = user.createAuthToken();
     SessionInfo sessionInfo =
         new SessionInfo(authToken, null, null, cust.getUuid(), user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -378,7 +379,7 @@ public class SessionController extends AbstractPlatformController {
             user.getApiTokenVersion(),
             cust.getUuid(),
             user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -410,11 +411,18 @@ public class SessionController extends AbstractPlatformController {
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin(Http.Request request) {
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
-    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
+    Users user;
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      user = thirdPartyLoginHandler.findUserByEmailOrCreateNewUser(request, email);
+    } else {
+      user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
+      user.setUserType(UserType.oidc);
+      user.save();
+    }
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -533,7 +541,7 @@ public class SessionController extends AbstractPlatformController {
       SessionInfo sessionInfo =
           new SessionInfo(
               null, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
-      RequestContext.put(IS_AUDITED, true);
+      RequestContext.update(IS_AUDITED, val -> val.set(true));
       Audit.create(
           user,
           request.path(),
@@ -849,9 +857,8 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change."
-              + " Returns the current list of notifications for admin",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Current list of notifications for admin",
       response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
   @AuthzPath({

@@ -46,7 +46,7 @@ To do this:
     - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
     - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
-    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
+    - **urlBuilder.SslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `SslMode.VerifyFull`.
     - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.

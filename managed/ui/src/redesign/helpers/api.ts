@@ -7,6 +7,8 @@ import {
 } from '../../components/configRedesign/providerRedesign/types';
 import {
   HostInfo,
+  MetricsQueryParams,
+  MetricsQueryResponse,
   Provider as Provider_Deprecated,
   SuggestedKubernetesConfig,
   UniverseNamespace,
@@ -113,7 +115,8 @@ export const universeQueryKey = {
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
-  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid]
+  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
+  providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
 export const instanceTypeQueryKey = {
@@ -136,12 +139,50 @@ export const drConfigQueryKey = {
   safetimes: (drConfigUuid: string) => [...drConfigQueryKey.detail(drConfigUuid), 'safetimes']
 };
 
+export const metricQueryKey = {
+  ALL: ['metric'],
+  detail: (metricRequestParams: { [property: string]: any }) => [
+    ...metricQueryKey.ALL,
+    metricRequestParams
+  ],
+  /**
+   * Usage:
+   * Calling live() with no parameters returns a query key which can be used for invalidating all
+   * live queries.
+   * Invalidated queries will be refetched if the query still has observers.
+   */
+  live: (metricRequestParams?: { [property: string]: any }, range?: string, unit?: string) => {
+    const { start, end, ...remainingRequestParams } = metricRequestParams ?? {};
+    // For metric queries where we are interested in the last x units of data, we should
+    // use the range and unit as part of the key instead of the concrete start and end time.
+    // This helps us refetch in the background while serving the most recent data from
+    // the cache. This is a better experience than hitting a loading spinner constantly on a
+    // metric graph which updates every x seconds.
+    return [
+      ...metricQueryKey.ALL,
+      'live',
+      ...(metricRequestParams ? [remainingRequestParams] : []),
+      ...(range || unit ? [{ range, unit }] : [])
+    ];
+  }
+};
+
+export const alertConfigQueryKey = {
+  ALL: ['alertConfig'],
+  list: (filters: unknown) => [...alertConfigQueryKey.ALL, { filters }]
+};
+
+export const alertTemplateQueryKey = {
+  ALL: ['alertTempalte'],
+  list: (filters: unknown) => [...alertTemplateQueryKey.ALL, { filters }]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
 
 export const ApiTimeout = {
-  FETCH_TABLE_INFO: 20_000,
+  FETCH_TABLE_INFO: 90_000,
   FETCH_XCLUSTER_CONFIG: 120_000
 } as const;
 
@@ -154,24 +195,26 @@ export interface CreateDrConfigRequest {
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
   dbs: string[]; // Database uuids (from source universe) selected for replication.
-  bootstrapBackupParams: {
-    storageConfigUUID: string;
-    parallelism?: number;
-  };
-
-  dryRun?: boolean; // Run the pre-checks without actually running the subtasks
-}
-
-export interface ReplaceDrReplicaRequest {
-  primaryUniverseUuid: string; // The current primary universe.
-  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
   bootstrapParams: {
     backupRequestParams?: {
       storageConfigUUID: string;
     };
   };
+
+  dryRun?: boolean; // Run the pre-checks without actually running the subtasks
+}
+
+export interface EditDrConfigRequest {
+  bootstrapParams: {
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export interface ReplaceDrReplicaRequest {
+  primaryUniverseUuid: string; // The current primary universe.
+  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
 }
 
 export interface DrSwitchoverRequest {
@@ -191,24 +234,10 @@ export interface DrFailoverRequest {
 
 export interface RestartDrConfigRequest {
   dbs: string[]; // Database uuids (from the source universe) to be restarted.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 class ApiService {
@@ -398,9 +427,19 @@ class ApiService {
     }
   };
 
-  deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {
+  editDrConfig = (
+    drConfigUuid: string,
+    editDrConfigRequest: EditDrConfigRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/edit`;
+    return axios.post<YBPTask>(requestUrl, editDrConfigRequest).then((response) => response.data);
+  };
+
+  deleteDrConfig = (drConfigUuid: string, isForceDelete: boolean): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-    return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+    return axios
+      .delete<YBPTask>(requestUrl, { params: { isForceDelete } })
+      .then((response) => response.data);
   };
 
   initiateSwitchover = (
@@ -652,6 +691,13 @@ class ApiService {
   acknowledgeAlert = (uuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
     return axios.post(requestUrl, { uuids: [uuid] }).then((res) => res.data);
+  };
+
+  fetchMetrics = (metricsQueryParams: MetricsQueryParams): Promise<MetricsQueryResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/metrics`;
+    return axios
+      .post<MetricsQueryResponse>(requestUrl, metricsQueryParams)
+      .then((response) => response.data);
   };
 
   importReleases = (payload: any) => {

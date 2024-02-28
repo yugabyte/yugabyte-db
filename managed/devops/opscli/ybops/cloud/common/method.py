@@ -210,6 +210,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  action="store_true",
                                  help="Offload ansible tasks to the DB node")
+        self.parser.add_argument("--imdsv2required",
+                                 action="store_true",
+                                 default=False,
+                                 help="IMDSv2 Required.")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -280,6 +284,7 @@ class AbstractInstancesMethod(AbstractMethod):
         updated_args["offload_ansible"] = args.offload_ansible
 
         self.extra_vars.update(updated_args)
+        self.extra_vars["imdsv2required"] = args.imdsv2required
 
     def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
         """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
@@ -776,6 +781,14 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--install_otel_collector", action="store_true")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -832,12 +845,20 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
@@ -849,6 +870,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                                 host_port_user["host"],
                                                 host_port_user["user"],
                                                 host_port_user["port"]))
+
+    def get_device_names(self, args, host_info):
+        return self.cloud.get_device_names(args)
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
@@ -1234,6 +1258,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--remote_gflag_files_path",
                                  required=False,
                                  help="Path to remote directory with the gFlags file.")
+        self.parser.add_argument("--acceptable_clock_skew_wait_enabled",
+                                 action="store_true",
+                                 help="Whether ensure the clock skew is below the threshold.")
+        self.parser.add_argument("--acceptable_clock_skew_sec",
+                                 required=False,
+                                 help="Maximum acceptable clock skew in seconds before starting "
+                                      "the yb processes.")
+        self.parser.add_argument("--acceptable_clock_skew_max_tries",
+                                 required=False,
+                                 help="The maximum number of checking the clock skew before "
+                                      "failing.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1311,6 +1346,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.root_cert_path is not None:
             self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
+
+        if args.acceptable_clock_skew_wait_enabled is not None:
+            self.extra_vars["acceptable_clock_skew_wait_enabled"] = (
+                args.acceptable_clock_skew_wait_enabled)
+
+        if args.acceptable_clock_skew_sec is not None:
+            self.extra_vars["acceptable_clock_skew_sec"] = args.acceptable_clock_skew_sec
+
+        if args.acceptable_clock_skew_max_tries is not None:
+            self.extra_vars["acceptable_clock_skew_max_tries"] = (
+                args.acceptable_clock_skew_max_tries)
 
         if args.cert_rotate_action is not None:
             if args.cert_rotate_action not in self.CERT_ROTATE_ACTIONS:
@@ -2060,6 +2106,14 @@ class ManageOtelCollector(AbstractInstancesMethod):
         self.parser.add_argument("--install_otel_collector", action="store_true")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with third party software tarballs.")
@@ -2084,6 +2138,14 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-otel-collector.yml",

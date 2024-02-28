@@ -326,13 +326,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T2_NAME, 1, 399);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 157, 160155);
+        T4_NAME, 5, 160003);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 157, 160155);
+        T4_NAME, 5, 160003);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 157, 160155);
+        T4_NAME, 7, 160005);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T1_NAME, T1_NAME),
         T1_NAME, 1, 19);
@@ -365,13 +365,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T4_NAME, 40, 160038);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 = 4 and k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 8, 160006);
+        T4_NAME, 2, 160000);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16) and k2 = 4", T4_NAME, T4_NAME),
-        T4_NAME, 8, 160006);
+        T4_NAME, 2, 160000);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k3 IN (4, 8, 12, 16) and k4 = 4", T4_NAME, T4_NAME),
-        T4_NAME, 9, 160007);
+        T4_NAME, 2, 160000);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, 1, 399);
@@ -386,10 +386,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T3_NAME, 2, 8000);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 24, 160022);
+        T4_NAME, 4, 160002);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
-        T4_NAME, 157, 160155);
+        T4_NAME, 32, 160029);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k2 >= 4", T4_NAME, T4_NAME),
         T4_NAME, 114, 160112);
@@ -404,7 +404,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T4_NAME, 67, 160065);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10) AND k2 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
-        T4_NAME, 157, 160155);
+        T4_NAME, 5, 160003);
       testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k3 >= 4", T4_NAME, T4_NAME),
         T4_NAME, 114, 160112);

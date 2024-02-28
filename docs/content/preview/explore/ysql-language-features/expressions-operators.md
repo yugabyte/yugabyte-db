@@ -2,12 +2,11 @@
 title: Expressions and operators
 linkTitle: Expressions and operators
 description: Expressions and operators in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
-    weight: 215
+    weight: 205
 type: docs
 ---
 

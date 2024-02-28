@@ -56,14 +56,6 @@ DEFINE_UNKNOWN_int32(
 TAG_FLAG(clear_active_probes_older_than_seconds, hidden);
 TAG_FLAG(clear_active_probes_older_than_seconds, advanced);
 
-DEFINE_RUNTIME_int32(
-    clear_deadlocked_txns_info_older_than_heartbeats, 10,
-    "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
-    "retained, after it has been reported to be aborted. This ensures the memory used to track "
-    "info of deadlocked transactions does not grow unbounded.");
-TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, hidden);
-TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, advanced);
-
 METRIC_DEFINE_event_stats(
     tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
     "The number of transactions involved in detected deadlocks");
@@ -367,6 +359,43 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   tserver::ProbeTransactionDeadlockResponsePB resp_ GUARDED_BY(mutex_);
 };
 
+class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadlockResolver> {
+ public:
+  RemoteDeadlockResolver(rpc::Rpcs* rpcs, client::YBClient* client):
+      rpcs_(rpcs), client_(client), handle_(rpcs_->InvalidHandle()) {}
+
+  void AbortRemoteTransaction(
+      const TransactionId& id, const TabletId& status_tablet,
+      const std::string& err_msg) {
+    tserver::AbortTransactionRequestPB req;
+    req.set_tablet_id(status_tablet);
+    req.set_propagated_hybrid_time(client_->Clock()->Now().ToUint64());
+    req.set_transaction_id(id.data(), id.size());
+    StatusToPB(
+        STATUS_EC_FORMAT(
+            Expired, TransactionError(TransactionErrorCode::kDeadlock), err_msg),
+        req.mutable_deadlock_reason());
+    rpcs_->RegisterAndStart(
+        AbortTransaction(
+            TransactionRpcDeadline(),
+            nullptr,
+            client_,
+            &req,
+            [shared_this = shared_from(this), txn_id = id]
+                (const auto& status, const auto& resp) {
+              LOG_WITH_FUNC(INFO) << "Abort deadlocked transaction request for " << txn_id
+                                  << " completed: " << resp.ShortDebugString();
+              shared_this->rpcs_->Unregister(shared_this->handle_);
+            }),
+        &handle_);
+  }
+
+ private:
+  rpc::Rpcs* rpcs_;
+  client::YBClient* client_;
+  rpc::Rpcs::Handle handle_;
+};
+
 using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
 
 } // namespace
@@ -391,10 +420,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
  public:
   explicit Impl(
       const std::shared_future<client::YBClient*>& client_future,
-      TransactionAbortController* controller, const TabletId& status_tablet_id,
+      TransactionStatusController* controller, const TabletId& status_tablet_id,
       const MetricEntityPtr& metrics)
       : client_future_(client_future), controller_(controller),
-        detector_id_(DetectorId::GenerateRandom()),
+        detector_id_(DetectorId::GenerateRandom()), status_tablet_(status_tablet_id),
         log_prefix_(Format("T $0 D $1 ", status_tablet_id, detector_id_)),
         deadlock_size_(METRIC_deadlock_size.Instantiate(metrics)),
         probe_latency_(METRIC_deadlock_probe_latency.Instantiate(metrics)),
@@ -554,7 +583,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
               << "blocking subtxn(s): " << blocker_txn.blocking_subtxn_info->ToString() << " "
               << "waiter txn id: " << waiter_txn_id << " "
               << "received from TS: " << tserver_uuid << " "
-              << "start time: " << wait_start_time;
+              << "start time: " << waiter_data->wait_start_time;
         }
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
@@ -591,20 +620,6 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       // TODO(wait-queues): Trigger probes only for waiters which which have
       // wait_start_time > Now() - N seconds
       probes_to_send = GetProbesToSend(waiters_);
-
-      // Clear the info of old deadlocked transactions.
-      auto interval = FLAGS_clear_deadlocked_txns_info_older_than_heartbeats *
-          FLAGS_transaction_heartbeat_usec * 1us;
-      auto expired_cutoff_time = CoarseMonoClock::Now() - interval;
-      for (auto it = recently_deadlocked_txns_info_.begin();
-           it != recently_deadlocked_txns_info_.end();) {
-        const auto& deadlock_time = it->second.second;
-        if (deadlock_time < expired_cutoff_time) {
-          it = recently_deadlocked_txns_info_.erase(it);
-        } else {
-          it++;
-        }
-      }
     }
 
     for (auto& processor : probes_to_send) {
@@ -622,18 +637,6 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                             << " old probes from tracking for remote detector " << detector_id;
       }
     }
-  }
-
-  Status GetTransactionDeadlockStatus(const TransactionId& txn_id) {
-    SharedLock<decltype(mutex_)> l(mutex_);
-    auto it = recently_deadlocked_txns_info_.find(txn_id);
-    if (it == recently_deadlocked_txns_info_.end()) {
-      return Status::OK();
-    }
-    // Return Expired so that TabletInvoker does not retry. Also, query layer proactively sends
-    // clean up requests to transaction participant only for transactions with Expired status.
-    return STATUS_EC_FORMAT(
-        Expired, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
   }
 
  private:
@@ -685,14 +688,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
             LOG(ERROR) << "Failed to decode transaction id in detected deadlock!";
           } else {
             const auto& waiter = *waiter_or_status;
-            {
-              UniqueLock<decltype(detector->mutex_)> l(detector->mutex_);
-              auto deadlock_info = std::make_pair(ConstructDeadlockedMessage(waiter, resp),
-                                                  CoarseMonoClock::Now());
-              detector->recently_deadlocked_txns_info_.emplace(waiter, deadlock_info);
-            }
-            detector->controller_->Abort(
-                waiter, std::bind(&DeadlockDetector::Impl::TxnAbortCallback, detector, _1, waiter));
+            auto deadlock_msg = ConstructDeadlockedMessage(waiter, resp);
+            auto resolver = std::make_shared<RemoteDeadlockResolver>(
+                &detector->rpcs_, &detector->client());
+            resolver->AbortRemoteTransaction(waiter, detector->status_tablet_, deadlock_msg);
           }
         }
       });
@@ -828,20 +827,6 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     return local_processor;
   }
 
-  void TxnAbortCallback(Result<TransactionStatusResult> res, const TransactionId txn_id) {
-    if (res.ok()) {
-      if (res->status == TransactionStatus::ABORTED) {
-        LOG_WITH_FUNC(INFO) << "Aborting deadlocked transaction " << txn_id << " succeeded.";
-        return;
-      }
-      LOG_WITH_FUNC(INFO) << "Aborting deadlocked transaction " << txn_id
-                          << " failed -- status: " << res->status << ", time: " << res->status_time;
-    } else {
-      LOG_WITH_FUNC(INFO) << "Aborting deadlocked transaction " << txn_id
-                          << " failed -- " << res.status();
-    }
-  }
-
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
@@ -849,8 +834,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   client::YBClient& client() { return *client_future_.get(); }
 
   const std::shared_future<client::YBClient*>& client_future_;
-  TransactionAbortController* const controller_;
+  TransactionStatusController* const controller_;
   const DetectorId detector_id_;
+  const TabletId status_tablet_;
   const std::string log_prefix_;
 
   scoped_refptr<EventStats> deadlock_size_;
@@ -872,14 +858,11 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   Waiters waiters_ GUARDED_BY(mutex_);
 
   std::atomic<uint32_t> seq_no_ = 0;
-
-  std::unordered_map<TransactionId, std::pair<std::string, CoarseTimePoint>, TransactionIdHash>
-      recently_deadlocked_txns_info_ GUARDED_BY(mutex_);
 };
 
 DeadlockDetector::DeadlockDetector(
     const std::shared_future<client::YBClient*>& client_future,
-    TransactionAbortController* controller,
+    TransactionStatusController* controller,
     const TabletId& status_tablet_id,
     const MetricEntityPtr& metrics):
   impl_(new Impl(client_future, controller, status_tablet_id, metrics)) {}
@@ -902,10 +885,6 @@ void DeadlockDetector::ProcessWaitFor(
 
 void DeadlockDetector::TriggerProbes() {
   return impl_->TriggerProbes();
-}
-
-Status DeadlockDetector::GetTransactionDeadlockStatus(const TransactionId& txn_id) {
-  return impl_->GetTransactionDeadlockStatus(txn_id);
 }
 
 void DeadlockDetector::Shutdown() {

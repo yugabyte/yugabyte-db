@@ -21,6 +21,7 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 
@@ -169,8 +170,11 @@ message SysTablesEntryPB {
   optional bytes parent_table_id = 40;
 
   // For materialized views:
-  optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
   optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 36;
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
@@ -495,6 +499,7 @@ message CDCStreamOptionsPB {
 // The on-disk entry specific to CDCSDK streams
 message CDCSDKStreamEntryPB {
   optional uint64 snapshot_time = 1;
+  optional CDCSDKSnapshotOption consistent_snapshot_option = 2;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
@@ -516,6 +521,7 @@ message SysCDCStreamEntryPB {
   optional bool transactional = 5; // [default = false]
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
+  optional uint64 stream_creation_time = 8;
 }
 
 
@@ -628,6 +634,18 @@ message SysUniverseReplicationEntryPB {
 
   // Set when consistent transactions are enabled for a replication group.
   optional bool transactional = 11; // [default = false]
+
+  optional uint32 validated_local_auto_flags_config_version = 12;
+
+  // DB Scoped repication.
+  message DBScopeInfo {
+    message NamespaceInfo {
+      required string consumer_namespace_id = 1;
+      required string producer_namespace_id = 2;
+    }
+    repeated NamespaceInfo namespace_infos = 13;
+  }
+  optional DBScopeInfo db_scoped_info = 13;
 }
 
 message XClusterSafeTimePB {
@@ -745,4 +763,53 @@ message SysUniverseReplicationBootstrapEntryPB {
   // SetupNamespaceReplicationWithBootstrap.
   optional int64 leader_term = 11;
   optional int32 pitr_count = 12;
+}
+
+message SysXClusterOutboundReplicationGroupEntryPB {
+  message NamespaceInfoPB {
+    enum State {
+      CHECKPOINTING = 0;
+      READY = 1;
+      FAILED = 2;
+    }
+    required State state = 1;
+
+    message TableInfoPB {
+      optional bytes stream_id = 1;
+      optional bool is_checkpointing = 2; // [default = false]
+      // Was this stream checkpointed as part of the initial bootstrap, or was
+      // it added later by a newly created table?
+      optional bool is_part_of_initial_bootstrap = 3;
+    }
+    // Table id -> TableInfoPB
+    map<string, TableInfoPB> table_infos = 2;
+
+    optional bool initial_bootstrap_required = 3; // [default = false]
+
+    optional AppStatusPB error_status = 4; // Set when state is FAILED
+  }
+
+  // Namespace Id -> NamespaceInfoPB
+  map<string, NamespaceInfoPB> namespace_infos = 1;
+
+  message TargetUniverseInfo {
+    required bytes universe_uuid = 1;
+
+    enum State {
+      CREATING_REPLICATION_GROUP = 0;
+      FAILED = 1;
+      REPLICATING = 2;
+    }
+    required State state = 2 [ default = CREATING_REPLICATION_GROUP ];
+
+    optional AppStatusPB error_status = 3; // Set when status is FAILED
+  }
+
+  optional TargetUniverseInfo target_universe_info = 2;
+
+  enum State {
+    READY = 0;
+    DELETED = 1;
+  }
+  optional State state = 3 [ default = READY ];
 }

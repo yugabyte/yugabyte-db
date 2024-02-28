@@ -215,6 +215,87 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			*is_null = fcinfo.isnull;
 			return result;
 		}
+		case T_ScalarArrayOpExpr:
+		{
+			ScalarArrayOpExpr *saop_expr = castNode(ScalarArrayOpExpr, expr);
+			bool array_null;
+
+			/* Get the array first. Null or empty array produces quick result */
+			Datum array_arg = evalExpr(ctx, lsecond(saop_expr->args), &array_null);
+			if (array_null) {
+				*is_null = true;
+				return (Datum) 0;
+			}
+			/* deconstruct_array inputs */
+			ArrayType *arr = (ArrayType *) DatumGetPointer(array_arg);
+			Oid elemtype = ARR_ELEMTYPE(arr);
+			int32 elmlen;
+			bool elmbyval;
+			char elmalign;
+			/* deconstruct_array outputs */
+			Datum *elems;
+			bool *nulls;
+			int array_len;
+			/* planner must have checked that elemtype is supported */
+			if (!YbTypeDetails(elemtype, &elmlen, &elmbyval, &elmalign))
+				Assert(false);
+			deconstruct_array(arr, elemtype, elmlen, elmbyval, elmalign,
+							  &elems, &nulls, &array_len);
+			if (array_len == 0) {
+				return (Datum) !saop_expr->useOr;
+			}
+			/* Now get the operation function */
+			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
+			FunctionCallInfoData fcinfo;
+			fmgr_info(saop_expr->opfuncid, flinfo);
+			InitFunctionCallInfoData(fcinfo,
+									 flinfo,
+									 2 /* list_length(saop_expr->args) */,
+									 saop_expr->inputcollid,
+									 NULL,
+									 NULL);
+			fcinfo.arg[0] =
+				evalExpr(ctx, linitial(saop_expr->args), &fcinfo.argnull[0]);
+			/* Strict function with null argument does not need to be evaluated */
+			if (flinfo->fn_strict && fcinfo.argnull[0]) {
+				*is_null = true;
+				return (Datum) 0;
+			}
+			*is_null = false;
+			for (int i = 0; i < array_len; i++)
+			{
+				fcinfo.arg[1] = elems[i];
+				fcinfo.argnull[1] = nulls[i];
+				if (flinfo->fn_strict && fcinfo.argnull[1])
+				{
+					*is_null = true;
+					continue;
+				}
+				bool result = (bool) FunctionCallInvoke(&fcinfo);
+				if (fcinfo.isnull)
+				{
+					*is_null = true;
+					continue;
+				}
+				if (saop_expr->useOr)
+				{
+					if (result)
+					{
+						*is_null = false;
+						return (Datum) true;
+					}
+				}
+				else
+				{
+					if (!result)
+					{
+						*is_null = false;
+						return (Datum) false;
+					}
+				}
+			}
+			return *is_null ? (Datum) 0 : (Datum) !saop_expr->useOr;
+		}
 		case T_RelabelType:
 		{
 			RelabelType *rt = castNode(RelabelType, expr);
@@ -419,9 +500,9 @@ YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *d
 }
 
 YbgStatus YbgSplitArrayDatum(uint64_t datum,
-			     const int type,
-			     uint64_t **result_datum_array,
-			     int *const nelems)
+							 const int type,
+							 uint64_t **result_datum_array,
+							 int *const nelems)
 {
 	PG_SETUP_ERROR_REPORTING();
 	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
@@ -438,323 +519,11 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	 * Ideally this information should come from pg_type or from caller instead of hardcoding
 	 * here. However this could be okay as PG also has this harcoded in few places.
 	 */
-	switch (type)
+	if (!YbTypeDetails(type, &elmlen, &elmbyval, &elmalign))
 	{
-		case TEXTOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case XMLOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case LINEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case CIRCLEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case CASHOID:
-			elmlen = sizeof(int64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case BOOLOID:
-			elmlen = sizeof(bool);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case BYTEAOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case CHAROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case NAMEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case INT2OID:
-			elmlen = 2;
-			elmbyval = true;
-			elmalign = 's';
-			break;
-		case INT2VECTOROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case INT4OID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGPROCOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case OIDOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case TIDOID:
-			elmlen = sizeof(ItemPointerData);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case XIDOID:
-			elmlen = sizeof(TransactionId);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case CIDOID:
-			elmlen = sizeof(CommandId);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case OIDVECTOROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case BPCHAROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case VARCHAROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case INT8OID:
-			elmlen = sizeof(int64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case POINTOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case LSEGOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case PATHOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case BOXOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case FLOAT4OID:
-			elmlen = sizeof(int64);
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case FLOAT8OID:
-			elmlen = 8;
-			elmbyval = FLOAT8PASSBYVAL;
-			elmalign = 'd';
-			break;
-		case ABSTIMEOID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case RELTIMEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TINTERVALOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case ACLITEMOID:
-			elmlen = sizeof(AclItem);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case MACADDROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case MACADDR8OID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case INETOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case CSTRINGOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'c';
-			break;
-		case TIMESTAMPOID:
-			elmlen = sizeof(int64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case DATEOID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case TIMEOID:
-			elmlen = sizeof(int64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case TIMESTAMPTZOID:
-			elmlen = sizeof(int64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case INTERVALOID:
-			elmlen = sizeof(Interval);
-			elmbyval = false;
-			elmalign = 'd';
-			break;
-		case NUMERICOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TIMETZOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case BITOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case VARBITOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case REGPROCEDUREOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGOPEROID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGOPERATOROID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGCLASSOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGTYPEOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGROLEOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGNAMESPACEOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case UUIDOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case LSNOID:
-			elmlen = sizeof(uint64);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case TSVECTOROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case GTSVECTOROID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TSQUERYOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case REGCONFIGOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case REGDICTIONARYOID:
-			elmlen = sizeof(Oid);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case JSONBOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TXID_SNAPSHOTOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case RECORDOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case ANYOID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		/* TODO: Extend support to other types as well. */
-		default:
-			return YbgStatusCreateError(
-					"Only Text type supported for split of datum of array types",
-					__FILE__, __LINE__);
+		return YbgStatusCreateError(
+				"Only Text type supported for split of datum of array types",
+				__FILE__, __LINE__);
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
@@ -1477,4 +1246,13 @@ HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
 	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
+}
+
+YbgStatus YbgGetPgVersion(const char **version)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*version = PG_VERSION;
+
+	PG_STATUS_OK();
 }

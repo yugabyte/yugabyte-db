@@ -3,7 +3,6 @@ title: Build from source code on Ubuntu
 headerTitle: Build the source code
 linkTitle: Build the source
 description: Build YugabyteDB from source code on Ubuntu.
-image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 menu:
   preview:
