@@ -1547,3 +1547,144 @@ templates:
         {{ $value | printf "%.0f" }} DB YCQL web server are down for more than 15 minutes for universe '{{ $labels.source_name }}'.
 
         Affected nodes: {{ $labels.affected_node_names }}
+
+
+  INCREASED_REMOTE_BOOTSTRAPS:
+    name: Increase in remote bootstraps
+    description: Increase in remote bootstraps detected during last 5 minutes
+    queryTemplate: sum by (universe_uuid) (increase(rpc_latency_count{export_type="tserver_export", service_type="ConsensusService", universe_uuid="__universeUuid__", server_type="yb_consensus", service_method="StartRemoteBootstrap"}[5m]))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: bootstrap(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "sum by (universe_uuid, node_name)
+        (increase(rpc_latency_count{export_type='tserver_export', service_type='ConsensusService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_consensus', service_method='StartRemoteBootstrap'}[5m]))
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Increase in remote bootstraps detected for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  TABLET_SERVER_AVG_READ_LATENCY:
+    name: Tablet server average read latency is high
+    description: Average read latency of tablet server is above threshold
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m]))) 
+      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Read"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 500.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Read'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average read latency of tablet server for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+        Affected nodes: {{ $labels.affected_node_names }}
+  
+  
+  TABLET_SERVER_AVG_WRITE_LATENCY:
+    name: Tablet server average write latency is high
+    description: Average write latency of tablet server is above threshold
+    queryTemplate: (avg by (universe_uuid) (rate(rpc_latency_sum{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m]))) 
+      / (avg by (universe_uuid) (rate(rpc_latency_count{export_type="tserver_export", service_type="TabletServerService", universe_uuid="__universeUuid__", server_type="yb_tserver", service_method="Write"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 500.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_latency_sum{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_latency_count{export_type='tserver_export', service_type='TabletServerService', universe_uuid='{{ $labels.universe_uuid }}', server_type='yb_tserver', service_method='Write'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Average write latency of tablet server for universe '{{ $labels.source_name }}'
+        is above {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  REACTOR_DELAYS:
+    name: Reactor delays are high
+    description: Number of milliseconds incoming RPC requests or outbound calls spend in the worker queue before the beginning of processing
+    queryTemplate: max by (universe_uuid) ((avg by (universe_uuid, saved_name)(label_replace(rate(rpc_incoming_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "rpc_incoming_queue_time_count", "saved_name", "(.*)")) 
+      / (avg by (universe_uuid, saved_name)(rate(rpc_incoming_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }}
+      or (avg by (universe_uuid, saved_name)(label_replace(rate(handler_latency_outbound_call_queue_time_sum{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m]), "saved_name", "handler_latency_outbound_call_queue_time_count", "saved_name", "(.*)"))) 
+      / (avg by (universe_uuid, saved_name)(rate(handler_latency_outbound_call_queue_time_count{universe_uuid="__universeUuid__", export_type="tserver_export"}[5m])) * 1000)
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: false
+    defaultThresholdMap:
+      WARNING:
+        threshold: 30.0
+      SEVERE:
+        threshold: 50.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])))
+        / (avg by (universe_uuid, node_name) (rate(rpc_incoming_queue_time_count{universe_uuid={{ $labels.universe_uuid }}, export_type='tserver_export'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}
+        or (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_sum{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m]))) 
+        / (avg by (universe_uuid, node_name) (rate(handler_latency_outbound_call_queue_time_count{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}[5m])) * 1000)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Reactor delays for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }} ms.
+        Current value is {{ $value | printf "%.0f" }} ms.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+
+  RPC_QUEUE_SIZE:
+    name: RPC queue size is high
+    description: Number of RPCs in service queue is high. Queue size is an indicator of incoming traffic and throughput.
+    queryTemplate: max by (universe_uuid) (min_over_time({universe_uuid="__universeUuid__", saved_name=~"rpcs_in_queue_.*", export_type="tserver_export"}[5m]) {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: false
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 30.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: rpc(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        max by (universe_uuid, node_name) (min_over_time({universe_uuid='{{ $labels.universe_uuid }}', saved_name=~'rpcs_in_queue_.*', export_type='tserver_export'}[5m])
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        RPC queue size is high for universe '{{ $labels.source_name }}'.
+
+        Affected nodes: {{ $labels.affected_node_names }}
