@@ -39,8 +39,8 @@ Similar to zone-level fault tolerance, but on a larger scale, involving multiple
 
 In the case of on-prem deployments, you can consider racks as zones to make your cluster rack-aware and ensure that your cluster spread across racks can survive rack-level failures.
 
-{{<tip title="Rack Awareness">}}
-Racks can be mapped as zones and used as fault domains using the [--cloud-location](../../reference/configuration/yugabyted/#flags) flag via [yugabyted](../../reference/configuration/yugabyted) or directly using the [--placement-zone](../../reference/configuration/yb-tserver/#placement-zone) flag of the [tserver](../../reference/configuration/yb-tserver)
+{{<tip title="Rack awareness">}}
+To use racks as fault domains, map them to zones using the [--cloud-location](../../reference/configuration/yugabyted/#flags) flag with [yugabyted](../../reference/configuration/yugabyted), or directly using the YB-TServer [--placement-zone](../../reference/configuration/yb-tserver/#placement-zone) flag.
 {{</tip>}}
 
 ## Recovery time

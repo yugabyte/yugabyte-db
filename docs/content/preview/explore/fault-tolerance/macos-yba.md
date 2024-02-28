@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. Let us understand how YugabyteDB can continue to perform reads and writes even in case of node failures with an example. 
+The ability to survive failures and be highly available is one of the foundational features of YugabyteDB. To better understand how YugabyteDB can continue to perform reads and writes even in case of node failures, run the following example.
 
 ## Scenario
 
-Consider a scenario, where you have a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable in the universe to preserve data consistency.
+Suppose you have a universe with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the universe remains available for both reads and writes even if a fault domain fails. However, if another were to fail (bringing the number of failures to two), writes would become unavailable in order to preserve data consistency.
 
 {{<product-tabs list="local,anywhere">}}
 
@@ -24,7 +24,7 @@ Consider a scenario, where you have a universe with a replication factor (RF) of
 
 Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a single region three-node universe in YugabyteDB Anywhere, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-{{<note>}} The [YB Workload Simulator](../../#set-up-yb-workload-simulator), uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. It automatically balances application connections across the nodes in a universe and rebalances connections when a node fails.{{</note>}}
+{{<note>}} The [YB Workload Simulator](../../#set-up-yb-workload-simulator) uses the [YugabyteDB JDBC Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. It automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.{{</note>}}
 
 ## Observe even load across all nodes
 

@@ -474,10 +474,10 @@ Settings related to managing geo-distributed clusters:
 
 ##### --placement_zone
 
-The name of the availability zone, or rack, where this instance is deployed. 
+The name of the availability zone, or rack, where this instance is deployed.
 
-{{<tip title="Rack Awareness">}}
-For on-prem deployments racks can be considered as zones and treated as fault domains.
+{{<tip title="Rack awareness">}}
+For on-premises deployments, consider racks as zones to treat them as fault domains.
 {{</tip>}}
 
 Default: `rack1`
