@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/result.h"
@@ -41,8 +41,8 @@ Result<TSDescriptorPtr> CreateTSDescriptor(
   }
   NodeInstancePB instance;
   instance.set_permanent_uuid(Uuid::Generate().ToString());
-  auto ts_descriptor = VERIFY_RESULT(
-      TSDescriptor::RegisterNew(instance, ts_reg, CloudInfoPB(), /* proxy_cache */ nullptr));
+  auto ts_descriptor = VERIFY_RESULT(TSDescriptor::RegisterNew(
+      instance, ts_reg, CloudInfoPB(), /* proxy_cache */ nullptr));
   ts_descriptor->set_num_live_replicas(num_live_replicas);
   return ts_descriptor;
 }
@@ -71,7 +71,7 @@ void SetExistingTabletCount(int num_live_replicas, TSDescriptorVector* ts_descri
   }
 }
 
-void SetTabletLimits(int tablet_replicas_per_core, int tablet_replicas_per_gib) {
+void SetTabletLimits(uint32_t tablet_replicas_per_core, uint32_t tablet_replicas_per_gib) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = tablet_replicas_per_core;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_gib_limit) = tablet_replicas_per_gib;
 }
@@ -151,136 +151,6 @@ TEST(HomogeneousTabletLimitsTest, RF1WithReadTServer) {
   // We don't have room for two tablet replicas. We can't use the read tserver because it is
   // reserved for read replicas.
   EXPECT_NOK(CanCreateTabletReplicas(2, replication_info, ts_descriptors));
-}
-
-TEST(ComputeTabletReplicaLimitTest, JustMemory) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = 2_GB,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = 3,
-    .per_core = std::nullopt
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), 6);
-}
-
-TEST(ComputeTabletReplicaLimitTest, ResourceMemoryNoLimit) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = 2_GB,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = std::nullopt,
-    .per_core = std::nullopt
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
-}
-
-TEST(ComputeTabletReplicaLimitTest, LimitMemoryNoResources) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = std::nullopt,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = 3,
-    .per_core = std::nullopt
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
-}
-
-TEST(ComputeTabletReplicaLimitTest, JustCores) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = std::nullopt,
-    .total_cores = 2,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = std::nullopt,
-    .per_core = 3
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), 6);
-}
-
-TEST(ComputeTabletReplicaLimitTest, ResourceCoresNoLimit) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = std::nullopt,
-    .total_cores = 2,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = std::nullopt,
-    .per_core = std::nullopt
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
-}
-
-TEST(ComputeTabletReplicaLimitTest, LimitCoresNoResources) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = std::nullopt,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = std::nullopt,
-    .per_core = 3
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
-}
-
-TEST(ComputeTabletReplicaLimitTest, AllSetMemoryLimited) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = 2_GB,
-    .total_cores = 3,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = 4,
-    .per_core = 5
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), 8);
-}
-
-TEST(ComputeTabletReplicaLimitTest, AllSetCoresLimited) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = 3_GB,
-    .total_cores = 2,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = 5,
-    .per_core = 4
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), 8);
-}
-
-TEST(ComputeTabletReplicaLimitTest, FractionalMemory) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = 256_MB,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = 8,
-    .per_core = std::nullopt,
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), 2);
-}
-
-TEST(ComputeTabletReplicaLimitTest, AllEmpty) {
-  AggregatedClusterInfo cluster_info = {
-    .total_memory = std::nullopt,
-    .total_cores = std::nullopt,
-    .total_live_replicas = 0
-  };
-  TabletReplicaPerResourceLimits limits = {
-    .per_gib = std::nullopt,
-    .per_core = std::nullopt,
-  };
-  EXPECT_EQ(ComputeTabletReplicaLimit(cluster_info, limits), std::numeric_limits<int64_t>::max());
 }
 
 TEST(ComputeAggregatedClusterInfoTest, SingleTS) {

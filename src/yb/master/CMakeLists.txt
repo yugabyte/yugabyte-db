@@ -120,7 +120,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
-  tablet_limits.cc
+  tablet_creation_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   test_async_rpc_manager.cc
@@ -238,7 +238,7 @@ ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
-ADD_YB_TEST(tablet_limits_test)
+ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 Add_YB_TEST(table_index-test)
 
