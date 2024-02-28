@@ -639,6 +639,8 @@ DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
     "If the leader lease in master's view has expired for this amount of seconds, "
     "treat the lease as expired for too long time.");
 
+DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
+                 "Whether to disable setting the catalog version table in perdb mode.");
 namespace yb {
 namespace master {
 
@@ -10404,9 +10406,36 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
-  if (versions->size() > 1) {
+  if (versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+    LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
   }
+  return Status::OK();
+}
+
+// When a cluster is running in per-database catalog version mode, normally
+// catalog_version_table_in_perdb_mode_ is set to true as part of preparing for
+// tserver heartbeat response and once set to true it is never reset back to
+// false. In case a new leader master has not received any tserver heartbeat
+// request, then catalog_version_table_in_perdb_mode_ still has its initial
+// value false, but we cannot assume that the table pg_yb_catalog_version is
+// still in global mode. That's why this function does an on-demand reading of
+// pg_yb_catalog_version table to find out.
+Status CatalogManager::IsCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  if (!catalog_version_table_in_perdb_mode_) {
+    DbOidToCatalogVersionMap versions;
+    RETURN_NOT_OK(GetYsqlAllDBCatalogVersions(
+        false /* use_cache */, &versions, nullptr /* fingerprint */));
+    // If FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode is set, for
+    // unit test purpose, we return perdb_mode properly while leaving
+    // catalog_version_table_in_perdb_mode_ not set.
+    if (FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+      *perdb_mode = versions.size() > 1;
+      return Status::OK();
+    }
+  }
+  *perdb_mode = catalog_version_table_in_perdb_mode_;
   return Status::OK();
 }
 

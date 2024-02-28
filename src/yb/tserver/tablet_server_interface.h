@@ -55,7 +55,6 @@ class TabletServerIf : public LocalTabletServer {
   virtual void get_ysql_db_catalog_version(uint32_t db_oid,
                                            uint64_t* current_version,
                                            uint64_t* last_breaking_version) const = 0;
-  virtual bool catalog_version_table_in_perdb_mode() const = 0;
 
   virtual Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,

@@ -681,9 +681,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
-  bool catalog_version_table_in_perdb_mode() const override {
-    return catalog_version_table_in_perdb_mode_;
-  }
+
+  Status IsCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
   Status InitializeTransactionTablesConfig(int64_t term);
 

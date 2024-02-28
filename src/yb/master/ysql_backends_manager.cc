@@ -133,10 +133,13 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
       RETURN_NOT_OK(CheckLeadership(&l, resp));
     }
     Status s;
+    bool perdb_mode = false;
     // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make sure
     // to handle that case if initdb ever goes through this codepath.
-    if (FLAGS_ysql_enable_db_catalog_version_mode &&
-        master_->catalog_manager_impl()->catalog_version_table_in_perdb_mode()) {
+    if (FLAGS_ysql_enable_db_catalog_version_mode) {
+      RETURN_NOT_OK(master_->catalog_manager_impl()->IsCatalogVersionTableInPerdbMode(&perdb_mode));
+    }
+    if (perdb_mode) {
       s = master_->catalog_manager_impl()->GetYsqlDBCatalogVersion(
           db_oid, &master_version, nullptr /* last_breaking_version */);
     } else {

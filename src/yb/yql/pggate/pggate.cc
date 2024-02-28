@@ -1928,7 +1928,26 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
 }
 
 Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
-  return tserver_shared_object_->catalog_version_table_in_perdb_mode();
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  if (!tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value()) {
+    // If this tserver has just restarted, it may not have received any
+    // heartbeat response from yb-master that has set a value in
+    // catalog_version_table_in_perdb_mode_ in the shared memory object
+    // yet. Let's wait with 500ms interval until a value is set or until
+    // a 10-second timeout.
+    auto status = LoggedWaitFor(
+        [this]() -> Result<bool> {
+          return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
+        },
+        10s /* timeout */,
+        "catalog_version_table_in_perdb_mode is not set shared memory",
+        500ms /* initial_delay */,
+        1.0 /* delay_multiplier */);
+    RETURN_NOT_OK_PREPEND(
+        status,
+        "Failed to find out pg_yb_catalog_version mode");
+  }
+  return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
