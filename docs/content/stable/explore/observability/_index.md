@@ -95,6 +95,12 @@ To get more details about the various steps of a query execution, use the [Expla
       icon="/images/section_icons/explore/json_documents.png">}}
 
   {{<index/item
+      title="Get lock information insights with pg_locks"
+      body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
+      href="./pg-locks/"
+      icon="/images/section_icons/explore/secure.png">}}
+
+  {{<index/item
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
       href="../query-1-performance/pg-stat-statements"
