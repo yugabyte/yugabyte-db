@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -178,6 +179,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
+  protected ReleaseManager.ReleaseMetadata releaseMetadata;
 
   @Before
   public void setUp() {
@@ -226,6 +228,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
+    when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
+    releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
+    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseMetadata);
   }
 
   @Override
