@@ -703,7 +703,11 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     SCHECK(
         !pg_txn_manager_->IsDdlMode(), IllegalState,
         "DDL operation should not be performed while yb_read_time is set to nonzero.");
-    ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
+    if (yb_is_read_time_ht) {
+      ReadHybridTime::FromUint64(yb_read_time).ToPB(options.mutable_read_time());
+    } else {
+      ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
+    }
   }
 
   // If all operations belong to the same database then set the namespace.

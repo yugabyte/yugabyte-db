@@ -3743,18 +3743,92 @@ void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 }
 
 bool
+parse_yb_read_time(const char *value, unsigned long long *result, bool* is_ht_unit)
+{
+	unsigned long long	val;
+	char	           *endptr;
+
+	if (is_ht_unit)
+	{
+		*is_ht_unit = false;
+	}
+
+	/* To suppress compiler warnings, always set output params */
+	if (result)
+		*result = 0;
+
+	errno = 0;
+	val = strtoull(value, &endptr, 0);
+
+	if (endptr == value || errno == ERANGE)
+		return false;
+
+	/* allow whitespace between integer and unit */
+	while (isspace((unsigned char) *endptr))
+		endptr++;
+
+	/* Handle possible unit */
+	if (*endptr != '\0')
+	{
+		char		unit[2 + 1];
+		int			unitlen;
+		bool		converted = false;
+
+		unitlen = 0;
+		while (*endptr != '\0' && !isspace((unsigned char) *endptr) &&
+			   unitlen < 2)
+			unit[unitlen++] = *(endptr++);
+		unit[unitlen] = '\0';
+		/* allow whitespace after unit */
+		while (isspace((unsigned char) *endptr))
+			endptr++;
+
+		if (*endptr == '\0')
+			converted = (strcmp(unit, "ht") == 0);
+		if (!converted)
+			return false;
+		else if (is_ht_unit)
+			*is_ht_unit = true;
+	}
+
+	if (result)
+		*result = val;
+	return true;
+}
+
+bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
 	/* Read time should be convertable to unsigned long long */
-	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
-	char read_time_string[23];
-	sprintf(read_time_string, "%llu", read_time_ull);
-	if (strcmp(*newval, read_time_string))
+	unsigned long long read_time_ull;
+	unsigned long long value_ull;
+	bool is_ht_unit;
+	if(!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
 	{
-		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
-							" i.e. 1694673026673528");
 		return false;
 	}
+
+	if (is_ht_unit)
+	{
+		/*
+		 * Right shift by 12 bits to get physical time in micros from HybridTime
+		 * See src/yb/common/hybrid_time.h (GetPhysicalValueMicros)
+		 */
+		read_time_ull = value_ull >> 12;
+	}
+	else
+	{
+		read_time_ull = value_ull;
+		char read_time_string[23];
+		sprintf(read_time_string, "%llu", read_time_ull);
+		if (strcmp(*newval, read_time_string))
+		{
+			GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+								" i.e. 1694673026673528");
+			return false;
+		}
+	}
+
 	/* Read time should not be set to a timestamp in the future */
 	struct timeval now_tv;
 	gettimeofday(&now_tv, NULL);
@@ -3770,7 +3844,11 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 void
 assign_yb_read_time(const char* newval, void *extra)
 {
-	yb_read_time = strtoull(newval, NULL, 0);
+	unsigned long long value_ull;
+	bool is_ht_unit;
+	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+	yb_read_time = value_ull;
+	yb_is_read_time_ht = is_ht_unit;
 	ereport(NOTICE,
 			(errmsg("yb_read_time should be set with caution."),
 			 errdetail("No DDL operations should be performed while it is set and "
