@@ -14,7 +14,7 @@ type: docs
 
 Kubernetes provides you with an option of employing remote disks using dynamic provisioning or local storage which has to be preprovisioned.
 
-Local storage provides great performance, but the data is not replicated and can be lost if the pod is moved to a different node due to node maintenance operations or node failure. Remote storage has slightly lower performance but the data is resilient to failures. 
+Local storage provides great performance, but the data is not replicated and can be lost if the pod is moved to a different node for maintenance operations, or if a node fails. Remote storage has slightly lower performance but the data is resilient to failures.
 
 The following table summarizes the tradeoffs of local vs remote storage:
 
@@ -56,6 +56,6 @@ The following table summarizes the tradeoffs of local vs remote storage:
   </tr>
 </table>
 
-While local storage offers higher throughput and lower latency at a lower cost, it comes with significant limitations. Maintenance operations like cluster node pool upgrades, rolling operations to upgrade software or set flags can cause the pod to lose its local copy and require a full remote bootstrap of all local tablets from its peers. This can be time consuming for large databases. Further, for large clusters, there is always a non-zero risk that there is another pod movement during such maintenance operations causing data loss for a subset of tablets. Therefore, we do not recommend using local storage for most production use cases.
+While local storage offers higher throughput and lower latency at a lower cost, it comes with significant limitations. Maintenance operations like cluster node pool upgrades, or rolling operations to upgrade software or set flags can cause a pod to lose its local copy and require a full remote bootstrap of all local tablets from its peers. This can be time consuming for large databases. Further, for large clusters, there is always a non-zero risk of another pod movement happening during these maintenance operations, which would cause data loss for a subset of tablets. Therefore, using local storage is not recommended for most production use cases.
 
 
