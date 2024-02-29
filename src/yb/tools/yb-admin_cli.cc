@@ -850,7 +850,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "disable_tablet_splitting", " <disable_duration_ms> <feature_name>",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 1) {
+        if (args.size() < 2) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
