@@ -461,6 +461,10 @@ message RowMessage {
   optional uint64 record_time = 14;
   optional uint64 pg_lsn = 15;
   optional uint32 pg_transaction_id = 16;
+
+  // The ID of the table associated with the row. Only populated for DMLs
+  // but not for other ops such as BEGIN/COMMIT/SAFEPOINT.
+  optional string table_id = 17;
 }
 
 message CDCSDKProtoRecordPB {
