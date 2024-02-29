@@ -1204,6 +1204,20 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Locking flags
+
+##### yb_locks_min_txn_age
+
+Specifies the minimum age of a transaction (in seconds) before its locks gets included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view.
+
+Default: 1 second
+
+##### yb_locks_max_transactions
+
+Sets the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view.
+
+Default: 16
+
 ## Metric export flags
 
 ##### --export_help_and_type_in_prometheus_metrics
@@ -1298,19 +1312,19 @@ Default: `1GB`
 
 ## Advanced flags
 
-#### backfill_index_client_rpc_timeout_ms
+##### backfill_index_client_rpc_timeout_ms
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
 Default: 1 day
 
-#### backfill_index_timeout_grace_margin_ms
+##### backfill_index_timeout_grace_margin_ms
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
 Default: -1, where the system automatically calculates the value to be approximately 1 second.
 
-#### backfill_index_write_batch_size
+##### backfill_index_write_batch_size
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
