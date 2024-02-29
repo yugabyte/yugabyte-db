@@ -1,6 +1,6 @@
 ---
 title: View live queries with pg_stat_activity
-linkTitle: Troubleshoot live queries
+linkTitle: Live queries
 description: Using pg_stat_activity to troubleshoot issues and help to identify long running transactions.
 headerTitle: View live queries with pg_stat_activity
 aliases:
