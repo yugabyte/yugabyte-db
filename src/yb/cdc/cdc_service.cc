@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
-#include <queue>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
@@ -41,10 +40,9 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -54,15 +52,12 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
 
 #include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/util/rate_limiter.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -71,8 +66,6 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/debug-util.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -84,13 +77,11 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 using std::max;
 using std::min;

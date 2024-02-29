@@ -12,8 +12,6 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/cdc/cdc_types.h"
-
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -26,8 +24,6 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
-
-#include "yb/gutil/walltime.h"
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.pb.h"

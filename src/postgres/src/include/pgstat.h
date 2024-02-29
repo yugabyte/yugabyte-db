@@ -21,6 +21,7 @@
 #include "utils/hsearch.h"
 #include "utils/relcache.h"
 
+#include "yb_ash.h"
 
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
@@ -1447,6 +1448,10 @@ pgstat_report_wait_end(void)
 static inline uint32
 yb_pgstat_report_wait_start(uint32 wait_event_info)
 {
+	/* If ASH is disabled, do nothing */
+	if (!yb_enable_ash)
+		return wait_event_info;
+
 	uint32 prev_wait_event_info = 0;
 	volatile PGPROC *proc = MyProc;
 

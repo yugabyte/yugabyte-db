@@ -19,8 +19,40 @@
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
-DEFINE_test_flag(bool, yb_enable_ash, false,
-    "True to enable Active Session History");
+// The reason to include yb_ash_enable_infra in this file and not
+// pg_wrapper.cc:
+//
+// The runtime gFlag yb_enable_ash should only be enabled if the
+// non-runtime gFlag yb_ash_enable_infra is true. Postgres GUC
+// check framework is used to enforce this check. But if both the flags
+// are to be enabled at startup, yb_ash_enable_infra must be registered
+// first, otherwise the check will incorrectly fail.
+//
+// Postmaster processes the list of GUCs twice, once directly from the arrays
+// in guc.c and once from the config file that WriteConfigFile() writes into.
+// AppendPgGFlags() decides the order of Pg gFlags that are going to be written
+// in the same order that GetAllFlags() returns, and GetAllFlags() sorts it
+// internally by the filename (which includes some parts of the filepath as well)
+// and since this is in the folder 'ash', which is lexicographically smaller than
+// the folder 'yql', the flags of this file will be written to the config file
+// before the flags of pg_wrapper.cc and, and hence processed first by postmaster.
+// In the same file, the flags will be sorted lexicographically based on their
+// names, so yb_ash_enable_infra will come before yb_enable_ash.
+//
+// So, to ensure that the GUC check hook doesn't fail, these two flags are
+// defined here. Both the flags are not defined in pg_wrapper.cc since yb_enable_ash
+// is required in other parts of the code as well like cql_server.cc and yb_rpc.cc.
+
+DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ash_enable_infra, false,
+    "Allocate shared memory for ASH, start the background worker, create "
+    "instrumentation hooks and enable querying the yb_active_session_history "
+    "view.");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
+    "Starts sampling and instrumenting YSQL and YCQL queries, "
+    "and various background activities. This does nothing if "
+    "ysql_yb_enable_ash_infra is disabled.");
+
 DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(),
     "Exports wait-state name as a human understandable string.");
 DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::IsDebug(),
@@ -112,8 +144,8 @@ void AshAuxInfo::UpdateFrom(const AshAuxInfo &other) {
   }
 }
 
-WaitStateInfo::WaitStateInfo(AshMetadata &&meta)
-    : metadata_(std::move(meta)) {}
+WaitStateInfo::WaitStateInfo()
+    : metadata_(AshMetadata{}) {}
 
 void WaitStateInfo::set_code(WaitStateCode c) {
   if (GetAtomicFlag(&FLAGS_TEST_trace_ash_wait_code_updates)) {
@@ -196,12 +228,6 @@ const WaitStateInfoPtr& WaitStateInfo::CurrentWaitState() {
     VLOG_WITH_FUNC(3) << "returning nullptr";
   }
   return threadlocal_wait_state_;
-}
-
-WaitStateInfoPtr WaitStateInfo::CreateIfAshIsEnabled() {
-  return yb::GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
-             ? std::make_shared<yb::ash::WaitStateInfo>(yb::ash::AshMetadata{})
-             : nullptr;
 }
 
 //

@@ -26,7 +26,6 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
-#include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb.h"
@@ -35,10 +34,8 @@
 #include "yb/dockv/packed_value.h"
 
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_util.h"
 
 #include "yb/qlexpr/ql_expr.h"
-#include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -46,7 +43,6 @@
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
 #include "yb/util/status.h"

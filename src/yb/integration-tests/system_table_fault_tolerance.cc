@@ -99,7 +99,7 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
       /* parser_pool= */ nullptr, clock, ql::TransactionPoolProvider());
   Synchronizer s;
   ql::StatementParameters statement_parameters;
-  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled());
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
   processor->RunAsync("SELECT * from system.peers", statement_parameters,
                       Bind(&SystemTableFaultTolerance::RunAsyncDone, Unretained(this),
                            Bind(&Synchronizer::StatusCB, Unretained(&s))));
