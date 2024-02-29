@@ -51,6 +51,27 @@ disk_bytes_per_second_per_node:
         "node_disk_read_bytes_total": "Read"
         "node_disk_written_bytes_total": "Write"
 
+disk_usage:
+  metric: ""
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
+    mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
+  group_by: saved_name
+  panel_group: "Node Metrics"
+  layout:
+    title: "Data Disks Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_free_bytes": "free"
+        "node_filesystem_size_bytes": "size"
+      ticksuffix: "&nbsp;GB"
+
 node_clock_skew:
   metric: "hybrid_clock_skew"
   function: "max_over_time|max"
