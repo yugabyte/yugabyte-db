@@ -10,7 +10,9 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -146,19 +148,93 @@ func Symlink(src string, dest string) error {
 	return out.Error
 }
 
-// ResolveSymlink will read the given symlink and move the original file to the symlinks
-// destination. This requires the given path is a symlink, and will not check if it is a real file
-// or a symlink
-func ResolveSymlink(path string) error {
-	orig, err := os.Readlink(path)
-	if err != nil {
-		return fmt.Errorf("failed to resolve symlink for %s: %w", path, err)
+func ResolveSymlink(source, target string) error {
+	_, tErr := os.Stat(target)
+	_, sErr := os.Stat(source)
+	// Handle non errNotExist errors
+	if tErr != nil && !errors.Is(tErr, fs.ErrNotExist) {
+		return fmt.Errorf("failed to stat target %s: %w", target, tErr)
 	}
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("failed to remove the symlink %s: %w", path, err)
+	if sErr != nil && !errors.Is(sErr, fs.ErrNotExist) {
+		return fmt.Errorf("failed to stat source %s: %w", target, sErr)
 	}
-	if err := os.Rename(orig, path); err != nil {
-		return fmt.Errorf("failed to move %s -> %s: %w", orig, path, err)
+
+	// Handle neither source nor target existing
+	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
+		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
+		log.Error(msg)
+		return fmt.Errorf(msg)
+		// Handle only target existing (already resolved)
+	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
+		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
+		return nil
+	}
+
+	// Remove the target if needed
+	if tErr == nil {
+		if err := os.RemoveAll(target); err != nil {
+			log.Error("failed to delete link target " + target)
+			return fmt.Errorf("failed to remove target %s: %w", target, err)
+		}
+	}
+	// Try to do an os.Rename. This will fail across filesystems
+	if err := os.Rename(source, target); err != nil {
+		if strings.Contains(err.Error(), "invalid cross-device link") {
+			log.Debug("cross-device link detected, using fallback copy implementation")
+			return resolveSymlinkFallback(source, target)
+		}
+		log.Error(fmt.Sprintf("failed to rename %s -> %s", source, target))
+		return fmt.Errorf("resolve symlink failed to rename %s->%s: %w", source, target, err)
+	}
+	return nil
+}
+
+// resolveSymlinkFallback will, given a source (file/dir) and target (symlink), it will move the source to
+// the target destination. This supports moving across filesystems/devices, and is idempotent.
+// Logic to be idempotent:
+// 1. if the source directory exists always copy it to the target
+// 1.A delete the target before copy if needed
+// 2. move the source to source-tmp
+// 3. Best effort to delete source-tmp.
+// Fail if neither source nor target exist
+func resolveSymlinkFallback(source, target string) error {
+	srcTmpName := fmt.Sprintf("%s-tmp", source)
+
+	// Source still exists, copy to target
+	if _, sErr := os.Stat(source); sErr == nil {
+		// Delete Target if it exists
+		if _, tErr := os.Stat(target); tErr == nil {
+			if err := RemoveAll(target); err != nil {
+				return fmt.Errorf("target directory %s could not be deleted: %w", target, err)
+			}
+		} else if errors.Is(tErr, fs.ErrNotExist) {
+			log.DebugLF("target directory already deleted")
+		} else {
+			return fmt.Errorf("could not determine status of target directory %s: %w", target, tErr)
+		}
+		log.Debug("Copy symlink source to target")
+		if out := shell.Run("cp", "-r", source, target); !out.SucceededOrLog() {
+			return fmt.Errorf("copying from %s -> %s failed while resolving symlink: %w",
+				source, target, out.Error)
+		}
+
+		log.DebugLF("Rename source to temp name")
+		if err := os.Rename(source, srcTmpName); err != nil {
+			return fmt.Errorf("rename to temp dir: %w", err)
+		}
+	} else if errors.Is(sErr, fs.ErrNotExist) {
+		log.DebugLF("no source directory found")
+		if _, tErr := os.Stat(target); errors.Is(tErr, fs.ErrNotExist) {
+			log.Error("no source or target found")
+			return fmt.Errorf("could not find source %s nor target %s directories", source, target)
+		}
+	} else {
+		return fmt.Errorf("could not determine status of source directory %s: %w", source, sErr)
+	}
+
+	// Remove the temp dir if it exists. This is best effort, and can be cleaned up manually later
+	if err := RemoveAll(srcTmpName); err != nil {
+		log.Warn("failed to remove backup source directory " + srcTmpName + ": " + err.Error())
 	}
 	return nil
 }

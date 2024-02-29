@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -636,10 +635,11 @@ func (plat Platform) FinishReplicatedMigrate() error {
 			log.DebugLF("skipping directory " + file.Name() + " as it is not a symlink")
 			continue
 		}
-		err = common.ResolveSymlink(filepath.Join(
-			common.GetBaseInstall(), "data/yb-platform/releases", file.Name()))
+		src := filepath.Join(common.GetReplicatedBaseDir(), "releases", file.Name())
+		target := filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases", file.Name())
+		err = common.ResolveSymlink(src, target)
 		if err != nil {
-			return fmt.Errorf("Could not complete migration of platform: %w", err)
+			return fmt.Errorf("could not complete migration of platform: %w", err)
 		}
 	}
 	return nil
@@ -699,7 +699,7 @@ func createPemFormatKeyAndCert() error {
 
 func (plat Platform) symlinkReplicatedData() error {
 	// First do the previous releases.
-	releases, err := ioutil.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
+	releases, err := os.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
 	if err != nil {
 		return fmt.Errorf("could not read replicated releases dir: %w", err)
 	}
