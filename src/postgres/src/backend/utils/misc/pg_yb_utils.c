@@ -3593,7 +3593,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 	// In case particular table must always load all the rows or
 	// system cache filtering is disabled the sys_only_filter_attr
 	// must be set to InvalidAttrNumber.
-	int sys_only_filter_attr = ObjectIdAttributeNumber;
+	int sys_only_filter_attr = InvalidAttrNumber;
 	int db_id = MyDatabaseId;
 	int sys_table_index_id = InvalidOid;
 
@@ -3628,12 +3628,15 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		// MyDb tables
 		case AccessMethodProcedureRelationId:             // pg_amproc
 			sys_table_index_id = AccessMethodProcedureIndexId;
+			sys_only_filter_attr = Anum_pg_amproc_oid;
 			break;
 		case AccessMethodRelationId:                      // pg_am
 			sys_table_index_id = AmNameIndexId;
+			sys_only_filter_attr = Anum_pg_am_oid;
 			break;
 		case AttrDefaultRelationId:                       // pg_attrdef
 			sys_table_index_id = AttrDefaultIndexId;
+			sys_only_filter_attr = Anum_pg_attrdef_oid;
 			break;
 		case AttributeRelationId:                         // pg_attribute
 			sys_table_index_id = AttributeRelidNameIndexId;
@@ -3641,9 +3644,11 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case CastRelationId:                              // pg_cast
 			sys_table_index_id = CastSourceTargetIndexId;
+			sys_only_filter_attr = Anum_pg_cast_oid;
 			break;
 		case ConstraintRelationId:                        // pg_constraint
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
+			sys_only_filter_attr = Anum_pg_constraint_oid;
 			break;
 		case IndexRelationId:                             // pg_index
 			sys_table_index_id = IndexIndrelidIndexId;
@@ -3655,39 +3660,49 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 		case NamespaceRelationId:                         // pg_namespace
 			sys_table_index_id = NamespaceNameIndexId;
+			sys_only_filter_attr = Anum_pg_namespace_oid;
 			break;
 		case OperatorClassRelationId:                     // pg_opclass
 			sys_table_index_id = OpclassAmNameNspIndexId;
+			sys_only_filter_attr = Anum_pg_opclass_oid;
 			break;
 		case OperatorRelationId:                          // pg_operator
 			sys_table_index_id = OperatorNameNspIndexId;
+			sys_only_filter_attr = Anum_pg_operator_oid;
 			break;
 		case PolicyRelationId:                            // pg_policy
 			sys_table_index_id = PolicyPolrelidPolnameIndexId;
+			sys_only_filter_attr = Anum_pg_policy_oid;
 			break;
 		case ProcedureRelationId:                         // pg_proc
 			sys_table_index_id = ProcedureNameArgsNspIndexId;
+			sys_only_filter_attr = Anum_pg_proc_oid;
 			break;
 		case RelationRelationId:                          // pg_class
 			sys_table_index_id = ClassNameNspIndexId;
+			sys_only_filter_attr = Anum_pg_class_oid;
 			break;
 		case RangeRelationId:                             // pg_range
 			sys_only_filter_attr = Anum_pg_range_rngtypid;
 			break;
 		case RewriteRelationId:                           // pg_rewrite
 			sys_table_index_id = RewriteRelRulenameIndexId;
+			sys_only_filter_attr = Anum_pg_rewrite_oid;
 			break;
 		case StatisticRelationId:                         // pg_statistic
 			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;
+			sys_only_filter_attr = Anum_pg_trigger_oid;
 			break;
 		case TypeRelationId:                              // pg_type
 			sys_table_index_id = TypeNameNspIndexId;
+			sys_only_filter_attr = Anum_pg_type_oid;
 			break;
 		case AccessMethodOperatorRelationId:              // pg_amop
 			sys_table_index_id = AccessMethodOperatorIndexId;
+			sys_only_filter_attr = Anum_pg_amop_oid;
 			break;
 		case PartitionedRelationId:                       // pg_partitioned_table
 			sys_only_filter_attr = Anum_pg_partitioned_table_partrelid;
