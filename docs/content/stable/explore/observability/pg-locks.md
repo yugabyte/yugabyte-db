@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view that provides information about the locks held and requested by the current active transactions in a database. YugabyteDB enhances this view with two new fields `waitend` and `ybdetails` offering insights into lock information specific to YugabyteDB's distributed architecture. The enhanced `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states.
+YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view that provides information about the locks held and requested by the current active transactions in a database. YugabyteDB enhances this view with two new fields `waitend` and `ybdetails` offering insights into lock information specific to YugabyteDB's distributed architecture. The `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states.
 
 ## Scenarios
 
@@ -66,7 +66,7 @@ The ybdetails field is a JSONB type that encapsulates additional information abo
 
 ## Configurable parameters for lock management
 
-YugabyteDB offers several GUC parameters to customize how locks are queried and displayed, enabling you to tailor the lock information to your specific needs. `yb_locks_min_txn_age` and `yb_locks_max_transactions`, control the filtering and limitation of transactions in lock queries.
+YugabyteDB offers several GUC parameters to customize how locks are queried and displayed, so you can tailor the lock information as needed. `yb_locks_min_txn_age` and `yb_locks_max_transactions`, control the filtering and limitation of transactions in lock queries.
 
 ### yb_locks_min_txn_age
 
