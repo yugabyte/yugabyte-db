@@ -46,6 +46,8 @@ $ tar -xf yba_installer_full-{{<yb-version version="v2.18" format="build">}}-lin
 $ cd yba_installer_full-{{<yb-version version="v2.18" format="build">}}/
 ```
 
+If you are upgrading to a version earlier than v2.18.4.2, set umask for the root user to 022.
+
 When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
