@@ -983,6 +983,10 @@ public class CloudProviderHelper {
     if (!confGetter.getGlobalConf(GlobalConfKeys.allowUsedProviderEdit) && universeCount > 0) {
       validateProviderEditPayload(provider, editProviderReq);
     }
+    boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
+    if (enableVMOSPatching) {
+      validateDefaultImageBundleExistence(editProviderReq.getImageBundles());
+    }
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     // Validate regions to add. We only support providing custom VPCs for now.
     // So the user must have entered the VPC Info for the regions, as well as
@@ -992,7 +996,6 @@ public class CloudProviderHelper {
           editProviderReq.getImageBundles().stream()
               .filter(iB -> iB.getMetadata().getType() != ImageBundleType.YBA_ACTIVE)
               .collect(Collectors.toList());
-      boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (Region region : regionsToAdd) {
         if (region.getZones() != null || !region.getZones().isEmpty()) {
           region
@@ -1015,7 +1018,6 @@ public class CloudProviderHelper {
         }
       }
     }
-    validateDefaultImageBundleExistence(editProviderReq.getImageBundles());
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null
@@ -1081,16 +1083,26 @@ public class CloudProviderHelper {
 
   public void validateDefaultImageBundleExistence(List<ImageBundle> bundles) {
     // Check if there is at least one active default bundle for a architecture
-    for (Architecture arch : Architecture.values()) {
-      if (bundles.stream()
-          .noneMatch(
-              bundle ->
-                  bundle.getDetails().getArch().equals(arch)
-                      && bundle.getActive()
-                      && bundle.getUseAsDefault())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "One of the image bundles should be default for the " + arch.name() + " architecture");
+    if (bundles.size() > 0) {
+      for (Architecture arch : Architecture.values()) {
+        boolean hasBundleForArch =
+            bundles.stream().anyMatch(bundle -> bundle.getDetails().getArch().equals(arch));
+        boolean hasOneDefaultBundle =
+            bundles.stream()
+                    .filter(
+                        bundle ->
+                            bundle.getDetails().getArch().equals(arch)
+                                && bundle.getActive()
+                                && bundle.getUseAsDefault())
+                    .count()
+                == 1;
+        if (hasBundleForArch && !hasOneDefaultBundle) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "There should be exactly one default image bundle for the "
+                  + arch.name()
+                  + " architecture");
+        }
       }
     }
   }
