@@ -13,6 +13,8 @@ type: docs
 
 YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view that provides information about the locks held and requested by the current active transactions in a database. YugabyteDB enhances this view with two new fields `waitend` and `ybdetails` offering insights into lock information specific to YugabyteDB's distributed architecture. The enhanced `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states.
 
+## Scenarios
+
 The `pg_locks` view is used in diagnosing and resolving locking and contention issues in a YugabyteDB cluster. Key usage scenarios of the view include:
 
 - Displaying long-held locks: Identifying transactions that have been holding locks for an extended period, potentially indicating issues with lock contention.
@@ -30,7 +32,7 @@ The following table describes the view columns:
 | pid | pid | Process identifier (PID) of the backend holding the lock. |
 | mode | text | The lock modes held or desired. Valid modes are WEAK_READ, and WEAK_WRITE. |
 | granted | text | Indicates if the lock is held (true) or awaited (false). |
-| fastpath | text | True for single shard transactions. |
+| fastpath | text | Applicable for [single row operations](../../../architecture/transactions/single-row-transactions/) that operate on a single tablet, don't need a transaction, and do not take locks. (They take the _fast path_ by writing directly to the database.)  |
 | waitstart | timestampz | Time at which a YB-TServer starts waiting for this lock. |
 | waitend | timestampz | Time at which a lock gets acquired. |
 | ybdetails | JSONB | Field with details specific to YugabyteDB locks, including `node`, `transactionid`, and `blocked_by details`.|
@@ -42,6 +44,8 @@ Note that certain Postgres-specific fields such as `page`, `tuple`, `virtualxid`
 The `pg_locks` view includes the following new YugabyteDB-specific fields:
 
 ### waitend
+
+The waitend field contains the timestamp at which the lock was acquired by a transaction (PostgtreSQL does not record this timestamp currently.)
 
 ### ybdetails
 
