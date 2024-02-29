@@ -100,11 +100,11 @@ YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
 	Assert(clist && clist->next == NULL);
 	Oid functionId = clist->oid;
 	FmgrInfo    flinfo;
-	FunctionCallInfoBaseData fcinfo;
+	LOCAL_FCINFO(fcinfo, 1);
 	fmgr_info(functionId, &flinfo);
-	InitFunctionCallInfoData(fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
-	fcinfo.args[0].value = BoolGetDatum(is_breaking_change);
-	fcinfo.args[0].isnull = false;
+	InitFunctionCallInfoData(*fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
+	fcinfo->args[0].value = BoolGetDatum(is_breaking_change);
+	fcinfo->args[0].isnull = false;
 
 	// Save old values and set new values to enable the call.
 	bool saved = yb_non_ddl_txn_for_sys_tables_allowed;
@@ -116,7 +116,7 @@ YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
 						   SECURITY_RESTRICTED_OPERATION);
 	PG_TRY();
 	{
-		FunctionCallInvoke(&fcinfo);
+		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
