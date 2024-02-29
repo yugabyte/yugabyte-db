@@ -360,14 +360,27 @@ func (prom Prometheus) MigrateFromReplicated() error {
 
 // FinishReplicatedMigrate completest the replicated migration prometheus specific tasks
 func (prom Prometheus) FinishReplicatedMigrate() error {
-	links := []string{
-		filepath.Join(prom.DataDir, "storage"),
-		filepath.Join(prom.DataDir, "swamper_targets"),
-		filepath.Join(prom.DataDir, "swamper_rules"),
+	rootDir := common.GetReplicatedBaseDir()
+	linkDirs := []struct {
+		src  string
+		dest string
+	}{
+		{
+			filepath.Join(rootDir, "prometheusv2"),
+			filepath.Join(prom.DataDir, "storage"),
+		},
+		{
+			filepath.Join(rootDir, "/yugaware/swamper_targets"),
+			filepath.Join(prom.DataDir, "swamper_targets"),
+		},
+		{
+			filepath.Join(rootDir, "yugaware/swamper_rules"),
+			filepath.Join(prom.DataDir, "swamper_rules"),
+		},
 	}
 
-	for _, link := range links {
-		if err := common.ResolveSymlink(link); err != nil {
+	for _, link := range linkDirs {
+		if err := common.ResolveSymlink(link.src, link.dest); err != nil {
 			return fmt.Errorf("could not complete prometheus migration: %w", err)
 		}
 	}
