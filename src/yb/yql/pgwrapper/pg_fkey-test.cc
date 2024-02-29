@@ -17,6 +17,8 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/range.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
@@ -212,7 +214,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
     return conn.ExecuteFormat(
       "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);
   }));
-  ASSERT_EQ(insert_fk_rpc_count, 1);
+  ASSERT_EQ(insert_fk_rpc_count, 2);
 }
 
 // Test checks that insertion into table with large number of foreign keys doesn't fail.
@@ -264,6 +266,30 @@ TEST_F_EX(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(BufferedWriteOfReferencedRows), Pg
     const size_t start_idx = i * 1000 + 1;
     const size_t end_idx = start_idx + 100;
     ASSERT_OK(conn.ExecuteFormat("CALL test($0, $1)", start_idx, end_idx));
+  }
+}
+
+// Test checks that fk may reference on entry inserted in same statement
+TEST_F(PgFKeyTest, SameTableReference) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE company(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE employee("
+      "    k INT PRIMARY KEY, company_fk INT, manager_fk INT,"
+      "    UNIQUE(k, company_fk),"
+      "    FOREIGN KEY (company_fk) REFERENCES company(k),"
+      "    FOREIGN KEY (manager_fk, company_fk) REFERENCES employee(company_fk, k))"));
+  ASSERT_OK(conn.Execute("INSERT INTO company VALUES(1)"));
+  for (auto i : Range(10)) {
+    const auto perform_count = ASSERT_RESULT(perform_rpc_watcher_->Delta([&conn] {
+      return conn.Execute("INSERT INTO employee VALUES (1, 1, NULL), (2, 1, 1), (3, 1, 1)");
+    }));
+    // Skip initial iteration because sys catalog on-demand loading affects number of
+    // perform requests
+    if (i) {
+      ASSERT_EQ(perform_count, 2);
+    }
+    ASSERT_OK(conn.Execute("DELETE FROM employee"));
   }
 }
 
