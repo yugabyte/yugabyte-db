@@ -1,6 +1,6 @@
 ---
 title: View terminated queries with yb_terminated_queries
-linkTitle: View terminated queries
+linkTitle: Terminated queries
 description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
