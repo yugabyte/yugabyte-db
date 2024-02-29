@@ -122,8 +122,7 @@ class PgClient {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
                std::optional<uint64_t> session_id,
-               const YBCAshMetadata* ash_metadata,
-               bool* is_ash_metadata_set);
+               const YBCPgAshConfig* ash_config);
 
   void Shutdown();
 

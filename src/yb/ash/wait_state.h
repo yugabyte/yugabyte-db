@@ -28,6 +28,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/uuid.h"
 
+DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(TEST_export_ash_uuids_as_hex_strings);
 
@@ -85,7 +86,7 @@ namespace yb::ash {
 // YB ASH Wait Components (4 bits)
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Component, uint8_t,
-    (kPostgres)
+    (kYSQL)
     (kYCQL)
     (kTServer));
 
@@ -93,10 +94,10 @@ YB_DEFINE_TYPED_ENUM(Component, uint8_t,
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     // PG classes
-    ((kTServerWait, YB_ASH_MAKE_CLASS(Postgres)))
+    ((kTServerWait, YB_ASH_MAKE_CLASS(YSQL)))
 
     // YB Client classes
-    ((kCqlQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
+    ((kYCQLQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
     (kClient)
 
     // Tserver classes
@@ -112,8 +113,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kUnused, 0xFFFFFFFFU))
 
     // Wait states related to postgres
-    // Don't change the position of kPostgresReserved
-    ((kPostgresReserved, YB_ASH_MAKE_EVENT(TServerWait)))
+    // Don't change the position of kYSQLReserved
+    ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
     (kStorageRead)
@@ -134,7 +135,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kCreatingNewTablet)
     (kSaveRaftGroupMetadataToDisk)
     (kTransactionStatusCache_DoGetCommitData)
-    (kWaitForYsqlBackendsCatalogVersion)
+    (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
@@ -159,13 +160,13 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
-    ((kCQL_Parse, YB_ASH_MAKE_EVENT(CqlQueryProcessing)))
-    (kCQL_Read)
-    (kCQL_Write)
-    (kCQL_Analyze)
-    (kCQL_Execute)
-    ((kYBC_WaitingOnDocdb, YB_ASH_MAKE_EVENT(Client)))
-    (kYBC_LookingUpTablet)
+    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
+    (kYCQL_Read)
+    (kYCQL_Write)
+    (kYCQL_Analyze)
+    (kYCQL_Execute)
+    ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
+    (kYBClient_LookingUpTablet)
 );
 
 // We also want to track background operations such as, log-append
@@ -317,8 +318,7 @@ struct AshAuxInfo {
 
 class WaitStateInfo {
  public:
-  WaitStateInfo() {}
-  explicit WaitStateInfo(AshMetadata&& meta);
+  WaitStateInfo();
   virtual ~WaitStateInfo() = default;
 
   void set_code(WaitStateCode c);
@@ -384,7 +384,12 @@ class WaitStateInfo {
   void TEST_SleepForTests(uint32_t sleep_time_ms);
   static bool TEST_EnteredSleep();
 
-  static WaitStateInfoPtr CreateIfAshIsEnabled();
+  template <class T>
+  static std::shared_ptr<T> CreateIfAshIsEnabled() {
+    return FLAGS_ysql_yb_enable_ash
+              ? std::make_shared<T>()
+              : nullptr;
+  }
 
   virtual void VTrace(int level, GStringPiece data) {
     VTraceTo(nullptr, level, data);

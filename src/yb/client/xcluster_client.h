@@ -45,7 +45,7 @@ class SecureContext;
 namespace client {
 class YBClient;
 
-// A wrapper over YbClient to handle xCluster related RPCs sent to a different yb universe.
+// A wrapper over YBClient to handle xCluster related RPCs sent to a different yb universe.
 // This class performs serialization of C++ objects to PBs and vice versa.
 class XClusterRemoteClient {
  public:

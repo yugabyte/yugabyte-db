@@ -342,6 +342,8 @@ externalResolvers := {
   downloadThirdPartyDeps.value
 }
 
+clean := (clean dependsOn cleanV2ServerStubs).value
+
 cleanPlatform := {
   clean.value
   (swagger / clean).value
@@ -502,10 +504,7 @@ cleanCrd := {
 lazy val cleanV2ServerStubs = taskKey[Int]("Clean v2 server stubs")
 cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
-  val apiDir = baseDirectory.value / "src/main/java/api/v2/"
-  Process("find . -name *ApiController.java -o -name *ApiControllerImpInterface.java", apiDir) #|
-      Process("xargs rm -f", apiDir) #|
-      Process("rm -rf models", apiDir) !
+      Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
   Process("rm -f paths/_index.yaml", openapiDir) #|
       Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
@@ -547,13 +546,14 @@ openApiLint := {
 }
 
 lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
-openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
-openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi_templates" / ** / "*.mustache"
 // Process and compile open api files
 Compile / openApiProcessServer := {
-  if (openApiProcessServer.inputFileChanges.hasChanges) {
+  if (openApiProcessServer.inputFileChanges.hasChanges ||
+      !(baseDirectory.value / "src/main/resources/openapi.yaml").exists) {
     Def.taskDyn {
       val output = Def.sequential(
           ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
@@ -573,6 +573,10 @@ Compile / openApiProcessServer := {
     Seq()
   }
 }
+Compile / openApiProcessServer / fileOutputs := Seq(
+  target.value.toGlob / "openapi/src/main/java/" / ** / "*.java",
+  baseDirectory.value.toGlob / "src/main/resources/openapi.yaml",
+  baseDirectory.value.toGlob / "src/main/resources/openapi_public.yaml")
 Compile / sourceGenerators += (Compile / openApiProcessServer)
 Compile / unmanagedSourceDirectories += target.value / "openapi/src/main/java"
 
@@ -715,6 +719,7 @@ openApiProcessClients := {
   if (openApiProcessClients.inputFileChanges.hasChanges)
     Def.sequential(
       ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
+      cleanClients,
       openApiGenClients,
       openApiCompileClients,
     ).value

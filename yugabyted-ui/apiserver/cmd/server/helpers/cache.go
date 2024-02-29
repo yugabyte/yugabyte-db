@@ -2,31 +2,40 @@ package helpers
 
 import "sync"
 
-// object for handling caching of single variables (int, string, etc.)
-type VariableCache[T any] struct {
-    value  T
+// object for handling caching slices
+type SliceCache[T any] struct {
+    slice  []T
     rwlock sync.RWMutex
 }
 
-func (c *VariableCache[T]) Get() T {
+func (c *SliceCache[T]) Get() []T {
     c.rwlock.RLock()
     defer c.rwlock.RUnlock()
-    return c.value
+    // make a copy to prevent r/w access to original slice
+    slice := make([]T, len(c.slice))
+    copy(slice, c.slice)
+    return slice
 }
 
-func (c *VariableCache[T]) Update(newValue T) {
+func (c *SliceCache[T]) Update(newSlice []T) {
     c.rwlock.Lock()
     defer c.rwlock.Unlock()
-    c.value = newValue
+    // create a new slice and copy in the contents
+    c.slice = make([]T, len(newSlice))
+    copy(c.slice, newSlice)
 }
 
 // Cached variables
 var (
-    // Address of a tserver
-    TserverAddressCache VariableCache[string]
+    // Addresses of all tservers
+    TserverAddressCache SliceCache[string]
+
+    // Addresses of all masters
+    MasterAddressCache SliceCache[string]
 )
 
 // InitCache initializes cache variables above, called by NewHelperContainer
 func (h *HelperContainer) InitCache() {
-        TserverAddressCache.Update(HOST)
+    TserverAddressCache.Update([]string{HOST})
+    MasterAddressCache.Update([]string{HOST})
 }

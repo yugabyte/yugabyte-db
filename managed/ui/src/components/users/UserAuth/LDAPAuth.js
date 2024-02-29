@@ -11,7 +11,10 @@ import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle, YBFormSelect } from '../../common/forms/fields';
 import { LDAPMappingModal } from './LDAPGroups';
 import { getLDAPRoleMapping, setLDAPRoleMapping } from '../../../actions/customers';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import { Action } from '../../../redesign/features/rbac';
@@ -268,8 +271,8 @@ export const LDAPAuth = (props) => {
         enable_ldaps === 'true'
           ? 'enable_ldaps'
           : enable_ldap_start_tls === 'true'
-            ? 'enable_ldap_start_tls'
-            : 'unsecure';
+          ? 'enable_ldap_start_tls'
+          : 'unsecure';
       finalFormData = { ...finalFormData, ldap_security };
     }
 
@@ -292,18 +295,18 @@ export const LDAPAuth = (props) => {
         const keyName = `${LDAP_PATH}.${key}`;
         const value =
           isString(formValues[key]) &&
-            !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
+          !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
             ? `"${formValues[key]}"`
             : formValues[key];
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-              key: keyName,
-              value
-            })
+                key: keyName,
+                value
+              })
             : deleteRunTimeConfig({
-              key: keyName
-            })
+                key: keyName
+              })
         );
       }
 
@@ -333,7 +336,6 @@ export const LDAPAuth = (props) => {
   };
 
   const handleToggle = async (e) => {
-
     if (!hasNecessaryPerm(ApiPermissionMap.UPDATE_LDAP_MAPPING)) return;
 
     const value = e.target.checked;
@@ -373,7 +375,9 @@ export const LDAPAuth = (props) => {
 
   return (
     <RbacValidator
-      customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined}
+      customValidateFunction={(userPerm) =>
+        find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined
+      }
     >
       <div className="bottom-bar-padding">
         {dialog && (
@@ -425,7 +429,7 @@ export const LDAPAuth = (props) => {
                   name="use_ldap"
                   input={{
                     value: ldapEnabled,
-                    onChange: () => { }
+                    onChange: () => {}
                   }}
                   isReadOnly={!showToggle}
                 />
@@ -554,49 +558,49 @@ export const LDAPAuth = (props) => {
                         {['enable_ldap_start_tls', 'enable_ldaps'].includes(
                           values?.ldap_security
                         ) && (
-                            <Row key="tls_protocol">
-                              <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                                <Row className="ua-field-row">
-                                  <Col className="ua-label-c">
-                                    <div>
-                                      TLS Version &nbsp;
-                                      <YBInfoTip
-                                        customClass="ldap-info-popover"
-                                        title="TLS Protocol Version"
-                                        content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
-                                      >
-                                        <i className="fa fa-info-circle" />
-                                      </YBInfoTip>
-                                    </div>
-                                  </Col>
-                                  <Col lg={12} className="ua-field ua-radio-c">
-                                    <Row className="ua-radio-field-c">
-                                      {TLS_VERSIONS.map(({ label, value }) => (
-                                        <Col key={`tls-${value}`} className="ua-radio-field">
-                                          <Field
-                                            name={'ldap_tls_protocol'}
-                                            type="radio"
-                                            component="input"
-                                            value={value}
-                                            checked={`${value}` === `${values['ldap_tls_protocol']}`}
-                                            disabled={isDisabled}
-                                          />
-                                          &nbsp;&nbsp;{label}
-                                        </Col>
-                                      ))}
-                                    </Row>
-                                    <Row className="has-error">
-                                      {errors.ldap_security && (
-                                        <div className="help-block standard-error">
-                                          <span>{errors.ldap_security}</span>
-                                        </div>
-                                      )}
-                                    </Row>
-                                  </Col>
-                                </Row>
-                              </Col>
-                            </Row>
-                          )}
+                          <Row key="tls_protocol">
+                            <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                              <Row className="ua-field-row">
+                                <Col className="ua-label-c">
+                                  <div>
+                                    TLS Version &nbsp;
+                                    <YBInfoTip
+                                      customClass="ldap-info-popover"
+                                      title="TLS Protocol Version"
+                                      content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
+                                    >
+                                      <i className="fa fa-info-circle" />
+                                    </YBInfoTip>
+                                  </div>
+                                </Col>
+                                <Col lg={12} className="ua-field ua-radio-c">
+                                  <Row className="ua-radio-field-c">
+                                    {TLS_VERSIONS.map(({ label, value }) => (
+                                      <Col key={`tls-${value}`} className="ua-radio-field">
+                                        <Field
+                                          name={'ldap_tls_protocol'}
+                                          type="radio"
+                                          component="input"
+                                          value={value}
+                                          checked={`${value}` === `${values['ldap_tls_protocol']}`}
+                                          disabled={isDisabled}
+                                        />
+                                        &nbsp;&nbsp;{label}
+                                      </Col>
+                                    ))}
+                                  </Row>
+                                  <Row className="has-error">
+                                    {errors.ldap_security && (
+                                      <div className="help-block standard-error">
+                                        <span>{errors.ldap_security}</span>
+                                      </div>
+                                    )}
+                                  </Row>
+                                </Col>
+                              </Row>
+                            </Col>
+                          </Row>
+                        )}
 
                         <Row key="ldap_basedn">
                           <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
@@ -798,7 +802,9 @@ export const LDAPAuth = (props) => {
                                             type="radio"
                                             component="input"
                                             value={value}
-                                            checked={`${value}` === `${values['ldap_default_role']}`}
+                                            checked={
+                                              `${value}` === `${values['ldap_default_role']}`
+                                            }
                                             disabled={isDisabled}
                                           />
                                           &nbsp;&nbsp;{label}&nbsp;
@@ -830,7 +836,10 @@ export const LDAPAuth = (props) => {
                                   input={{
                                     value: values.ldap_group_use_role_mapping,
                                     onChange: (e) => {
-                                      setFieldValue('ldap_group_use_role_mapping', e.target.checked);
+                                      setFieldValue(
+                                        'ldap_group_use_role_mapping',
+                                        e.target.checked
+                                      );
                                       if (isUndefined(values.ldap_group_use_query))
                                         setFieldValue('ldap_group_use_query', 'false');
                                     }
@@ -1183,7 +1192,9 @@ export const LDAPAuth = (props) => {
                         <YBButton
                           btnText="Save"
                           btnType="submit"
-                          disabled={(isSubmitting || isDisabled || !isSaveEnabled) && !isRbacEnabled()}
+                          disabled={
+                            (isSubmitting || isDisabled || !isSaveEnabled) && !isRbacEnabled()
+                          }
                           btnClass="btn btn-orange pull-right"
                         />
                       </Col>
@@ -1194,7 +1205,7 @@ export const LDAPAuth = (props) => {
             }}
           </Formik>
         </Col>
-      </div >
+      </div>
     </RbacValidator>
   );
 };

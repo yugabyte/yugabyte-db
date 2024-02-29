@@ -184,11 +184,6 @@ DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "of the server's schema, but is determined to be compatible with the current version.");
 TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
 
-DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
-    "A safety switch to disable the changes from D8710 which makes a schema "
-    "operation take an exclusive lock making all write operations wait for it.");
-TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
-
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
 
@@ -1928,18 +1923,6 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
     return;
   }
 
-  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
-    auto write_permit = GetPermitToWrite(query->deadline());
-    if (!write_permit.ok()) {
-      TRACE("Could not get the write permit.");
-      WriteQuery::StartSynchronization(std::move(query), MoveStatus(write_permit));
-      return;
-    }
-    // Save the write permit to be released after the operation is submitted
-    // to Raft queue.
-    query->UseSubmitToken(std::move(write_permit));
-  }
-
   WriteQuery::Execute(std::move(query));
 }
 
@@ -2439,7 +2422,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint deadline)
+  explicit BackfillParams(const CoarseTimePoint deadline, bool is_ysql)
       : start_time(CoarseMonoClock::Now()),
         deadline(deadline),
         rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
@@ -2447,8 +2430,13 @@ struct BackfillParams {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
-      // By default, we will set it to twice the minimum value + 1s.
-      grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
+      // To be safe, set it to twice that number or the default margin, whichever is higher.
+      // YSQL default: 3m
+      // YCQL default: 1s
+      const auto kDefaultGraceMarginMs = is_ysql ? 180000 : 1000;
+      grace_margin_ms = std::max<decltype(grace_margin_ms)>(
+          kDefaultGraceMarginMs,
+          rate_per_sec > 0 ? 1000 * (2.0 * batch_size / rate_per_sec) : 0);
       YB_LOG_EVERY_N_SECS(INFO, 10)
           << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
           << MonoDelta(deadline - start_time);
@@ -2534,7 +2522,7 @@ Status Tablet::BackfillIndexesForYsql(
             << "\" for indexes " << AsString(indexes);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
-  BackfillParams backfill_params(deadline);
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn = VERIFY_RESULT(pgwrapper::CreateInternalPGConnBuilder(
                                 pgsql_proxy_bind_address, database_name, postgres_auth_key,
                                 backfill_params.modified_deadline)
@@ -2679,7 +2667,7 @@ Status Tablet::BackfillIndexes(
   QLTableRow row;
   docdb::IndexRequests index_requests;
 
-  BackfillParams backfill_params{deadline};
+  BackfillParams backfill_params{deadline, false /* is_ysql */};
   constexpr auto kProgressInterval = 1000;
 
   if (!backfill_from.empty()) {

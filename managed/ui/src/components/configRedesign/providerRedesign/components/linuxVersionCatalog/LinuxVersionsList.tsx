@@ -29,18 +29,25 @@ import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUti
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
 import { ArchitectureType, ProviderCode } from '../../constants';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import styles from '../RegionList.module.scss';
 
 import { Delete, Edit, Flag } from '@material-ui/icons';
 import MoreIcon from '../../../../../redesign/assets/ellipsis.svg';
 
-interface LinuxVersionEmptyProps {
+interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;
   providerType: ProviderCode;
+  viewMode: 'CREATE' | 'EDIT';
 }
 
-export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, providerType }) => {
+export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
+  control,
+  providerType,
+  viewMode
+}) => {
   const { replace, update, remove } = useFieldArray({
     control,
     name: 'imageBundles'
@@ -116,6 +123,7 @@ export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, provide
         onDelete={(img) => {
           setDeleteImageBundleDetails(img);
         }}
+        viewMode={viewMode}
       />
       <div style={{ marginTop: '24px' }} />
       {providerType === ProviderCode.AWS && (
@@ -129,6 +137,7 @@ export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, provide
           onDelete={(img) => {
             setDeleteImageBundleDetails(img);
           }}
+          viewMode={viewMode}
         />
       )}
 
@@ -195,6 +204,7 @@ interface LinuxVersionCardProps {
   images: ImageBundle[];
   archType: string;
   setEditDetails: (img: ImageBundle) => void;
+  viewMode: 'CREATE' | 'EDIT';
   onDelete: (img: ImageBundle) => void;
   showMoreActions?: boolean;
   showTitle?: boolean;
@@ -207,7 +217,8 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
   setImageAsDefault,
   onDelete,
   showMoreActions = true,
-  showTitle = true
+  showTitle = true,
+  viewMode
 }) => {
   const classes = LinuxVersionCardStyles();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
@@ -223,7 +234,22 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
             callback: () => {
               setEditDetails(image);
             },
-            icon: <Edit />
+            icon: <Edit />,
+            menuItemWrapper(elem) {
+              return (
+                <RbacValidator
+                  accessRequiredOn={
+                    viewMode === 'CREATE'
+                      ? ApiPermissionMap.CREATE_PROVIDER
+                      : ApiPermissionMap.MODIFY_PROVIDER
+                  }
+                  isControl
+                  overrideStyle={{ display: 'block' }}
+                >
+                  {elem}
+                </RbacValidator>
+              );
+            }
           },
           {
             text: t('setDefault'),
@@ -234,13 +260,23 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
             menuItemWrapper(elem) {
               if (!image.useAsDefault) return elem;
               return (
-                <Tooltip
-                  title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
-                  placement="top"
-                  arrow
+                <RbacValidator
+                  accessRequiredOn={
+                    viewMode === 'CREATE'
+                      ? ApiPermissionMap.CREATE_PROVIDER
+                      : ApiPermissionMap.MODIFY_PROVIDER
+                  }
+                  isControl
+                  overrideStyle={{ display: 'block' }}
                 >
-                  <span>{elem}</span>
-                </Tooltip>
+                  <Tooltip
+                    title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
+                    placement="top"
+                    arrow
+                  >
+                    <span>{elem}</span>
+                  </Tooltip>
+                </RbacValidator>
               );
             },
             icon: <Flag />
@@ -250,7 +286,22 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
             callback: () => {
               onDelete(image);
             },
-            icon: <Delete />
+            icon: <Delete />,
+            menuItemWrapper(elem) {
+              return (
+                <RbacValidator
+                  accessRequiredOn={
+                    viewMode === 'CREATE'
+                      ? ApiPermissionMap.CREATE_PROVIDER
+                      : ApiPermissionMap.MODIFY_PROVIDER
+                  }
+                  isControl
+                  overrideStyle={{ display: 'block' }}
+                >
+                  {elem}
+                </RbacValidator>
+              );
+            }
           }
         ]}
       >

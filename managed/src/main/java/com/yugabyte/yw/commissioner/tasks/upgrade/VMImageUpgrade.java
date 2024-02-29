@@ -140,15 +140,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
+    UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
       Integer sshPortOverride = null;
-      if (taskParams().imageBundleUUID != null) {
+      imageBundleUUID = null;
+      if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
+        imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
         ImageBundle.NodeProperties toOverwriteNodeProperties =
             imageBundleUtil.getNodePropertiesOrFail(
-                taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+                imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
         machineImage = toOverwriteNodeProperties.getMachineImage();
         sshUserOverride = toOverwriteNodeProperties.getSshUser();
         sshPortOverride = toOverwriteNodeProperties.getSshPort();
@@ -248,9 +251,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
 
       createWaitForKeyInMemoryTask(node);
-      if (taskParams().imageBundleUUID != null) {
+      if (imageBundleUUID != null) {
         if (!clusterToImageBundleMap.containsKey(node.placementUuid)) {
-          clusterToImageBundleMap.put(node.placementUuid, taskParams().imageBundleUUID);
+          clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
         }
       }
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
@@ -260,8 +263,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     // Update the imageBundleUUID in the cluster -> userIntent
     if (!clusterToImageBundleMap.isEmpty()) {
       clusterToImageBundleMap.forEach(
-          (clusterUUID, imageBundleUUID) -> {
-            createClusterUserIntentUpdateTask(clusterUUID, imageBundleUUID)
+          (clusterUUID, bundleUUID) -> {
+            createClusterUserIntentUpdateTask(clusterUUID, bundleUUID)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
           });
     }
@@ -280,10 +283,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           NodeDetails node = value.get(0);
           UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
           String updatedMachineImage = "";
-          if (taskParams().imageBundleUUID != null) {
+          if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
+            UUID imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
             ImageBundle.NodeProperties toOverwriteNodeProperties =
                 imageBundleUtil.getNodePropertiesOrFail(
-                    taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+                    imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
             updatedMachineImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             // Backward compatiblity.
@@ -345,5 +349,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private UUID retrieveImageBundleUUID(
+      List<VMImageUpgradeParams.ImageBundleUpgradeInfo> imageBundles, NodeDetails node) {
+    return imageBundles.stream()
+        .filter(info -> info.getClusterUuid().equals(node.placementUuid))
+        .findFirst()
+        .map(VMImageUpgradeParams.ImageBundleUpgradeInfo::getImageBundleUuid)
+        .orElse(null);
   }
 }

@@ -46,6 +46,9 @@
 
 using namespace std::literals;
 
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
@@ -65,7 +68,6 @@ DECLARE_bool(TEST_writequery_stuck_from_callback_leak);
 
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
-DECLARE_bool(TEST_yb_enable_ash);
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_int32(num_concurrent_backfills_allowed);
@@ -97,7 +99,8 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_slow_query_threshold_ms) = kTimeMultiplier * 10000;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_ash) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_export_wait_state_names) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_collect_end_to_end_traces) = true;
     pgwrapper::PgMiniTestBase::SetUp();
@@ -692,11 +695,11 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRocksDB_CloseFile,
       ash::WaitStateCode::kRocksDB_RateLimiter,
       ash::WaitStateCode::kRocksDB_NewIterator,
-      ash::WaitStateCode::kCQL_Parse,
-      ash::WaitStateCode::kCQL_Analyze,
-      ash::WaitStateCode::kCQL_Execute,
-      ash::WaitStateCode::kYBC_WaitingOnDocdb,
-      ash::WaitStateCode::kYBC_LookingUpTablet
+      ash::WaitStateCode::kYCQL_Parse,
+      ash::WaitStateCode::kYCQL_Analyze,
+      ash::WaitStateCode::kYCQL_Execute,
+      ash::WaitStateCode::kYBClient_WaitingOnDocDB,
+      ash::WaitStateCode::kYBClient_LookingUpTablet
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, YB_DISABLE_TEST_IN_TSAN(VerifyWaitStateEntered)) {

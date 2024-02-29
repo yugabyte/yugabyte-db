@@ -62,6 +62,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
@@ -75,7 +76,7 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
-#include "yb/master/tablet_limits.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
@@ -1196,7 +1197,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TxnSnapshotId& snapshot_id, HybridTime read_time, const docdb::DocDB& doc_db,
       std::reference_wrapper<const ScopedRWOperation> db_pending_op);
 
-  // API to restore a snapshot.
   Status RestoreSnapshot(
       const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
@@ -1497,7 +1497,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  tablet::SnapshotCoordinator& snapshot_coordinator() override { return snapshot_coordinator_; }
+  MasterSnapshotCoordinator& snapshot_coordinator() override { return snapshot_coordinator_; }
 
   Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
@@ -2375,6 +2375,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Number of dead tservers metric.
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
+  scoped_refptr<Counter> metric_create_table_too_many_tablets_;
+
   friend class ClusterLoadBalancer;
 
   // Policy for load balancing tablets on tablet servers.
@@ -3135,6 +3137,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   ServerRegistrationPB server_registration_;
 
   TabletSplitManager tablet_split_manager_;
+
+  std::unique_ptr<CloneStateManager> clone_state_manager_;
 
   mutable MutexType delete_replica_task_throttler_per_ts_mutex_;
 

@@ -149,6 +149,8 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse(com.yugabyte.yw.commissioner.tasks.ReleaseInstanceFromUniverse.class),
 
+  ReplaceNodeInUniverse(com.yugabyte.yw.commissioner.tasks.ReplaceNodeInUniverse.class),
+
   RotateAccessKey(com.yugabyte.yw.commissioner.tasks.RotateAccessKey.class),
 
   SetUniverseKey(com.yugabyte.yw.commissioner.tasks.SetUniverseKey.class),
@@ -698,6 +700,7 @@ public enum TaskType {
           .put(StartMasterOnNode, 75)
           .put(StartNodeInUniverse, 76)
           .put(StopNodeInUniverse, 77)
+          .put(ReplaceNodeInUniverse, 78)
           // Backup/restore (90-109):
           .put(BackupUniverse, 90)
           .put(CreateBackup, 91)

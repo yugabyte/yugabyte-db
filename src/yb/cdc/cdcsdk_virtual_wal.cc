@@ -10,16 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <queue>
-#include <unordered_set>
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xrepl_types.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/util/monotime.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/opid.h"
-
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 
 DEFINE_RUNTIME_uint32(

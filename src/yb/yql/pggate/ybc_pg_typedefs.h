@@ -460,6 +460,7 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
+  uint64_t storage_metrics_version;
   uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
   int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
   YBCPgExecEventMetric
@@ -655,6 +656,14 @@ typedef struct AshSample {
   // Timestamp when the sample was captured.
   uint64_t sample_time;
 } YBCAshSample;
+
+// A struct to pass ASH postgres config to PgClient
+typedef struct PgAshConfig {
+  YBCAshMetadata* metadata;
+  bool* is_metadata_set;
+  bool* yb_enable_ash;
+  unsigned char yql_endpoint_tserver_uuid[16];
+} YBCPgAshConfig;
 
 typedef struct YBCBindColumn {
   int attr_num;

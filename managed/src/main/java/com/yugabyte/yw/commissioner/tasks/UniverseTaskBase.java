@@ -135,6 +135,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
@@ -201,6 +202,9 @@ import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -263,6 +267,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.EditUniverse,
+          TaskType.ReplaceNodeInUniverse,
           TaskType.ReleaseInstanceFromUniverse,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
@@ -404,6 +409,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return (UniverseTaskParams) taskParams;
   }
 
+  protected Consumer<Universe> getAdditionalValidator() {
+    TaskType taskType = getTaskExecutor().getTaskType(getClass());
+    Consumer<Universe> releaseValidator =
+        universe -> {
+          if (!SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)
+              && confGetter.getConfForScope(universe, UniverseConfKeys.validateLocalRelease)) {
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            String ybSoftwareVersion =
+                universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion;
+            ReleaseManager.ReleaseMetadata releaseMetadata =
+                releaseManager.getReleaseByVersion(ybSoftwareVersion);
+            if (releaseMetadata == null) {
+              String msg =
+                  String.format(
+                      "Universe %s does not have valid metadata.", universe.getUniverseUUID());
+              log.error(msg);
+              throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+            }
+            if (releaseMetadata.hasLocalRelease()) {
+              Set<String> localFilePaths = releaseMetadata.getLocalReleases();
+              localFilePaths.forEach(
+                  path -> {
+                    Path localPath = Paths.get(path);
+                    if (!Files.exists(localPath)) {
+                      String msg =
+                          String.format(
+                              "Could not find path %s on system for YB software version %s",
+                              localPath, ybSoftwareVersion);
+                      log.error(msg);
+                      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
+                    }
+                  });
+            }
+          }
+        };
+    return releaseValidator;
+  }
+
   @Override
   public void validateParams(boolean isFirstTry) {
     TaskType taskType = getTaskExecutor().getTaskType(getClass());
@@ -433,6 +476,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       log.error(msg);
                       throw new RuntimeException(msg);
                     }
+                  }
+                  Consumer<Universe> validator = getAdditionalValidator();
+                  if (validator != null) {
+                    validator.accept(universe);
                   }
                 }
                 validateUniverseState(universe);

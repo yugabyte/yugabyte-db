@@ -155,15 +155,31 @@ void FlushManager::SendFlushTabletsRequest(const TabletServerId& ts_uuid,
   WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
 }
 
+void FlushManager::HandleFlushTabletsRpcFinish(const FlushRequestId& flush_id,
+                                               const TabletServerId& ts_uuid,
+                                               const Status& status) {
+  LOG(INFO) << "Handling Flush Tablets RPC Finish for TS " << ts_uuid
+            << ": flush request id: " << flush_id << ", status: " << status;
+
+  std::lock_guard l(lock_);
+  TRACE("Acquired flush manager lock");
+  UpdateFlushRequestsUnlocked(flush_id, ts_uuid, status);
+}
+
 void FlushManager::HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                               const TabletServerId& ts_uuid,
                                               const Status& status) {
   LOG(INFO) << "Handling Flush Tablets Response from TS " << ts_uuid
-            << ". Status: " << status << ". Flush request id: " << flush_id;
+            << ": flush request id: " << flush_id << ", status: " << status;
 
   std::lock_guard l(lock_);
   TRACE("Acquired flush manager lock");
+  UpdateFlushRequestsUnlocked(flush_id, ts_uuid, status);
+}
 
+void FlushManager::UpdateFlushRequestsUnlocked(const FlushRequestId& flush_id,
+                                               const TabletServerId& ts_uuid,
+                                               const Status& status) {
   // Check current flush request id.
   const FlushRequestMap::iterator it = flush_requests_.find(flush_id);
 

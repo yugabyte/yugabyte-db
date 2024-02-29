@@ -20,7 +20,7 @@ import {
 } from '../features/universe/universe-form/utils/dto';
 import { TaskResponse } from './dtos';
 import { EncryptionInTransitFormValues } from '../features/universe/universe-actions/encryption-in-transit/EncryptionInTransitUtils';
-import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/types';
+import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
