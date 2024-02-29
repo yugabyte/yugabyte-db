@@ -610,18 +610,18 @@ To verify that the new status tablet has been created, run the [`list_tablets`](
 
 Flush the memstores of the specified table on all tablet servers to disk.
 
-**Syntax**
+**Syntax 1: Using table name**
 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    flush_table <table> | <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
+    flush_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
+* *db_type*: The type of database. Valid values include ysql and ycql.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
-* *table_name*: The name of the table to flush.
+* *table*: The name of the table to flush.
 * *timeout_in_seconds*: Specifies duration, in seconds when the CLI timeouts waiting for flushing to end. Default value is `20`.
 * *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
 
@@ -633,9 +633,36 @@ yb-admin \
     flush_table ysql.yugabyte table_name
 
 ```
+
 ```output
 Flushed [yugabyte.table_name] tables.
 ```
+
+**Syntax 2: Using table ID**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    flush_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* table_id: The identifier (ID) of the table.
+* *timeout_in_seconds*: Specifies duration, in seconds when the CLI timeouts waiting for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table tableid.000033eb000030008000000000004002
+```
+
+```output
+Flushed [yugabyte.table_name] tables.
+```
+
 ---
 
 
