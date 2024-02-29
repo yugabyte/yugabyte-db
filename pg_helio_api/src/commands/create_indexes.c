@@ -4434,7 +4434,8 @@ CreatePostgresIndex(uint64 collectionId, IndexDef *indexDef, int indexId,
 {
 	char *cmd = CreatePostgresIndexCreationCmd(collectionId, indexDef, indexId,
 											   concurrently, isTempCollection);
-	ExecuteCreatePostgresIndexCmd(cmd, concurrently);
+	const Oid userOid = InvalidOid;
+	ExecuteCreatePostgresIndexCmd(cmd, concurrently, userOid);
 }
 
 
@@ -4664,14 +4665,21 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
  * ExecuteCreatePostgresIndexCmd executes the index creation postgres command.
  */
 void
-ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently)
+ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid)
 {
 	if (concurrently)
 	{
-		ExtensionExecuteQueryOnLocalhostViaLibPQ(cmd);
+		ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(cmd, userOid);
 	}
 	else
 	{
+		if (userOid != InvalidOid)
+		{
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg("Create index failed due to incorrect userid"),
+							errhint("Create index failed due to incorrect userid")));
+		}
+
 		bool readOnly = false;
 		bool isNull = false;
 		ExtensionExecuteQueryViaSPI(cmd, readOnly, SPI_OK_UTILITY, &isNull);

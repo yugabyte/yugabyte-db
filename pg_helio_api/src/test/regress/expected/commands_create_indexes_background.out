@@ -15,11 +15,13 @@ SET helio_api.next_collection_index_id TO 5500;
  comment          | bson                     |           |          | 
  attempt          | smallint                 |           |          | 
  update_time      | timestamp with time zone |           |          | now()
+ user_oid         | oid                      |           |          | 
 Indexes:
     "helio_index_queue_cmdtype_collectionid_cmdstatus" btree (cmd_type, collection_id, index_cmd_status)
     "helio_index_queue_indexid_cmdtype" btree (index_id, cmd_type)
 Check constraints:
     "helio_index_queue_cmd_type_check" CHECK (cmd_type = ANY (ARRAY['C'::bpchar, 'R'::bpchar]))
+    "helio_index_queue_user_oid_check" CHECK (user_oid IS NULL OR user_oid <> '0'::oid)
 
 SELECT helio_api.create_indexes_background('db', NULL);
 ERROR:  arg cannot be NULL

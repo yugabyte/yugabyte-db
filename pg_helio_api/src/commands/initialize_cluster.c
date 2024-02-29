@@ -232,7 +232,10 @@ CreateIndexBuildsTable()
 					 "attempt smallint,"
 
 	                 /* update_time shows the time when request was updated in the table */
-					 "update_time timestamp with time zone DEFAULT now()"
+					 "update_time timestamp with time zone DEFAULT now(),"
+
+	                 /* For role based control */
+					 "user_oid Oid CHECK (user_oid IS NULL OR user_oid != '0'::oid)"
 					 ")", CoreSchemaName);
 
 	bool readOnly = false;

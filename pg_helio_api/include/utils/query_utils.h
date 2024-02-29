@@ -94,6 +94,10 @@ uint64 ExtensionExecuteCappedStatementWithArgsViaSPI(const char *query, int narg
  */
 char * ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query);
 
+/*
+ * Same as ExtensionExecuteQueryOnLocalhostViaLibPQ, but connects as specific user.
+ */
+char * ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid);
 
 /*
  * Helper method to create a string query using a variable number

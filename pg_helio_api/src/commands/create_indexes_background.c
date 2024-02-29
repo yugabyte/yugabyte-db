@@ -30,6 +30,8 @@
 #include <utils/ruleutils.h>
 #include <utils/snapmgr.h>
 #include <utils/syscache.h>
+#include "utils/backend_status.h"
+#include "catalog/pg_authid.h"
 
 #include "api_hooks.h"
 #include "io/helio_bson_core.h"
@@ -312,7 +314,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						  UINT64_FORMAT,
 						  indexCmdRequest->indexId, collectionId)));
 		bool concurrently = true;
-		ExecuteCreatePostgresIndexCmd(cmd, concurrently);
+		ExecuteCreatePostgresIndexCmd(cmd, concurrently, indexCmdRequest->userOid);
 		indexCreated = true;
 	}
 	PG_CATCH();
@@ -874,7 +876,10 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 		char *cmd = CreatePostgresIndexCreationCmd(collectionId, indexDef, indexId,
 												   createIndexesConcurrently,
 												   isTempCollection);
-		AddRequestInIndexQueue(cmd, indexId, collectionId, CREATE_INDEX_COMMAND_TYPE);
+
+		Oid userOid = GetAuthenticatedUserId();
+		AddRequestInIndexQueue(cmd, indexId, collectionId, CREATE_INDEX_COMMAND_TYPE,
+							   userOid);
 		indexIdList = lappend_int(indexIdList, indexId);
 	}
 
@@ -911,6 +916,10 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 
 	if (hasUniqueIndex)
 	{
+		ereport(LOG, (errmsg("Building Unique indexes for collection "UINT64_FORMAT,
+							 collectionId),
+					  errhint("Building Unique indexes for collection "UINT64_FORMAT,
+							  collectionId)));
 		bool uniqueIndexOnly = true;
 		bool skipCheckCollectionCreate = true;
 		CreateIndexesResult resultInner = create_indexes_non_concurrently(dbNameDatum,

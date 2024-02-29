@@ -1249,18 +1249,34 @@ command_get_next_collection_index_id(PG_FUNCTION_ARGS)
  */
 void
 AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, char
-					   cmdType)
+					   cmdType, Oid userOid)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
-	const char *cmdStr = FormatSqlQuery("INSERT INTO %s "
-										"(index_cmd, index_id, collection_id, index_cmd_status, cmd_type) "
-										"VALUES ($1, $2, $3, $4, $5) ",
-										GetIndexQueueName());
+
+	StringInfo cmdStr = makeStringInfo();
+
+	appendStringInfo(cmdStr,
+					 "INSERT INTO %s (index_cmd, index_id, collection_id, index_cmd_status, cmd_type",
+					 GetIndexQueueName());
+
+	if (IsClusterVersionAtleastThis(1, 14, 0))
+	{
+		appendStringInfo(cmdStr, ", user_oid");
+	}
+
+	appendStringInfo(cmdStr, ") VALUES ($1, $2, $3, $4, $5");
+
+	if (IsClusterVersionAtleastThis(1, 14, 0))
+	{
+		appendStringInfo(cmdStr, ", $6");
+	}
+
+	appendStringInfo(cmdStr, ") ");
 
 	int argCount = 5;
-	Oid argTypes[5];
-	Datum argValues[5];
-	char argNulls[5] = { ' ', ' ', ' ', ' ', ' ' };
+	Oid argTypes[6];
+	Datum argValues[6];
+	char argNulls[6] = { ' ', ' ', ' ', ' ', ' ', ' ' };
 
 	argTypes[0] = TEXTOID;
 	argValues[0] = PointerGetDatum(cstring_to_text(createIndexCmd));
@@ -1277,10 +1293,17 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
 	argTypes[4] = CHAROID;
 	argValues[4] = CharGetDatum(cmdType);
 
+	if (IsClusterVersionAtleastThis(1, 14, 0))
+	{
+		argTypes[5] = OIDOID;
+		argValues[5] = ObjectIdGetDatum(userOid);
+		argCount++;
+	}
+
 	bool isNull = true;
 	bool readOnly = false;
 
-	ExtensionExecuteQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
+	ExtensionExecuteQueryWithArgsViaSPI(cmdStr->data, argCount, argTypes,
 										argValues, argNulls, readOnly,
 										SPI_OK_INSERT,
 										&isNull);
@@ -1303,7 +1326,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 * The order by clause makes sure that we pick IndexCmdStatus_Queued requests first over other (ascending order).
 	 *
 	 * SELECT index_cmd, index_id, index_cmd_status,
-	 *        COALESCE(attempt, 0) AS attempt, comment, update_time
+	 *        COALESCE(attempt, 0) AS attempt, comment, update_time, user_oid
 	 * FROM helio_api_catalog.helio_index_queue iq
 	 * WHERE cmd_type = '%c'
 	 *       AND iq.collection_id = collectionId
@@ -1316,8 +1339,20 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 *	ORDER BY index_cmd_status ASC LIMIT 1
 	 */
 	StringInfo cmdStr = makeStringInfo();
+	bool readOnly = false;
+	int numValues = 6;
+	bool isNull[7];
+	Datum results[7];
+	Oid userOid = InvalidOid;
+
 	appendStringInfo(cmdStr,
 					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time");
+	if (IsClusterVersionAtleastThis(1, 14, 0))
+	{
+		appendStringInfo(cmdStr,
+						 ", user_oid");
+		numValues++;
+	}
 	appendStringInfo(cmdStr,
 					 " FROM %s iq WHERE cmd_type = '%c'",
 					 GetIndexQueueName(), cmdType);
@@ -1332,10 +1367,6 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	appendStringInfo(cmdStr,
 					 " ORDER BY index_cmd_status ASC LIMIT 1");
 
-	bool readOnly = false;
-	int numValues = 6;
-	bool isNull[6];
-	Datum results[6];
 	ExtensionExecuteMultiValueQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT, results,
 										  isNull, numValues);
 	if (isNull[0])
@@ -1349,6 +1380,10 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	int16 attemptCount = DatumGetUInt16(results[3]);
 	pgbson *comment = (pgbson *) DatumGetPointer(results[4]);
 	TimestampTz updateTime = DatumGetTimestampTz(results[5]);
+	if (IsClusterVersionAtleastThis(1, 14, 0) && !isNull[6])
+	{
+		userOid = DatumGetObjectId(results[6]);
+	}
 
 	IndexCmdRequest *request = palloc(sizeof(IndexCmdRequest));
 	request->indexId = indexId;
@@ -1358,6 +1393,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	request->comment = comment;
 	request->updateTime = updateTime;
 	request->status = status;
+	request->userOid = userOid;
 	return request;
 }
 

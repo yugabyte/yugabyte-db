@@ -308,7 +308,7 @@ List * CheckForConflictsAndPruneExistingIndexes(uint64 collectionId,
 char * CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int
 									  indexId,
 									  bool concurrently, bool isTempCollection);
-void ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently);
+void ExecuteCreatePostgresIndexCmd(char *cmd, bool concurrently, const Oid userOid);
 void AcquireAdvisoryExclusiveLockForCreateIndexes(uint64 collectionId);
 IndexSpec MakeIndexSpecForIndexDef(IndexDef *indexDef);
 pgbson * MakeCreateIndexesMsg(CreateIndexesResult *result);

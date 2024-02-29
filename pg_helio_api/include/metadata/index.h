@@ -161,6 +161,9 @@ typedef struct IndexCmdRequest
 	TimestampTz updateTime;
 
 	IndexCmdStatus status;
+
+	/* Denotes the user who has triggered CreateIndexes*/
+	Oid userOid;
 } IndexCmdRequest;
 
 /* Return value of GetIndexBuildJobOpId */
@@ -249,7 +252,7 @@ IndexCmdStatus GetIndexBuildStatusFromIndexQueue(int indexId);
 IndexCmdRequest * GetRequestFromIndexQueue(char cmdType, uint64 collectionId);
 uint64 * GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds);
 void AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, char
-							cmd_type);
+							cmd_type, Oid userOid);
 char * GetIndexQueueName(void);
 
 /* Static utilities */

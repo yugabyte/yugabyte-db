@@ -32,7 +32,7 @@ static void PGConnFinishConnectionEstablishment(PGconn *conn);
 static void PGConnFinishIO(PGconn *conn);
 static char * PGConnReturnFirstField(PGconn *conn);
 static void PGConnReportError(PGconn *conn, PGresult *result, int elevel);
-static char * GetLocalhostConnStr(void);
+static char * GetLocalhostConnStr(const Oid userOid);
 
 /*
  * ExtensionExecuteQueryViaSPI executes given query via SPI and returns first
@@ -339,7 +339,17 @@ SPIReturnDatum(bool *isNull, int position)
 char *
 ExtensionExecuteQueryOnLocalhostViaLibPQ(char *query)
 {
-	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr());
+	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(InvalidOid));
+}
+
+
+/*
+ * Same as ExtensionExecuteQueryOnLocalhostViaLibPQ, but connects as specific user.
+ */
+char *
+ExtensionExecuteQueryAsUserOnLocalhostViaLibPQ(char *query, const Oid userOid)
+{
+	return ExtensionExecuteQueryViaLibPQ(query, GetLocalhostConnStr(userOid));
 }
 
 
@@ -690,13 +700,21 @@ PGConnReportError(PGconn *conn, PGresult *result, int elevel)
 /*
  * GetLocalhostConnStr returns connection string to be used when connecting
  * to current database of localhost.
+ * If userOid is InvalidOid, falls back to authenticated userId.
  */
 static char *
-GetLocalhostConnStr(void)
+GetLocalhostConnStr(const Oid userOid)
 {
 	const char *user_name;
 	const bool no_err = false;
-	user_name = GetUserNameFromId(GetAuthenticatedUserId(), no_err);
+	if (userOid == InvalidOid)
+	{
+		user_name = GetUserNameFromId(GetAuthenticatedUserId(), no_err);
+	}
+	else
+	{
+		user_name = GetUserNameFromId(userOid, no_err);
+	}
 
 	StringInfo localhostConnStr = makeStringInfo();
 	appendStringInfo(localhostConnStr,
