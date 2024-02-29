@@ -1,6 +1,6 @@
 ---
 title: Get lock information insights with pg_locks
-linkTitle: Get lock information insights
+linkTitle: Lock insights
 description: Using pg_locks to get insights into lock information specific to YugabyteDB's distributed SQL architecture.
 headerTitle: Get lock information insights with pg_locks
 menu:
