@@ -805,9 +805,11 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ImageBundle ib = new ImageBundle();
     ib.setName("ib-2");
     ib.setProvider(p);
+    ib.setUseAsDefault(true);
     ib.setDetails(details);
 
     List<ImageBundle> ibs = p.getImageBundles();
+    ibs.get(0).setUseAsDefault(false);
     ibs.add(ib);
     p.setImageBundles(ibs);
     UUID taskUUID = doEditProvider(p, false);
@@ -816,6 +818,15 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(2, p.getImageBundles().size());
+    p.getImageBundles()
+        .forEach(
+            bundle -> {
+              if (bundle.getName().equals("ib-1")) {
+                assertEquals(false, bundle.getUseAsDefault());
+              } else {
+                assertEquals(true, bundle.getUseAsDefault());
+              }
+            });
   }
 
   @Test
