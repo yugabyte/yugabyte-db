@@ -54,10 +54,12 @@ DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_uint64(wait_for_relock_unblocked_txn_keys_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
@@ -893,7 +895,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 
 class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   static constexpr int kClientStatementTimeoutSeconds = 60;
-
+ protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
@@ -907,39 +909,53 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   size_t NumTabletServers() override {
     return 1;
   }
+
+  void PerformConcurrentReads() {
+    constexpr int kNumReaders = 8;
+    constexpr int kNumTxnsPerReader = 100;
+
+    auto setup_conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(setup_conn.Execute("INSERT INTO foo VALUES (1, 1)"));
+    TestThreadHolder thread_holder;
+    CountDownLatch finished_readers{kNumReaders};
+
+    for (int reader_idx = 0; reader_idx < kNumReaders; ++reader_idx) {
+      thread_holder.AddThreadFunctor([this, &finished_readers, &stop = thread_holder.stop_flag()] {
+        auto conn = ASSERT_RESULT(Connect());
+        for (int i = 0; i < kNumTxnsPerReader; ++i) {
+          if (stop) {
+            EXPECT_FALSE(true) << "Only completed " << i << " reads";
+            return;
+          }
+          ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+          ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+          ASSERT_OK(conn.CommitTransaction());
+        }
+        finished_readers.CountDown();
+        finished_readers.Wait();
+      });
+    }
+
+    finished_readers.WaitFor(60s * kTimeMultiplier);
+    finished_readers.Reset(0);
+    thread_holder.Stop();
+  }
 };
 
 TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReaders)) {
-  constexpr int kNumReaders = 8;
-  constexpr int kNumTxnsPerReader = 100;
+  PerformConcurrentReads();
+}
 
-  auto setup_conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(setup_conn.Execute("INSERT INTO foo VALUES (1, 1)"));
-  TestThreadHolder thread_holder;
-  CountDownLatch finished_readers{kNumReaders};
-
-  for (int reader_idx = 0; reader_idx < kNumReaders; ++reader_idx) {
-    thread_holder.AddThreadFunctor([this, &finished_readers, &stop = thread_holder.stop_flag()] {
-      auto conn = ASSERT_RESULT(Connect());
-      for (int i = 0; i < kNumTxnsPerReader; ++i) {
-        if (stop) {
-          EXPECT_FALSE(true) << "Only completed " << i << " reads";
-          return;
-        }
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-        ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
-        ASSERT_OK(conn.CommitTransaction());
-      }
-      finished_readers.CountDown();
-      finished_readers.Wait();
-    });
-  }
-
-  finished_readers.WaitFor(60s * kTimeMultiplier);
-  finished_readers.Reset(0);
-  thread_holder.Stop();
+// When a waiter fails to re-acquire the shared in-memory locks while being resumed from the thread
+// running ResumedWaiterRunner (which resumes waiters serially), it is scheduled for retry on the
+// Tablet Server's Scheduler which attempts to re-acquire the shared in-memory locks until the
+// request deadline passes. The below test simulates a contentious workload and helps assert the
+// above, particularly in tsan mode.
+TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnScheduler) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_relock_unblocked_txn_keys_ms) = 100;
+  PerformConcurrentReads();
 }
 
 TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
@@ -977,7 +993,18 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResolution)) {
+class PgWaitQueuesDisableRowLocking : public PgWaitQueuesTest {
+ protected:
+  void SetUp() override {
+    // ysql_skip_row_lock_for_update is set so that TestWaiterTxnReRunConflictResolution uses column
+    // level locking and the 3 transactions result in a deadlock.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_skip_row_lock_for_update) = true;
+    PgWaitQueuesTest::SetUp();
+  }
+};
+
+TEST_F(
+    PgWaitQueuesDisableRowLocking, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResolution)) {
   // In the current implementation of the wait queue, we don't update the blocker info for
   // waiter transactions waiting in the queue with the new incoming transaction requests
   // (than don't enter the wait-queue). Since the waiter dependency is not up to date, we
@@ -1226,6 +1253,41 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
         ASSERT_RESULT(setup_conn.FetchRow<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
   }
 }
+
+#ifndef NDEBUG
+TEST_F(PgWaitQueuesTest, TestDDLsNotBlockedOnWaiters) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 120000;
+
+  constexpr int kNumTxns = 2;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 10), 0"));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDDLsNotBlockedOnWaiters"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  CountDownLatch ddl_finished{1};
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumTxns; i++) {
+    thread_holder.AddThreadFunctor([&] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      auto s = conn.Execute("UPDATE foo SET v=v+1 WHERE k=1");
+      ddl_finished.WaitFor(10s * kTimeMultiplier);
+      ASSERT_FALSE(s.ok() && conn.CommitTransaction().ok());
+    });
+  }
+
+  DEBUG_ONLY_TEST_SYNC_POINT("TestDDLsNotBlockedOnWaiters");
+  ASSERT_OK(WaitFor([&] {
+    return setup_conn.Execute("ALTER TABLE foo ADD COLUMN v1 TEXT DEFAULT 'def'").ok();
+  }, 2s * kTimeMultiplier, "DLL timed-out"));
+  ddl_finished.CountDown();
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+#endif // NDEBUG
 
 class PgWaitQueueRF1Test : public PgWaitQueuesTest {
  protected:

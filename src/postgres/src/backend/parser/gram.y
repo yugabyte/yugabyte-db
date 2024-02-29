@@ -985,6 +985,7 @@ stmt :
 			| TransactionStmt
 			| TruncateStmt
 			| UpdateStmt
+			| VacuumStmt
 			| VariableResetStmt
 			| VariableSetStmt
 			| VariableShowStmt
@@ -1009,7 +1010,6 @@ stmt :
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum", false); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -2014,7 +2014,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $3;
 					n->cmds = $4;
@@ -2024,7 +2023,6 @@ AlterTableStmt:
 				}
 		|	ALTER INDEX IF_P EXISTS qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $5;
 					n->cmds = $6;
@@ -2653,7 +2651,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET TABLESPACE <tablespacename> */
 			| SET TABLESPACE name
 				{
-					parser_ybc_beta_feature(@1, "tablespace_alteration", true);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetTableSpace;
 					n->name = $3;

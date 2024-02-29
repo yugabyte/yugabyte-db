@@ -231,6 +231,11 @@ message RaftGroupReplicaSuperBlockPB {
   // disk. This value is used to determine if a particular raft op should be replayed
   // during local tablet bootstrap of the tablet.
   optional OpIdPB last_flushed_change_metadata_op_id = 37;
+
+  // The highest seq_no clone op that this tablet has applied. The clone was not necessarily
+  // successful. The master is responsible for not sending multiple clone requests with different
+  // sequence_numbers until the previous one is complete or aborted on all tablets.
+  optional uint32 last_attempted_clone_seq_no = 38;
 }
 
 message FilePB {

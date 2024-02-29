@@ -28,6 +28,7 @@
 #include "storage/shmem.h"
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
+#include "utils/memutils.h"
 
 
 /*
@@ -300,6 +301,9 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckProcSignal(PROCSIG_WALSND_INIT_STOPPING))
 		HandleWalSndInitStopping();
+
+	if (CheckProcSignal(PROCSIG_LOG_MEMORY_CONTEXT))
+		HandleLogMemoryContextInterrupt();
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_DATABASE);

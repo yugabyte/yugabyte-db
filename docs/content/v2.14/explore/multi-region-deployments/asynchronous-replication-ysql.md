@@ -146,7 +146,8 @@ To configure "Data Center - West" to be the target of data changes from the "Dat
 
 ```sh
 yb-admin -master_addresses <target-master-addresses> \
-setup_universe_replication <source-universe_uuid> <source_master_addresses> <source-table-ids>
+setup_universe_replication <source-universe-uuid> \
+<source-master-addresses> <source-table-ids>
 ```
 
 - *target-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).

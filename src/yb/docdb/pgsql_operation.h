@@ -78,10 +78,6 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
-  Status UpdateIterator(
-      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) final;
-
  private:
   void ClearResponse() override {
     if (response_) {
@@ -102,7 +98,10 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   // Returns true if row was present.
-  Result<bool> ReadColumns(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(
+      const DocOperationApplyData& data, const dockv::DocKey& doc_key,
+      dockv::PgTableRow* table_row);
 
   Status PopulateResultSet(const dockv::PgTableRow* table_row);
 
@@ -235,6 +234,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  uint64_t scanned_table_rows_ = 0;
+  uint64_t scanned_index_rows_ = 0;
 };
 
 }  // namespace yb::docdb

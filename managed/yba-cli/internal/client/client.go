@@ -7,7 +7,6 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,7 +25,8 @@ import (
 
 // AuthAPIClient is a auth YBA Client
 
-var cliVersion = "v0.1.0"
+var cliVersion = "0.1.0"
+var hostVersion = "0.1.0"
 
 // AuthAPIClient contains authenticated api client and customer UUID
 type AuthAPIClient struct {
@@ -43,6 +43,16 @@ func SetVersion(version string) {
 // GetVersion fetches the version of YBA CLI
 func GetVersion() string {
 	return cliVersion
+}
+
+// SetHostVersion assigns the version of YBA Host
+func SetHostVersion(version string) {
+	hostVersion = version
+}
+
+// GetHostVersion fetches the version of YBA Host
+func GetHostVersion() string {
+	return hostVersion
 }
 
 // NewAuthAPIClient function is returning a new AuthAPIClient Client
@@ -117,35 +127,6 @@ func ParseURL(host string) (*url.URL, error) {
 		return nil, fmt.Errorf("could not parse YBA url (%s): %w", host, err)
 	}
 	return endpoint, err
-}
-
-// GetAppVersion fetches YugabyteDB Anywhere version
-func (a *AuthAPIClient) GetAppVersion() ybaclient.SessionManagementApiApiAppVersionRequest {
-	return a.APIClient.SessionManagementApi.AppVersion(a.ctx)
-}
-
-// GetSessionInfo fetches YugabyteDB Anywhere session info
-func (a *AuthAPIClient) GetSessionInfo() (
-	ybaclient.SessionManagementApiApiGetSessionInfoRequest) {
-	return a.APIClient.SessionManagementApi.GetSessionInfo(a.ctx)
-}
-
-// GetCustomerUUID fetches YugabyteDB Anywhere customer UUID
-func (a *AuthAPIClient) GetCustomerUUID() error {
-	r, response, err := a.GetSessionInfo().Execute()
-	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"GetCustomerUUID", "Get Session Info")
-		logrus.Errorf("%s", errMessage.Error())
-		return errMessage
-	}
-	if !r.HasCustomerUUID() {
-		err := "could not retrieve Customer UUID"
-		logrus.Errorf(err)
-		return errors.New(err)
-	}
-	a.CustomerUUID = *r.CustomerUUID
-	return nil
 }
 
 // GetCustomerTaskStatus fetches the customer task status

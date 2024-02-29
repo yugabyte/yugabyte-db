@@ -98,6 +98,24 @@
   become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
+- name: Provision | Ensure metrics dir exists
+  shell: |
+    mkdir -p {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
+- name: Provision | Ensure proper ownership for metrics dir.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
+- name: Provision | Ensure proper permissions for metrics dir.
+  shell: |
+    chmod -R 755 {{ yb_metrics_dir }}
+  become: yes
+  become_method: sudo
+
 - name: setup-postgres-cgroups
   include_role:
     name: setup-cgroup

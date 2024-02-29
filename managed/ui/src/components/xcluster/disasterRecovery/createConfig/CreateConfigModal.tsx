@@ -74,7 +74,6 @@ const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable'
 
 export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
-  const [isTableSelectionValidated, setIsTableSelectionValidated] = useState(false);
   const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
 
   // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
@@ -166,7 +165,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         createAlertConfiguration(alertTemplate);
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: t('error.request') })
+        handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
     }
   );
 
@@ -206,6 +205,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBLoading />
@@ -220,6 +222,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        maxWidth="xl"
+        size="md"
+        overrideWidth="960px"
         {...modalProps}
       >
         <YBErrorIndicator
@@ -256,25 +261,28 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       case FormStep.SELECT_TABLES:
+        // For the create DR user flow, we will always ask for bootstrap params from the user.
+        // This means there is no need to check whether the selected tables require bootstrapping in
+        // this step.
         if (formValues.namespaceUuids.length <= 0) {
           formMethods.setError('namespaceUuids', {
             type: 'min',
-            message: t('error.validationMinimumNamespaceUuids')
+            message: t('error.validationMinimumNamespaceUuids.title', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            })
           });
           // The TableSelect component expects error objects with title and body fields.
           // React-hook-form only allows string error messages.
           // Thus, we need an store these error objects separately.
           setTableSelectionError({
-            title: t('error.validationMinimumTableUuids.title', {
+            title: t('error.validationMinimumNamespaceUuids.title', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             }),
-            body: t('error.validationMinimumTableUuids.body', {
+            body: t('error.validationMinimumNamespaceUuids.body', {
               keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
             })
           });
-          setIsTableSelectionValidated(false);
         } else {
-          setIsTableSelectionValidated(true);
           setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         }
         return;
@@ -306,14 +314,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   };
 
-  const getFormSubmitLabel = (formStep: FormStep, validTableSelection: boolean) => {
+  const getFormSubmitLabel = (formStep: FormStep) => {
     switch (formStep) {
       case FormStep.SELECT_TARGET_UNIVERSE:
         return t('step.selectTargetUniverse.submitButton');
       case FormStep.SELECT_TABLES:
-        if (!validTableSelection) {
-          return t('step.selectDatabases.validateButton');
-        }
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
@@ -324,31 +329,29 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   };
 
-  const setSelectedNamespaces = (namespaces: string[]) => {
-    // Reset validated flag and clear any existing errors.
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
+    // Clear any existing errors.
     // The new table/namespace selection will need to be (re)validated.
-    setIsTableSelectionValidated(false);
     setTableSelectionError(undefined);
     formMethods.clearErrors('namespaceUuids');
 
     // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the validation my selection button.
+    // user clicks on the 'Validate Selection' button.
     formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
   };
   const setSelectedTableUuids = (tableUuids: string[]) => {
-    // Reset validated flag and clear any existing errors.
+    // Clear any existing errors.
     // The new table/namespace selection will need to be (re)validated.
-    setIsTableSelectionValidated(false);
     setTableSelectionError(undefined);
     formMethods.clearErrors('tableUuids');
 
     // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the validation my selection button.
+    // user clicks on the 'Validate Selection' button.
     formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
   const sourceUniverse = sourceUniverseQuery.data;
-  const submitLabel = getFormSubmitLabel(currentFormStep, isTableSelectionValidated);
+  const submitLabel = getFormSubmitLabel(currentFormStep);
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
@@ -391,7 +394,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             selectedTableUUIDs: selectedTableUuids,
             selectionError: tableSelectionError,
             selectionWarning: undefined,
-            setSelectedNamespaceUuids: setSelectedNamespaces,
+            setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUUIDs: setSelectedTableUuids,
             setTableType: () => {}, // DR is only available for YSQL
             sourceUniverseUUID: sourceUniverseUuid,

@@ -78,17 +78,17 @@ Instead of using 1x6000GB EBS volume per node, using 2x3000GB EBS volumes might 
 
 To allow sufficient room for foreground operations on a low-end gp2 SSD volume-based setup, we reduced the default quota settings for compaction/flush rate from 100MB/sec to 30MB/sec.
 
-On i3* instance types with directly attached nvme SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
+On i3* instance types with directly attached NVMe SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
 
-## Customer usecases
+## Customer use cases
 
 ### 20TB
 
-In a customer installation, Yugabyte DB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and Yugabyte DB was able to handle sustained `450K ops/sec` with CPU utilization at `~40%` maximum.
+In a customer installation, YugabyteDB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and YugabyteDB was able to handle sustained `450K ops/sec` with CPU utilization at `~40%` maximum.
 
 ### 80TB
 
-One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an avarage latency of `1.7s`. Their setup is:
+One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an average latency of `1.7s`. Their setup is:
 
 |                          |             |
 | -----------------------: | :---------- |
@@ -104,7 +104,7 @@ One of our customers uses YCQL interface to store and retrieve about `80TB` of e
 
 ## Operational efficiency
 
-Scaling up and down with Yugabyte DB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compactions automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
+Scaling up and down with YugabyteDB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compactions automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
 
 ## Learn more
 

@@ -81,6 +81,8 @@
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
@@ -177,6 +179,10 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   CHECK_OK(ThreadPoolBuilder("log-sync")
@@ -651,6 +657,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
+          raft_notifications_pool(),
           tablet_prepare_pool(),
           &retryable_requests_manager /* retryable_requests_manager */,
           nullptr,
@@ -1319,8 +1326,9 @@ Status SysCatalogTable::ReadPgClassInfo(
     // From PostgreSQL docs: r = ordinary table, i = index, S = sequence, t = TOAST table,
     // v = view, m = materialized view, c = composite type, f = foreign table,
     // p = partitioned table, I = partitioned index
-    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
-      // This database object is not a table/index/partitioned table/partitioned index.
+    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I' && relkind != 'm') {
+      // This database object is not a table/index/partitioned table/partitioned index/
+      // materialized view.
       // Skip this.
       continue;
     }
@@ -1329,22 +1337,16 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
-      is_colocated_table = true;
-      const auto& reloptions_col = row.GetValue(reloptions_col_id);
-      if (!reloptions_col) {
-        return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
-            std::to_string(oid));
+      auto table_info =
+          master_->catalog_manager()->GetTableInfo(GetPgsqlTableId(database_oid, oid));
+
+      if (!table_info) {
+        // Primary key indexes are a separate entry in pg_class but they do not have
+        // their own entry in YugaByte's catalog manager. So, we skip them here.
+        continue;
       }
-      if (!reloptions_col->binary_value().empty()) {
-        auto reloptions = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
-            reloptions_col.value()));
-        for (const auto& reloption : reloptions) {
-          if (reloption.compare("colocated=false") == 0) {
-            is_colocated_table = false;
-            break;
-          }
-        }
-      }
+
+      is_colocated_table = table_info->IsColocatedUserTable();
     }
 
     if (is_colocated_table) {

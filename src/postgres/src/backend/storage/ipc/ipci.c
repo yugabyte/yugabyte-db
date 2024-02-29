@@ -157,7 +157,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, ShmemBackendArraySize());
 #endif
 
-		if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+		if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
 			size = add_size(size, YbAshShmemSize());
 
 		/* freeze the addin request size and include it */
@@ -274,7 +274,7 @@ CreateSharedMemoryAndSemaphores(int port)
 	AsyncShmemInit();
 	BackendRandomShmemInit();
 
-	if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
 		YbAshShmemInit();
 
 #ifdef EXEC_BACKEND

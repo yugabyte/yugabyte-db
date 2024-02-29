@@ -43,6 +43,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -331,7 +332,6 @@ void Rpcs::Shutdown() {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
-      SCOPED_WAIT_STATUS(Rpcs_WaitOnMutexInShutdown);
       if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }
@@ -383,7 +383,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
   {
     std::lock_guard lock(*mutex_);
     calls_.erase(*handle);
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
   *handle = calls_.end();
   return result;

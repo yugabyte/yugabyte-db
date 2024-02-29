@@ -28,6 +28,8 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/server_main_util.h"
+
 #include "yb/util/background_task.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -52,31 +54,39 @@ DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
-DEFINE_NON_RUNTIME_int32(
-    tablet_overhead_size_percentage, 0,
-    "Percentage of total available memory to use for tablet-related overheads. Default is 0, "
-    "meaning no limit. Must be between 0 and 100 inclusive.");
 
-namespace {
-  constexpr int kDbCacheSizeUsePercentage = -1;
-  constexpr int kDbCacheSizeCacheDisabled = -2;
-  constexpr int kDbCacheSizeUseDefault = -3;
-}
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
+DEFINE_NON_RUNTIME_int32(tablet_overhead_size_percentage, 0,
+    "Percentage of total available memory to use for tablet-related overheads. A value of 0 means "
+    "no limit. Must be between 0 and 100 inclusive. Exception: "
+    BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE) " specifies to instead use a "
+    "recommended value determined in part by the amount of RAM available.");
 
-DEFINE_UNKNOWN_bool(enable_block_based_table_cache_gc, false,
+DEFINE_RUNTIME_bool(enable_block_based_table_cache_gc, false,
             "Set to true to enable block based table garbage collector.");
 
-DEFINE_UNKNOWN_int64(db_block_cache_size_bytes, kDbCacheSizeUsePercentage,
-             "Size of RocksDB block cache (in bytes). "
-             "This defaults to -1 for system auto-generated default, which would use "
-             "FLAGS_db_block_cache_size_percentage to select a percentage of the total "
-             "memory as the default size for the shared block cache. Value of -2 disables "
-             "block cache.");
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
+DEFINE_NON_RUNTIME_int64(db_block_cache_size_bytes, DB_CACHE_SIZE_USE_PERCENTAGE,
+    "Size of the shared RocksDB block cache (in bytes). "
+    "A value of " BOOST_PP_STRINGIZE(DB_CACHE_SIZE_USE_PERCENTAGE)
+    " specifies to instead use a percentage of this daemon's hard memory limit; "
+    "see --db_block_cache_size_percentage for the percentage used. "
+    "A value of " BOOST_PP_STRINGIZE(DB_CACHE_SIZE_CACHE_DISABLED) " disables the block cache.");
 
-DEFINE_UNKNOWN_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
-             "Default percentage of total available memory to use as block cache size, if not "
-             "asking for a raw number, through FLAGS_db_block_cache_size_bytes. "
-             "Defaults to -3 (use default percentage as defined by master or tserver).");
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
+DEFINE_NON_RUNTIME_int32(db_block_cache_size_percentage, DB_CACHE_SIZE_USE_DEFAULT,
+    "Percentage of our hard memory limit to use for the shared RocksDB block cache, if "
+    "--db_block_cache_size_bytes is " BOOST_PP_STRINGIZE(DB_CACHE_SIZE_USE_PERCENTAGE) ". "
+    "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
+    " means to instead use a recommended percentage determined in part by the amount of RAM "
+    "available. "
+    "The special value " BOOST_PP_STRINGIZE(DB_CACHE_SIZE_USE_DEFAULT)
+    " means to use a older default that does not take the amount of RAM into account. "
+    "The percentage used due to the special values may depend on whether this is a "
+    "TServer or master daemon.");
 
 DEFINE_RUNTIME_int32(db_block_cache_num_shard_bits, -1,
              "-1 indicates a dynamic scheme that evaluates to 4 if number of cores is less than "
@@ -93,6 +103,20 @@ namespace yb::tserver {
 using strings::Substitute;
 
 namespace {
+
+bool ValidateTabletOverheadSizePercentage(const char* flag_name, int value) {
+  if (value >= 0 && value <= 100) {
+    return true;
+  }
+  if (value == USE_RECOMMENDED_MEMORY_VALUE) {
+    return true;
+  }
+  LOG(WARNING) << flag_name << " must be a percentage (0 to 100) or the special value "
+               << USE_RECOMMENDED_MEMORY_VALUE << ", value " << value << " is invalid";
+  return false;
+}
+
+DEFINE_validator(tablet_overhead_size_percentage, &ValidateTabletOverheadSizePercentage);
 
 class FunctorGC : public GarbageCollector {
  public:
@@ -129,18 +153,18 @@ class LRUCacheGC : public GarbageCollector {
 // db_block_cache_size_bytes flags, as well as the passed default_block_cache_size_percentage.
 int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentage) {
   int32_t target_block_cache_size_percentage =
-      (FLAGS_db_block_cache_size_percentage == kDbCacheSizeUseDefault) ?
+      (FLAGS_db_block_cache_size_percentage == DB_CACHE_SIZE_USE_DEFAULT) ?
       default_block_cache_size_percentage : FLAGS_db_block_cache_size_percentage;
 
   // If we aren't assigning block cache sized based on percentage, then the size is determined by
   // db_block_cache_size_bytes.
   int64_t target_block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   // Auto-compute size of block cache based on percentage of memory available if asked to.
-  if (target_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
+  if (target_block_cache_size_bytes == DB_CACHE_SIZE_USE_PERCENTAGE) {
     // Check some bounds.
     CHECK(target_block_cache_size_percentage > 0 && target_block_cache_size_percentage <= 100)
         << Substitute(
-               "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+               "tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
                "$0",
                target_block_cache_size_percentage);
 
@@ -158,16 +182,6 @@ size_t GetLogCacheSize(tablet::TabletPeer* peer) {
   return consensus_result.get()->LogCacheSize();
 }
 
-int64 ComputeTabletOverheadLimit() {
-  CHECK(0 <= FLAGS_tablet_overhead_size_percentage && FLAGS_tablet_overhead_size_percentage <= 100)
-      << Format(
-             "Flag tablet_overhead_size_percentage must be between 0 and 100 inclusive. Current "
-             "value: $0",
-             FLAGS_tablet_overhead_size_percentage);
-  if (0 == FLAGS_tablet_overhead_size_percentage) return -1;
-  return MemTracker::GetRootTracker()->limit() * FLAGS_tablet_overhead_size_percentage / 100;
-}
-
 }  // namespace
 
 TabletMemoryManager::TabletMemoryManager(
@@ -178,8 +192,10 @@ TabletMemoryManager::TabletMemoryManager(
     const std::function<std::vector<tablet::TabletPeerPtr>()>& peers_fn) {
   server_mem_tracker_ = mem_tracker;
   peers_fn_ = peers_fn;
+  // TODO after #20876 and #20879, change the -1 below back into ComputeTabletOverheadLimit().
+  // See #20667 for why removing this limit temporarily was necessary.
   tablets_overhead_mem_tracker_ = MemTracker::FindOrCreateTracker(
-      ComputeTabletOverheadLimit(), "Tablets_overhead", server_mem_tracker_);
+      /*no limit*/ -1, "Tablets_overhead", server_mem_tracker_);
 
   InitBlockCache(metrics, default_block_cache_size_percentage, options);
   InitLogCacheGC();
@@ -226,7 +242,7 @@ void TabletMemoryManager::InitBlockCache(
       "BlockBasedTable",
       server_mem_tracker_);
 
-  if (block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
+  if (block_cache_size_bytes != DB_CACHE_SIZE_CACHE_DISABLED) {
     options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
                                                 GetDbBlockCacheNumShardBits());
     options->block_cache->SetMetrics(metrics);
@@ -246,7 +262,7 @@ void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options
   // Calculate memstore_size_bytes based on total RAM available and global percentage.
   CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
     << Substitute(
-        "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+        "Flag FLAGS_global_memstore_size_percentage must be between 0 and 100. Current value: "
         "$0",
         FLAGS_global_memstore_size_percentage);
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
@@ -375,6 +391,13 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
   return Substitute("T $0 P $1 : ",
       peer->tablet_id(),
       peer->permanent_uuid());
+}
+
+int64 ComputeTabletOverheadLimit() {
+  if (0 == FLAGS_tablet_overhead_size_percentage) {
+    return -1;
+  }
+  return MemTracker::GetRootTracker()->limit() * FLAGS_tablet_overhead_size_percentage / 100;
 }
 
 int32_t GetDbBlockCacheNumShardBits() {

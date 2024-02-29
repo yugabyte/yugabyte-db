@@ -32,7 +32,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,7 +42,6 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
@@ -53,7 +51,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private Cluster readOnlyCluster;
-  private YBClient mockClient;
 
   private TaskInfo submitTask(
       UniverseDefinitionTaskParams taskParams, TaskType type, int expectedVersion) {
@@ -83,15 +80,13 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.provider = defaultProvider.getUuid().toString();
     defaultUniverse = createUniverse(defaultCustomer.getId());
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
-    mockClient = mock(YBClient.class);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     try {
       ChangeMasterClusterConfigResponse changeMasterConfigResp =
@@ -101,14 +96,14 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           new GetMasterClusterConfigResponse(
               0, "", SysClusterConfigEntryPB.newBuilder().build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      when(mockClient.listMasters()).thenReturn(listMastersResponse);
-      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
     } catch (Exception e) {
       fail();
     }
     region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
     readOnlyCluster = addReadReplica(region);
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private Cluster addReadReplica(Region region) {
@@ -136,8 +131,8 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private static final List<TaskType> CLUSTER_DELETE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.SetNodeState,
-          TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
           TaskType.DeleteClusterFromUniverse,
           TaskType.UpdatePlacementInfo,
@@ -146,7 +141,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> CLUSTER_DELETE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -177,11 +171,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusterUUID = readOnlyCluster.uuid;
-    setDumpEntitiesMock(defaultUniverse, "", false);
-    when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
-    // when(mockClient.getLeaderMasterHostAndPort())
-    // .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(6)).nodeCommand(any(), any());

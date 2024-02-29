@@ -80,6 +80,9 @@ DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
 
 DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
+DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
+                 "When set, transition all delete replica tasks to a failed state.");
+
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
@@ -720,23 +723,27 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
   auto table_lock = tablet->table()->LockForRead();
-  const SysTabletsEntryPB& tablet_pb = tablet->metadata().dirty().pb;
+  const auto& table_pb = table_lock->pb;
+  const auto& tablet_pb = tablet->metadata().dirty().pb;
 
   req_.set_dest_uuid(permanent_uuid);
   req_.set_table_id(tablet->table()->id());
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_table_type(tablet->table()->metadata().state().pb.table_type());
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
-  req_.set_namespace_id(table_lock->pb.namespace_id());
-  req_.set_namespace_name(table_lock->pb.namespace_name());
-  req_.set_pg_table_id(table_lock->pb.pg_table_id());
-  req_.set_table_name(table_lock->pb.name());
-  req_.mutable_schema()->CopyFrom(table_lock->pb.schema());
-  req_.mutable_partition_schema()->CopyFrom(table_lock->pb.partition_schema());
+  req_.set_namespace_id(table_pb.namespace_id());
+  req_.set_namespace_name(table_pb.namespace_name());
+  req_.set_pg_table_id(table_pb.pg_table_id());
+  req_.set_table_name(table_pb.name());
+  req_.mutable_schema()->CopyFrom(table_pb.schema());
+  req_.mutable_partition_schema()->CopyFrom(table_pb.partition_schema());
   req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   req_.set_colocated(tablet_pb.colocated());
-  if (table_lock->pb.has_index_info()) {
-    req_.mutable_index_info()->CopyFrom(table_lock->pb.index_info());
+  if (table_pb.has_index_info()) {
+    req_.mutable_index_info()->CopyFrom(table_pb.index_info());
+  }
+  if (table_pb.has_wal_retention_secs()) {
+    req_.set_wal_retention_secs(table_pb.wal_retention_secs());
   }
   auto& req_schedules = *req_.mutable_snapshot_schedules();
   req_schedules.Reserve(narrow_cast<int>(snapshot_schedules.size()));
@@ -744,7 +751,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
 
-  req_.mutable_hosted_stateful_services()->CopyFrom(table_lock->pb.hosted_stateful_services());
+  req_.mutable_hosted_stateful_services()->CopyFrom(table_pb.hosted_stateful_services());
 }
 
 std::string AsyncCreateReplica::description() const {
@@ -988,7 +995,35 @@ void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
 // ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
+Status AsyncDeleteReplica::SetPendingDelete(AddPendingDelete add_pending_delete) {
+  TSDescriptorPtr ts_desc;
+  if (!master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
+    return STATUS(IllegalState, Format("Could not find tserver with uuid $0", permanent_uuid_));
+  }
+
+  if (add_pending_delete) {
+    ts_desc->AddPendingTabletDelete(tablet_id());
+  } else {
+    ts_desc->ClearPendingTabletDelete(tablet_id());
+  }
+  return Status::OK();
+}
+
+Status AsyncDeleteReplica::BeforeSubmitToTaskPool() {
+  return SetPendingDelete(AddPendingDelete::kTrue);
+}
+
+Status AsyncDeleteReplica::OnSubmitFailure() {
+  return SetPendingDelete(AddPendingDelete::kFalse);
+}
+
 void AsyncDeleteReplica::HandleResponse(int attempt) {
+  if (FLAGS_TEST_fail_async_delete_replica_task) {
+    auto s = STATUS(IllegalState, "TEST_fail_async_delete_replica_task set to true");
+    TransitionToFailedState(MonitoredTaskState::kRunning, s);
+    return;
+  }
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -1069,9 +1104,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
 
 void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
   // Only notify if we are in a success state.
-  if (state() == MonitoredTaskState::kComplete) {
+  if (state() == MonitoredTaskState::kComplete || state() == MonitoredTaskState::kFailed) {
     master_->catalog_manager()->NotifyTabletDeleteFinished(
-        permanent_uuid_, tablet_id_, table(), epoch());
+        permanent_uuid_, tablet_id_, table(), epoch(), state());
   }
 }
 
@@ -1770,6 +1805,9 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncUpdateTransactionTablesVersion.
+// ============================================================================
 AsyncUpdateTransactionTablesVersion::AsyncUpdateTransactionTablesVersion(
     Master* master,
     ThreadPool* callback_pool,
@@ -1884,6 +1922,40 @@ bool AsyncMasterTestRetry::SendRequest(int attempt) {
   return true;
 }
 
+// ============================================================================
+//  Class AsyncCloneTablet.
+// ============================================================================
+AsyncCloneTablet::AsyncCloneTablet(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletInfoPtr& tablet,
+    LeaderEpoch epoch,
+    tablet::CloneTabletRequestPB req)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)),
+      req_(std::move(req)) {}
+
+std::string AsyncCloneTablet::description() const {
+  return "Clone tablet RPC";
+}
+
+void AsyncCloneTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+    LOG(WARNING) << "CloneTablet for tablet " << tablet_id() << "failed: "
+                 << status;
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncCloneTablet::SendRequest(int attempt) {
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_admin_proxy_->CloneTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent clone tablets request to " << tablet_id();
+  return true;
+}
 
 }  // namespace master
 }  // namespace yb

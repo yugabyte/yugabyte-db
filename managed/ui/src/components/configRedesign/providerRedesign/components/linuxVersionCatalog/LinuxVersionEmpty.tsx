@@ -9,10 +9,10 @@
 
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Control } from 'react-hook-form';
 import { Typography, makeStyles } from '@material-ui/core';
 import { YBButton } from '../../../../../redesign/components';
-import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Add } from '@material-ui/icons';
 
 const useStyles = makeStyles((theme) => ({
@@ -32,11 +32,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface LinuxVersionEmptyProps {
-  control: Control<AWSProviderCreateFormFieldValues>;
   onAdd: () => void;
+  viewMode: 'CREATE' | 'EDIT';
 }
 
-export const LinuxVersionEmpty: FC<LinuxVersionEmptyProps> = ({ control, onAdd }) => {
+export const LinuxVersionEmpty: FC<LinuxVersionEmptyProps> = ({ onAdd, viewMode }) => {
   const classes = useStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion'
@@ -45,9 +45,18 @@ export const LinuxVersionEmpty: FC<LinuxVersionEmptyProps> = ({ control, onAdd }
   return (
     <div className={classes.root}>
       <Typography variant="subtitle1">{t('emptyCard.info')}</Typography>
-      <YBButton variant="secondary" startIcon={<Add />} onClick={() => onAdd()}>
-        {t('addLinuxVersion')}
-      </YBButton>
+      <RbacValidator
+        accessRequiredOn={
+          viewMode === 'CREATE'
+            ? ApiPermissionMap.CREATE_PROVIDER
+            : ApiPermissionMap.MODIFY_PROVIDER
+        }
+        isControl
+      >
+        <YBButton variant="secondary" startIcon={<Add />} onClick={() => onAdd()}>
+          {t('addLinuxVersion')}
+        </YBButton>
+      </RbacValidator>
     </div>
   );
 };

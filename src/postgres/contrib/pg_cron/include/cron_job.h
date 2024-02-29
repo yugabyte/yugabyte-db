@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cron_job.h
- *    definition of the relation that holds cron jobs (cron.job).
+ *	  definition of the relation that holds cron jobs (cron.job).
  *
  * Copyright (c) 2016, Citus Data, Inc.
  *
@@ -13,21 +13,21 @@
 
 
 /* ----------------
- *    cron_job definition.
+ *		cron_job definition.
  * ----------------
  */
 typedef struct FormData_cron_job
 {
-  int64 jobId;
+	int64 jobId;
 #ifdef CATALOG_VARLEN
-  text schedule;
-  text command;
-  text nodeName;
-  int nodePort;
-  text database;
-  text userName;
-  bool active;
-  Name jobName;
+	text schedule;
+	text command;
+	text nodeName;
+	int nodePort;
+	text database;
+	text userName;
+	bool active;
+	text jobName;
 #endif
 } FormData_cron_job;
 
@@ -55,23 +55,23 @@ typedef FormData_cron_job *Form_cron_job;
 
 typedef struct FormData_job_run_details
 {
-  int64 jobId;
-  int64 runId;
-  int32 job_pid;
+	int64 jobId;
+	int64 runId;
+	int32 job_pid;
 #ifdef CATALOG_VARLEN
-  text database;
-  text username;
-  text command;
-  text status;
-  text return_message;
-  timestamptz start_time;
-  timestamptz end_time;
+	text database;
+	text username;
+	text command;
+	text status;
+	text return_message;
+	timestamptz start_time;
+	timestamptz end_time;
 #endif
 } FormData_job_run_details;
 
 typedef FormData_job_run_details *Form_job_run_details;
 
-#define Natts_job_run_details 11
+#define Natts_job_run_details 10
 #define Anum_job_run_details_jobid 1
 #define Anum_job_run_details_runid 2
 #define Anum_job_run_details_job_pid 3
@@ -82,6 +82,5 @@ typedef FormData_job_run_details *Form_job_run_details;
 #define Anum_job_run_details_return_message 8
 #define Anum_job_run_details_start_time 9
 #define Anum_job_run_details_end_time 10
-#define Anum_job_run_details_nodename 11
 
 #endif /* CRON_JOB_H */

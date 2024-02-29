@@ -31,6 +31,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   protected Set<String> tableIdsToRemove;
   protected boolean isForced = false;
   protected DrConfigCreateForm.PitrParams pitrParams;
+  protected boolean isForceBootstrap = false;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -102,7 +103,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Map<String, String> sourceTableIdTargetTableIdMap,
-      boolean isForced) {
+      boolean isForced,
+      boolean isForceBootstrap) {
     this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
@@ -115,6 +117,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .filter(entry -> Objects.isNull(entry.getValue()))
             .map(Entry::getKey)
             .collect(Collectors.toSet());
+    this.isForceBootstrap = isForceBootstrap;
 
     // Todo: add support for accepting pitr params from the user for the transactional xCluster
     //  to make it consistent with the DR config api.

@@ -56,7 +56,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
+
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -70,9 +70,11 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h" // For ASSERT_OK
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -137,7 +139,7 @@ class AtomicCounter {
   void Increment() {
     MutexLock l(&mu_);
     count_++;
-    cond_count_.SignalAll();
+    YB_PROFILE(cond_count_.SignalAll());
   }
 
   int Read() {
@@ -166,7 +168,7 @@ class AtomicCounter {
   void Reset() {
     MutexLock l(&mu_);
     count_ = 0;
-    cond_count_.SignalAll();
+    YB_PROFILE(cond_count_.SignalAll());
   }
 
  private:

@@ -47,6 +47,7 @@ typedef enum InstrumentOption
  */
 typedef struct YbPgRpcStats {
 	double  count;			/* # of RPCs */
+	double  rows_scanned;	/* # of rows scanned by RPCs */
 	double	wait_time;		/* RPC wait time (ns) */
 } YbPgRpcStats;
 
@@ -64,6 +65,7 @@ typedef struct YbInstrumentation {
 	double               index_writes;
 	double               catalog_writes;
 
+	uint64_t             storage_metrics_version;
 	double               storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
 	double               storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
 	YbPgEventMetric      storage_event_metrics[YB_STORAGE_EVENT_COUNT];

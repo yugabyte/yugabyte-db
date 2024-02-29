@@ -60,6 +60,8 @@
 #include "yb/util/port_picker.h"
 #include "yb/util/tsan_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 namespace master {
@@ -344,19 +346,25 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline);
 
 Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
-Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline);
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout);
+
+Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down);
+    ForceStepDown force_step_down, MonoDelta timeout = 10s);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
@@ -403,8 +411,9 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
-Status WaitAllReplicasSynchronizedWithLeader(
-    MiniCluster* cluster, CoarseTimePoint deadline);
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
+
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);

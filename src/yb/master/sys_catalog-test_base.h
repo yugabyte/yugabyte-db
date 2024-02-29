@@ -243,7 +243,7 @@ class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
 
   Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
     // Setup the namespace info
-    NamespaceInfo* const ns = new NamespaceInfo(ns_id);
+    NamespaceInfo* const ns = new NamespaceInfo(ns_id, /*tasks_tracker=*/nullptr);
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();

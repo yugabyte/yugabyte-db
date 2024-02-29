@@ -230,19 +230,15 @@ public class CloudProviderApiController extends AuthenticatedController {
        */
       KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
       k8sInfo.setLegacyK8sProvider(false);
-      providerEbean =
-          Provider.create(
-              customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
-    } else {
-      providerEbean =
-          cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.getName(),
-              reqProvider,
-              validate,
-              ignoreValidationErrors);
     }
+    providerEbean =
+        cloudProviderHandler.createProvider(
+            customer,
+            providerCode,
+            reqProvider.getName(),
+            reqProvider,
+            validate,
+            ignoreValidationErrors);
 
     if (providerCode.isRequiresBootstrap()) {
       UUID taskUUID = null;
@@ -499,6 +495,33 @@ public class CloudProviderApiController extends AuthenticatedController {
       ((ObjectNode) requestBody).remove("sshPrivateKeyContent");
     }
     String providerCode = requestBody.get("code").asText();
+    if (providerCode.equals(CloudType.gcp.name())) {
+      // This is to keep the older API clients happy in case they still continue to use
+      // JSON object.
+      ObjectMapper mapper = Json.mapper();
+      ObjectNode details = (ObjectNode) requestBody.get("details");
+      if (details != null && details.has("cloudInfo")) {
+        ObjectNode cloudInfo = (ObjectNode) details.get("cloudInfo");
+        if (cloudInfo != null && cloudInfo.has("gcp")) {
+          ObjectNode gcpCloudInfo = (ObjectNode) cloudInfo.get("gcp");
+          try {
+            if (gcpCloudInfo != null
+                && gcpCloudInfo.has("gceApplicationCredentials")
+                && !(gcpCloudInfo.get("gceApplicationCredentials").isTextual())) {
+              gcpCloudInfo.put(
+                  "gceApplicationCredentials",
+                  mapper.writeValueAsString(gcpCloudInfo.get("gceApplicationCredentials")));
+            }
+          } catch (Exception e) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, "Failed to read GCP Service Account Credentials");
+          }
+          cloudInfo.set("gcp", gcpCloudInfo);
+          details.set("cloudInfo", cloudInfo);
+          ((ObjectNode) requestBody).set("details", details);
+        }
+      }
+    }
     ObjectMapper mapper = Json.mapper();
     JsonNode regions = requestBody.get("regions");
     ArrayNode regionsNode = mapper.createArrayNode();

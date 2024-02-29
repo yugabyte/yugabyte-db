@@ -1061,6 +1061,24 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_use_hash_splitting_by_default", PGC_USERSET, QUERY_TUNING_OTHER,
+			 gettext_noop("Enables hash splitting as the default method for primary "
+					   "key and index sorting in LSM indexes"),
+			 gettext_noop("When set to true, the default sorting for the first "
+					  "primary/index key column in LSM indexes is HASH, "
+					  "Setting this to false changes the default to ASC, "
+					  "making it compatible with standard PostgreSQL behavior. "
+					  "This setting is useful for optimizing query "
+					  "performance, especially for migrations from PostgreSQL "
+					  "or scenarios where index-based sorting and sharding "
+					  "behavior are critical."),
+
+	 },
+		&yb_use_hash_splitting_by_default,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If enabled, planner will force a preference of batched"
 						" nested loop join plans over classic nested loop"
@@ -2120,6 +2138,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"TEST_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable consumption of changes via replication slots. "
+						 "This feature is currently in active development and "
+						 "should not be enabled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE,
+		},
+		&yb_enable_replication_slot_consumption,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2190,6 +2221,22 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_table_rewrite_after_creation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_stay_in_global_catalog_version_mode", PGC_SUSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, this PG backend will stay in global "
+						 "catalog version mode. Used in testing to simulate "
+						 "a lagging PG backend during the finalization phase "
+						 "of cluster upgrade to a new release that has the "
+						 "per-database catalog version mode on by default."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_stay_in_global_catalog_version_mode,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2363,14 +2410,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, CUSTOM_OPTIONS,
+		/* YB: Not for general use */
+		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						"Ysql Connection Manager."),
 			NULL
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		NULL, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
 	},
 
 	{
@@ -2427,6 +2475,57 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_alter_table_rewrite,
 		true,
 		NULL, NULL, NULL
+	},
+
+	{
+		/* YB: Not for general use */
+		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+			gettext_noop("If set, the client connection will be authenticated via "
+						 "'yb-tserver-key' auth"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_tserver_key_auth,
+		false,
+		yb_use_tserver_key_auth_check_hook, NULL, NULL
+	},
+
+	{
+		{"yb_enable_saop_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported scalar array operations down "
+						 "to DocDB for evaluation."),
+			NULL
+		},
+		&yb_enable_saop_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_enable_infra", PGC_POSTMASTER, RESOURCES,
+			gettext_noop("Allocate shared memory for ASH, start the "
+							"background worker, create instrumentation hooks "
+							"and enable querying the yb_active_session_history "
+							"view."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ash_enable_infra,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_ash", PGC_SIGHUP, STATS_COLLECTOR,
+			gettext_noop("Starts sampling and instrumenting YSQL and YCQL queries, "
+						 "and various background activities. This does nothing if "
+						 "ysql_yb_ash_enable_infra is disabled."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ash,
+		false,
+		yb_enable_ash_check_hook, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -2571,6 +2670,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
+		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
+		 NULL
+		},
+		&yb_locks_txn_locks_per_tablet,
+		200, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -3874,10 +3983,9 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Size of the circular buffer that stores wait events"),
+			gettext_noop("Size (in KiBs) of ASH circular buffer that stores the samples"),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE |
-			GUC_DISALLOW_IN_FILE | GUC_UNIT_KB
+			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
 		16 * 1024, 0, INT_MAX,
@@ -3885,8 +3993,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sampling_interval", PGC_SUSET, STATS_MONITORING,
-			gettext_noop("Duration between each sample"),
+		{"yb_ash_sampling_interval", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
 			GUC_UNIT_MS
 		},
@@ -3896,8 +4004,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sample_size", PGC_SUSET, STATS_MONITORING,
-			gettext_noop("Number of wait events captured in each sample"),
+		{"yb_ash_sample_size", PGC_SIGHUP, STATS_MONITORING,
+			gettext_noop("Number of samples captured from each component per sampling event"),
 			NULL
 		},
 		&yb_ash_sample_size,
@@ -4584,7 +4692,7 @@ static struct config_string ConfigureNamesString[] =
 				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
 		},
 		&yb_read_time_string,
-		"0", 
+		"0",
 		check_yb_read_time, assign_yb_read_time, NULL
 	},
 
@@ -4933,7 +5041,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		NULL, NULL, NULL
+		check_yb_default_xact_isolation, NULL, NULL
 	},
 
 	{

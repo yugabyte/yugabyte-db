@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.HAConfigFormData;
+import com.yugabyte.yw.forms.HAConfigGetResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -27,6 +28,8 @@ import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.ApiOperation;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,8 +66,9 @@ public class HAController extends AuthenticatedController {
 
         return ApiResponse.error(BAD_REQUEST, "An HA Config already exists");
       }
-
-      HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
+      HighAvailabilityConfig config =
+          HighAvailabilityConfig.create(
+              formData.get().cluster_key, formData.get().accept_any_certificate);
       auditService()
           .createAuditEntryWithReqBody(
               request,
@@ -79,6 +83,10 @@ public class HAController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(
+      nickname = "getHAConfig",
+      value = "Get high availability config",
+      response = HAConfigGetResp.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -98,7 +106,8 @@ public class HAController extends AuthenticatedController {
         return Results.status(NOT_FOUND, jsonMsg);
       }
 
-      return PlatformResults.withData(config.get());
+      HAConfigGetResp resp = new HAConfigGetResp(config.get());
+      return PlatformResults.withData(resp);
     } catch (Exception e) {
       LOG.error("Error retrieving HA config", e);
 
@@ -124,8 +133,21 @@ public class HAController extends AuthenticatedController {
       Form<HAConfigFormData> formData =
           formFactory.getFormDataOrBadRequest(request, HAConfigFormData.class);
 
+      // Validate when changing from true to false
+      if (!formData.get().accept_any_certificate && config.get().getAcceptAnyCertificate()) {
+        List<PlatformInstance> remoteInstances = config.get().getRemoteInstances();
+        for (PlatformInstance follower : remoteInstances) {
+          if (!replicationManager.testConnection(
+              config.get(), follower.getAddress(), false /* acceptAnyCertificate */)) {
+            return ApiResponse.error(
+                INTERNAL_SERVER_ERROR,
+                "Error testing certificate connection to remote instance " + follower.getAddress());
+          }
+        }
+      }
       replicationManager.stop();
-      HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
+      HighAvailabilityConfig.update(
+          config.get(), formData.get().cluster_key, formData.get().accept_any_certificate);
       replicationManager.start();
       auditService()
           .createAuditEntryWithReqBody(

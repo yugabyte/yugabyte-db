@@ -16,6 +16,8 @@
 #include <memory>
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -33,17 +35,16 @@ class GetXClusterSafeTimeResponsePB;
 class SysXClusterConfigEntryPB;
 struct LeaderEpoch;
 
-// Map[NamespaceId]:xClusterSafeTime
-typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
-
 class XClusterManagerIf {
  public:
   virtual Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const = 0;
-  virtual Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) = 0;
+  virtual Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) = 0;
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap() const = 0;
   virtual Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) = 0;
+  virtual Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) = 0;
 
   virtual Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const = 0;
 

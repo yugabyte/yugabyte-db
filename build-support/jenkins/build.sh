@@ -457,6 +457,9 @@ java_build_failed=false
 if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
   set_mvn_parameters
 
+  # We need a truststore for the CA used in unit tests, only for Java tests, so we generate it here.
+  "${YB_SRC_ROOT}/build-support/generate_test_truststore.sh" "$BUILD_ROOT/test_certs"
+
   heading "Building Java code..."
   if [[ -n ${JAVA_HOME:-} ]]; then
     export PATH=${JAVA_HOME}/bin:${PATH}

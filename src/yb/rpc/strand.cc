@@ -61,15 +61,14 @@ void Strand::Enqueue(StrandTask* task) {
 }
 
 void Strand::Shutdown() {
-  bool expected = false;
-  if (!closing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-    LOG(DFATAL) << "Strand already closed";
-    return;
-  }
+  closing_ = true;
+  // We expected shutdown to happen rarely, so just use busy wait here.
+  BusyWait();
+}
 
+void Strand::BusyWait() {
   while (active_tasks_.load(std::memory_order_acquire) ||
          running_.load(std::memory_order_acquire)) {
-    // We expected shutdown to happen rarely, so just use busy wait here.
     std::this_thread::sleep_for(1ms);
   }
 }

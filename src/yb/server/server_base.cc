@@ -45,6 +45,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
@@ -120,6 +121,18 @@ METRIC_DEFINE_lag(server, server_uptime_ms,
                   "Server uptime",
                   "The amount of time a server has been up for.");
 
+METRIC_DEFINE_gauge_int64(server, server_memory_hard_limit,
+    "Server hard memory limit", yb::MetricUnit::kBytes,
+    "If the server has a hard memory limit, that in bytes, otherwise -1.");
+
+METRIC_DEFINE_gauge_int64(server, server_memory_soft_limit,
+    "Server soft memory limit", yb::MetricUnit::kBytes,
+    "If the server has a soft memory limit, that in bytes, otherwise -1.");
+
+METRIC_DEFINE_gauge_uint64(server, untracked_memory,
+    "Untracked memory", yb::MetricUnit::kBytes,
+    "The amount of memory not tracked by MemTracker");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -167,7 +180,7 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
 #if YB_TCMALLOC_ENABLED
 void RegisterTCMallocTracker(const char* name, const char* prop) {
   common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
-      -1, "TCMalloc "s + name, std::bind(&::yb::GetTCMallocProperty, prop)));
+      -1, kTCMallocTrackerNamePrefix + name, std::bind(&::yb::GetTCMallocProperty, prop)));
 }
 #endif
 
@@ -211,6 +224,9 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
           }
         });
   }
+
+  metric_entity_->NeverRetire(METRIC_untracked_memory.InstantiateFunctionGauge(metric_entity_,
+      Bind(&MemTracker::GetUntrackedMemory)));
 #endif  // YB_TCMALLOC_ENABLED
 
   if (clock) {
@@ -457,6 +473,14 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
+  auto root = MemTracker::GetRootTracker();
+  int64_t hard_limit = root->has_limit() ? root->limit() : -1;
+  int64_t soft_limit = root->has_limit() ? root->soft_limit() : -1;
+  server_hard_limit_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+      &METRIC_server_memory_hard_limit, static_cast<int64_t>(hard_limit));
+  server_soft_limit_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+      &METRIC_server_memory_soft_limit, static_cast<int64_t>(soft_limit));
+
   FsManagerOpts fs_opts;
   fs_opts.metric_registry = metric_registry_.get();
   fs_opts.parent_mem_tracker = mem_tracker_;

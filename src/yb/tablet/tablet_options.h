@@ -93,6 +93,7 @@ struct TabletInitData {
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;
+  rpc::Messenger* messenger = nullptr;
 };
 
 } // namespace tablet

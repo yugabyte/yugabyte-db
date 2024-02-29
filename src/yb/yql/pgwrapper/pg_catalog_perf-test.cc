@@ -90,9 +90,9 @@ struct MetricCounters {
 };
 
 struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 8> {
-  explicit MetricCountersDescriber(
-      std::reference_wrapper<const MetricEntity::MetricMap> master_metric,
-      std::reference_wrapper<const MetricEntity::MetricMap> tserver_metric)
+  MetricCountersDescriber(
+      std::reference_wrapper<const MetricEntity> master_metric,
+      std::reference_wrapper<const MetricEntity> tserver_metric)
       : descriptors{
           Descriptor{
               &delta.master_read_rpc, master_metric,
@@ -143,8 +143,8 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     PgMiniTestBase::SetUp();
-    metrics_.emplace(GetMetricMap(*cluster_->mini_master()->master()),
-                     GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
+    metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
+                     *cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
   size_t NumTabletServers() override {

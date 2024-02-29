@@ -11972,6 +11972,18 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
+	if (IsYugaByteEnabled() && tablespacename && 
+		rel->rd_index &&
+		rel->rd_index->indisprimary) {
+		/*
+		 * Disable setting tablespaces for primary key indexes in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespace for primary key index")));
+	}
+
 	/* Check that the tablespace exists */
 	tablespaceId = get_tablespace_oid(tablespacename, false);
 
@@ -12409,6 +12421,11 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		return;
 	}
 
+	if (YbGetTableProperties(rel)->is_colocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move colocated table to a different tablespace")));
+
 	if (IsYBRelation(rel)) {
 		Datum *options;
 		int num_options;
@@ -12447,6 +12464,14 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
+
+	/* Notify the user that this command is async */
+	ereport(NOTICE,
+			(errmsg("Data movement for table %s is successfully initiated.", 
+					RelationGetRelationName(rel)),
+			 errdetail("Data movement is a long running asynchronous process "
+					   "and can be monitored by checking the tablet placement "
+					   "in http://<YB-Master-host>:7000/tables")));
 }
 
 /*
@@ -17239,28 +17264,15 @@ YbATGetRenameStmt(const char *namespace_name, const char *current_name,
 }
 
 static bool
-YbATIsRangePk(SortByDir ordering, bool is_colocated)
+YbATIsRangePk(IndexStmt *stmt, bool is_colocated, bool is_tablegroup)
 {
-	switch (ordering)
-	{
-		case SORTBY_HASH:
-			return false;
-		case SORTBY_ASC:
-		case SORTBY_DESC:
-			return true;
-		case SORTBY_DEFAULT:
-			/*
-			 * Default ordering for the first PK element is hash in
-			 * non-colocated case.
-			 */
-			return is_colocated;
-		case SORTBY_USING:
-			elog(ERROR, "USING is not allowed in primary key");
-		default:
-			elog(ERROR, "Invalid ordering for primary key: %d", ordering);
-	}
+	SortByDir yb_ordering =
+		YbSortOrdering(linitial_node(IndexElem, stmt->indexParams)->ordering,
+					   is_colocated, is_tablegroup, true /* is_first_key */);
 
-	/* This should never be reached. */
+	if (yb_ordering == SORTBY_ASC || yb_ordering == SORTBY_DESC)
+		return true;
+
 	return false;
 }
 
@@ -18581,8 +18593,8 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 
 	if (stmt)
 		is_range_pk = YbATIsRangePk(
-			lfirst_node(IndexElem, stmt->indexParams->head)->ordering,
-			old_rel->yb_table_properties->is_colocated);
+			stmt, old_rel->yb_table_properties->is_colocated,
+			OidIsValid(old_rel->yb_table_properties->tablegroup_oid));
 
 	/*
 	 * Prepare a statement to clone the old relation. Do not clang-format this

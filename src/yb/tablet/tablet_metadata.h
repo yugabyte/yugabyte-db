@@ -625,6 +625,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
 
+  // Methods for handling clone requests that this tablet has applied.
+  void MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no);
+  bool HasAttemptedClone(uint32_t clone_request_seq_no);
+  uint32_t LastAttemptedCloneSeqNo();
+
   bool has_active_restoration() const;
 
   void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
@@ -793,6 +798,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
+
+  uint32_t last_attempted_clone_seq_no_ GUARDED_BY(data_mutex_) = 0;
 
   // No thread safety annotations on log_prefix_ because it is a constant after the object is
   // fully created. Check the comment on raft_group_id_ for more info.

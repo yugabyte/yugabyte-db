@@ -27,7 +27,7 @@ column         foo            {STRONG_READ,STRONG_WRITE}t              f        
 column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                           2              11             f
 step s1_commit: COMMIT;
 step s2_insert: <... completed>
-error in steps s1_commit s2_insert: ERROR:  duplicate key value violates unique constraint "foo_pkey"
+error in steps s1_commit s2_insert: ERROR:  All transparent retries exhausted. could not serialize access due to concurrent update
 step s2_abort: ABORT;
 
 starting permutation: s1_insert s2_begin s2_insert s1_lock_status_blockers s1_commit s2_abort
@@ -48,5 +48,5 @@ query
 
 step s1_commit: COMMIT;
 step s2_insert: <... completed>
-error in steps s1_commit s2_insert: ERROR:  duplicate key value violates unique constraint "foo_pkey"
+error in steps s1_commit s2_insert: ERROR:  All transparent retries exhausted. could not serialize access due to concurrent update
 step s2_abort: ABORT;

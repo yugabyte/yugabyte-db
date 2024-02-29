@@ -235,6 +235,10 @@ public class DrConfig extends Model {
         .collect(Collectors.toList());
   }
 
+  public static List<DrConfig> getAll() {
+    return find.query().findList();
+  }
+
   public static List<DrConfig> getBetweenUniverses(
       UUID sourceUniverseUuid, UUID targetUniverseUuid) {
     List<XClusterConfig> xClusterConfigs =
@@ -266,5 +270,10 @@ public class DrConfig extends Model {
     backupRequestParams.parallelism = this.parallelism;
     bootstrapParams.backupRequestParams = backupRequestParams;
     return bootstrapParams;
+  }
+
+  @JsonIgnore
+  public boolean isHalted() {
+    return state == State.Halted;
   }
 }

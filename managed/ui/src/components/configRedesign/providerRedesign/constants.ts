@@ -6,7 +6,7 @@ export const CONFIG_ROUTE_PREFIX = 'config';
 export const ConfigTabKey = {
   INFRA: 'infra',
   BACKUP: 'backup',
-  BACKUP_NEW: 'backupNew',
+  BACKUP_NEW: 'newBackupConfig',
   SECURITY: 'security'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
@@ -213,7 +213,7 @@ export const KubernetesProviderLabel = {
 export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.MANAGED_SERVICE]: 'Managed Kubernetes Service',
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
-  [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
+  [KubernetesProviderType.TANZU]: 'VMware Tanzu'
 } as const;
 
 export const RegionOperationLabel = {

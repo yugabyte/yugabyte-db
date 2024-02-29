@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -135,6 +136,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private UUID addReadReplica() {
@@ -902,9 +904,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
+
     assertThat(
-        thrown.getMessage(),
-        containsString("No changes in gflags (modify specificGflags in cluster)"));
+        thrown.getMessage(), containsString(GFlagsUpgradeParams.SPECIFIC_GFLAGS_NO_CHANGES_ERROR));
   }
 
   @Test

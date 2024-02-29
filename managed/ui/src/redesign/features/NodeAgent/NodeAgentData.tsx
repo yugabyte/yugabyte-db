@@ -1,14 +1,21 @@
-import React, { FC } from 'react';
+import { FC, useState } from 'react';
+import { DropdownButton, MenuItem, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { Box, makeStyles, Tooltip } from '@material-ui/core';
+import { Box, makeStyles } from '@material-ui/core';
+import { DeleteNodeAgent } from './DeleteNodeAgent';
 import { NodeAgentStatus } from './NodeAgentStatus';
 import { YBPanelItem } from '../../../components/panels';
 import { calculateDuration } from '../../../components/backupv2/common/BackupUtils';
+import { OnPremProvider } from '../../../components/configRedesign/providerRedesign/types';
 import { NodeAgentEntities } from '../../utils/dtos';
 import VersionMisatch from '../../assets/version-mismatch.svg';
 
 const useStyles = makeStyles((theme) => ({
+  selectBox: {
+    minWidth: '150px'
+  },
   columnName: {
     fontWeight: 700,
     fontSize: theme.spacing(1.5),
@@ -57,6 +64,9 @@ const useStyles = makeStyles((theme) => ({
     border: '1px solid #E5E5E9',
     borderRadius: theme.spacing(0.5),
     background: '#FFFFFF'
+  },
+  actionsDropdown: {
+    marginTop: '-12px'
   }
 }));
 
@@ -64,14 +74,21 @@ interface NodeAgentDataProps {
   isAssignedNodes: boolean;
   nodeAgentData: NodeAgentEntities[];
   isNodeAgentDebugPage?: boolean;
+  onNodeAgentDeleted?: () => void;
 }
 
 export const NodeAgentData: FC<NodeAgentDataProps> = ({
   isAssignedNodes,
   nodeAgentData,
-  isNodeAgentDebugPage = true
+  isNodeAgentDebugPage = true,
+  onNodeAgentDeleted
 }) => {
   const helperClasses = useStyles();
+  const { t } = useTranslation();
+  const providers = useSelector((state: any) => state.cloud.providers.data);
+  const [openNodeAgentDialog, setOpenNodeAgentDialog] = useState<boolean>(false);
+  const [nodeAgentUuid, setNodeAgentUuid] = useState<string>('');
+  const [providerName, setProviderName] = useState<string>('');
   const ybaVersionResponse = useSelector((state: any) => state.customer.yugawareVersion);
   const ybaVersion = ybaVersionResponse.data.version;
 
@@ -109,84 +126,134 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
     return <span>{diffTime}</span>;
   };
 
-  return (
-    <YBPanelItem
-      body={
-        <BootstrapTable
-          data={nodeAgentData}
-          pagination={nodeAgentData.length > 10}
-          containerClass={helperClasses.nodeAgentStatusTable}
+  const formatActionButtons = (cell: any, row: any) => {
+    const providerUuid = row.providerUuid;
+    const matchingProvider = providers?.find(
+      (provider: OnPremProvider) => provider.uuid === providerUuid
+    );
+    const skipProvisioning = !!matchingProvider?.details.skipProvisioning;
+
+    return (
+      <DropdownButton
+        className={helperClasses.actionsDropdown}
+        title="Actions"
+        disabled={!skipProvisioning}
+        id="runtime-config-nested-dropdown middle-aligned-table"
+        pullRight
+      >
+        <MenuItem
+          onClick={() => {
+            openDeleteDialog(row);
+          }}
         >
-          <TableHeaderColumn dataField="nodeAgentID" isKey={true} hidden={true} />
-          <TableHeaderColumn
-            width="15%"
-            className={'middle-aligned-table'}
-            columnClassName={'yb-table-cell yb-table-cell-align'}
-            dataField={'name'}
-            dataSort
-          >
-            <span className={helperClasses.columnName}>{'Node Name'}</span>
-          </TableHeaderColumn>
+          {t('nodeAgent.delete')}
+        </MenuItem>
+      </DropdownButton>
+    );
+  };
 
-          {isAssignedNodes && isNodeAgentDebugPage && (
+  const openDeleteDialog = (row: any) => {
+    setProviderName(row.providerName);
+    setNodeAgentUuid(row.uuid);
+    setOpenNodeAgentDialog(true);
+  };
+
+  return (
+    <Box>
+      <YBPanelItem
+        body={
+          <BootstrapTable
+            data={nodeAgentData}
+            pagination={nodeAgentData.length > 10}
+            containerClass={helperClasses.nodeAgentStatusTable}
+          >
+            <TableHeaderColumn dataField="nodeAgentID" isKey={true} hidden={true} />
             <TableHeaderColumn
               width="15%"
               className={'middle-aligned-table'}
               columnClassName={'yb-table-cell yb-table-cell-align'}
-              dataField={'universeName'}
+              dataField={'name'}
               dataSort
             >
-              <span className={helperClasses.columnName}>{'Universe Name'}</span>
+              <span className={helperClasses.columnName}>{'Node Name'}</span>
             </TableHeaderColumn>
-          )}
 
-          {!isAssignedNodes && isNodeAgentDebugPage && (
+            {isAssignedNodes && isNodeAgentDebugPage && (
+              <TableHeaderColumn
+                width="15%"
+                className={'middle-aligned-table'}
+                columnClassName={'yb-table-cell yb-table-cell-align'}
+                dataField={'universeName'}
+                dataSort
+              >
+                <span className={helperClasses.columnName}>{'Universe Name'}</span>
+              </TableHeaderColumn>
+            )}
+
+            {!isAssignedNodes && isNodeAgentDebugPage && (
+              <TableHeaderColumn
+                width="15%"
+                className={'middle-aligned-table'}
+                columnClassName={'yb-table-cell yb-table-cell-align'}
+                dataField={'providerName'}
+                dataSort
+              >
+                <span className={helperClasses.columnName}>{'Provider Name'}</span>
+              </TableHeaderColumn>
+            )}
+
+            <TableHeaderColumn
+              dataField={'ip'}
+              width="10%"
+              columnClassName={'yb-table-cell yb-table-cell-align'}
+              dataSort
+            >
+              <span className={helperClasses.columnName}>{'Agent Address'}</span>
+            </TableHeaderColumn>
             <TableHeaderColumn
               width="15%"
-              className={'middle-aligned-table'}
+              dataFormat={formatUpdatedAt}
               columnClassName={'yb-table-cell yb-table-cell-align'}
-              dataField={'providerName'}
-              dataSort
             >
-              <span className={helperClasses.columnName}>{'Provider Name'}</span>
+              <span className={helperClasses.columnName}>{'Time since heartbeat'}</span>
             </TableHeaderColumn>
-          )}
-
-          <TableHeaderColumn
-            dataField={'ip'}
-            width="10%"
-            columnClassName={'yb-table-cell yb-table-cell-align'}
-            dataSort
-          >
-            <span className={helperClasses.columnName}>{'Agent Address'}</span>
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            width="15%"
-            dataFormat={formatUpdatedAt}
-            columnClassName={'yb-table-cell yb-table-cell-align'}
-            dataSort
-          >
-            <span className={helperClasses.columnName}>{'Time since heartbeat'}</span>
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            dataFormat={formatState}
-            width="10%"
-            columnClassName={'yb-table-cell yb-table-cell-align'}
-            dataSort
-          >
-            <span className={helperClasses.columnName}>{'Agent Status'}</span>
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            width="15%"
-            dataFormat={formatVersion}
-            columnClassName={'yb-table-cell yb-table-cell-align'}
-            dataSort
-          >
-            <span className={helperClasses.columnName}>{'Version'}</span>
-          </TableHeaderColumn>
-        </BootstrapTable>
-      }
-      noBackground
-    />
+            <TableHeaderColumn
+              dataFormat={formatState}
+              width="10%"
+              columnClassName={'yb-table-cell yb-table-cell-align'}
+            >
+              <span className={helperClasses.columnName}>{'Agent Status'}</span>
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              width="15%"
+              dataFormat={formatVersion}
+              columnClassName={'yb-table-cell yb-table-cell-align'}
+            >
+              <span className={helperClasses.columnName}>{'Version'}</span>
+            </TableHeaderColumn>
+            {!isAssignedNodes && (
+              <TableHeaderColumn
+                dataField={'actions'}
+                columnClassName={'yb-actions-cell'}
+                width="10%"
+                dataFormat={formatActionButtons}
+              >
+                <span className={helperClasses.columnName}>{'Actions'}</span>
+              </TableHeaderColumn>
+            )}
+          </BootstrapTable>
+        }
+        noBackground
+      />
+      {openNodeAgentDialog && (
+        <DeleteNodeAgent
+          openNodeAgentDialog={openNodeAgentDialog}
+          providerName={providerName}
+          nodeAgentUUID={nodeAgentUuid}
+          onNodeAgentDeleted={onNodeAgentDeleted}
+          onClose={() => setOpenNodeAgentDialog(false)}
+        />
+      )}
+    </Box>
   );
 };

@@ -156,7 +156,7 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
                 {region_and_zone.zone}
             </Typography>
         </Box>
-        {region_and_zone.preference !== undefined &&
+        {region_and_zone.preference !== undefined && region_and_zone.preference !== -1 &&
             <YBTextBadge>
                 {t('clusterDetail.nodes.preference', { preference: region_and_zone.preference })}
             </YBTextBadge>
@@ -164,6 +164,8 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
     </Box>
     );
 }
+
+const NODE_COLUMNS_LS_KEY = "node-columns";
 
 export const NodesTab: FC = () => {
   const classes = useStyles();
@@ -196,8 +198,8 @@ export const NodesTab: FC = () => {
     });
   };
 
-  // Get nodes
-  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes();
+  // Get nodes, including master-only nodes
+  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes(true);
   // address of a live tserver
   const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
   const { data: gflagsResponse, isFetching: fetchingGflags, refetch: refetchGflags }
@@ -229,7 +231,11 @@ export const NodesTab: FC = () => {
       read_ops: true,
       write_ops: true,
       ...((isConnMgrEnabled)
-          ? {active_logical_connections: false, active_physical_connections: false}
+          ? {
+              active_logical_connections: false,
+              active_physical_connections: false,
+              active_connections_ycql: false
+            }
           : {active_connections: false}),
       number_of_tablets: true,
       peer_tablets: true,
@@ -248,7 +254,10 @@ export const NodesTab: FC = () => {
       master_tserver_status: false,
       master_tserver_uptime: false
   };
-  const [columns, setColumns] = useState(defaultValues);
+  const [columns, setColumns] = useState({
+    ...defaultValues,
+    ...(JSON.parse(localStorage.getItem(NODE_COLUMNS_LS_KEY)!) || {})
+  });
   const { control, handleSubmit, reset, setValue, getValues } = useForm({
     mode: 'onChange',
     defaultValues: columns
@@ -260,6 +269,7 @@ export const NodesTab: FC = () => {
   };
   const applyColumnChanges = handleSubmit((formData) => {
     setColumns(formData);
+    localStorage.setItem(NODE_COLUMNS_LS_KEY, JSON.stringify(formData));
     closeQueryOptionsModal();
   });
 
@@ -323,7 +333,8 @@ export const NodesTab: FC = () => {
                  ? [connectionsResponse?.data?.[node.host]
                         ?.reduce((sum, pool) => sum + pool.active_logical_connections, 0) ?? 0,
                     connectionsResponse?.data?.[node.host]
-                        ?.reduce((sum, pool) => sum + pool.active_physical_connections, 0) ?? 0]
+                        ?.reduce((sum, pool) => sum + pool.active_physical_connections, 0) ?? 0,
+                    node.metrics.active_connections.ycql]
                  : [node.metrics.active_connections.ysql + node.metrics.active_connections.ycql])],
         node_status_column:
             [node.is_node_up ? node.metrics.uptime_seconds : -1,
@@ -337,6 +348,7 @@ export const NodesTab: FC = () => {
             {
                 tserver: node.is_node_up,
                 master: node.is_master_up,
+                is_tserver: node.is_tserver,
                 is_master: node.is_master
             },
             {
@@ -346,6 +358,7 @@ export const NodesTab: FC = () => {
                 master: node.is_master_up && node.metrics
                   ? node.metrics.master_uptime_us
                   : -1,
+                is_tserver: node.is_tserver,
                 is_master: node.is_master
             }
         ]
@@ -432,7 +445,8 @@ export const NodesTab: FC = () => {
         options: {
           filter: true,
           display: columns.read_ops || columns.write_ops || columns.active_connections ||
-                   columns.active_logical_connections || columns.active_physical_connections
+                   columns.active_logical_connections || columns.active_physical_connections ||
+                   columns.active_connections_ycql
         },
         subColumns: [
           {
@@ -462,22 +476,34 @@ export const NodesTab: FC = () => {
               ? [
                     {
                         name: 'active_logical_connections',
-                        label: t('clusterDetail.nodes.activeLogicalConnections'),
+                        label: t('clusterDetail.nodes.activeLogicalConnectionsYsql'),
                         options: {
                             filter: true,
                             display: columns.active_logical_connections,
-                            setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
+                            setCellProps: () => ({ style: { width: '260px', padding: '0 32px' } }),
                             setCellHeaderProps: () => ({
-                                style: { width: '220px', padding: '8px 32px' }
+                                style: { width: '260px', padding: '8px 32px' }
                             })
                         }
                     },
                     {
                         name: 'active_physical_connections',
-                        label: t('clusterDetail.nodes.activePhysicalConnections'),
+                        label: t('clusterDetail.nodes.activePhysicalConnectionsYsql'),
                         options: {
                             filter: true,
                             display: columns.active_physical_connections,
+                            setCellProps: () => ({ style: { width: '260px', padding: '0 32px' } }),
+                            setCellHeaderProps: () => ({
+                                style: { width: '260px', padding: '8px 32px' }
+                            })
+                        }
+                    },
+                    {
+                        name: 'active_connections_ycql',
+                        label: t('clusterDetail.nodes.activeConnectionsYcql'),
+                        options: {
+                            filter: true,
+                            display: columns.active_connections_ycql,
                             setCellProps: () => ({ style: { width: '220px', padding: '0 32px' } }),
                             setCellHeaderProps: () => ({
                                 style: { width: '220px', padding: '8px 32px' }
@@ -712,12 +738,12 @@ export const NodesTab: FC = () => {
             if (index == 0) {
                 return (
                     <>
-                        <div style={{ 'margin': '6px 0' }}>
+                        {value.is_tserver && <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.tserver ? StateEnum.Succeeded : StateEnum.Failed}
                                 entity={StatusEntity.Tserver}
                             />
-                        </div>
+                        </div>}
                         {value.is_master && <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.master ? StateEnum.Succeeded : StateEnum.Failed}
@@ -729,12 +755,12 @@ export const NodesTab: FC = () => {
             } else if (index == 1) {
                 return (
                     <>
-                        <div style={{ 'margin': '8px 0' }}>
+                        {value.is_tserver && <div style={{ 'margin': '8px 0' }}>
                             {value.tserver >= 0
                                 ? getHumanInterval(new Date(0).toString(),
                                     new Date(value.tserver * 1000).toString())
                                 : '-'}
-                        </div>
+                        </div>}
                         {value.is_master && <div style={{ 'margin': '12px 0 8px 0' }}>
                             {value.master >= 0
                                 ? getHumanInterval(new Date(0).toString(),
@@ -757,7 +783,11 @@ export const NodesTab: FC = () => {
     read_ops: 'performance',
     write_ops: 'performance',
     ...((isConnMgrEnabled)
-        ? {active_logical_connections: 'performance', active_physical_connections: 'performance'}
+        ? {
+            active_logical_connections: 'performance',
+            active_physical_connections: 'performance',
+            active_connections_ycql: 'performance'
+          }
         : {active_connections: 'performance'}),
     ram_used: 'memory',
     ram_provisioned: 'memory',
@@ -803,11 +833,15 @@ export const NodesTab: FC = () => {
                 ? [
                     {
                         name: 'active_logical_connections',
-                        label: t('clusterDetail.nodes.activeLogicalConnections')
+                        label: t('clusterDetail.nodes.activeLogicalConnectionsYsql')
                     },
                     {
                         name: 'active_physical_connections',
-                        label: t('clusterDetail.nodes.activePhysicalConnections')
+                        label: t('clusterDetail.nodes.activePhysicalConnectionsYsql')
+                    },
+                    {
+                        name: 'active_connections_ycql',
+                        label: t('clusterDetail.nodes.activeConnectionsYcql')
                     }
                   ]
                 : [

@@ -27,6 +27,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
 import com.amazonaws.services.ec2.model.Image;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -413,7 +414,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testModifyGCPProviderCredentials() throws InterruptedException {
+  public void testModifyGCPProviderCredentials()
+      throws InterruptedException, JsonProcessingException {
+    ObjectMapper mapper = Json.mapper();
     Provider gcpProvider =
         Provider.create(
             defaultCustomer.getUuid(), Common.CloudType.gcp, "test", new ProviderDetails());
@@ -422,19 +425,23 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     GCPCloudInfo gcp = new GCPCloudInfo();
     gcpProvider.getDetails().getCloudInfo().setGcp(gcp);
     gcp.setGceProject("gce_proj");
-    gcp.setGceApplicationCredentials(Json.newObject().put("GCE_EMAIL", "test@yugabyte.com"));
+    JsonNode gceAppicationCredentials = Json.newObject().put("GCE_EMAIL", "test@yugabyte.com");
+    gcp.setGceApplicationCredentials(mapper.writeValueAsString(gceAppicationCredentials));
     gcpProvider.save();
-    ((ObjectNode) gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
-        .put("client_id", "Client ID");
+    ((ObjectNode) gceAppicationCredentials).put("client_id", "Client ID");
+    gcpProvider
+        .getDetails()
+        .getCloudInfo()
+        .getGcp()
+        .setGceApplicationCredentials(mapper.writeValueAsString(gceAppicationCredentials));
     UUID taskUUID = doEditProvider(gcpProvider, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     gcpProvider = Provider.getOrBadRequest(gcpProvider.getUuid());
-    assertEquals(
-        "Client ID",
-        ((ObjectNode)
-                gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
-            .get("client_id")
-            .textValue());
+    JsonNode creds =
+        mapper.readTree(
+            gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials());
+
+    assertEquals("Client ID", creds.get("client_id").asText());
   }
 
   @Test
@@ -479,7 +486,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertNotNull(provider.getLastValidationErrors());
     assertEquals(
         Json.parse("[\"AMI details extraction failed: Not found\"]"),
-        provider.getLastValidationErrors().get("error").get("data.REGION.us-west-1.IMAGE"));
+        provider.getLastValidationErrors().get("error").get("REGION.us-west-1.IMAGE"));
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
     assertEquals("new name", provider.getName());
   }
@@ -798,9 +805,11 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     ImageBundle ib = new ImageBundle();
     ib.setName("ib-2");
     ib.setProvider(p);
+    ib.setUseAsDefault(true);
     ib.setDetails(details);
 
     List<ImageBundle> ibs = p.getImageBundles();
+    ibs.get(0).setUseAsDefault(false);
     ibs.add(ib);
     p.setImageBundles(ibs);
     UUID taskUUID = doEditProvider(p, false);
@@ -809,6 +818,15 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(2, p.getImageBundles().size());
+    p.getImageBundles()
+        .forEach(
+            bundle -> {
+              if (bundle.getName().equals("ib-1")) {
+                assertEquals(false, bundle.getUseAsDefault());
+              } else {
+                assertEquals(true, bundle.getUseAsDefault());
+              }
+            });
   }
 
   @Test

@@ -760,7 +760,8 @@ public class UniverseTest extends FakeDBApplication {
                   NodeActionType.REMOVE,
                   NodeActionType.QUERY,
                   NodeActionType.REBOOT,
-                  NodeActionType.HARD_REBOOT),
+                  NodeActionType.HARD_REBOOT,
+                  NodeActionType.REPLACE),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           assertEquals(

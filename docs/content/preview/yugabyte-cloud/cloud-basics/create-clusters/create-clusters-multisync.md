@@ -133,5 +133,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../develop/build-apps/)
+- [Build an application](../../../../tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters)

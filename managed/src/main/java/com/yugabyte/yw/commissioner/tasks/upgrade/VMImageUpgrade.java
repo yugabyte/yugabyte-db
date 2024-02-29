@@ -73,12 +73,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
-    return SubTaskGroupType.Invalid;
+    return SubTaskGroupType.OSPatching;
   }
 
   @Override
   public NodeState getNodeState() {
-    return null;
+    return NodeState.Reprovisioning;
   }
 
   @Override
@@ -99,9 +99,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   @Override
@@ -142,15 +140,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
+    UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
       Integer sshPortOverride = null;
-      if (taskParams().imageBundleUUID != null) {
+      imageBundleUUID = null;
+      if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
+        imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
         ImageBundle.NodeProperties toOverwriteNodeProperties =
             imageBundleUtil.getNodePropertiesOrFail(
-                taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+                imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
         machineImage = toOverwriteNodeProperties.getMachineImage();
         sshUserOverride = toOverwriteNodeProperties.getSshUser();
         sshPortOverride = toOverwriteNodeProperties.getSshPort();
@@ -183,7 +184,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           processType ->
               createServerControlTask(
                       node, processType, "stop", params -> params.isIgnoreError = true)
-                  .setSubTaskGroupType(getTaskSubGroupType()));
+                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
       node.machineImage = machineImage;
@@ -216,11 +217,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       processTypes.forEach(
           processType -> {
             if (processType.equals(ServerType.CONTROLLER)) {
-              createStartYbcTasks(Arrays.asList(node)).setSubTaskGroupType(getTaskSubGroupType());
+              createStartYbcTasks(Arrays.asList(node))
+                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
               // Wait for yb-controller to be responsive on each node.
               createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
             } else {
               // Todo: remove the following subtask.
               // We have an issue where the tserver gets running once the VM with the new image is
@@ -235,34 +237,35 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   taskParams().vmUpgradeTaskType,
                   false /*ignoreUseCustomImageConfig*/);
               createServerControlTask(node, processType, "start")
-                  .setSubTaskGroupType(getTaskSubGroupType());
+                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               createWaitForServersTasks(new HashSet<>(nodeList), processType);
               createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-                  .setSubTaskGroupType(getTaskSubGroupType());
+                  .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
                   && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
-                createSetActiveUniverseKeysTask().setSubTaskGroupType(getTaskSubGroupType());
+                createSetActiveUniverseKeysTask()
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               }
             }
           });
 
       createWaitForKeyInMemoryTask(node);
-      if (taskParams().imageBundleUUID != null) {
+      if (imageBundleUUID != null) {
         if (!clusterToImageBundleMap.containsKey(node.placementUuid)) {
-          clusterToImageBundleMap.put(node.placementUuid, taskParams().imageBundleUUID);
+          clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
         }
       }
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
-          .setSubTaskGroupType(getTaskSubGroupType());
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent
     if (!clusterToImageBundleMap.isEmpty()) {
       clusterToImageBundleMap.forEach(
-          (clusterUUID, imageBundleUUID) -> {
-            createClusterUserIntentUpdateTask(clusterUUID, imageBundleUUID)
-                .setSubTaskGroupType(getTaskSubGroupType());
+          (clusterUUID, bundleUUID) -> {
+            createClusterUserIntentUpdateTask(clusterUUID, bundleUUID)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
           });
     }
     // Delete after all the disks are replaced.
@@ -280,10 +283,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           NodeDetails node = value.get(0);
           UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
           String updatedMachineImage = "";
-          if (taskParams().imageBundleUUID != null) {
+          if (taskParams().imageBundles != null && taskParams().imageBundles.size() > 0) {
+            UUID imageBundleUUID = retrieveImageBundleUUID(taskParams().imageBundles, node);
             ImageBundle.NodeProperties toOverwriteNodeProperties =
                 imageBundleUtil.getNodePropertiesOrFail(
-                    taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+                    imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
             updatedMachineImage = toOverwriteNodeProperties.getMachineImage();
           } else {
             // Backward compatiblity.
@@ -345,5 +349,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private UUID retrieveImageBundleUUID(
+      List<VMImageUpgradeParams.ImageBundleUpgradeInfo> imageBundles, NodeDetails node) {
+    return imageBundles.stream()
+        .filter(info -> info.getClusterUuid().equals(node.placementUuid))
+        .findFirst()
+        .map(VMImageUpgradeParams.ImageBundleUpgradeInfo::getImageBundleUuid)
+        .orElse(null);
   }
 }

@@ -3,10 +3,8 @@ package helpers
 import (
     "context"
     "fmt"
-    "io/ioutil"
-    "net/http"
+    "net/url"
     "regexp"
-    "time"
 
     "github.com/jackc/pgx/v4/pgxpool"
 )
@@ -107,19 +105,11 @@ func (h *HelperContainer) GetCompletedIndexBackFillInfo() IndexBackFillInfoFutur
         IndexBackFillInfo: []map[string]interface{}{},
         Error:             nil,
     }
-
-    httpClient := &http.Client{
-        Timeout: time.Second * 10,
-    }
-    url := fmt.Sprintf("http://%s:%s/tasks", HOST, MasterUIPort)
-    resp, err := httpClient.Get(url)
-    if err != nil {
-        completedIndexBackFillInfoFuture.Error = err
-        return completedIndexBackFillInfoFuture
-    }
-    defer resp.Body.Close()
-
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "tasks", // path
+        url.Values{}, // params
+        false, // expectJson
+    )
     if err != nil {
         completedIndexBackFillInfoFuture.Error = err
         return completedIndexBackFillInfoFuture

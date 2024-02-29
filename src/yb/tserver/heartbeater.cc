@@ -77,6 +77,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
@@ -86,9 +87,9 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -400,12 +401,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
         google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
     auto* resources = req.mutable_registration()->mutable_resources();
     resources->set_core_count(base::NumCPUs());
-    auto tracker =
-        server_->tablet_manager()->tablet_memory_manager()->tablets_overhead_mem_tracker();
-    // Only set the tablet overhead limit if the tablet overheads memory tracker exists and has a
-    // limit set.  The flag to set the memory tracker's limit is tablet_overhead_size_percentage.
-    if (tracker && tracker->has_limit()) {
-      resources->set_tablet_overhead_ram_in_bytes(tracker->limit());
+    int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
+    if (tablet_overhead_limit > 0) {
+      resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
     }
   }
 
@@ -430,9 +428,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
-  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
-  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
-  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -741,7 +736,7 @@ Status Heartbeater::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
 
   rpcs_.Shutdown();
@@ -754,7 +749,7 @@ Status Heartbeater::Thread::Stop() {
 void Heartbeater::Thread::TriggerASAP() {
   MutexLock l(mutex_);
   heartbeat_asap_ = true;
-  cond_.Signal();
+  YB_PROFILE(cond_.Signal());
 }
 
 

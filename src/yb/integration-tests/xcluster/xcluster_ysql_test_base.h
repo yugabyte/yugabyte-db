@@ -22,6 +22,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
  public:
   void SetUp() override;
   Status InitClusters(const MiniClusterOptions& opts) override;
+
+  Status SetUpWithParams(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters = 1, const bool ranged_partitioned = false);
+
   Status InitProducerClusterOnly(const MiniClusterOptions& opts);
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1);
 
@@ -109,6 +115,11 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status WriteWorkload(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
+
+  Status CheckpointReplicationGroup();
+  Status CreateReplicationFromCheckpoint();
+  Result<bool> IsCreateXClusterReplicationDone();
+  Status WaitForCreateReplicationToFinish();
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

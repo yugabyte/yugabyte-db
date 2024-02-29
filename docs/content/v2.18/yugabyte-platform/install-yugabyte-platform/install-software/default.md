@@ -109,7 +109,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview">}}/yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.18">}}/yugaware-{{<yb-version version="v2.18" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:
@@ -195,6 +195,8 @@ Under **Application config**, specify TLS versions as shown in the following ill
 ![Application Config](/images/replicated/application-config-tls.png)
 
 The recommended TLS version is 1.2.
+
+Optionally, you can specify a Support Origin URL to provide an alternate hostname or IP address to whitelist for the CORS filter. For example, for a load balancer.
 
 ## Set up HTTP/HTTPS proxy
 

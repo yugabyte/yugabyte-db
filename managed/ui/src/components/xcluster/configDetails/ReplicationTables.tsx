@@ -6,6 +6,8 @@ import { find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { AxiosError } from 'axios';
+import moment from 'moment';
+import { Box, useTheme } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
@@ -13,19 +15,27 @@ import {
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes
 } from '../../../actions/xClusterReplication';
-import { formatSchemaName } from '../../../utils/Formatters';
+import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import {
-  formatBytes,
-  CurrentTableReplicationLag,
-  augmentTablesWithXClusterDetails
-} from '../ReplicationUtils';
+import { formatBytes, augmentTablesWithXClusterDetails } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
-import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import {
+  alertConfigQueryKey,
+  api,
+  drConfigQueryKey,
+  metricQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../redesign/helpers/api';
+import {
+  AlertName,
+  BROKEN_XCLUSTER_CONFIG_STATUSES,
+  liveMetricTimeRangeUnit,
+  liveMetricTimeRangeValue,
+  MetricName,
   XClusterModalName,
   XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -40,36 +50,44 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
-import { getTableName, getTableUuid } from '../../../utils/tableUtils';
+import { getTableName } from '../../../utils/tableUtils';
+import { getAlertConfigurations } from '../../../actions/universe';
 
-import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
+import {
+  MetricsQueryParams,
+  TableType,
+  TableTypeLabel,
+  YBTable
+} from '../../../redesign/helpers/dtos';
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
+import { NodeAggregation, SplitType } from '../../metrics/dtos';
 
 import styles from './ReplicationTables.module.scss';
 
-interface props {
+interface CommonReplicationTablesProps {
   xClusterConfig: XClusterConfig;
 
   // isActive determines whether the component will make periodic
   // queries for metrics.
   isActive?: boolean;
-  isDrInterface?: boolean;
 }
+
+type ReplicationTablesProps =
+  | (CommonReplicationTablesProps & { isDrInterface: true; drConfigUuid: string })
+  | (CommonReplicationTablesProps & { isDrInterface: false });
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({
-  xClusterConfig,
-  isActive = true,
-  isDrInterface = false
-}: props) {
+export function ReplicationTables(props: ReplicationTablesProps) {
+  const { xClusterConfig, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
   const dispatch = useDispatch();
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
@@ -85,33 +103,78 @@ export function ReplicationTables({
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
+  const alertConfigFilter = {
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: xClusterConfig.sourceUniverseUUID
+  };
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+    getAlertConfigurations(alertConfigFilter)
+  );
+
+  const replicationLagMetricSettings = {
+    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
+    nodeAggregation: NodeAggregation.MAX,
+    splitType: SplitType.TABLE
+  };
+  const replciationLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [replicationLagMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    xClusterConfigUuid: xClusterConfig.uuid,
+    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
+    end: moment().format('X')
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.live(
+      replciationLagMetricRequestParams,
+      liveMetricTimeRangeValue,
+      liveMetricTimeRangeUnit
+    ),
+    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    {
+      enabled: !!sourceUniverseQuery.data
+    }
+  );
+
   const removeTableFromXCluster = useMutation(
     (replication: XClusterConfig) => {
-      return editXClusterConfigTables(replication.uuid, replication.tables);
+      return props.isDrInterface
+        ? api.updateTablesInDr(props.drConfigUuid, { tables: replication.tables })
+        : editXClusterConfigTables(replication.uuid, replication.tables);
     },
     {
       onSuccess: (response, xClusterConfig) => {
         fetchTaskUntilItCompletes(response.taskUUID, (err: boolean) => {
           if (!err) {
             queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
+            if (props.isDrInterface) {
+              queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+              toast.success(
+                deleteTableDetails
+                  ? `"${getTableName(deleteTableDetails)}" table removed successully.`
+                  : 'Table removed successfully.'
+              );
+            } else {
+              toast.success(
+                deleteTableDetails
+                  ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
+                      xClusterConfig.name
+                    }.`
+                  : `Table removed successfully from ${xClusterConfig.name}`
+              );
+            }
             dispatch(closeDialog());
-            toast.success(
-              deleteTableDetails
-                ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
-                    xClusterConfig.name
-                  }.`
-                : `Table removed successfully from ${xClusterConfig.name}`
-            );
           } else {
             toast.error(
               <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
                 <span>
                   {deleteTableDetails
-                    ? `Failed to remove table "${getTableName(deleteTableDetails)}" from ${
-                        xClusterConfig.name
-                      }.`
-                    : `Failed to remove table from ${xClusterConfig.name}.`}
+                    ? `Failed to remove table "${getTableName(deleteTableDetails)}"${
+                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
+                      }`
+                    : `Failed to remove table${
+                        props.isDrInterface ? '.' : ` from ${xClusterConfig.name}.`
+                      }`}
                 </span>
                 <a href={`/tasks/${response.taskUUID}`} target="_blank" rel="noopener noreferrer">
                   View Details
@@ -122,7 +185,7 @@ export function ReplicationTables({
         });
       },
       onError: (error: Error | AxiosError) => {
-        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' });
+        handleServerError(error, { customErrorLabel: 'Remove table request failed' });
       }
     }
   );
@@ -136,7 +199,11 @@ export function ReplicationTables({
     return <YBLoading />;
   }
   if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
-    return <YBErrorIndicator />;
+    const sourceUniverseTerm = props.isDrInterface ? 'DR primary universe' : 'source universe';
+    const errorMessage = sourceUniverseTablesQuery.isError
+      ? `Failed to fetch ${sourceUniverseTerm} table details.`
+      : `Failed to fetch ${sourceUniverseTerm} details.`;
+    return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
   const showAddTablesToClusterModal = () => {
@@ -148,17 +215,18 @@ export function ReplicationTables({
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data
   );
   const sourceUniverse = sourceUniverseQuery.data;
   const isAddTableModalVisible =
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   return (
     <div className={styles.rootContainer}>
-      <div className={styles.headerSection}>
-        <span className={styles.infoText}>Tables selected for Replication</span>
-        <div className={styles.actionBar}>
-          {!isDrInterface && (
+      {!props.isDrInterface && (
+        <div className={styles.headerSection}>
+          <span className={styles.infoText}>Tables selected for Replication</span>
+          <div className={styles.actionBar}>
             <RbacValidator
               customValidateFunction={(userPerm) => {
                 return (
@@ -182,9 +250,9 @@ export function ReplicationTables({
                 btnText="Add Tables"
               />
             </RbacValidator>
-          )}
+          </div>
         </div>
-      </div>
+      )}
       <div className={styles.replicationTable}>
         <BootstrapTable
           data={tablesInConfig}
@@ -205,7 +273,7 @@ export function ReplicationTables({
           >
             Schema Name
           </TableHeaderColumn>
-          {!isDrInterface && (
+          {!props.isDrInterface && (
             <TableHeaderColumn
               dataField="tableType"
               dataFormat={(cell: TableType) => TableTypeLabel[cell]}
@@ -221,10 +289,8 @@ export function ReplicationTables({
             dataField="status"
             dataFormat={(cell: XClusterTableStatus, xClusterTable: XClusterTable) => (
               <XClusterTableStatusLabel
+                replicationLag={xClusterTable.replicationLag}
                 status={cell}
-                streamId={xClusterTable.streamId}
-                sourceUniverseTableUuid={getTableUuid(xClusterTable)}
-                sourceUniverseNodePrefix={sourceUniverse.universeDetails.nodePrefix}
                 sourceUniverseUuid={sourceUniverse.universeUUID}
               />
             )}
@@ -232,18 +298,53 @@ export function ReplicationTables({
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataFormat={(_, xClusterTable: XClusterTable) => (
-              <span className="lag-text">
-                <CurrentTableReplicationLag
-                  streamId={xClusterTable.streamId}
-                  tableId={getTableUuid(xClusterTable)}
-                  nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-                  queryEnabled={isActive}
-                  sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
-                  xClusterConfigStatus={xClusterConfig.status}
-                />
-              </span>
-            )}
+            dataFormat={(_, xClusterTable: XClusterTable) => {
+              if (
+                tableReplicationLagQuery.isLoading ||
+                tableReplicationLagQuery.isIdle ||
+                maxAcceptableLagQuery.isLoading ||
+                maxAcceptableLagQuery.isIdle
+              ) {
+                return <i className="fa fa-spinner fa-spin yb-spinner" />;
+              }
+
+              if (
+                BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfig.status) ||
+                tableReplicationLagQuery.isError ||
+                maxAcceptableLagQuery.isError
+              ) {
+                return <span>-</span>;
+              }
+
+              const maxAcceptableLag = Math.min(
+                ...maxAcceptableLagQuery.data.map(
+                  (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+                )
+              );
+              const formattedLag = formatLagMetric(xClusterTable.replicationLag);
+
+              if (xClusterTable.replicationLag === undefined) {
+                return <span className="replication-lag-value warning">{formattedLag}</span>;
+              }
+
+              const isReplicationUnhealthy = xClusterTable.replicationLag > maxAcceptableLag;
+
+              return (
+                <Box
+                  className={`replication-lag-value ${
+                    isReplicationUnhealthy ? 'above-threshold' : 'below-threshold'
+                  }`}
+                  display="flex"
+                  alignItems="center"
+                  gridGap={theme.spacing(1)}
+                >
+                  {isReplicationUnhealthy && (
+                    <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+                  )}
+                  {formattedLag}
+                </Box>
+              );
+            }}
           >
             Current lag
           </TableHeaderColumn>
@@ -303,7 +404,7 @@ export function ReplicationTables({
       </div>
       {isAddTableModalVisible && (
         <AddTableModal
-          isDrInterface={isDrInterface}
+          isDrInterface={props.isDrInterface}
           isVisible={isAddTableModalVisible}
           onHide={hideModal}
           xClusterConfig={xClusterConfig}

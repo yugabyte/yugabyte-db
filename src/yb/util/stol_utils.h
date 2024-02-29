@@ -46,6 +46,10 @@ inline Result<int32_t> CheckedStoi(Slice slice) {
   return CheckedStoInt<int32_t>(slice);
 }
 
+inline Result<uint32_t> CheckedStoui(Slice slice) {
+  return CheckedStoInt<uint32_t>(slice);
+}
+
 Result<long double> CheckedStold(Slice slice);
 
 } // namespace yb

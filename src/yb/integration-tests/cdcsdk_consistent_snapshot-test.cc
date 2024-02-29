@@ -23,16 +23,18 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
-
-    // Disable pg replication command support to ensure that consistent snapshot feature
-    // works independently.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   }
 
+  void TestCSStreamSnapshotEstablishment(
+      bool use_replication_slot, bool enable_replication_commands);
+  void TestCSStreamFailureRollback(std::string sync_point, std::string expected_error);
 };
 
+void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
+    bool use_replication_slot, bool enable_replication_commands) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) =
+      enable_replication_commands;
 
-TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
   // Disable running UpdatePeersAndMetrics for this test
   FLAGS_enable_log_retention_by_op_idx = false;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
@@ -40,10 +42,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
 
   // Create a Consistent Snapshot Stream with NOEXPORT_SNAPSHOT option
-  xrepl::StreamId stream1_id =
-      ASSERT_RESULT(CreateConsistentSnapshotStream(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
-  ASSERT_NOK(GetSnapshotDetailsFromCdcStateTable(
-      stream1_id, tablet_peer->tablet_id(), test_client()));
+  auto stream1_id = ASSERT_RESULT(
+      (use_replication_slot)
+          ? CreateConsistentSnapshotStreamWithReplicationSlot(
+                CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT)
+          : CreateConsistentSnapshotStream(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
+  ASSERT_NOK(
+      GetSnapshotDetailsFromCdcStateTable(stream1_id, tablet_peer->tablet_id(), test_client()));
   auto checkpoint_result =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
 
@@ -63,7 +68,9 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
             tablet_peer->get_cdc_min_replicated_index());
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  xrepl::StreamId stream2_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream2_id = ASSERT_RESULT(
+      (use_replication_slot) ? CreateConsistentSnapshotStreamWithReplicationSlot()
+                             : CreateConsistentSnapshotStream());
   const auto& snapshot_time_key_pair =
       ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
           stream2_id, tablet_peer->tablet_id(), test_client()));
@@ -86,6 +93,145 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
             tablet_peer->get_cdc_min_replicated_index());
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentReplicationSlot) {
+  return TestCSStreamSnapshotEstablishment(
+      true /* use_replication_slot */, true /* enable_replication_commands */);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsqlSyntaxEnabled) {
+  return TestCSStreamSnapshotEstablishment(
+      false /* use_replication_slot */, true /* enable_replication_commands */);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsqlSyntaxDisabled) {
+  return TestCSStreamSnapshotEstablishment(
+      false /* use_replication_slot */, false /* enable_replication_commands */);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
+  ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+      true /* verify_snapshot_name */));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
+      true /* verify_snapshot_name */));
+}
+
+void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
+    std::string sync_point, std::string expected_error) {
+  // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+
+  std::atomic<bool> force_failure = true;
+  yb::SyncPoint::GetInstance()->SetCallBack(sync_point, [&force_failure, &sync_point](void* arg) {
+    LOG(INFO) << "CDC stream creation sync point callback: " << sync_point
+              << ", force_failure: " << force_failure;
+    auto should_fail = reinterpret_cast<bool*>(arg);
+    *should_fail = force_failure;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto s = CreateConsistentSnapshotStreamWithReplicationSlot();
+  ASSERT_NOK(s);
+  if (sync_point == "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails") {
+    auto error_message = s.status().message().AsStringView();
+    ASSERT_TRUE(
+        error_message.find("Timed out waiting for Create Replication Slot") != std::string::npos ||
+        error_message.find("already exists") != std::string::npos);
+  } else {
+    ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)
+        << s.status().message().AsStringView();
+  }
+  LOG(INFO) << "Asserted the stream creation failures";
+
+  // Allow the background UpdatePeersAndMetrics to clean up the stream.
+  SleepFor(
+      MonoDelta::FromSeconds(4 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
+
+  LOG(INFO) << "Checking the list of DB streams.";
+  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  ASSERT_EQ(list_streams_resp.streams_size(), 0) << list_streams_resp.DebugString();
+
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
+  // doesn't interfere with the safe time.
+  force_failure = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
+
+  LOG(INFO) << "Creating Consistent snapshot stream again.";
+  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  const auto& snapshot_time_key_pair =
+      ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
+          stream1_id, tablet_peer->tablet_id(), test_client()));
+  auto checkpoint_result =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
+
+  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
+  ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
+  ASSERT_GT(std::get<0>(snapshot_time_key_pair), tablet_peer->get_cdc_sdk_safe_time().ToUint64());
+  ASSERT_LE(checkpoint_result.checkpoint().op_id().index(),
+            tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
+            tablet_peer->get_cdc_min_replicated_index());
+
+  list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  ASSERT_EQ(list_streams_resp.streams_size(), 1);
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureBeforeSysCatalogEntry) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeSysCatalogEntry",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeSysCatalogEntry.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureBeforeInMemoryCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeInMemoryStateCommit.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterInMemoryStateCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kAfterInMemoryStateCommit.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterDummy) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterDummyCDCStateEntries",
+      "Test failure for sync point CreateCDCSDKStream::kAfterDummyCDCStateEntries.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterRetentionBarriers) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.");
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestCSStreamFailureRollbackFailureWhileStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails", "" /* ignored */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestCSStreamFailureRollbackFailureAfterStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails",
+      "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.");
+}
+
 // The goal of this test is to confirm that the retention barriers are set
 // for the slowest consumer
 TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
@@ -102,11 +248,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   };
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto state1 = get_tablet_state();
 
   // Create a second Consistent Snapshot Stream with USE_SNAPSHOT option
-  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto state2 = get_tablet_state();
 
   //  Check that all the barriers are for the slowest consumer
@@ -135,7 +281,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
   SyncPoint::GetInstance()->EnableProcessing();
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
   for (auto cp : checkpoints) {
@@ -147,13 +293,36 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
+    LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
+    // This sleep duration must be >= timeout of the CreateCDCStream RPC in yb-master. This is
+    // specified in the DdlDeadline() function in pg_ddl.cc.
+    SleepFor(MonoDelta::FromSeconds(60 * kTimeMultiplier));
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Attempt to create a Consistent Snapshot Stream -
+  // this will fail because of the late ALTER TABLE response
+  ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  SleepFor(MonoDelta::FromSeconds(25 * kTimeMultiplier));
+  VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
 // The goal of this test is to confirm that the consistent snapshot related metadata is
 // persisted in the sys_catalog
 TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // Restart the universe
   test_cluster()->Shutdown();
@@ -191,7 +360,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   auto stream_id = ASSERT_RESULT(CreateDBStream());
   ASSERT_TRUE(DeleteCDCStream(stream_id));
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // Check that UpdatePeersAndMetrics has been blocked from releasing retention barriers
   auto checkpoint_result =
@@ -218,7 +387,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
   // This should be part of the snapshot
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // This should be considered a change
   ASSERT_OK(WriteRows(2 /* start */, 3 /* end */, &test_cluster_));
@@ -265,7 +434,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertSingleRowSnapshot) {
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -286,7 +455,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, UpdateInsertedRowSnapshot) {
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
   ASSERT_OK(UpdateRows(1 /* key */, 1 /* value */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -307,7 +476,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, DeleteInsertedRowSnapshot) {
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
   ASSERT_OK(DeleteRows(1 /* key */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -331,7 +500,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringSnapshot) {
   threads.emplace_back(
       [&]() { ASSERT_OK(WriteRows(1 /* start */, 10001 /* end */, &test_cluster_)); });
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // Count the number of snapshot READs.
@@ -367,7 +536,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringAfterSnapshot) {
   threads.emplace_back(
       [&]() { ASSERT_OK(WriteRows(1 /* start */, 10001 /* end */, &test_cluster_)); });
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // Count the number of snapshot READs.
@@ -402,7 +571,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotWithInvalidFromOpId) {
   ASSERT_EQ(tablets.size(), 1);
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   cp_resp.set_index(-1);
@@ -469,7 +638,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
   ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // Count the number of snapshot READs.
@@ -518,7 +687,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestLeadershipChangeDuringSnapshot) {
   ASSERT_EQ(tablets.size(), 1);
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // Count the number of snapshot READs.
@@ -580,7 +749,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // Count the number of snapshot READs.
@@ -642,7 +811,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertedRowInbetweenSnapshot) {
 
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   ASSERT_OK(WriteRows(101 /* start */, 201 /* end */, &test_cluster_));
 
@@ -713,7 +882,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
   // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
                                                 CDCSDKSnapshotOption::USE_SNAPSHOT,
                                                 CDCCheckpointType::IMPLICIT));
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -763,7 +932,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
                                                 CDCSDKSnapshotOption::USE_SNAPSHOT,
                                                 CDCCheckpointType::IMPLICIT));
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -843,7 +1012,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNoData) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // We are calling 'GetChanges' in snapshot mode, but sine there is no data in the tablet, the
@@ -887,7 +1056,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
         conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1, $2, $3)", i, i + 1, i + 2, i + 3));
   }
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // Assert that we get all records from the first table: "test1".
   auto req_table_id = GetColocatedTableId("test1");
@@ -920,7 +1089,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCommitTimeRecordTimeAndNoSafepointRecor
   // Insert 1000 single shard transactions
   ASSERT_OK(WriteRows(1001 /* start */, 2001 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   int count = 0;
@@ -986,7 +1155,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1, $2)", i, i + 1, i + 2));
   }
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   auto req_table_id = GetColocatedTableId("test1");
   ASSERT_NE(req_table_id, "");
@@ -1062,7 +1231,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   int count = 0;
@@ -1127,8 +1296,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotAcrossMultipleTables)
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0)", 1));
 
   // Create a Non Consistent Snapshot Stream and another Consistent Snapshot stream
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
-  xrepl::StreamId cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
+  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // Setup snapshot boundary on test1 for stream_id
   auto resp1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets1));
@@ -1241,7 +1410,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 
   // Create a Non Consistent Snapshot Stream and another Consistent Snapshot streams
   auto stream_id = ASSERT_RESULT(CreateDBStream());
-  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // For cs_stream_id, only poll table1 but not table2
   auto cp_resp1 =
@@ -1297,7 +1466,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
       /* is_compaction = */ false));
 
   // Create the consistent snapshot stream
-  ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
   SleepFor(MonoDelta::FromSeconds(60));
@@ -1348,7 +1517,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) 
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
 
   // Create a Consistent Snapshot Stream
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   ASSERT_TRUE(DeleteCDCStream(stream_id));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;

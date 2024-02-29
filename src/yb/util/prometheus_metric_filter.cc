@@ -17,29 +17,74 @@
 
 namespace yb {
 
-PrometheusMetricFilter::PrometheusMetricFilter(const std::string& priority_regex_string) {
-  priority_regex_ = priority_regex_string;
+PrometheusMetricFilterV1::PrometheusMetricFilterV1(const MetricPrometheusOptions& opts)
+    : priority_regex_(opts.priority_regex_string) {}
+
+AggregationLevels PrometheusMetricFilterV1::GetAggregationLevels(
+    const std::string& metric_name, AggregationLevels default_levels) {
+  auto& levels_from_regex = metric_filter_[metric_name];
+
+  if (!levels_from_regex) {
+    // No filter for stream and server level.
+    levels_from_regex = kStreamLevel | kServerLevel;
+
+    if (boost::regex_match(metric_name, priority_regex_)) {
+      levels_from_regex |= kTableLevel;
+    }
+  }
+
+  auto aggregation_level = levels_from_regex & default_levels;
+  // If a metric will be exposed at the table level, it cannot be exposed at the server level.
+  if (aggregation_level & kTableLevel) {
+    aggregation_level &= ~kServerLevel;
+  }
+
+  return aggregation_level;
 }
 
-bool PrometheusMetricFilter::MatchMetricAgainstRegex(const std::string& metric_name,
-                                                     const boost::regex& regex) const {
-  return boost::regex_match(metric_name, regex);
+std::string PrometheusMetricFilterV1::Version() const {
+  return kFilterVersionOne;
 }
 
-AggregationLevels PrometheusMetricFilter::GetAggregationLevels(const std::string& metric_name) {
-  auto& aggregation_levels = metric_filter_[metric_name];
-  if (aggregation_levels) {
-    return aggregation_levels;
+
+PrometheusMetricFilterV2::PrometheusMetricFilterV2(const MetricPrometheusOptions& opts)
+    : table_allowlist_(opts.table_allowlist_string),
+      table_blocklist_(opts.table_blocklist_string),
+      server_allowlist_(opts.server_allowlist_string),
+      server_blocklist_(opts.server_blocklist_string) {}
+
+AggregationLevels PrometheusMetricFilterV2::GetAggregationLevels(
+    const std::string& metric_name, AggregationLevels default_levels) {
+  auto& levels_from_regex = metric_filter_[metric_name];
+
+  if (!levels_from_regex) {
+    // No filter for stream level.
+    levels_from_regex = kStreamLevel;
+
+    if (!boost::regex_match(metric_name, table_blocklist_) &&
+        boost::regex_match(metric_name, table_allowlist_)) {
+      levels_from_regex |= kTableLevel;
+    }
+    if (!boost::regex_match(metric_name, server_blocklist_) &&
+        boost::regex_match(metric_name, server_allowlist_)) {
+      levels_from_regex |= kServerLevel;
+    }
   }
-  // Need to do regex matching to figure out and store the result in metric_filter.
-  // No filter for stream and server metrics currently.
-  AggregationLevels filter_result = kStreamLevel | kServerLevel;
-  // Check table level.
-  if (MatchMetricAgainstRegex(metric_name, priority_regex_)) {
-    filter_result |= kTableLevel;
+
+  return levels_from_regex & default_levels;
+}
+
+std::string PrometheusMetricFilterV2::Version() const {
+  return kFilterVersionTwo;
+}
+
+std::unique_ptr<PrometheusMetricFilter> CreatePrometheusMetricFilter(
+    const MetricPrometheusOptions& opts) {
+  DCHECK(opts.version == kFilterVersionOne || opts.version == kFilterVersionTwo);
+  if (opts.version == kFilterVersionTwo) {
+    return std::make_unique<PrometheusMetricFilterV2>(opts);
   }
-  aggregation_levels = filter_result;
-  return filter_result;
+  return std::make_unique<PrometheusMetricFilterV1>(opts);
 }
 
 }  // namespace yb

@@ -348,6 +348,7 @@ class ClusterLoadBalancer {
   int get_total_running_tablets() const;
 
   size_t get_total_wrong_placement() const;
+  size_t get_badly_placed_leaders() const;
   size_t get_total_blacklisted_servers() const;
   size_t get_total_leader_blacklisted_servers() const;
 
@@ -362,8 +363,10 @@ class ClusterLoadBalancer {
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
 
-  // Info about if load balancing is enabled in the cluster.
   scoped_refptr<AtomicGauge<int64_t>> is_load_balancing_enabled_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> tablets_in_wrong_placement_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 

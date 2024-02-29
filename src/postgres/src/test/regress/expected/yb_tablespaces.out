@@ -87,6 +87,11 @@ WARNING:  LOCATION not supported yet and will be ignored
 LINE 1: CREATE TABLESPACE regress_tblspace LOCATION '/data';
                                            ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+CREATE TABLESPACE regress_tblspace_2 LOCATION '/data';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE regress_tblspace_2 LOCATION '/data';
+                                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
 -- try setting and resetting some properties for the new tablespace
 ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
 ERROR:  ALTER TABLESPACE not supported yet
@@ -161,6 +166,9 @@ Indexes:
     "foo_pk_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
 
+-- Fail, cannot ALTER INDEX SET TABLESPACE for primary key index.
+ALTER INDEX testschema.foo_pk_pkey SET TABLESPACE regress_tblspace_2;
+ERROR:  cannot set tablespace for primary key index
 -- Create table with primary key after default tablespace is changed.
 SET default_tablespace TO regress_tblspace;
 CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
@@ -181,6 +189,9 @@ Indexes:
     "foo_pk_default_tblspc_pkey" PRIMARY KEY, lsm (i HASH), tablespace "regress_tblspace"
 Tablespace: "regress_tblspace"
 
+-- Fail, cannot ALTER INDEX SET TABLESPACE for primary key index.
+ALTER INDEX testschema.foo_pk_pkey SET TABLESPACE pg_default;
+ERROR:  cannot set tablespace for primary key index
 SET default_tablespace TO '';
 -- Verify that USING INDEX TABLESPACE is not supported for primary keys.
 CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
@@ -208,6 +219,17 @@ Indexes:
 Indexes:
     "using_index3_a_key" UNIQUE CONSTRAINT, lsm (a HASH), tablespace "regress_tblspace"
 
+ALTER INDEX testschema.using_index2_a_key SET TABLESPACE pg_default;
+NOTICE:  Data movement for table using_index2_a_key is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+\d testschema.using_index2;
+          Table "testschema.using_index2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Indexes:
+    "using_index2_a_key" UNIQUE CONSTRAINT, lsm (a HASH)
+
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
@@ -222,6 +244,8 @@ CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
 CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
 CREATE TABLE testschema.part12_1 PARTITION OF testschema.part12 FOR VALUES IN (1);
 ALTER TABLE testschema.part12 SET TABLESPACE pg_default;
+NOTICE:  Data movement for table part12 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 CREATE TABLE testschema.part12_2 PARTITION OF testschema.part12 FOR VALUES IN (2);
 -- Ensure part12_1 defaulted to regress_tblspace and part12_2 defaulted to pg_default.
 SELECT relname, spcname FROM pg_catalog.pg_class c
@@ -247,6 +271,10 @@ ERROR:  cannot set tablespaces for temporary tables
 -- Fail, cannot set tablespace for temp indexes
 CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
 ERROR:  cannot set tablespace for temporary index
+CREATE INDEX temp_idx ON temptest(a);
+-- Fail, cannot set tablespaces for temp tables
+ALTER INDEX temp_idx SET TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespaces for temporary tables
 DROP TABLE temptest;
 -- Fail, cannot set tablespaces for temp tables
 CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
@@ -269,6 +297,24 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
  part2_a_idx | regress_tblspace
  part_a_idx  | regress_tblspace
 (3 rows)
+
+CREATE TABLE testschema.part34 PARTITION OF testschema.part FOR VALUES IN (3, 4) PARTITION BY LIST (a);
+CREATE TABLE testschema.part3 PARTITION OF testschema.part34 FOR VALUES IN (3);
+ALTER INDEX testschema.part34_a_idx SET TABLESPACE pg_default;
+NOTICE:  Data movement for table part34_a_idx is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4);
+SELECT relname, spcname FROM pg_catalog.pg_class c LEFT OUTER JOIN pg_catalog.pg_tablespace t
+    ON c.reltablespace = t.oid WHERE c.relname LIKE 'part%_idx' ORDER BY relname;
+   relname    |     spcname
+--------------+------------------
+ part1_a_idx  | regress_tblspace
+ part2_a_idx  | regress_tblspace
+ part34_a_idx |
+ part3_a_idx  | regress_tblspace
+ part4_a_idx  |
+ part_a_idx   | regress_tblspace
+(6 rows)
 
 -- check that default_tablespace doesn't affect ALTER TABLE index rebuilds
 CREATE TABLE testschema.test_default_tab(id bigint) TABLESPACE regress_tblspace;
@@ -431,12 +477,58 @@ DROP TABLE testschema.test_tab;
 CREATE TABLE testschema.atable AS VALUES (1), (2);
 CREATE UNIQUE INDEX anindex ON testschema.atable(column1);
 ALTER TABLE testschema.atable SET TABLESPACE regress_tblspace;
-/*
+NOTICE:  Data movement for table atable is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 ALTER INDEX testschema.anindex SET TABLESPACE regress_tblspace;
+NOTICE:  Data movement for table anindex is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+\d testschema.atable
+             Table "testschema.atable"
+ Column  |  Type   | Collation | Nullable | Default
+---------+---------+-----------+----------+---------
+ column1 | integer |           |          |
+Indexes:
+    "anindex" UNIQUE, lsm (column1 HASH), tablespace "regress_tblspace"
+Tablespace: "regress_tblspace"
+
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_global;
+ERROR:  only shared relations can be placed in pg_global tablespace
+\d testschema.part
+              Table "testschema.part"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Partition key: LIST (a)
+Indexes:
+    "part_a_idx" lsm (a HASH), tablespace "regress_tblspace"
+Number of partitions: 3 (Use \d+ to list them.)
+
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_default;
+NOTICE:  Data movement for table part_a_idx is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+\d testschema.part
+              Table "testschema.part"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Partition key: LIST (a)
+Indexes:
+    "part_a_idx" lsm (a HASH)
+Number of partitions: 3 (Use \d+ to list them.)
+
 ALTER INDEX testschema.part_a_idx SET TABLESPACE regress_tblspace;
-*/
+NOTICE:  Data movement for table part_a_idx is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+\d testschema.part
+              Table "testschema.part"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Partition key: LIST (a)
+Indexes:
+    "part_a_idx" lsm (a HASH), tablespace "regress_tblspace"
+Number of partitions: 3 (Use \d+ to list them.)
+
 INSERT INTO testschema.atable VALUES(3);
 INSERT INTO testschema.atable VALUES(1);
 ERROR:  duplicate key value violates unique constraint "anindex"
@@ -584,8 +676,12 @@ CREATE TABLE tbl (x int, y int) TABLESPACE tblspace;
 DROP TABLE tbl;
 -- Verify yb_db_admin role can assign tablespace to tables
 ALTER TABLE tbl_other SET TABLESPACE tblspace_other;
+NOTICE:  Data movement for table tbl_other is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 CREATE TABLE tbl (x int, y int);
 ALTER TABLE tbl SET TABLESPACE tblspace;
+NOTICE:  Data movement for table tbl is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 DROP TABLE tbl;
 -- Verify yb_db_admin_role can assign tablespace to index
 CREATE TABLE tbl(x int, y int);
@@ -636,6 +732,8 @@ CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"p
 CREATE TABLE foo (i int) TABLESPACE valid_tablespace;
 CREATE TABLE bar(i int);
 ALTER TABLE bar SET TABLESPACE valid_tablespace;
+NOTICE:  Data movement for table bar is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
 DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
@@ -871,4 +969,3 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE x = 5;
 DROP TABLE foo;
 DROP TABLESPACE close_far_pref;
 DROP TABLESPACE medium_pref;
-

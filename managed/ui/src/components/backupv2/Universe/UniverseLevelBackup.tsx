@@ -18,6 +18,7 @@ import { BackupAndRestoreBanner } from '../restore/BackupAndRestoreBanner';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
+import { AdvancedRestoreNewModal } from '../components/advancedRestore/AdvancedRestoreNewModal';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 
@@ -58,13 +59,27 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   return (
     <>
       <BackupAndRestoreBanner />
-      <BackupAdvancedRestore
-        onHide={() => {
-          setShowAdvancedRestore(false);
-        }}
-        visible={showAdvancedRestore}
-        currentUniverseUUID={uuid}
-      />
+      {
+        featureFlags.test.enableNewAdvancedRestoreModal ? (
+          showAdvancedRestore && (
+            <AdvancedRestoreNewModal
+              onHide={() => {
+                setShowAdvancedRestore(false);
+              }}
+              visible={showAdvancedRestore}
+              currentUniverseUUID={uuid}
+            />
+          )
+        ) : (
+          <BackupAdvancedRestore
+            onHide={() => {
+              setShowAdvancedRestore(false);
+            }}
+            visible={showAdvancedRestore}
+            currentUniverseUUID={uuid}
+          />
+        )
+      }
       {YBCInstalled && (
         <BackupThrottleParameters
           visible={showThrottleParametersModal}

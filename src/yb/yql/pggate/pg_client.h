@@ -20,6 +20,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
@@ -54,7 +55,7 @@ struct DdlMode {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
-    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
@@ -121,8 +122,7 @@ class PgClient {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
                std::optional<uint64_t> session_id,
-               const YBCAshMetadata* ash_metadata,
-               bool* is_ash_metadata_set);
+               const YBCPgAshConfig* ash_config);
 
   void Shutdown();
 
@@ -225,10 +225,30 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name);
 
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
+
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
+      const PgObjectId& table_id, const std::string& stream_id);
+
+  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint,
+      uint64_t safe_time, bool is_initial_checkpoint);
+
+  Result<cdc::GetChangesResponsePB> GetCDCChanges(
+      const std::string& stream_id, const std::string& tablet_id,
+      const YBCPgCDCSDKCheckpoint* checkpoint);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

@@ -2,6 +2,7 @@ package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -532,8 +533,8 @@ public interface CloudInfoInterface {
       }
       if (requestBody.get("code").asText().equals(CloudType.gcp.name())) {
         ObjectNode gcpCloudInfo = mapper.createObjectNode();
-        if (cloudInfo.has("gcpCloudInfo")) {
-          gcpCloudInfo = (ObjectNode) cloudInfo.get("gcpCloudInfo");
+        if (cloudInfo.has("gcp")) {
+          gcpCloudInfo = (ObjectNode) cloudInfo.get("gcp");
         }
         JsonNode configFileContent = config;
         if (!isV2API) {
@@ -563,7 +564,13 @@ public interface CloudInfoInterface {
           gcpCloudInfo.set("project_id", ((ObjectNode) configFileContent).get("project_id"));
         }
         if (!shouldUseHostCredentials && configFileContent != null) {
-          gcpCloudInfo.set("config_file_contents", configFileContent);
+          try {
+            ObjectMapper mapper = Json.mapper();
+            gcpCloudInfo.put("config_file_contents", mapper.writeValueAsString(configFileContent));
+          } catch (Exception e) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, "Failed to read GCP Service Account Credentials");
+          }
         }
         if (config.has("use_host_vpc")) {
           gcpCloudInfo.set("use_host_vpc", config.get("use_host_vpc"));

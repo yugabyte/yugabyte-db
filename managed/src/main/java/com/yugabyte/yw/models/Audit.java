@@ -175,7 +175,10 @@ public class Audit extends Model {
     Role,
 
     @EnumValue("RoleBinding")
-    RoleBinding
+    RoleBinding,
+
+    @EnumValue("OIDC Group Mapping")
+    OIDCGroupMapping
   }
 
   public enum ActionType {
@@ -570,7 +573,10 @@ public class Audit extends Model {
     Unlock,
 
     @EnumValue("Sync Universe with LDAP server")
-    LdapUniverseSync
+    LdapUniverseSync,
+
+    @EnumValue("Update Universe's Proxy Configuration")
+    UpdateProxyConfig
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

@@ -347,7 +347,10 @@ public class DestroyUniverse extends UniverseTaskBase {
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
             createDeleteXClusterConfigSubtasks(
-                xClusterConfig, false /* keepEntry */, params().isForceDelete);
+                xClusterConfig,
+                false /* keepEntry */,
+                params().isForceDelete,
+                true /* deletePitrConfigs */);
             if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
               createDeleteDrConfigEntryTask(drConfig)
                   .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
@@ -372,7 +375,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
     if (!supportBundles.isEmpty()) {
       for (SupportBundle supportBundle : supportBundles) {
-        supportBundleUtil.deleteFile(supportBundle.getPathObject());
+        supportBundleUtil.deleteSupportBundle(supportBundle);
       }
     }
   }

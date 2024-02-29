@@ -10,6 +10,7 @@
 #include <odyssey.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
@@ -174,6 +175,14 @@ static inline void od_cron_stat(od_cron_t *cron)
 	od_router_t *router = cron->global->router;
 	od_instance_t *instance = cron->global->instance;
 	od_worker_pool_t *worker_pool = cron->global->worker_pool;
+
+	/* Update last updated timestamp */
+	if (instance->yb_stats != NULL) {
+		struct timespec t;
+		clock_gettime(CLOCK_REALTIME, &t);
+		uint64_t time_ns = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+		instance->yb_stats[0].last_updated_timestamp = time_ns/1000000;
+	}
 
 	if (instance->config.log_stats) {
 		/* system worker stats */

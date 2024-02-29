@@ -107,8 +107,8 @@ export const useCPUAlert = (nodeHost: string = "") => {
           });
 
           return {
-            cpu_90: cpuUsageList.every((cpuUsage) => cpuUsage > 90),
-            cpu_75: cpuUsageList.every((cpuUsage) => cpuUsage > 75),
+            cpu_90: cpuUsageList.every((cpuUsage) => cpuUsage > 90) && cpuUsageList.length > 0,
+            cpu_75: cpuUsageList.every((cpuUsage) => cpuUsage > 75) && cpuUsageList.length > 0,
           };
         })
         .catch((err) => {

@@ -103,7 +103,11 @@ class RaftConsensusQuorumTest : public YBTest {
           METRIC_ENTITY_table.Instantiate(&metric_registry_, "raft-test-table")),
       tablet_metric_entity_(
           METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-test-tablet")),
-      schema_(GetSimpleTestSchema()) {
+      schema_(GetSimpleTestSchema()),
+      raft_notifications_pool_(std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+        .name = "raft_notifications",
+        .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+      })) {
     options_.tablet_id = kTestTablet;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   }
@@ -177,7 +181,7 @@ class RaftConsensusQuorumTest : public YBTest {
           kTestTablet,
           clock_,
           nullptr /* consensus_context */,
-          raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL));
+          std::make_unique<rpc::Strand>(raft_notifications_pool_.get()));
 
       unique_ptr<ThreadPoolToken> pool_token(
           raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT));
@@ -581,6 +585,7 @@ class RaftConsensusQuorumTest : public YBTest {
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   const Schema schema_;
   std::unordered_map<ConsensusRound*, Synchronizer*> syncs_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {

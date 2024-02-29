@@ -83,6 +83,7 @@
 #include "commands/ybccmds.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 typedef struct
 {
@@ -1035,8 +1036,31 @@ removing_database_from_system:
 	 * database lock, no new ones can start after this.)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
+	 *
+	 * number of actual client connections =
+	 *		number of clients connected on ysql port
+	 * 			+ number of clients connected on ysql connection manager port
+	 * 			- number of server connections b/w ysql connection manager and ysql.
 	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+	uint32_t 	yb_num_logical_conn,
+				yb_num_physical_conn_from_ysqlconnmgr,
+				yb_net_client_connections;
+
+	yb_net_client_connections =
+		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+
+	/*
+	 * Ignore the number of logical or physical connections to the database
+	 * if pg_backend is unable to read the shared memory segment for
+	 * Ysql Connection Manager stats.
+	 */
+	if (IsYugaByteEnabled() &&
+		YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr))
+		yb_net_client_connections +=
+			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+	if (yb_net_client_connections)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",

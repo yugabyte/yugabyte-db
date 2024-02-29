@@ -76,7 +76,6 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
             universeDetails.getYbcSoftwareVersion(),
             ybcGflagsMap);
         performYbcAction(nodeDetailSet, false, "stop");
-        performYbcAction(nodeDetailSet, false, "start");
         createWaitForYbcServerTask(nodeDetailSet)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
@@ -90,7 +89,6 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
               universeDetails.getYbcSoftwareVersion(),
               ybcGflagsMap);
           performYbcAction(nodeDetailSet, true, "stop");
-          performYbcAction(nodeDetailSet, true, "start");
           createWaitForYbcServerTask(nodeDetailSet)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }

@@ -36,7 +36,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
@@ -48,13 +47,14 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
+  private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
 
   private YBClient mockClient;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUpgrade,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -101,6 +101,10 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+    this.softwareKubernetesUpgrade =
+        new SoftwareKubernetesUpgrade(
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
     UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
     IsInitDbDoneResponse mockIsInitDbDoneResponse =
         new IsInitDbDoneResponse(1000, "", true, true, null, null);
@@ -113,6 +117,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
       when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ignored) {
     }
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {
@@ -122,6 +128,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(

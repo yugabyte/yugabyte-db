@@ -622,11 +622,11 @@ class Tablet : public AbstractTablet,
 
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
-        regular_db_.get(),
-        intents_db_.get(),
-        &key_bounds_,
-        retention_policy_.get(),
-        metrics ? metrics : metrics_.get() };
+        .regular = regular_db_.get(),
+        .intents = intents_db_.get(),
+        .key_bounds = &key_bounds_,
+        .retention_policy = retention_policy_.get(),
+        .metrics = metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:
@@ -890,7 +890,8 @@ class Tablet : public AbstractTablet,
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
       TabletLockInfoPB* tablet_lock_info,
-      uint64_t max_single_shard_waiter_start_time_us) const;
+      uint64_t max_single_shard_waiter_start_time_us,
+      uint32_t max_txn_locks_per_tablet) const;
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();

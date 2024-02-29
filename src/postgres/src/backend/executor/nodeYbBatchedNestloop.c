@@ -483,7 +483,8 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	}
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(num_hashClauseInfos, eqops, &eqFuncOids,
-						  &bnlstate->hashFunctions);
+						  &bnlstate->innerHashFunctions,
+						  &bnlstate->outerHashFunctions);
 
 	ExprState *tab_eq_fn =
 		ybPrepareOuterExprsEqualFn(outerParamExprs,
@@ -502,7 +503,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->hashtable =
 		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
 								 num_hashClauseInfos, keyexprs, tab_eq_fn,
-								 eqFuncOids, bnlstate->hashFunctions,
+								 eqFuncOids, bnlstate->outerHashFunctions,
 								 GetMaxBatchSize(plan), 0,
 								 econtext->ecxt_per_query_memory, tablecxt,
 								 econtext->ecxt_per_tuple_memory, econtext,
@@ -566,7 +567,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	data = FindTupleHashEntry(ht,
 							  inner,
 							  eq,
-							  bnlstate->hashFunctions,
+							  bnlstate->innerHashFunctions,
 							  bnlstate->innerAttrs);
 	if(data == NULL)
 	{
@@ -825,10 +826,9 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	PlanState  *innerPlan = innerPlanState(bnlstate);
 	LOCAL_JOIN_FN(FreeBatch, bnlstate);
 
-	bool have_outer_tuple = false;
-
 	for (int batchno = 0; batchno < GetMaxBatchSize(batchnl); batchno++)
 	{
+		bool have_outer_tuple = false;
 		elog(DEBUG2, "getting new outer tuple");
 		if (batchno < GetCurrentBatchSize(bnlstate) &&
 			!bnlstate->bnl_outerdone)
@@ -857,12 +857,12 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		else
 		{
 			/*
-			 * It is possible for the outer side to not be done but we don't
-			 * have an outer tuple because our current batch size is smaller
-			 * than the table size. The first batch in a join with a pushed down
-			 * LIMIT could have a batch size smaller than the max batch size,
-			 * causing both bnlstate->bnl_outerdone and have_outer_tuple to be
-			 * false once that first batch is done.
+			 * have_outer_tuple can be false even if bnlstate->bnl_outerdone
+			 * is false if the pushed down LIMIT leads our first batch to be
+			 * smaller than the outer table size. While we decrease the size
+			 * of our first batch, we can't decrease the size of the inner
+			 * index scan's corresponding IN list and must fill in the remaining
+			 * values with NULLs.
 			 */
 			if (have_outer_tuple)
 			{

@@ -10,7 +10,8 @@ import { RunTimeConfig } from '../../redesign/features/universe/universe-form/ut
 const CACertErrorPatterns = [
   'PKIX path building failed',
   'No trust manager was able to validate this certificate chain',
-  'ERR_04104_NULL_CONNECTION_CANNOT_CONNECT'
+  'ERR_04104_NULL_CONNECTION_CANNOT_CONNECT',
+  'ERR_04120_TLS_HANDSHAKE_ERROR'
 ];
 
 export const CA_CERT_RUNTIME_CONFIG_KEY = 'yb.customCATrustStore.enabled';

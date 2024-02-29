@@ -21,6 +21,7 @@
 #include "utils/hsearch.h"
 #include "utils/relcache.h"
 
+#include "yb_ash.h"
 
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
@@ -776,7 +777,8 @@ typedef enum BackendType
 	B_STARTUP,
 	B_WAL_RECEIVER,
 	B_WAL_SENDER,
-	B_WAL_WRITER
+	B_WAL_WRITER,
+	YB_YSQL_CONN_MGR
 } BackendType;
 
 
@@ -1431,6 +1433,38 @@ static inline void
 pgstat_report_wait_end(void)
 {
 	return pgstat_report_wait_end_for_proc(MyProc);
+}
+
+/* ----------
+ * yb_pgstat_report_wait_start() -
+ *
+ *	Called to get the current wait event info and set a new wait
+ *  event info.
+ *
+ * NB: this *must* be able to survive being called before MyProc has been
+ * initialized.
+ * ----------
+ */
+static inline uint32
+yb_pgstat_report_wait_start(uint32 wait_event_info)
+{
+	/* If ASH is disabled, do nothing */
+	if (!yb_enable_ash)
+		return wait_event_info;
+
+	uint32 prev_wait_event_info = 0;
+	volatile PGPROC *proc = MyProc;
+
+	if (pgstat_track_activities && proc)
+	{
+		/*
+		 * Since this is a four-byte field which is always read and written as
+		 * four-bytes, updates are atomic.
+		 */
+		prev_wait_event_info = proc->wait_event_info;
+		proc->wait_event_info = wait_event_info;
+	}
+	return prev_wait_event_info;
 }
 
 /* nontransactional event counts are simple enough to inline */

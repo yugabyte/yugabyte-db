@@ -15,6 +15,7 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 ## Basics
 
+- YugabyteDB supports both x86 and ARM (aarch64) CPU architectures.
 - YugabyteDB is supported on a variety of [operating systems](../../reference/configuration/operating-systems/). For production workloads, the recommended operating systems are AlmaLinux 8 and RHEL 8.
 - The appropriate system limits should be set using [`ulimit`](../manual-deployment/system-config/#ulimits) on each node running a YugabyteDB server.
 - [NTP or chrony](../manual-deployment/system-config/#ntp) should be used to synchronize time among the machines.

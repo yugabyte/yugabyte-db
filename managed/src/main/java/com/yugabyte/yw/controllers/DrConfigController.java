@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -10,10 +11,12 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigGetResp;
 import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
@@ -68,6 +71,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
@@ -89,6 +93,7 @@ public class DrConfigController extends AuthenticatedController {
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
+  private final AutoFlagUtil autoFlagUtil;
 
   @Inject
   public DrConfigController(
@@ -98,7 +103,8 @@ public class DrConfigController extends AuthenticatedController {
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      AutoFlagUtil autoFlagUtil) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -106,6 +112,7 @@ public class DrConfigController extends AuthenticatedController {
     this.ybService = ybService;
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   /**
@@ -144,6 +151,9 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.dr.enabled to true in the application.conf");
+    }
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, targetUniverse);
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
@@ -224,6 +234,42 @@ public class DrConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
   }
 
+  @ApiOperation(
+      nickname = "editDrConfig",
+      value = "Edit disaster recovery config",
+      response = DrConfig.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "disaster_recovery_edit_form_data",
+          value = "Disaster Recovery Edit Form Data",
+          dataType = "com.yugabyte.yw.forms.DrConfigEditForm",
+          paramType = "body",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
+    log.info("Received edit drConfig request");
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
+
+    DrConfigEditForm editForm = parseEditForm(request);
+    validateEditForm(editForm, customer.getUuid(), drConfig);
+
+    drConfig.setStorageConfigUuid(editForm.bootstrapParams.backupRequestParams.storageConfigUUID);
+    drConfig.setParallelism(editForm.bootstrapParams.backupRequestParams.parallelism);
+    drConfig.update();
+
+    DrConfigGetResp resp = new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
+    return PlatformResults.withData(resp);
+  }
+
   /**
    * API that adds/removes tables to a disaster recovery configuration.
    *
@@ -252,6 +298,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigSetTablesForm setTablesForm = parseSetTablesForm(customerUUID, request);
     if (setTablesForm.bootstrapParams == null) {
@@ -267,6 +314,10 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
 
     BootstrapParams bootstrapParams =
         getBootstrapParamsFromRestartBootstrapParams(
@@ -330,6 +381,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
 
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigRestartForm restartForm = parseRestartForm(customerUUID, request);
@@ -342,14 +394,23 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
     // Todo: Always add non existing tables to the xCluster config on restart.
+    // Empty `dbs` field indicates a request to restart the entire config.
+    // This is consistent with the restart xCluster config behaviour.
     Set<String> tableIds =
-        XClusterConfigTaskBase.getTableIds(
-            getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
+        CollectionUtils.isEmpty(restartForm.dbs)
+            ? xClusterConfig.getTableIds()
+            : XClusterConfigTaskBase.getTableIds(
+                getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
 
+    log.info("DR state is {}", drConfig.getState());
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getRestartTaskParams(
             ybService,
@@ -359,7 +420,8 @@ public class DrConfigController extends AuthenticatedController {
             tableIds,
             restartForm.bootstrapParams,
             false /* dryRun */,
-            isForceDelete);
+            isForceDelete,
+            drConfig.isHalted() /*isForceBootstrap*/);
 
     UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
     CustomerTask.create(
@@ -409,6 +471,7 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -422,6 +485,10 @@ public class DrConfigController extends AuthenticatedController {
     }
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);
+    }
 
     Set<String> tableIds = xClusterConfig.getTableIds();
 
@@ -529,11 +596,16 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigSwitchoverForm switchoverForm = parseSwitchoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(targetUniverse, sourceUniverse);
+    }
 
     // All the tables in DBs in replication on the source universe must be in the xCluster config.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
@@ -690,6 +762,7 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfigFailoverForm failoverForm = parseFailoverForm(request);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -982,6 +1055,30 @@ public class DrConfigController extends AuthenticatedController {
     return formData;
   }
 
+  private DrConfigEditForm parseEditForm(Http.Request request) {
+    log.debug("Request body to edit a DR config is {}", request.body().asJson());
+    DrConfigEditForm formData =
+        formFactory.getFormDataOrBadRequest(request.body().asJson(), DrConfigEditForm.class);
+    return formData;
+  }
+
+  private void validateEditForm(DrConfigEditForm formData, UUID customerUUID, DrConfig drConfig) {
+    validateBackupRequestParamsForBootstrapping(
+        formData.bootstrapParams.backupRequestParams, customerUUID);
+
+    UUID newStorageConfigUUID = formData.bootstrapParams.backupRequestParams.storageConfigUUID;
+    int newParallelism = formData.bootstrapParams.backupRequestParams.parallelism;
+    if (drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
+        && drConfig.getParallelism() == newParallelism) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "No changes were made to drConfig. Current Storage configuration with uuid: %s and"
+                  + " parallelism: %d for drConfig: %s",
+              drConfig.getStorageConfigUuid(), drConfig.getParallelism(), drConfig.getName()));
+    }
+  }
+
   private DrConfigSetTablesForm parseSetTablesForm(UUID customerUUID, Http.Request request) {
     log.debug("Request body to set table a DR config is {}", request.body().asJson());
     DrConfigSetTablesForm formData =
@@ -1161,6 +1258,15 @@ public class DrConfigController extends AuthenticatedController {
                   }
                 }
               });
+    }
+  }
+
+  private void disallowActionOnErrorState(DrConfig drConfig) {
+    if (drConfig.getState().equals(State.Error)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "DR config: %s is in error state and cannot run current action", drConfig.getName()));
     }
   }
 

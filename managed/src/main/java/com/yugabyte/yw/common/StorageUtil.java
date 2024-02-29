@@ -51,6 +51,11 @@ public interface StorageUtil {
         YbcBackupUtil.DEFAULT_REGION_STRING, backupLocation, configData, true);
   }
 
+  public default org.yb.ybc.ProxyConfig createYbcProxyConfig(
+      Universe universe, CustomerConfigData configData) {
+    return null;
+  }
+
   /**
    * Generate CloudStoreSpec for restore/success marker download
    *
@@ -103,6 +108,7 @@ public interface StorageUtil {
     for (String location : locations) {
       Map<String, String> locationsMap = new HashMap<>();
       locationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, location);
+      checkConfigTypeAndBackupLocationSame(location);
       // Default no-op. Works only for NFS.
       checkStoragePrefixValidity(
           configData, YbcBackupUtil.DEFAULT_REGION_STRING, location, checkBucketInPrefix);
@@ -135,6 +141,7 @@ public interface StorageUtil {
                             PRECONDITION_FAILED,
                             String.format("Storage config does not contain %s region", r));
                       }
+                      checkConfigTypeAndBackupLocationSame(l);
                       // Default no-op. Works only for NFS.
                       checkStoragePrefixValidity(configData, r, l, false);
                     });
@@ -170,6 +177,18 @@ public interface StorageUtil {
    */
   public default void checkListObjectsWithYbcSuccessMarkerCloudStore(
       CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {}
+
+  /**
+   * Check if storage config type used is compatible with backup location
+   *
+   * <p>Ignored for NFS
+   *
+   * @param configData Storage config
+   * @param location The backup location
+   */
+  public default void checkConfigTypeAndBackupLocationSame(String location) {
+    // default empty fall-through stub
+  }
 
   /**
    * Validate config and backup location prefix is same for NFS.

@@ -27,6 +27,7 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "replication/walsender.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
 #include "tcop/utility.h"
@@ -108,14 +109,37 @@ extern void YBCValidatePlacement(const char *placement_info);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
-extern void YBCCreateReplicationSlot(const char *slot_name);
+extern void YBCCreateReplicationSlot(const char *slot_name,
+									 CRSSnapshotAction snapshot_action,
+									 uint64_t *consistent_snapshot_time);
 
 extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
+
+extern void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot);
 
 extern void 
 YBCGetReplicationSlotStatus(const char *slot_name, 
 							bool *active);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
+
+extern void
+YBCGetTabletListToPollForStreamAndTable(const char *stream_id,
+										Oid relation_id,
+										YBCPgTabletCheckpoint **tablet_checkpoints,
+										size_t *numtablets);
+
+extern void YBCSetCDCTabletCheckpoint(const char *stream_id,
+									  const char *tablet_id,
+									  const YBCPgCDCSDKCheckpoint *checkpoint,
+									  uint64_t safe_time,
+									  bool is_initial_checkpoint);
+
+extern void YBCGetCDCChanges(const char *stream_id,
+							 const char *tablet_id,
+							 const YBCPgCDCSDKCheckpoint *checkpoint,
+							 YBCPgChangeRecordBatch **record_batch);

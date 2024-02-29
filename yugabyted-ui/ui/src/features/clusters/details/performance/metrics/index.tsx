@@ -123,7 +123,7 @@ export const Metrics: FC = () => {
   const [nodeName, setNodeName] = useState<string | undefined>(queryParams.nodeName);
   const [relativeInterval, setRelativeInterval] = useState<string>(queryParams.interval);
 
-  const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery({});
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
 
   const nodesNamesList = useMemo(

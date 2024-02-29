@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static com.yugabyte.yw.common.Util.getYbaVersion;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -141,13 +143,24 @@ public class PlatformInstanceClient {
             this.controller.syncBackups().url(),
             this.requestHeader,
             buildPartsList(
-                backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
+                backupFile,
+                ImmutableMap.of(
+                    "leader", leaderAddr, "sender", senderAddr, "ybaversion", getYbaVersion())));
     if (response == null || response.get("error") != null) {
       LOG.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
       return false;
     } else {
       return true;
     }
+  }
+
+  public boolean testConnection() {
+    try {
+      JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+    } catch (Exception e) {
+      return false;
+    }
+    return true;
   }
 
   private void maybeGenerateVersionMismatchEvent(JsonNode remoteVersion) {

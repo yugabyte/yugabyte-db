@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteRemnantStreams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -85,7 +87,6 @@ import play.mvc.Http.Status;
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
 
   protected final XClusterUniverseService xClusterUniverseService;
-  private static final int POLL_TIMEOUT_SECONDS = 300;
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
   public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
@@ -410,16 +411,22 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected void waitForXClusterOperation(
       XClusterConfig xClusterConfig, IPollForXClusterOperation p) {
+
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Duration xclusterWaitTimeout =
+        this.confGetter.getConfForScope(universe, UniverseConfKeys.xclusterSetupAlterTimeout);
+
     try {
       IsSetupUniverseReplicationDoneResponse doneResponse = null;
       int numAttempts = 1;
       long startTime = System.currentTimeMillis();
-      while (((System.currentTimeMillis() - startTime) / 1000) < POLL_TIMEOUT_SECONDS) {
+      while ((System.currentTimeMillis() - startTime) < xclusterWaitTimeout.toMillis()) {
         if (numAttempts % 10 == 0) {
           log.info(
-              "Wait for XClusterConfig({}) operation to complete (attempt {})",
+              "Wait for XClusterConfig({}) operation to complete (attempt {}, total timeout {})",
               xClusterConfig.getUuid(),
-              numAttempts);
+              numAttempts,
+              xclusterWaitTimeout);
         }
 
         doneResponse = p.poll(xClusterConfig.getReplicationGroupName());
@@ -428,7 +435,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         }
         if (doneResponse.hasError()) {
           log.warn(
-              "Failed to wait for XClusterConfig({}) operation: {}",
+              "Hit failure during wait for XClusterConfig({}) operation: {}, will continue",
               xClusterConfig.getUuid(),
               doneResponse.getError().toString());
         }
@@ -447,8 +454,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         // TODO: Add unit tests (?) -- May be difficult due to wait
         throw new RuntimeException(
             String.format(
-                "Timed out waiting for XClusterConfig(%s) operation to complete",
-                xClusterConfig.getUuid()));
+                "Timed out waiting for XClusterConfig(%s) operation to complete after %d ms",
+                xClusterConfig.getUuid(), xclusterWaitTimeout.toMillis()));
       }
       if (doneResponse.hasReplicationError()
           && doneResponse.getReplicationError().getCode() != ErrorCode.OK) {
@@ -492,20 +499,31 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected void checkBootstrapRequiredForReplicationSetup(Set<String> tableIds) {
+  protected void checkBootstrapRequiredForReplicationSetup(
+      Set<String> tableIds, boolean isForceBootstrap) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     log.info(
-        "Running checkBootstrapRequired with (sourceUniverse={},xClusterUuid={},tableIds={})",
+        "Running checkBootstrapRequired with "
+            + "(sourceUniverse={},xClusterUuid={},tableIds={},isForceBootstrap={})",
         xClusterConfig.getSourceUniverseUUID(),
         xClusterConfig,
-        tableIds);
+        tableIds,
+        isForceBootstrap);
 
     try {
       // Check whether bootstrap is required.
-      Map<String, Boolean> isBootstrapRequiredMap =
-          isBootstrapRequired(tableIds, xClusterConfig.getSourceUniverseUUID());
-      log.debug("IsBootstrapRequired result is {}", isBootstrapRequiredMap);
+      Map<String, Boolean> isBootstrapRequiredMap;
 
+      if (isForceBootstrap) {
+        // Uncommon case, only happens during DR repair.
+        log.info("Forcing all tables to be bootstrapped");
+        isBootstrapRequiredMap =
+            tableIds.stream().collect(Collectors.toMap(tid -> tid, tid -> true));
+      } else {
+        isBootstrapRequiredMap =
+            isBootstrapRequired(tableIds, xClusterConfig.getSourceUniverseUUID());
+      }
+      log.debug("IsBootstrapRequired result is {}", isBootstrapRequiredMap);
       // Persist whether bootstrap is required.
       Map<Boolean, List<String>> tableIdsPartitionedByNeedBootstrap =
           isBootstrapRequiredMap.keySet().stream()
@@ -520,6 +538,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     log.info("Completed checkBootstrapRequired");
+  }
+
+  protected void checkBootstrapRequiredForReplicationSetup(Set<String> tableIds) {
+    checkBootstrapRequiredForReplicationSetup(tableIds, false /*isForceBootstrap */);
   }
 
   /**
@@ -627,6 +649,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     SetRestoreTime task = createTask(SetRestoreTime.class);
     task.initialize(setRestoreTimeParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeleteRemnantStreamsTask(UUID universeUuid, String namespaceName) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteRemnantStreams");
+    DeleteRemnantStreams.Params deleteRemnantStreamsParams = new DeleteRemnantStreams.Params();
+    deleteRemnantStreamsParams.setUniverseUUID(universeUuid);
+    deleteRemnantStreamsParams.namespaceName = namespaceName;
+
+    DeleteRemnantStreams task = createTask(DeleteRemnantStreams.class);
+    task.initialize(deleteRemnantStreamsParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;

@@ -609,7 +609,7 @@ public class ShellKubernetesManager extends KubernetesManager {
                 containerName,
                 "--"));
     commandList.addAll(commandArgs);
-    execCommand(config, commandList, true)
+    execCommand(config, commandList)
         .processErrors(
             String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
   }

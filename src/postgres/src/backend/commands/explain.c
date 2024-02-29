@@ -157,11 +157,15 @@ typedef enum YbStatLabel
 
 	YB_STAT_LABEL_STORAGE_TABLE_READ,
 	YB_STAT_LABEL_STORAGE_TABLE_WRITE,
+	YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_INDEX_READ,
 	YB_STAT_LABEL_STORAGE_INDEX_WRITE,
+	YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_FLUSH,
+
+	YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_LAST
 } YbStatLabel;
@@ -183,38 +187,52 @@ typedef struct YbExplainState
 
 #define BUILD_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
 	{ \
-		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
+		NAME, NULL, IS_NON_DETERMINISTIC \
 	}
 
-#define BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
-	BUILD_STAT_LABEL_DATA(NAME, true)
+#define BUILD_REQUEST_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
+	{ \
+		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
+	}
 
 #define BUILD_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
 	BUILD_STAT_LABEL_DATA(NAME, false)
 
+#define BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA(NAME) \
+	BUILD_REQUEST_STAT_LABEL_DATA(NAME, true)
+
+#define BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA(NAME) \
+	BUILD_REQUEST_STAT_LABEL_DATA(NAME, false)
+
 const YbStatLabelData yb_stat_label_data[] = {
 	[YB_STAT_LABEL_CATALOG_READ] =
-		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Read"),
+		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
 	[YB_STAT_LABEL_CATALOG_WRITE] =
-		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Write"),
+		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
 
 	[YB_STAT_LABEL_STORAGE_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
 	[YB_STAT_LABEL_STORAGE_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
+	[YB_STAT_LABEL_STORAGE_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
 	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
+	[YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
 	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
+	[YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_FLUSH] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Flush"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Flush"),
 };
 
 #undef BUILD_STAT_LABEL_DATA
@@ -1366,6 +1384,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es,
+									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
+									   es->yb_stats.read.rows_scanned);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
 									   es->yb_stats.write_count);
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
@@ -2374,15 +2395,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during Distinct Index Scan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexScan *) plan)->yb_distinct_prefixlen, es);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
-						   "Remote Index Filter", planstate, ancestors, es);
+						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2409,16 +2430,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during HybridScan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2475,10 +2496,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		case T_YbSeqScan:
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((YbSeqScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2625,7 +2646,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
@@ -3876,6 +3897,8 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 	double table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
 	double index_reads = yb_instr->index_reads.count / nloops;
 	double index_read_wait = yb_instr->index_reads.wait_time / nloops;
+	double table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
+	double index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops ;
 
 	/* Write stats */
 	double table_writes = yb_instr->tbl_writes / nloops;
@@ -3887,8 +3910,13 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ,
 							table_reads, table_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
+							   table_rows_scanned);
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ,
 							index_reads, index_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
+							   index_rows_scanned);
+
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
 							   table_writes);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_WRITE,
@@ -4921,18 +4949,24 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 	es->yb_stats.flush.count += yb_instr->write_flushes.count;
 	es->yb_stats.flush.wait_time += yb_instr->write_flushes.wait_time;
 
+	// Rows Scanned
+	es->yb_stats.read.rows_scanned +=
+		yb_instr->tbl_reads.rows_scanned + yb_instr->index_reads.rows_scanned;
+
 	// RPC Storage Metrics
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
-		const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
-		agg->sum += val->sum;
-		agg->count += val->count;
+	if (es->yb_debug) {
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
+			const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
+			agg->sum += val->sum;
+			agg->count += val->count;
+		}
 	}
 }
 

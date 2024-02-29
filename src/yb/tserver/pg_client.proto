@@ -48,6 +48,7 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
       returns (PgGetReplicationSlotStatusResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
@@ -198,15 +199,28 @@ message PgCreateDatabaseResponsePB {
 message PgCreateSequencesDataTableRequestPB {
 }
 
+// proto2 version of the CDCSDKSnapshotOption enum from yb/common/common_types.proto
+enum PgReplicationSlotSnapshotActionPB {
+  // Invalid, should not be used. This is only present here to keep the same enum tags between the
+  // proto2 (this) and the proto3 versions.
+  REPLICATION_SLOT_UNKNOWN_SNAPSHOT = 0;
+  // Client does not wish to consume snapshot.
+  REPLICATION_SLOT_NOEXPORT_SNAPSHOT = 1;
+  // Client wishes to consume snapshot from the source universe.
+  REPLICATION_SLOT_USE_SNAPSHOT = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   string replication_slot_name = 3;
+  PgReplicationSlotSnapshotActionPB snapshot_action = 4;
 }
 
 message PgCreateReplicationSlotResponsePB {
   AppStatusPB status = 1;
   bytes stream_id = 2;
+  uint64 cdcsdk_consistent_snapshot_time = 3;
 }
 
 message PgCreateSequencesDataTableResponsePB {
@@ -378,6 +392,9 @@ message PgGetLockStatusRequestPB {
 
   // Limit number of old transactions whose lock info is retrieved.
   uint32 max_num_txns = 4;
+
+  // Limit number of locks returned per transaction at each tablet
+  uint32 max_txn_locks_per_tablet = 5;
 }
 
 message PgGetLockStatusResponsePB {
@@ -401,6 +418,17 @@ message PgGetLockStatusResponsePB {
 
 message PgGetReplicationSlotStatusRequestPB {
   string replication_slot_name = 1;
+}
+
+message PgGetReplicationSlotRequestPB {
+  string replication_slot_name = 1;
+
+  /* TODO(#20368): Introduce ability to acquire the slot. */
+}
+
+message PgGetReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+  PgReplicationSlotInfoPB replication_slot_info = 2;
 }
 
 enum ReplicationSlotStatus {
@@ -779,7 +807,13 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
-message PgActiveSessionHistoryRequestPB {}
+message PgActiveSessionHistoryRequestPB {
+  bool fetch_tserver_states = 1;
+  bool fetch_flush_and_compaction_states = 2;
+  bool fetch_cql_states = 3;
+  bool ignore_ash_calls = 4;
+  bool fetch_raft_log_appender_states = 5;
+}
 
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
@@ -788,6 +822,9 @@ message WaitStatesPB {
 message PgActiveSessionHistoryResponsePB {
   AppStatusPB status = 1;
   WaitStatesPB tserver_wait_states = 2;
+  WaitStatesPB flush_and_compaction_wait_states = 3;
+  WaitStatesPB raft_log_appender_wait_states = 4;
+  WaitStatesPB cql_wait_states = 5;
 }
 
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }

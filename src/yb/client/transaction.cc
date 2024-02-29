@@ -80,8 +80,9 @@ DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
     "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_UNKNOWN_bool(auto_promote_nonlocal_transactions_to_global, true,
-            "Automatically promote transactions touching data outside of region to global.");
+DEFINE_RUNTIME_bool(auto_promote_nonlocal_transactions_to_global, true,
+                    "Automatically promote transactions touching data outside of region to "
+                    "global.");
 
 DEFINE_RUNTIME_bool(log_failed_txn_metadata, false, "Log metadata about failed transactions.");
 TAG_FLAG(log_failed_txn_metadata, advanced);

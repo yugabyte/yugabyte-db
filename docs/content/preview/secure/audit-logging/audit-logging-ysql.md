@@ -40,13 +40,11 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     Database administrators can use `ysql_pg_conf_csv` to configure audit logging using [pgaudit flags](#customize-audit-logging).
 
-    Provide the options as a comma separated values. For example:
+    Provide the options as comma-separated values. Use double quotation marks to enclose any settings that include commas or single quotation marks. For example:
 
     ```sh
-    ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_client=on,pgaudit.log_level=notice"
+    --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
     ```
-
-    Use double quotes to enclose any settings that include commas.
 
     These configuration values are set when the YugabyteDB cluster is created and therefore apply for all users and for every session.
 
@@ -76,7 +74,7 @@ By default, audit logging includes the statement text for all statements in the 
 
 | Option | Description | Default |
 | :----- | :----- | :------ |
-| pgaudit.log | Specifies which classes of statements are logged by session audit logging, as follows:<ul><li>**READ**: SELECT and COPY when the source is a relation or a query.<li>**WRITE**: INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.<li>**FUNCTION**: Function calls and DO blocks.<li>**ROLE**: Statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.<li>**DDL**: All DDL that is not included in the ROLE class.<li>**MISC**: Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.<li>**MISC_SET**: Miscellaneous SET commands, such as SET ROLE.<li>**ALL**: Include all of the preceding options.</ul>You can specify multiple classes using a comma-separated list. Subtract classes by prefacing the class with a minus (`-`) sign. | none |
+| pgaudit.log | Specifies which classes of statements are logged by session audit logging, as follows:<ul><li>**READ**: SELECT and COPY when the source is a relation or a query.<li>**WRITE**: INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.<li>**FUNCTION**: Function calls and DO blocks.<li>**ROLE**: Statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.<li>**DDL**: All DDL that is not included in the ROLE class.<li>**MISC**: Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.<li>**ALL**: Include all of the preceding options.</ul>You can specify multiple classes using a comma-separated list. Subtract classes by prefacing the class with a minus (`-`) sign. | none |
 | pgaudit.log_catalog | Log statements for the PostgreSQL system catalog relations in `pg_catalog`. These system catalog tables record system (as opposed to user) activity, such as metadata lookups and from third-party tools performing lookups.<br>These statements aren't required for typical auditing and you can disable this option to reduce noise in the log. | ON |
 | pgaudit.log_client | Enable this option to echo log messages directly to clients such as [ysqlsh](../../../admin/ysqlsh/) and psql. Log messages are printed directly to the shell, which can be helpful for debugging.<br>When enabled, you can set the level of logs that are output using `pgaudit.log_level`. | OFF |
 | pgaudit.log_level | Sets the [severity level](https://www.postgresql.org/docs/16/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of logs written to clients when `pgaudit.log_client` is on. Use this setting for debugging and testing.<br>Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG.<br>ERROR, FATAL, and PANIC are not allowed.<br>`pgaudit.log_level` only applies when `pgaudit.log_client` is on; otherwise the default LOG level is used. | LOG |

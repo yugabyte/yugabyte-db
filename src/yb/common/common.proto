@@ -606,6 +606,9 @@ message DatumMessagePB {
   oneof cdc_datum {
     PgDatumPB pg_value = 13;
     QLValuePB cql_value = 14;
+    // We send the datum as QLValuePB if the client is Walsender.
+    // The Walsender does the conversion from QLValuePB to the PG datum.
+    QLValuePB pg_ql_value = 15;
   }
 }
 

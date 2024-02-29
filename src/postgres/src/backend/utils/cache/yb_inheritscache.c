@@ -215,7 +215,8 @@ YbInitPgInheritsCache()
 	 * start with a small size and let it grow as needed.
 	*/
 	YbPgInheritsCache =
-		hash_create("YbPgInheritsCache", 8, &ctl, HASH_ELEM | HASH_CONTEXT);
+		hash_create("YbPgInheritsCache", 8, &ctl,
+					HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
 	CacheRegisterRelcacheCallback(YbPgInheritsCacheRelCallback, (Datum) 0);
 	elog(DEBUG3, "Initialized YbPgInherits cache");

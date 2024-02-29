@@ -91,7 +91,7 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
                 .map(streamInfo -> streamInfo.getStreamId().toStringUtf8())
                 .collect(Collectors.toList());
         if (undrainedStreamIds.isEmpty()) {
-          log.info("All streams are drained");
+          log.info("All streams were drained in {} ms", stopwatch.elapsed().toMillis());
           break;
         }
         subtaskElapsedTime = stopwatch.elapsed();

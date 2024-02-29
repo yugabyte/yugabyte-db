@@ -196,7 +196,6 @@ class PgConstant : public PgExpr {
 
  private:
   LWQLValuePB ql_value_;
-  const char *collation_sortkey_;
 };
 
 class PgFetchedTarget {

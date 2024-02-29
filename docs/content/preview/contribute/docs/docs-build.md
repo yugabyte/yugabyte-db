@@ -25,12 +25,11 @@ To run the docs site locally and edit the docs, you'll need:
 
     Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
 
+* [**Node.js**](https://nodejs.org/en/download/) LTS (16) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 16.14.0`
+
+  <!-- * Using Homebrew: `brew install node@16` -->
+
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
-
-* [**Node.js**](https://nodejs.org/en/download/) LTS (16):
-
-  * Using Homebrew: `brew install node@16`
-  * Using NVM: `nvm install 16`
 
 * **Hugo**: `brew install hugo` installs the latest version.
 
@@ -107,6 +106,16 @@ npm start            # Do this every time to build the docs and launch the live-
 The live-reload server runs at <http://localhost:1313/> unless port 1313 is already in use. Check the output from the `npm start` command to verify the port.
 
 When you're done, type Ctrl-C stop the server.
+
+### Optional: Run builds more quickly
+
+If you are only working in `preview` or `stable`, you can start the live-reload server more quickly using the following:
+
+```sh
+npm run fast
+```
+
+This builds only the `preview` and `stable` directories, and does not generate syntax diagrams.
 
 ### Optional: Run a full build {#full-build}
 

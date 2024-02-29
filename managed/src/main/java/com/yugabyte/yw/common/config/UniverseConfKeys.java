@@ -850,6 +850,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "runtime configuration.",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> validateLocalRelease =
+      new ConfKeyInfo<>(
+          "yb.universe.validate_local_release",
+          ScopeType.UNIVERSE,
+          "Validate filepath for local release",
+          "For certain tasks validates the existence of local filepath for the universe software "
+              + "version.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableRollbackSupport =
       new ConfKeyInfo<>(
           "yb.upgrade.enable_rollback_support",
@@ -1013,4 +1022,36 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verify current cluster state (from db perspective) before running task",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.operation_timeout",
+          ScopeType.UNIVERSE,
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          "Wait time for xcluster/DR replication setup and edit RPCs.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.enabled",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check enabled",
+          " Whether to run CheckLeaderlessTablets subtask before running universe tasks",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> leaderlessTabletsTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.timeout",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check timeout",
+          "Controls the max time out when performing the CheckLeaderlessTablets subtask",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYbcForUniverse =
+      new ConfKeyInfo<>(
+          "ybc.universe.enabled",
+          ScopeType.UNIVERSE,
+          "Enable YBC",
+          "Enable YBC for universes during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

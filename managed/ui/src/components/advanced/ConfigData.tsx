@@ -12,7 +12,10 @@ import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
-import { RbacValidator, hasNecessaryPerm } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../redesign/features/rbac/common/RbacApiPermValidator';
 
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action } from '../../redesign/features/rbac';
@@ -155,9 +158,9 @@ export const ConfigData: FC<GlobalConfigProps> = ({
       >
         <RbacValidator
           customValidateFunction={(userPerm) =>
-            scope === RunTimeConfigScope.GLOBAL ?
-              find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined :
-              hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
+            scope === RunTimeConfigScope.GLOBAL
+              ? find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined
+              : hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
           }
           isControl
         >
@@ -172,9 +175,9 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         {!row.isConfigInherited && (
           <RbacValidator
             customValidateFunction={(userPerm) =>
-              scope === RunTimeConfigScope.GLOBAL ?
-                find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined :
-                hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
+              scope === RunTimeConfigScope.GLOBAL
+                ? find(userPerm, { actions: [Action.SUPER_ADMIN_ACTIONS] }) !== undefined
+                : hasNecessaryPerm(ApiPermissionMap.MODIFY_RUNTIME_CONFIG_BY_KEY)
             }
             isControl
             overrideStyle={{ display: 'block' }}

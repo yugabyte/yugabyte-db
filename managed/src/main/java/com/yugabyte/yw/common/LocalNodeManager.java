@@ -73,6 +73,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
@@ -311,6 +312,7 @@ public class LocalNodeManager {
           case Software:
             updateSoftwareOnNode(userIntent, params.ybSoftwareVersion);
             break;
+          case Certs:
           case ToggleTls:
           case GFlags:
             UniverseTaskBase.ServerType processType =
@@ -459,6 +461,9 @@ public class LocalNodeManager {
   }
 
   private Map<String, String> getGFlagsFromArgs(Map<String, String> args, String key) {
+    if (!args.containsKey(key)) {
+      return Collections.emptyMap();
+    }
     return (Map<String, String>) Json.fromJson(Json.parse(args.get(key)), Map.class);
   }
 
@@ -487,7 +492,7 @@ public class LocalNodeManager {
                 ? MAX_MEM_RATIO_TSERVER
                 : MAX_MEM_RATIO_MASTER);
       }
-      processCerts(args, gflags, nodeInfo, userIntent);
+      processCerts(args, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -496,7 +501,6 @@ public class LocalNodeManager {
 
   private void processCerts(
       Map<String, String> args,
-      Map<String, String> gflags,
       NodeInfo nodeInfo,
       UniverseDefinitionTaskParams.UserIntent userIntent)
       throws IOException {
@@ -516,6 +520,15 @@ public class LocalNodeManager {
           args.get("--root_cert_path_client_to_server"),
           args.get("--server_cert_path_client_to_server"),
           args.get("--server_key_path_client_to_server"));
+    }
+    if (args.containsKey("--client_cert_path")) {
+      // These certs will be used for testing the connectivity of `yugabyte` client with postgres.
+      String certsForYSQLClientDir = homeDir + "/.yugabytedb";
+      copyCerts(
+          certsForYSQLClientDir,
+          args.get("--client_cert_path"),
+          args.get("--client_key_path"),
+          args.get("--root_cert_path_client_to_server"));
     }
   }
 
@@ -547,7 +560,9 @@ public class LocalNodeManager {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     String newYBBinDir = versionBinPathMap.get(version);
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
-    localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    if (StringUtils.isNotEmpty(newYBBinDir)) {
+      localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    }
     ProviderDetails details = provider.getDetails();
     ProviderDetails.CloudInfo cloudInfo = details.getCloudInfo();
     cloudInfo.setLocal(localCloudInfo);
@@ -620,7 +635,7 @@ public class LocalNodeManager {
       NodeInfo nodeInfo)
       throws IOException {
     Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
-    if (additionalGFlags != null) {
+    if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
     log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
@@ -737,6 +752,10 @@ public class LocalNodeManager {
     return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
   }
 
+  public NodeInfo getNodeInfo(NodeDetails nodeDetails) {
+    return nodesByNameMap.get(nodeDetails.nodeName);
+  }
+
   private String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
@@ -754,7 +773,7 @@ public class LocalNodeManager {
     return res;
   }
 
-  private String getNodeGFlagsFile(
+  public String getNodeGFlagsFile(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {

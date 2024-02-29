@@ -2,7 +2,7 @@ import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { DrParticipantCard } from './DrParticipantCard';
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../../redesign/components';
 import { DrConfigStateLabel } from '../DrConfigStateLabel';
 import { UniverseXClusterRole } from '../../constants';
@@ -63,7 +63,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
             <YBTooltip
               title={<Typography variant="body2">{t('property.drStatus.tooltip')}</Typography>}
             >
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
           <DrConfigStateLabel drConfig={drConfig} />
@@ -76,7 +76,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
                 <Typography variant="body2">{t('property.estimatedDataLoss.tooltip')}</Typography>
               }
             >
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
           <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
@@ -87,7 +87,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
         flexWrap="wrap"
         alignItems="center"
         gridGap={theme.spacing(5)}
-        marginTop={3}
+        marginTop={4}
       >
         <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drPrimary')}</Typography>

@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -1141,7 +1143,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 ? taskUniverseDetails.getReadOnlyClusters().get(0).uuid
                 : taskUniverseDetails.getPrimaryCluster().uuid);
       }
-      GFlagsUtil.mergeCSVs(tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      GFlagsUtil.mergeCSVs(
+          tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV, false);
       tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
@@ -1205,6 +1208,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       labels.put("yugabyte.io/zone", placementZone);
       overrides.put("commonLabels", labels);
     }
+
+    // Conditionally enable yugabyteDUI if running in community mode.
+    boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+    Map<String, Object> yugabytedUiInfo = new HashMap<>();
+    Map<String, Object> metricsSnapshotterInfo = new HashMap<>();
+    metricsSnapshotterInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
+
+    overrides.put("yugabytedUi", yugabytedUiInfo);
 
     Map<String, Object> ybcInfo = new HashMap<>();
     ybcInfo.put("enabled", taskParams().isEnableYbc());

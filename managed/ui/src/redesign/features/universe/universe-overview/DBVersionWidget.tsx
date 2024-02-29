@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useMemo, useCallback } from 'react';
+import { FC, useState } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -60,7 +60,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       &nbsp;
       {isRollBackFeatureEnabled &&
         higherVersionCount > 0 &&
-        upgradeState === SoftwareUpgradeState.READY &&
+        universeStatus.state === UniverseState.GOOD &&
         !isUniversePaused &&
         _.isEmpty(universePendingTask) && (
           <>
@@ -81,7 +81,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         </YBTooltip>
       )}
       {[SoftwareUpgradeState.FINALIZE_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
-        upgradeState
+        upgradeState && universeStatus.state !== UniverseState.GOOD
       ) && (
         <YBTooltip
           title={

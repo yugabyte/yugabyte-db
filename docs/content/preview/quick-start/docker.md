@@ -88,7 +88,8 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 
 ```sh
 docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
- yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \ --background=false
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
+ --background=false
 ```
 
 If you are running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
@@ -175,7 +176,7 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 ## Monitor your cluster
 
-When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](localhost:15433).
+When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](http://localhost:15433).
 
 ![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
 

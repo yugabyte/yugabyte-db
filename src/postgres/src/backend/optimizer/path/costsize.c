@@ -119,6 +119,11 @@
  */
 #define HIDDEN_COLUMNS_SIZE 4
 
+/*
+ * Width of YBCTID with UUID
+ */
+#define YBCTID_UUID_WIDTH 33
+
 #define MEGA 1048576
 
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
@@ -129,11 +134,19 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+/* Following parameters are used by the older heuristics-based cost model */
 double		yb_network_fetch_cost = YB_DEFAULT_FETCH_COST;
+double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
+double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
+double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
+double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
+/*
+ * Following parameters are used in the newer cost model that aims to model the
+ * pggate and DocDB storage layer and LSM index lookup more precisely.
+ */
 double		yb_seq_block_cost = DEFAULT_SEQ_PAGE_COST;
 double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
-
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double 		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
 double 		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
@@ -141,12 +154,6 @@ int 		yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int 		yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 double		yb_local_latency_cost = YB_DEFAULT_LOCAL_LATENCY_COST;
 double		yb_local_throughput_cost = YB_DEFAULT_LOCAL_THROUGHPUT_COST;
-
-double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
-double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
-double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
-
-double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
 
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
@@ -2497,8 +2504,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	 * would amount to optimizing for the case where the join method is
 	 * disabled, which doesn't seem like the way to bet.
 	 */
+	/*
+	 * YB: If yb_prefer_bnl is on and normal nestloops are allowed for this join
+	 * we do not add the disable cost penalty. See #21129 for more information.
+	 */
 	if ((!yb_is_batched && !enable_nestloop) ||
-		 (yb_is_batched && !yb_enable_batchednl))
+		 (yb_is_batched && !yb_enable_batchednl &&
+		  !(yb_prefer_bnl && enable_nestloop)))
 		startup_cost += disable_cost;
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */
@@ -5661,6 +5673,10 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 	double		result_page_size_mb;
 	Cost 		per_result_page_cost;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -5673,12 +5689,11 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int results_per_page = yb_fetch_size_limit / (result_width * 1.25);
-		// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
-		// 25% larger.
-
-		num_result_pages = ceil(result_tuples / results_per_page);
-		result_page_size_mb = (double) results_per_page * result_width / MEGA;
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
+		result_page_size_mb =
+			fmin(result_tuples, max_results_per_page) *
+			result_width / MEGA;
 	}
 	else
 	{
@@ -5706,6 +5721,10 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 {
 	uint32_t	num_result_pages = 0;
 
+	// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+	// 25% larger for network cost estimation.
+	result_width *= 1.25;
+
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
 	{
@@ -5715,9 +5734,8 @@ yb_get_num_result_pages(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int 		results_per_page =
-			floor(((double)yb_fetch_size_limit) / result_width);
-		num_result_pages = ceil(result_tuples / results_per_page);
+		int max_results_per_page = yb_fetch_size_limit / result_width;
+		num_result_pages = ceil(result_tuples / max_results_per_page);
 	}
 	else
 	{
@@ -5831,6 +5849,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	int 		num_result_pages;
 	int 		num_nexts;
 	int 		num_seeks;
+	int			docdb_result_width;
 
 	if (!enable_seqscan)
 	{
@@ -5841,6 +5860,11 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	/* DocDB costs */
 	/* Compute tuple width */
 	tuple_width = yb_get_relation_data_width(baserel, reloid);
+
+	/* TODO: Temporary fix for #20892 to unblock internal testing */
+	docdb_result_width = path->pathtarget->width;
+	if (docdb_result_width == 0)
+		docdb_result_width = YBCTID_UUID_WIDTH;
 
 	/* Block fetch cost from disk */
 	num_blocks = ceil(baserel->tuples * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -5893,7 +5917,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-											   path->pathtarget->width);
+											   docdb_result_width);
 	num_seeks = num_result_pages;
 	num_nexts = (num_result_pages - 1) + (baserel->tuples - 1);
 
@@ -5904,7 +5928,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 				  (num_nexts * per_next_cost);
 
 	total_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												  path->pathtarget->width);
+												  docdb_result_width);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -6048,11 +6072,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	bool		previous_column_had_upper_bound;
 	int			max_nexts_to_avoid_seek = 2;
 	int			num_result_pages;
+	int			docdb_result_width;
 
 	/* Should only be applied to base relations */
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
+
+	/* TODO: Temporary fix for #20892 to unblock internal testing */
+	docdb_result_width = path->path.pathtarget->width;
+	if (docdb_result_width == 0)
+		docdb_result_width = YBCTID_UUID_WIDTH;
 
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
@@ -6060,8 +6090,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (partial_path)
 	{
-		path->path.parallel_workers = compute_parallel_worker(
-			baserel, -1, -1, max_parallel_workers_per_gather);
+		if (baserel->is_yb_relation)
+		{
+			Oid rel_oid = is_primary_index ? baserel_oid :
+											 path->indexinfo->indexoid;
+			path->path.parallel_workers = yb_compute_parallel_worker(
+				baserel, YbGetTableDistribution(rel_oid),
+				max_parallel_workers_per_gather);
+		}
+		else
+			path->path.parallel_workers = compute_parallel_worker(
+				baserel, -1, -1, max_parallel_workers_per_gather);
 
 		/*
 		 * Fall out if workers can't be assigned for parallel scan, because in
@@ -6361,7 +6400,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
-										 	   path->path.pathtarget->width);
+										 	   docdb_result_width);
 
 	/* Add seeks and nexts for result pages */
 	num_seeks += num_result_pages;
@@ -6505,7 +6544,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
 
 	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												path->path.pathtarget->width);
+												docdb_result_width);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);

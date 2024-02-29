@@ -305,6 +305,7 @@ Are you sure you want to continue?`
 		if err := state.TransitionStatus(ybactlstate.FinishingStatus); err != nil {
 			log.Fatal("Failed to update status: " + err.Error())
 		}
+		common.SetReplicatedBaseDir(state.Replicated.StoragePath)
 
 		for _, name := range serviceOrder {
 			if err := services[name].FinishReplicatedMigrate(); err != nil {
@@ -312,12 +313,14 @@ Are you sure you want to continue?`
 			}
 		}
 		if err := replflow.Uninstall(); err != nil {
-			log.Fatal("unable to uninstall replicated: " + err.Error())
+			log.Error("unable to uninstall replicated: " + err.Error())
+			log.Info("Please manually uninstall replicated")
 		}
 		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("Failed to save state: " + err.Error())
 		}
+		log.Info("Completed migration")
 	},
 }
 

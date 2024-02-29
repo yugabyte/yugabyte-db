@@ -18,7 +18,7 @@ The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) Postgre
 To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
---ysql_pg_conf_csv="shared_preload_libraries=auto_explain"
+--ysql_pg_conf_csv=shared_preload_libraries=auto_explain
 ```
 
 Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.

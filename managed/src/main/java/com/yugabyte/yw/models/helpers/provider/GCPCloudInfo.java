@@ -1,18 +1,21 @@
 package com.yugabyte.yw.models.helpers.provider;
 
 import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -22,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -82,7 +87,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias("config_file_contents")
   @ApiModelProperty
-  private JsonNode gceApplicationCredentials;
+  private String gceApplicationCredentials;
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
@@ -148,14 +153,21 @@ public class GCPCloudInfo implements CloudInfoInterface {
       config.remove(removeKey);
     }
 
-    if (gceApplicationCredentials == null) {
+    if (StringUtils.isEmpty(gceApplicationCredentials)) {
       return config;
     }
-    ObjectNode credentialJSON = (ObjectNode) gceApplicationCredentials;
-    for (Map.Entry<String, String> entry : toAddKeysInConfig.entrySet()) {
-      if (credentialJSON.get(entry.getKey()) != null) {
-        config.put(entry.getValue(), credentialJSON.get(entry.getKey()).toString());
+
+    try {
+      ObjectMapper objectMapper = Json.mapper();
+      JsonNode gceCreds = objectMapper.readTree(gceApplicationCredentials);
+      for (Map.Entry<String, String> entry : toAddKeysInConfig.entrySet()) {
+        if (gceCreds.get(entry.getKey()) != null) {
+          config.put(entry.getValue(), gceCreds.get(entry.getKey()).asText());
+        }
       }
+    } catch (Exception e) {
+      log.error(
+          String.format("Failed to populate GCP credential info, %s", e.getLocalizedMessage()));
     }
 
     return config;
@@ -163,9 +175,18 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonIgnore
   public void withSensitiveDataMasked() {
-    this.gceApplicationCredentialsPath = CommonUtils.getMaskedValue(gceApplicationCredentialsPath);
-    this.gceApplicationCredentials =
-        CommonUtils.getMaskedValue(gceApplicationCredentials, toMaskFieldsInCreds);
+    try {
+      ObjectMapper objectMapper = Json.mapper();
+      this.gceApplicationCredentialsPath =
+          CommonUtils.getMaskedValue(gceApplicationCredentialsPath);
+      this.gceApplicationCredentials =
+          CommonUtils.getMaskedValue(
+                  objectMapper.readTree(gceApplicationCredentials), toMaskFieldsInCreds)
+              .toString();
+    } catch (Exception e) {
+      log.error(
+          String.format("Failed to mask GCP credential information, %s", e.getLocalizedMessage()));
+    }
   }
 
   @JsonIgnore
@@ -178,28 +199,32 @@ public class GCPCloudInfo implements CloudInfoInterface {
       this.gceApplicationCredentialsPath = gcpCloudInfo.gceApplicationCredentialsPath;
     }
 
-    if (gceApplicationCredentials != null) {
+    if (StringUtils.isNotEmpty(gceApplicationCredentials)
+        && StringUtils.isNotEmpty(gcpCloudInfo.gceApplicationCredentials)) {
       // If any of the fields in the cred is masked, copy those from the cred saved in bean.
       try {
-        ObjectNode editCredNodeValue = (ObjectNode) this.gceApplicationCredentials;
-        ObjectNode providerCredNodeValue = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
-
+        ObjectMapper objectMapper = Json.mapper();
+        JsonNode gceCreds = objectMapper.readTree(gceApplicationCredentials);
+        JsonNode gceApplicationCreds =
+            objectMapper.readTree(gcpCloudInfo.gceApplicationCredentials);
         for (String key : toMaskFieldsInCreds) {
-          if (editCredNodeValue.has(key) && providerCredNodeValue != null) {
-            String keyValue = editCredNodeValue.get(key).toString();
-            if (keyValue.contains("*") && providerCredNodeValue.has(key)) {
-              editCredNodeValue.put(key, providerCredNodeValue.get(key));
+          if (gceCreds.has(key)) {
+            String keyValue = gceCreds.get(key).asText();
+            if (keyValue.contains("*") && gceApplicationCreds.has(key)) {
+              ((ObjectNode) gceCreds).put(key, gceApplicationCreds.get(key).asText());
             }
           }
         }
-        this.gceApplicationCredentials = editCredNodeValue;
+        this.gceApplicationCredentials = gceCreds.toString();
       } catch (Exception e) {
         // In case error occured parsing the credentials fall back to saved creds in provider.
-        if (this.gceApplicationCredentials.asText().equals(SECRET_REPLACEMENT)) {
+        if (this.gceApplicationCredentials.equals(SECRET_REPLACEMENT)) {
           // For handling the case of read-modify-write.
           this.gceApplicationCredentials = gcpCloudInfo.gceApplicationCredentials;
         } else {
-          throw e;
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("Failed to merge GCP Credential Info, %s", e.getLocalizedMessage()));
         }
       }
     }

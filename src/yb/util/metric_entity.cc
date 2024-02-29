@@ -176,11 +176,6 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
       << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
-scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
-  std::lock_guard l(lock_);
-  return FindPtrOrNull(metric_map_, &prototype);
-}
-
 bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
   std::lock_guard l(lock_);
   for (const MetricMap::value_type& val : metric_map_) {

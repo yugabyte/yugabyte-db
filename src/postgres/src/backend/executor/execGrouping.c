@@ -97,12 +97,15 @@ void
 execTuplesHashPrepare(int numCols,
 					  Oid *eqOperators,
 					  Oid **eqFuncOids,
-					  FmgrInfo **hashFunctions)
+					  FmgrInfo **leftHashFunctions,
+					  FmgrInfo **rightHashFunctions)
 {
 	int			i;
 
 	*eqFuncOids = (Oid *) palloc(numCols * sizeof(Oid));
-	*hashFunctions = (FmgrInfo *) palloc(numCols * sizeof(FmgrInfo));
+	*leftHashFunctions = (FmgrInfo *) palloc(numCols * sizeof(FmgrInfo));
+	if (rightHashFunctions)
+		*rightHashFunctions = (FmgrInfo *) palloc(numCols * sizeof(FmgrInfo));
 
 	for (i = 0; i < numCols; i++)
 	{
@@ -117,9 +120,13 @@ execTuplesHashPrepare(int numCols,
 			elog(ERROR, "could not find hash function for hash operator %u",
 				 eq_opr);
 		/* We're not supporting cross-type cases here */
-		Assert(left_hash_function == right_hash_function);
+		/* YB: We do support cross-type cases if rightHashFunctions is valid. */
+		Assert(rightHashFunctions != NULL ||
+			   left_hash_function == right_hash_function);
 		(*eqFuncOids)[i] = eq_function;
-		fmgr_info(right_hash_function, &(*hashFunctions)[i]);
+		if (rightHashFunctions != NULL)
+			fmgr_info(right_hash_function, &(*rightHashFunctions)[i]);
+		fmgr_info(left_hash_function, &(*leftHashFunctions)[i]);
 	}
 }
 
@@ -135,8 +142,16 @@ ybPrepareOuterExprsEqualFn(List *outer_exprs, Oid *eqOps, PlanState *parent)
 		Expr *lhs = yb_copy_replace_varnos(rhs, OUTER_VAR, INNER_VAR);
 
 		int collid = exprCollation((Node *) rhs);
+		Oid eqop;
+		/*
+		 * We can't directly use eqOps[i] as that might be a cross-type
+		 * comparison between the outer and inner sides. We attempt to get
+		 * a hashable op from the same opfamily that equates the type of lhs
+		 * with itself.
+		 */
+		(void) get_compatible_hash_operators(eqOps[i], NULL, &eqop);
 		Expr *qual =
-			make_opclause(eqOps[i], BOOLOID, false, lhs, rhs,
+			make_opclause(eqop, BOOLOID, false, lhs, rhs,
 						  collid, collid);
 		set_opfuncid((OpExpr *) qual);
 		quals = lappend(quals, qual);

@@ -1,10 +1,15 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import java.io.File
 import java.nio.charset.StandardCharsets
+import java.nio.file.{FileSystems, Files, Paths}
+import sbt.complete.Parsers.spaceDelimited
 import sbt.Tests._
 
+import scala.collection.JavaConverters._
 import scala.sys.process.Process
+import scala.sys.process._
 
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
@@ -105,10 +110,6 @@ lazy val cleanModules = taskKey[Int]("Clean modules")
 lazy val cleanCrd = taskKey[Int]("Clean CRD")
 lazy val cleanOperatorConfig = taskKey[Unit]("Clean OperatorConfig")
 
-
-
-lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
-
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
@@ -132,6 +133,9 @@ lazy val root = (project in file("."))
 
 javacOptions ++= Seq("-source", "17", "-target", "17")
 
+// This is for dev-mode server. In dev-mode, the play server is started before the files are compiled.
+// Hence, the application files are not available in the path. For prod, It is in reference.conf file.
+PlayKeys.devSettings += "play.pekko.dev-mode.pekko.coordinated-shutdown.phases.service-requests-done.timeout" -> "150s"
 
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
@@ -153,8 +157,9 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.25.0",
   "org.apache.commons" % "commons-csv" % "1.10.0",
-  "org.apache.httpcomponents" % "httpcore" % "4.4.5",
-  "org.apache.httpcomponents" % "httpclient" % "4.5.13",
+  "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
+  "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
@@ -240,6 +245,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
+  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % "test",
 )
 
 // Clear default resolvers.
@@ -247,28 +253,25 @@ appResolvers := None
 bootResolvers := None
 otherResolvers := Seq()
 
+
+lazy val ybMvnLocalRepoEnvVarName = "YB_MVN_LOCAL_REPO"
+lazy val ybLocalResolverDescription =
+    "Local resolver (path can be customized with " +
+    ybMvnLocalRepoEnvVarName + ")"
+lazy val ybLocalResolver = {
+  val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+  if (isDefined(localMavenRepo)) {
+    val desc = "Custom local Maven repo at " + localMavenRepo
+    Seq(desc at "file://" + localMavenRepo)
+  } else {
+    Seq(Resolver.mavenLocal)
+  }
+}
+
 // Whether to use local maven repo to retrieve artifacts (used for yb-client).
 lazy val ybUseMavenLocalEnvVarName = "USE_MAVEN_LOCAL"
 lazy val mavenLocal = getBoolEnvVar(ybUseMavenLocalEnvVarName)
-
 lazy val ybMvnSnapshotUrlEnvVarName = "YB_MVN_SNAPSHOT_URL"
-lazy val ybMvnLocalRepoEnvVarName = "YB_MVN_LOCAL_REPO"
-
-lazy val ybLocalResolverDescription =
-    "Local resolver (enabled by " + ybUseMavenLocalEnvVarName + ", path can be customized with " +
-    ybMvnLocalRepoEnvVarName + ")"
-lazy val ybLocalResolver = {
-  if (mavenLocal) {
-    val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
-    if (isDefined(localMavenRepo)) {
-      Seq("Local Maven Repository" at "file://" + localMavenRepo)
-    } else {
-      Seq(Resolver.mavenLocal)
-    }
-  } else {
-    Seq()
-  }
-}
 
 lazy val ybClientSnapshotResolverDescription =
     "Snapshot resolver for yb-client jar (used when " + ybUseMavenLocalEnvVarName + " is not " +
@@ -328,18 +331,18 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-
-
   Def.sequential(
-      generateCrdObjects,
-      generateOssConfig,
-      buildVenv,
-      releaseModulesLocally
-    ).value
+    buildVenv,
+    (Compile / compile),
+    releaseModulesLocally
+  ).value
   buildUI.value
   versionGenerate.value
+  compileYbaCliBinary.value
   downloadThirdPartyDeps.value
 }
+
+clean := (clean dependsOn cleanV2ServerStubs).value
 
 cleanPlatform := {
   clean.value
@@ -349,6 +352,9 @@ cleanPlatform := {
   cleanVenv.value
   cleanUI.value
   cleanModules.value
+  cleanV2ServerStubs.value
+  cleanYbaCliBinary.value
+  cleanClients.value
 }
 
 lazy val moveYbcPackageEnvName = "MOVE_YBC_PKG"
@@ -368,11 +374,23 @@ versionGenerate := {
   status
 }
 
+lazy val ybLogTask = inputKey[Unit]("Task to log a message")
+ybLogTask := {
+  val msg: String = spaceDelimited("<arg>").parsed.mkString(" ")
+  ybLog(msg)
+}
+
+buildVenv / fileInputs += baseDirectory.value.toGlob /
+    "devops/python3_requirements*.txt"
 buildVenv := {
-  ybLog("Building virtual env...")
-  val status = Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops").!
-  Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops").!
-  status
+  if (buildVenv.inputFileChanges.hasChanges) {
+    ybLog("Building virtual env...")
+    Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops") #&&
+      Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops") !
+  } else {
+    ybLog("buildVenv already done. Call 'cleanVenv' to force build again.")
+    0
+  }
 }
 
 buildUI := {
@@ -389,6 +407,7 @@ releaseModulesLocally := {
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
+  (Compile / openApiProcessServer).value
   generateCrdObjects.value
   generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
@@ -401,37 +420,39 @@ generateOssConfig := {
   val generatedFilePath = (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/OperatorConfig.java").toPath
   val directoryPath =  (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/").toPath
 
-  java.nio.file.Files.createDirectories(directoryPath)
+  Files.createDirectories(directoryPath)
 
   val regex = "###OSSMODE###".r
   val replacement = if (sys.props.getOrElse("communityOperator.enabled", false) == "true") "true" else "false"
   val source = scala.io.Source.fromFile(srcTemplatePath.toFile)
   try {
     val content = regex.replaceAllIn(source.mkString, replacement)
-    java.nio.file.Files.write(generatedFilePath, content.getBytes(StandardCharsets.UTF_8))
+    Files.write(generatedFilePath, content.getBytes(StandardCharsets.UTF_8))
   } finally {
     source.close()
   }
   0 // Assuming success
 }
 
+generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
+    "src/main/java/com/yugabyte/yw/common/operator/resources/" / ** / "*.yaml"
+// Process and compile open api files
 generateCrdObjects := {
-  ybLog("Generating crd classes...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
-  val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
-  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
-  status
+  if (generateCrdObjects.inputFileChanges.hasChanges) {
+    ybLog("Generating crd classes...")
+    val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
+    val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
+    val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
+    status
+  } else {
+    ybLog("Generated crd classes are up to date. Run 'cleanCrd' to force generate.")
+    0
+  }
 }
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
   val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
-  status
-}
-
-compileJavaGenClient := {
-  val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
-  val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
   status
 }
 
@@ -480,25 +501,144 @@ cleanCrd := {
   status
 }
 
-// Generate a Java API client.
+lazy val cleanV2ServerStubs = taskKey[Int]("Clean v2 server stubs")
+cleanV2ServerStubs := {
+  ybLog("Cleaning Openapi v2 server stubs...")
+      Process("rm -rf openapi", target.value) !
+  val openapiDir = baseDirectory.value / "src/main/resources/openapi"
+  Process("rm -f paths/_index.yaml", openapiDir) #|
+      Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+}
+
+lazy val cleanClients = taskKey[Int]("Clean generated clients")
+cleanClients := {
+  ybLog("Cleaning generated clients...")
+  val javaDir = baseDirectory.value / "client/java"
+  val pythonDir = baseDirectory.value / "client/python"
+  val goDir = baseDirectory.value / "client/go"
+  Process("rm -rf v1 v2", javaDir) #|
+      Process("rm -rf v1 v2 target", pythonDir) #|
+      Process("rm -rf v1 v2 target", goDir) !
+}
+
+lazy val openApiBundle = taskKey[Unit]("Running bundle on openapi spec")
+openApiBundle := {
+  val rc = Process("./openapi_bundle.sh", baseDirectory.value / "scripts").!
+  if (rc != 0) {
+    throw new RuntimeException("openapi bundle failed!!!")
+  }
+}
+
+lazy val openApiFormat = taskKey[Unit]("Format openapi files")
+openApiFormat := {
+  val rc = Process("./openapi_format.sh", baseDirectory.value / "scripts").!
+  if (rc != 0) {
+    throw new RuntimeException("openapi format failed!!!")
+  }
+}
+
+lazy val openApiLint = taskKey[Unit]("Running lint on openapi spec")
+openApiLint := {
+  val rc = Process("./openapi_lint.sh", baseDirectory.value / "scripts").!
+  if (rc != 0) {
+    throw new RuntimeException("openapi lint failed!!!")
+  }
+}
+
+lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi" / ** / "[!_]*.yaml"
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi_templates" / ** / "*.mustache"
+// Process and compile open api files
+Compile / openApiProcessServer := {
+  if (openApiProcessServer.inputFileChanges.hasChanges ||
+      !(baseDirectory.value / "src/main/resources/openapi.yaml").exists) {
+    Def.taskDyn {
+      val output = Def.sequential(
+          ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
+          openApiFormat,
+          openApiBundle,
+          javaGenV2Server / openApiGenerate
+        ).value
+      Def.task{
+        (javaGenV2Server / openApiStyleValidate).value
+        openApiLint.value
+        // return the list of generated java files to be managed
+        output.filter(_.getName.endsWith(".java"))
+      }}.value
+  } else {
+    ybLog("OpenApi server stubs already generated." +
+        " Run 'cleanV2ServerStubs' to force regeneration.")
+    Seq()
+  }
+}
+Compile / openApiProcessServer / fileOutputs := Seq(
+  target.value.toGlob / "openapi/src/main/java/" / ** / "*.java",
+  baseDirectory.value.toGlob / "src/main/resources/openapi.yaml",
+  baseDirectory.value.toGlob / "src/main/resources/openapi_public.yaml")
+Compile / sourceGenerators += (Compile / openApiProcessServer)
+Compile / unmanagedSourceDirectories += target.value / "openapi/src/main/java"
+
+// Generate a Java v1 API client.
 lazy val javagen = project.in(file("client/java"))
   .settings(
     openApiInputSpec := "src/main/resources/swagger.json",
     openApiGeneratorName := "java",
-    openApiOutputDir := "client/java/generated",
+    openApiOutputDir := "client/java/v1",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-
+    target := file("client/java/target/v1"),
   )
+
+// Generate a Java v2 API client.
+lazy val javaGenV2Client = project.in(file("client/java"))
+  .settings(
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
+    openApiGeneratorName := "java",
+    openApiOutputDir := "client/java/v2",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/java/openapi-java-config-v2.json",
+    target := file("client/java/target/v2"),
+  )
+
+// Compile generated java v1 and v2 clients
+lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
+compileJavaGenClient := {
+  val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+  val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
+  val status = Process("mvn clean install " + cmdOpt, new File(baseDirectory.value + "/client/java/")).!
+  status
+}
 
 // Generate a Python API client.
 lazy val pythongen = project.in(file("client/python"))
   .settings(
     openApiInputSpec := "src/main/resources/swagger.json",
     openApiGeneratorName := "python",
-    openApiOutputDir := "client/python/generated",
+    openApiOutputDir := "client/python/v1",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
-    openApiConfigFile := "client/python/openapi-python-config.json"
+    openApiConfigFile := "client/python/openapi-python-config.json",
+    target := file("client/python/target/v1"),
+  )
+
+// Generate a Python V2 API client.
+lazy val pythonGenV2Client = project.in(file("client/python"))
+  .settings(
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
+    openApiGeneratorName := "python",
+    openApiOutputDir := "client/python/v2",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/python/openapi-python-config-v2.json",
+    target := file("client/python/target/v2"),
   )
 
 // Generate a Go API client.
@@ -506,10 +646,133 @@ lazy val gogen = project.in(file("client/go"))
   .settings(
     openApiInputSpec := "src/main/resources/swagger.json",
     openApiGeneratorName := "go",
-    openApiOutputDir := "client/go/generated",
+    openApiOutputDir := "client/go/v1",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
-    openApiConfigFile := "client/go/openapi-go-config.json"
+    openApiConfigFile := "client/go/openapi-go-config.json",
+    target := file("client/go/target/v1"),
   )
+
+// Generate a Go V2 API client.
+lazy val goGenV2Client = project.in(file("client/go"))
+  .settings(
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
+    openApiGeneratorName := "go",
+    openApiOutputDir := "client/go/v2",
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    target := file("client/go/target/v2"),
+  )
+
+// Compile generated go v1 and v2 clients
+lazy val compileGoGenClient = taskKey[Int]("Compile generated Go clients")
+compileGoGenClient := {
+  val status = Process("make", new File(baseDirectory.value + "/client/go/")).!
+  status
+}
+
+// Compile the YBA CLI binary
+lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
+compileYbaCliBinary := {
+  cleanYbaCliBinary.value
+  var status = 0
+  var output = Seq.empty[String]
+  var fileList = Seq.empty[String]
+
+  ybLog("Generating YBA CLI go binary.")
+  val processLogger = ProcessLogger(
+    line => output :+= line,
+    line => println(s"Error: $line")
+  )
+
+  val process = Process("make package", new File(baseDirectory.value + "/yba-cli/"))
+  status = process.!(processLogger)
+  if (status == 0) {
+    val fileListIndex = output.indexWhere(_.startsWith("List of files in"))
+    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
+  } else {
+    fileList = Seq.empty[String]
+  }
+  (status, fileList)
+}
+
+compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
+
+// Clean the YBA CLI binary
+lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
+cleanYbaCliBinary := {
+   ybLog("Cleaning YBA CLI go binary.")
+  val status = Process("make clean", new File(baseDirectory.value + "/yba-cli/")).!
+  status
+}
+
+// Require sbt to first generate clients and install in local mvn repo
+// so that unit tests libraryDependencies can depend on them
+update := update.dependsOn(openApiProcessClients).value
+
+lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi clients")
+openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
+openApiProcessClients := {
+  if (openApiProcessClients.inputFileChanges.hasChanges)
+    Def.sequential(
+      ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
+      cleanClients,
+      openApiGenClients,
+      openApiCompileClients,
+    ).value
+  else
+    ybLog("Generated Openapi clients are up to date. Run 'cleanClients' to force generation.")
+}
+
+lazy val openApiGenClients = taskKey[Unit]("Generating openapi clients")
+openApiGenClients := {
+  (javagen / openApiGenerate).value
+  (pythongen / openApiGenerate).value
+  (gogen / openApiGenerate).value
+  (javaGenV2Client / openApiGenerate).value
+  (pythonGenV2Client / openApiGenerate).value
+  (goGenV2Client / openApiGenerate).value
+}
+openApiGenClients := openApiGenClients.dependsOn(Compile/openApiProcessServer).value
+
+lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi clients")
+openApiCompileClients := {
+  compileJavaGenClient.value
+  compileGoGenClient.value
+  // no compilation or running tests for python client
+}
+
+// Generate Java V2 API server stubs.
+val resDir = "../../src/main/resources"
+lazy val javaGenV2Server = project.in(file("target/openapi"))
+  .enablePlugins(OpenApiGeneratorPlugin, OpenApiStylePlugin)
+  .settings(
+    openApiGeneratorName := "java-play-framework",
+    openApiInputSpec := (baseDirectory.value / resDir / "openapi.yaml").absolutePath,
+    openApiOutputDir := (baseDirectory.value / "src/main/java/").absolutePath,
+    openApiConfigFile := (baseDirectory.value / resDir / "openapi-java-server-config.json").absolutePath,
+    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
+    openApiValidateSpec := SettingDisabled,
+    openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
+    // style plugin configurations
+    openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
+    openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
+  )
+
+// copy over the ignore file manually since openApiIgnoreFileOverride does not work
+lazy val openApiCopyIgnoreFile = taskKey[Unit]("Copy the openapi ignore file to target")
+javaGenV2Server / openApiCopyIgnoreFile := {
+  val src = (baseDirectory.value / "src/main/resources/.openapi-generator-ignore").toPath
+  var tgt = (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath
+  ybLog("Copying " + src + " to " + tgt)
+  Files.createDirectories((baseDirectory.value / "target/openapi/src/main/java/").toPath)
+  Files.copy((baseDirectory.value / "src/main/resources/.openapi-generator-ignore").toPath,
+      (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath,
+      java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+}
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
@@ -518,6 +781,25 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+// Disable shutdown hook of ebean to let play manage its lifecycle.
+Universal / javaOptions += "-Debean.registerShutdownHook=false"
+
+Universal / mappings ++= {
+  val (status, cliFiles) = compileYbaCliBinary.value
+  if (status == 0) {
+    val targetFolderOpt: Option[String] = Some("bin")
+    val filesWithRelativePaths: Seq[(File, String)] = cliFiles.map { filePath =>
+      val targetPath = "bin/" + Paths.get(filePath).getFileName.toString
+      (file(filePath), targetPath)
+    }
+
+    ybLog("Added YBA CLI files to package.")
+    filesWithRelativePaths
+  } else {
+    ybLog("Error generating YBA CLI binary.")
+    Seq.empty
+  }
+}
 
 
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
@@ -538,8 +820,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.75-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b21"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.78-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -591,7 +873,7 @@ testShardSize := 30
 Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
 def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
-  tests.sortWith(_.name < _.name).grouped(shardSize).zipWithIndex map {
+  tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
     case (tests, index) =>
       val options = ForkOptions().withRunJVMOptions(Vector(
         "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
@@ -701,26 +983,21 @@ lazy val swagger = project
       )
     }.value,
 
-    swaggerGenTest := Def.taskDyn {
-      Def.sequential(
-        (root / Test / testOnly).toTask(s" com.yugabyte.yw.controllers.YbaApiTest"),
-        (Test / testOnly).toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest"),
-      )
-    }.value
+    swaggerGenTest := {
+        (root / Test / testOnly).toTask(s" com.yugabyte.yw.controllers.YbaApiTest").value
+        (Test / testOnly).toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest").value
+    }
   )
 
 Test / test := (Test / test).dependsOn(swagger / Test / test).value
 
-swaggerGen := Def.taskDyn {
-  Def.sequential(
-    swagger /swaggerGen,
-    swagger /swaggerGenTest,
-    javagen / openApiGenerate,
-    compileJavaGenClient,
-    pythongen / openApiGenerate,
-    gogen / openApiGenerate
-  )
-}.value
+commands += Command.command("swaggerGen") { state =>
+  "swagger/swaggerGen" ::
+  "swagger/swaggerGenTest" ::
+  "openApiGenClients" ::
+  "openApiCompileClients" ::
+  state
+}
 
 val grafanaGen: TaskKey[Unit] = taskKey[Unit](
   "generate dashboard.json"

@@ -28,16 +28,11 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
       "host    wrong_db    yugabyte    all    trust, " +
       "host    all    yugabyte     all    md5, " +
       "host    all    wrong_user   all   trust, " +
-      "host    all    all          all    trust, " +
-      "local   all    all   trust";
+      "host    all    all          all    trust";
 
   private static final String WRONG_USER_ERR_STRING = "role \"wrong_user\" does not exist";
   private static final String WRONG_DB_ERR_STRING = "database \"wrong_db\" does not exist";
 
-  @Override
-  protected String getHbaConf() {
-    return CUSTOM_PG_HBA_CONFIG;
-  }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -46,6 +41,7 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
     // At max there should be only one connection in the control connection pool.
     // pool size of control connection = ysql_max_connections / 10
     builder.addCommonTServerFlag("ysql_max_connections", "15");
+    builder.addCommonTServerFlag("ysql_hba_conf_csv", CUSTOM_PG_HBA_CONFIG);
   }
 
   public void checkBrokenControlConnection() throws Exception {

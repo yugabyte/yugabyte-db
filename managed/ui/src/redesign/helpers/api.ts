@@ -115,7 +115,8 @@ export const universeQueryKey = {
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
-  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid]
+  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
+  providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
 export const instanceTypeQueryKey = {
@@ -144,14 +145,25 @@ export const metricQueryKey = {
     ...metricQueryKey.ALL,
     metricRequestParams
   ],
-  latest: (metricRequestParams: { [property: string]: any }, range: string, unit: string) => {
-    const { start, end, ...remainingRequestParams } = metricRequestParams;
+  /**
+   * Usage:
+   * Calling live() with no parameters returns a query key which can be used for invalidating all
+   * live queries.
+   * Invalidated queries will be refetched if the query still has observers.
+   */
+  live: (metricRequestParams?: { [property: string]: any }, range?: string, unit?: string) => {
+    const { start, end, ...remainingRequestParams } = metricRequestParams ?? {};
     // For metric queries where we are interested in the last x units of data, we should
     // use the range and unit as part of the key instead of the concrete start and end time.
     // This helps us refetch in the background while serving the most recent data from
     // the cache. This is a better experience than hitting a loading spinner constantly on a
     // metric graph which updates every x seconds.
-    return [...metricQueryKey.detail(remainingRequestParams), 'live', { range, unit }];
+    return [
+      ...metricQueryKey.ALL,
+      'live',
+      ...(metricRequestParams ? [remainingRequestParams] : []),
+      ...(range || unit ? [{ range, unit }] : [])
+    ];
   }
 };
 
@@ -170,7 +182,7 @@ export const alertTemplateQueryKey = {
 // --------------------------------------------------------------------------------------
 
 export const ApiTimeout = {
-  FETCH_TABLE_INFO: 20_000,
+  FETCH_TABLE_INFO: 90_000,
   FETCH_XCLUSTER_CONFIG: 120_000
 } as const;
 
@@ -192,16 +204,17 @@ export interface CreateDrConfigRequest {
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
 }
 
-export interface ReplaceDrReplicaRequest {
-  primaryUniverseUuid: string; // The current primary universe.
-  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
+export interface EditDrConfigRequest {
   bootstrapParams: {
-    backupRequestParams?: {
+    backupRequestParams: {
       storageConfigUUID: string;
     };
   };
+}
+
+export interface ReplaceDrReplicaRequest {
+  primaryUniverseUuid: string; // The current primary universe.
+  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
 }
 
 export interface DrSwitchoverRequest {
@@ -221,24 +234,10 @@ export interface DrFailoverRequest {
 
 export interface RestartDrConfigRequest {
   dbs: string[]; // Database uuids (from the source universe) to be restarted.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams?: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 class ApiService {
@@ -428,9 +427,19 @@ class ApiService {
     }
   };
 
-  deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {
+  editDrConfig = (
+    drConfigUuid: string,
+    editDrConfigRequest: EditDrConfigRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/edit`;
+    return axios.post<YBPTask>(requestUrl, editDrConfigRequest).then((response) => response.data);
+  };
+
+  deleteDrConfig = (drConfigUuid: string, isForceDelete: boolean): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-    return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+    return axios
+      .delete<YBPTask>(requestUrl, { params: { isForceDelete } })
+      .then((response) => response.data);
   };
 
   initiateSwitchover = (

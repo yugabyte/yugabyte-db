@@ -127,7 +127,7 @@ public class OtelCollectorConfigGenerator {
     OtelCollectorConfigFormat.FilterOperator filterOperator =
         new OtelCollectorConfigFormat.FilterOperator();
     filterOperator.setType("filter");
-    filterOperator.setExpr("body not matches \"^.*LOG:  AUDIT:.*$\"");
+    filterOperator.setExpr("body not matches \"^.*\\\\w+:  AUDIT:.*$\"");
 
     // Parse attributes from audit logs
     OtelCollectorConfigFormat.RegexOperator regexOperator =

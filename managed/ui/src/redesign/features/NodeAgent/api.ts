@@ -19,7 +19,7 @@ class ApiService {
 
   private getCustomerId(): string {
     const customerId = localStorage.getItem('customerId');
-    return customerId || '';
+    return customerId ?? '';
   }
 
   fetchNodeAgents = () => {
@@ -35,6 +35,11 @@ class ApiService {
   fetchNodeAgentByIPs = (payload: any) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents/page`;
     return axios.post<NodeAgentResponse>(requestURL, payload).then((res) => res.data);
+  };
+
+  deleteNodeAgent = (nodeAgentUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/node_agents/${nodeAgentUuid}`;
+    return axios.delete(requestURL).then((res) => res.data);
   };
 }
 

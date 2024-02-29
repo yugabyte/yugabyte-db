@@ -28,7 +28,7 @@ The [YugabyteDB C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-d
 
 For details, see the [README](https://github.com/yugabyte/cassandra-cpp-driver) in our GitHub repository.
 
-For a tutorial on building a sample C++ application with this driver, see [Build a C++ application](../../../develop/build-apps/cpp/ycql/).
+For a tutorial on building a sample C++ application with this driver, see [Build a C++ application](../../../drivers-orms/cpp/ycql/).
 
 ## C\#
 

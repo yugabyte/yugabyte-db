@@ -1897,13 +1897,13 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * initialize the scan key's fields appropriately
 				 */
 				ScanKeyEntryInitialize(this_key,
-									   					 flags,
-									   					 varattno,  /* attribute number to scan */
-									   					 op_strategy, /* op's strategy */
-									   					 op_righttype,	/* strategy subtype */
-									   					 saop->inputcollid,	/* collation */
-									   					 opfuncid,	/* reg proc to use */
-									   					 scanvalue);	/* constant */
+									   flags,
+									   varattno,  /* attribute number to scan */
+									   op_strategy, /* op's strategy */
+									   op_righttype,	/* strategy subtype */
+									   saop->inputcollid,	/* collation */
+									   opfuncid,	/* reg proc to use */
+									   scanvalue);	/* constant */
 				n_sub_key++;
 			}
 

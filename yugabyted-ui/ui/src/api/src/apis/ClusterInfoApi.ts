@@ -53,6 +53,9 @@ export interface GetClusterMetricForQuery {
   end_time?: number;
   cluster_type?: string;
 }
+export interface GetClusterNodesForQuery {
+  get_all_masters?: boolean;
+}
 export interface GetClusterTablesForQuery {
   api?: GetClusterTablesApiEnum;
 }
@@ -474,6 +477,7 @@ export const useGetClusterMetricQuery = <T = MetricResponse, Error = ApiError>(
  */
 
 export const getClusterNodesAxiosRequest = (
+  requestParameters: GetClusterNodesForQuery,
   customAxiosInstance?: AxiosInstance
 ) => {
   return Axios<ClusterNodesResponse>(
@@ -481,6 +485,7 @@ export const getClusterNodesAxiosRequest = (
       url: '/nodes',
       method: 'GET',
       params: {
+        get_all_masters: requestParameters['get_all_masters'],
       }
     },
     customAxiosInstance
@@ -488,15 +493,18 @@ export const getClusterNodesAxiosRequest = (
 };
 
 export const getClusterNodesQueryKey = (
+  requestParametersQuery: GetClusterNodesForQuery,
   pageParam = -1,
   version = 1,
 ) => [
   `/v${version}/nodes`,
   pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
 ];
 
 
 export const useGetClusterNodesInfiniteQuery = <T = ClusterNodesResponse, Error = ApiError>(
+  params: GetClusterNodesForQuery,
   options?: {
     query?: UseInfiniteQueryOptions<ClusterNodesResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
@@ -504,12 +512,12 @@ export const useGetClusterNodesInfiniteQuery = <T = ClusterNodesResponse, Error 
   pageParam = -1,
   version = 1,
 ) => {
-  const queryKey = getClusterNodesQueryKey(pageParam, version);
+  const queryKey = getClusterNodesQueryKey(params, pageParam, version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useInfiniteQuery<ClusterNodesResponse, Error, T>(
     queryKey,
-    () => getClusterNodesAxiosRequest(customAxiosInstance),
+    () => getClusterNodesAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 
@@ -520,18 +528,19 @@ export const useGetClusterNodesInfiniteQuery = <T = ClusterNodesResponse, Error 
 };
 
 export const useGetClusterNodesQuery = <T = ClusterNodesResponse, Error = ApiError>(
+  params: GetClusterNodesForQuery,
   options?: {
     query?: UseQueryOptions<ClusterNodesResponse, Error, T>;
     customAxiosInstance?: AxiosInstance;
   },
   version = 1,
 ) => {
-  const queryKey = getClusterNodesQueryKey(version);
+  const queryKey = getClusterNodesQueryKey(params,  version);
   const { query: queryOptions, customAxiosInstance } = options ?? {};
 
   const query = useQuery<ClusterNodesResponse, Error, T>(
     queryKey,
-    () => getClusterNodesAxiosRequest(customAxiosInstance),
+    () => getClusterNodesAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

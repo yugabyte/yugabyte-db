@@ -231,6 +231,12 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
+ * Whether read committed isolation is supported for the cluster or not (via the TServer gflag
+ * yb_enable_read_committed_isolation).
+ */
+extern bool YBIsReadCommittedSupported();
+
+/*
  * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level, and it uses
  * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
@@ -267,6 +273,13 @@ extern bool YbNeedAdditionalCatalogTables();
  * delete our metadata.
  */
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
+
+/*
+ * Handle YBStatus while logging a custom error for DocDB 'NotFound' error.
+ */
+extern void
+HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+										 const char *message_for_not_found);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
@@ -528,6 +541,12 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
+/*
+ * Enables scalar array operation pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_saop_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -592,11 +611,16 @@ extern char *yb_test_fail_index_state_change;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
+extern bool yb_test_stay_in_global_catalog_version_mode;
+
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+extern bool yb_use_hash_splitting_by_default;
 
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
@@ -704,6 +728,15 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 YbTableProperties YbGetTableProperties(Relation rel);
 YbTableProperties YbGetTablePropertiesById(Oid relid);
 YbTableProperties YbTryGetTableProperties(Relation rel);
+
+typedef enum YbTableDistribution
+{
+	YB_SYSTEM,
+	YB_COLOCATED,
+	YB_HASH_SHARDED,
+	YB_RANGE_SHARDED
+} YbTableDistribution;
+YbTableDistribution YbGetTableDistribution(Oid relid);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
@@ -890,6 +923,7 @@ void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
+bool YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
@@ -980,8 +1014,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 						 PG_FUNCNAME_MACRO, \
 						 TEXTDOMAIN)) \
 			{ \
-				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
-				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				Assert(msg_buf); \
+				yb_errmsg_from_status(msg_buf, msg_nargs, msg_args); \
+				if (detail_buf) \
+					yb_errdetail_from_status(detail_buf, detail_nargs, detail_args); \
 				yb_set_pallocd_error_file_and_func(filename, funcname); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
@@ -1032,12 +1068,10 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
-/*
- * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
- * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
- * statement if it increments the catalog version.
- */
-extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
+extern bool yb_use_tserver_key_auth;
+
+extern bool yb_use_tserver_key_auth_check_hook(bool *newval,
+		void **extra, GucSource source);
 
 extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   Relation pg_constraint,
@@ -1045,5 +1079,15 @@ extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 
 extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
 									 bool yb_copy_split_options);
+
+/*
+ * Returns the ordering type for a primary key. By default, the first element of
+ * YB relations are sorted by HASH, unless Postgres sorting is set, or the table
+ * is colocated.
+ */
+extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
+
+extern void YbGetRedactedQueryString(const char* query, int query_len,
+									 const char** redacted_query, int* redacted_query_len);
 
 #endif /* PG_YB_UTILS_H */

@@ -2891,7 +2891,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		index_path = (IndexPath *) projection_path->subpath;
 
-		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
+		Bitmapset *primary_key_attrs = bms_copy(YBGetTablePrimaryKeyBms(relation));
 
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
@@ -4948,8 +4948,9 @@ create_nestloop_plan(PlannerInfo *root,
 				RestrictInfo *batched_rinfo =
 					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
 											 	inner_relids);
-
-				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				hashOpno = ((OpExpr *) rinfo->clause)->opno;
+				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
+					hashOpno = get_commutator(hashOpno);
 			}
 
 			current_hinfo->hashOp = hashOpno;
@@ -5019,7 +5020,7 @@ create_nestloop_plan(PlannerInfo *root,
 		join_plan = (NestLoop *) bnl_plan;
 		(void) prepare_sort_from_pathkeys((Plan *) bnl_plan,
 										  best_path->path.pathkeys,
-										  best_path->path.parent->relids,
+										  NULL,
 										  NULL,
 										  true,
 										  &bnl_plan->numSortCols,
@@ -8126,10 +8127,23 @@ is_projection_capable_path(Path *path)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_NestLoop:
+			/*
+			 * Sorted Batched Nested Loop Joins cannot tolerate its tlist
+			 * being changed.
+			 */
+			return !(yb_is_nestloop_batched((NestPath *) path) &&
+					 path->pathkeys != NIL);
 		default:
 			break;
 	}
 	return true;
+}
+
+static bool
+is_bnl_projection_capable(YbBatchedNestLoop *bnl)
+{
+	return bnl->numSortCols == 0;
 }
 
 /*
@@ -8163,6 +8177,8 @@ is_projection_capable_plan(Plan *plan)
 			 * get relaxed later.
 			 */
 			return false;
+		case T_YbBatchedNestLoop:
+			return is_bnl_projection_capable((YbBatchedNestLoop *) plan);
 		default:
 			break;
 	}

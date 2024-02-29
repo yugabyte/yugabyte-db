@@ -146,6 +146,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   @Override
@@ -484,6 +485,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verifyNoMoreInteractions(mockNodeManager);
+  }
+
+  @Test
+  public void testChangeOnlyGFlagsIsOk() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of("master-gflag", "1"), Map.of("tserver-gflag", "2"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
