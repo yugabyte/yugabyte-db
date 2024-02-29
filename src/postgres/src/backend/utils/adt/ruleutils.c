@@ -8595,20 +8595,40 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * since the construct was parsed, but there seems no way to
 				 * be perfect.
 				 */
-				appendStringInfo(buf, ") %s ROW(",
+				Oid rhs_type;
+				if (IsA(rcexpr->rargs, List))
+					rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
+				else
+				{
+					List *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
+					RowExpr *row = (RowExpr *) linitial(elems);
+					rhs_type = exprType(linitial(row->args));
+				}
+
+				appendStringInfo(buf, ") %s ",
 								 generate_operator_name(linitial_oid(rcexpr->opnos),
 														exprType(linitial(rcexpr->largs)),
-														exprType(linitial(rcexpr->rargs))));
-				sep = "";
-				foreach(arg, rcexpr->rargs)
+														rhs_type));
+				if (IsA(rcexpr->rargs, List))
 				{
-					Node	   *e = (Node *) lfirst(arg);
+					sep = "";
+					appendStringInfo(buf, "ROW(");
+					foreach(arg, castNode(List, rcexpr->rargs))
+					{
+						Node	   *e = (Node *) lfirst(arg);
 
-					appendStringInfoString(buf, sep);
-					get_rule_expr(e, context, true);
-					sep = ", ";
+						appendStringInfoString(buf, sep);
+						get_rule_expr(e, context, true);
+						sep = ", ";
+					}
+					appendStringInfoString(buf, "))");
 				}
-				appendStringInfoString(buf, "))");
+				else
+				{
+					appendStringInfo(buf, "ANY (");
+					get_rule_expr(rcexpr->rargs, context, true);
+					appendStringInfo(buf, "))");
+				}
 			}
 			break;
 
@@ -9883,7 +9903,8 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 			get_rule_expr((Node *) rcexpr->largs, context, true);
 			opname = generate_operator_name(linitial_oid(rcexpr->opnos),
 											exprType(linitial(rcexpr->largs)),
-											exprType(linitial(rcexpr->rargs)));
+											exprType(linitial(
+													castNode(List, rcexpr->rargs))));
 			appendStringInfoChar(buf, ')');
 		}
 		else

@@ -2238,7 +2238,8 @@ rowcomparesel(PlannerInfo *root,
 	bool		is_join_clause;
 
 	/* Build equivalent arg list for single operator */
-	opargs = list_make2(linitial(clause->largs), linitial(clause->rargs));
+	opargs = list_make2(linitial(clause->largs),
+		linitial(castNode(List, clause->rargs)));
 
 	/*
 	 * Decide if it's a join clause.  This should match clausesel.c's
@@ -6698,8 +6699,9 @@ deconstruct_indexquals(IndexPath *path)
 			}
 			else
 			{
-				Assert(match_index_to_operand((Node *) linitial(rc->rargs),
-											  indexcol, index));
+				Assert(match_index_to_operand(
+					(Node *) linitial(castNode(List, rc->rargs)),
+						indexcol, index));
 				qinfo->varonleft = false;
 				qinfo->other_operand = (Node *) rc->largs;
 			}
