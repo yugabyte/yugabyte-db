@@ -917,6 +917,54 @@ explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a =
  3 | 4 | 3 | 4
 (2 rows)
 
+explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((ss1.a = ss2.a) AND (ss1.b = ss2.b))
+   ->  Index Scan using ss2_pkey on ss2
+   ->  Index Scan using ss1_pkey on ss1
+         Index Cond: ((ROW(a, b) = ANY (ARRAY[ROW(ss2.a, ss2.b), ROW($1, $4), ROW($2, $5)])) AND (b < 10))
+(5 rows)
+
+/*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
+ a | b | a | b
+---+---+---+---
+ 1 | 2 | 1 | 2
+ 3 | 4 | 3 | 4
+(2 rows)
+
+drop table ss1;
+drop table ss2;
+create table ss1(a varchar(16), b int4);
+insert into ss1 values ('abc', 123), ('abc', 124);
+insert into ss1 values ('xyz', 123), ('xyz', 124);
+insert into ss1 values ('ijk', 123), ('xyz', 456);
+create table ss2(a varchar(16), b int8);
+create index ss2_ind on ss2(a asc, b asc);
+insert into ss2 values ('abc', 123), ('abc', 124);
+insert into ss2 values ('xyz', 123), ('xyz', 124);
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
+                                                                  QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: ss1.a, ss1.b
+   ->  YB Batched Nested Loop Join
+         Join Filter: (((ss1.a)::text = (ss2.a)::text) AND (ss1.b = ss2.b))
+         ->  Seq Scan on ss1
+         ->  Index Only Scan using ss2_ind on ss2
+               Index Cond: ((ROW(a, b) = ANY (ARRAY[ROW((ss1.a)::text, ss1.b), ROW(($1)::text, $4), ROW(($2)::text, $5)])) AND (b <= 100000))
+(7 rows)
+
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
+  a  |  b  |  a  |  b
+-----+-----+-----+-----
+ abc | 123 | abc | 123
+ abc | 124 | abc | 124
+ xyz | 123 | xyz | 123
+ xyz | 124 | xyz | 124
+(4 rows)
+
 drop table ss1;
 drop table ss2;
 create table ss1(a int, b float8, primary key(a asc, b asc));
@@ -997,6 +1045,29 @@ explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from s
 
 drop table ss1;
 drop table ss2;
+create table intable(a int, b text, primary key(a asc, b asc));
+create table out(c1 int, c2 text);
+create index out_ind on out(c2 asc NULLS FIRST);
+insert into intable values (1, 'abcd');
+insert into out values (1, NULL), (1, 'abcd');
+/*+Leading((out intable)) IndexScan(out out_ind)*/ explain (costs off) select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
+                                                   QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (("out".c1 = intable.a) AND ("out".c2 = intable.b))
+   ->  Index Scan using out_ind on "out"
+   ->  Index Scan using intable_pkey on intable
+         Index Cond: ((ROW(a, b) = ANY (ARRAY[ROW("out".c1, "out".c2), ROW($1, $4), ROW($2, $5)])) AND (a <= 4))
+(5 rows)
+
+/*+Leading((out intable)) IndexScan(out out_ind)*/ select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
+ c1 |  c2  | a |  b
+----+------+---+------
+  1 | abcd | 1 | abcd
+(1 row)
+
+drop table intable;
+drop table out;
 CREATE TABLE q1(a int);
 CREATE TABLE q2(a int);
 CREATE TABLE q3(a int primary key);
