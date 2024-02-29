@@ -470,7 +470,8 @@ class AwsCloud(AbstractCloud):
         else:
             predefined_device_names = []
             if host_info:
-                ami_descr = describe_ami(args.region, host_info.get("image_id"))
+                ami_id = args.machine_image if args.machine_image else host_info.get("image_id")
+                ami_descr = describe_ami(args.region, ami_id)
                 predefined_device_names = get_predefined_devices(ami_descr)
             return get_device_names(args.instance_type, args.num_volumes, args.region,
                                     predefined_device_names)

@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -30,18 +31,29 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class CloudImageBundleSetup extends CloudTaskBase {
 
+  @Data
+  @AllArgsConstructor
+  public static class CloudOS {
+    private String version;
+    private String name;
+  }
+
   private CloudQueryHelper cloudQueryHelper;
   private RuntimeConfGetter confGetter;
   private ImageBundleHandler imageBundleHandler;
   private ImageBundleUtil imageBundleUtil;
-  public static String ybaDefaultKey = "yba_default_key";
-  public static String YBA_DEFAULT_OS = "alma8";
-  public static Map<String, String> ybaMetadataImages = new HashMap<>();
+  public static final Map<String, CloudOS> CLOUD_OS_MAP =
+      ImmutableMap.of(
+          "aws", new CloudOS("8.8", "AlmaLinux"),
+          "gcp", new CloudOS("8.7", "AlmaLinux"),
+          "azu", new CloudOS("8.5", "AlmaLinux"));
 
   @Inject
   public CloudImageBundleSetup(
@@ -68,6 +80,10 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   }
 
   public static void verifyImageBundleDetails(ImageBundleDetails details, Provider provider) {
+    if (provider.getCloudCode() != CloudType.aws) {
+      return;
+    }
+
     List<Region> regions = provider.getRegions();
     Map<String, ImageBundleDetails.BundleInfo> regionsImageInfo = details.getRegions();
 
@@ -125,14 +141,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           }
         }
         ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
-        String localybImageKey = cloudType.toString() + r.getCode() + arch.toString();
         if (ybImage == null || forceFetchFromMetadata) {
-          if (ybaMetadataImages.containsKey(localybImageKey)) {
-            ybImage = ybaMetadataImages.get(localybImageKey);
-          } else {
-            ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
-            ybaMetadataImages.put(localybImageKey, ybImage);
-          }
+          ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
         }
         bundleInfo.setYbImage(ybImage);
         bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
@@ -141,7 +151,6 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       details.setRegions(regionsImageInfo);
     } else {
       Region region = regions.get(0);
-      String localybImageKey = cloudType.toString() + region.getCode() + arch.toString();
       String ybImage = null;
       if (region.getDetails() != null && region.getDetails().getCloudInfo() != null) {
         if (provider.getCloudCode().equals(CloudType.gcp)) {
@@ -158,12 +167,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       }
 
       if (ybImage == null || forceFetchFromMetadata) {
-        if (ybaMetadataImages.containsKey(localybImageKey)) {
-          ybImage = ybaMetadataImages.get(localybImageKey);
-        } else {
-          ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
-          ybaMetadataImages.put(localybImageKey, ybImage);
-        }
+        ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
       }
       details.setGlobalYbImage(ybImage);
     }
@@ -171,13 +175,9 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     // YBA_ACTIVE.
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
     metadata.setType(ImageBundleType.YBA_ACTIVE);
-    metadata.setVersion(YBA_DEFAULT_OS);
+    metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
     ImageBundle.create(
-        provider,
-        String.format("for_provider_%s-%s", provider.getName(), YBA_DEFAULT_OS),
-        details,
-        metadata,
-        isDefault);
+        provider, getDefaultImageBundleName(provider.getCode()), details, metadata, isDefault);
   }
 
   @Override
@@ -297,13 +297,14 @@ public class CloudImageBundleSetup extends CloudTaskBase {
             throw new PlatformServiceException(
                 BAD_REQUEST, "YBA_ACTIVE bundle is already associated with the provider");
           }
-
+          // Set the name as per the current release version.
+          bundle.setName(getDefaultImageBundleName(provider.getCode()));
           String defaultImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
           bundleInfo.setYbImage(defaultImage);
           bundleInfo.setSshUserOverride(cloudType.getSshUser());
           // If we are populating the ybImage, bundle will be YBA_DEFAULT.
           metadata.setType(ImageBundleType.YBA_ACTIVE);
-          metadata.setVersion(YBA_DEFAULT_OS);
+          metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
         } else {
           // In case user specified the AMI ids bundle will be CUSTOM.
           metadata.setType(ImageBundleType.CUSTOM);
@@ -318,13 +319,16 @@ public class CloudImageBundleSetup extends CloudTaskBase {
           throw new PlatformServiceException(
               BAD_REQUEST, "YBA_ACTIVE bundle is already associated with the provider");
         }
-
+        bundle.setName(getDefaultImageBundleName(provider.getCode()));
         // for GCP/Azure images are independent of regions.
         String defaultImage = cloudQueryHelper.getDefaultImage(regions.get(0), arch.toString());
         details.setGlobalYbImage(defaultImage);
         // In case ybImage is not specified the bundle type will be YBA_DEFAULT.
         metadata.setType(ImageBundleType.YBA_ACTIVE);
-        metadata.setVersion(YBA_DEFAULT_OS);
+        metadata.setVersion(CLOUD_OS_MAP.get(provider.getCode()).getVersion());
+      } else {
+        // In case user specified the image id bundle will be CUSTOM.
+        metadata.setType(ImageBundleType.CUSTOM);
       }
     }
     if (bundle.getUseAsDefault()) {
@@ -344,5 +348,10 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       }
     }
     ImageBundle.create(provider, bundle.getName(), details, metadata, bundle.getUseAsDefault());
+  }
+
+  private static String getDefaultImageBundleName(String cloudCode) {
+    CloudOS cloudOS = CLOUD_OS_MAP.get(cloudCode);
+    return "YBA-Managed-" + cloudOS.getName() + "-" + cloudOS.getVersion();
   }
 }

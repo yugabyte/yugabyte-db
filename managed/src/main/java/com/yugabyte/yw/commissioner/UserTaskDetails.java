@@ -258,7 +258,10 @@ public class UserTaskDetails {
     ValidateConfigurations,
 
     // Update Proxy Config
-    UpdateProxyConfig
+    UpdateProxyConfig,
+
+    // OS Patching.
+    OSPatching
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -602,6 +605,10 @@ public class UserTaskDetails {
       case UpdateProxyConfig:
         title = "Updating Proxy config";
         description = "Updating Proxy Config for Universe nodes";
+        break;
+      case OSPatching:
+        title = "OS Patching";
+        description = "Performing OS Patching on the universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
