@@ -17,7 +17,7 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
 
   {{<index/item
     title="Patch and upgrade the Linux OS"
-    body="Apply operating system upgrades and patches to universe nodes."
+    body="Apply operating system patches and upgrades to universe nodes."
     href="upgrade-nodes/"
     icon="/images/section_icons/deploy/manual-deployment.png">}}
 
@@ -41,9 +41,15 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
 
   {{<index/item
     title="Configure instance tags"
-    body="Use YugabyteDB Anywhere to create and edit instance tags."
+    body="Create and edit universe instance tags."
     href="instance-tags/"
     icon="/images/section_icons/deploy/manual-deployment.png">}}
+
+  {{<index/item
+    title="Edit Kubernetes overrides"
+    body="Modify the Helm chart overrides."
+    href="edit-helm-overrides/"
+    icon="/images/section_icons/deploy/kubernetes.png">}}
 
   {{<index/item
     title="Pause, resume, and delete universes"
@@ -56,24 +62,5 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     body="Remove unresponsive nodes, start and stop node processes, and recover nodes."
     href="remove-nodes/"
     icon="/images/section_icons/deploy/manual-deployment.png">}}
-
-
-{{</index/block>}}
-
-### Kubernetes
-
-{{<index/block>}}
-
-  {{<index/item
-    title="Edit Kubernetes overrides"
-    body="Modify the Helm chart overrides."
-    href="edit-helm-overrides/"
-    icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
-
-  {{<index/item
-    title="Migrate to Helm 3"
-    body="Migrate your deployment from Helm 2 to Helm 3."
-    href="migrate-to-helm3/"
-    icon="/images/section_icons/manage/enterprise.png">}}
 
 {{</index/block>}}

@@ -16,9 +16,15 @@ type: docs
 
 YugabyteDB Anywhere allows you to expand a universe to add more nodes and shrink the universe to reduce the number of nodes.
 
+- For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
+
+- For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
+
+- For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
+
 ## Edit a universe
 
-Typically, you do this by navigating to **Universes > UniverseName > Actions > Edit Universe**, as per the following illustration:
+To change the configuration of a universe, navigate to **Universes > UniverseName > Actions > Edit Universe**, as per the following illustration:
 
 ![Edit universe](/images/ee/edit-univ-220.png)
 
@@ -33,10 +39,6 @@ Using the **Edit Universe** page, you can modify the following:
 YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/concepts/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
 Note that you can't change the replication factor of a universe.
-
-For information on changing user tags, refer to [Create and edit instance tags](../instance-tags/).
-
-For information on changing configuration flags, refer to [Edit configuration flags](../edit-config-flags/).
 
 To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, follow the instructions in [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
 

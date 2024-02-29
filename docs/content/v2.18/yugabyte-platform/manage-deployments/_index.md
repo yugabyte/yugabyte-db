@@ -137,15 +137,4 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-to-helm3/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Migrate to Helm 3</div>
-      </div>
-      <div class="body">
-        Migrate your deployment from Helm 2 to Helm 3.
-      </div>
-    </a>
-  </div>
 </div>

@@ -13,43 +13,23 @@ type: indexpage
 ---
 To see your deployed universes, navigate to **Dashboard** or **Universes**. To view a universe, select it in the list.
 
-### Nodes
-
 {{<index/block>}}
 
   {{<index/item
-    title="Start and stop processes"
-    body="Start and stop the node processes."
-    href="start-stop-processes/"
-    icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
-
-  {{<index/item
-    title="Eliminate an unresponsive node"
-    body="Remove and eliminate unresponsive nodes from a universe."
-    href="remove-nodes/"
-    icon="/images/section_icons/deploy/manual-deployment.png">}}
-
-  {{<index/item
-    title="Upgrade and patch the node OS"
-    body="Apply operating system upgrades and patches to universe nodes."
+    title="Patch and upgrade the Linux OS"
+    body="Apply operating system patches and upgrades to universe nodes."
     href="upgrade-nodes/"
     icon="/images/section_icons/deploy/manual-deployment.png">}}
 
   {{<index/item
-    title="Recover a node"
-    body="Recover removed nodes in your YugabyteDB universe."
-    href="add-nodes/"
-    icon="/images/section_icons/deploy/system.png">}}
-
-{{</index/block>}}
-
-### Universes
-
-{{<index/block>}}
+    title="Upgrade universes"
+    body="Upgrade YugabyteDB software powering your universes."
+    href="upgrade-software/"
+    icon="/images/section_icons/manage/enterprise/upgrade_universe.png">}}
 
   {{<index/item
-    title="Edit a universe"
-    body="Use YugabyteDB Anywhere to edit a universe."
+    title="Modify a universe"
+    body="Scale a universe horizontally and vertically."
     href="edit-universe/"
     icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
 
@@ -60,39 +40,27 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     icon="/images/section_icons/manage/enterprise/edit_flags.png">}}
 
   {{<index/item
+    title="Configure instance tags"
+    body="Create and edit universe instance tags."
+    href="instance-tags/"
+    icon="/images/section_icons/deploy/manual-deployment.png">}}
+
+  {{<index/item
+    title="Edit Kubernetes overrides"
+    body="Modify the Helm chart overrides."
+    href="edit-helm-overrides/"
+    icon="/images/section_icons/deploy/kubernetes.png">}}
+
+  {{<index/item
     title="Pause, resume, and delete universes"
     body="Pause or delete a universe that is not needed."
     href="delete-universe/"
     icon="/images/section_icons/manage/enterprise/delete_universe.png">}}
 
   {{<index/item
-    title="Configure instance tags"
-    body="Use YugabyteDB Anywhere to create and edit instance tags."
-    href="instance-tags/"
+    title="Troubleshoot and manage nodes"
+    body="Remove unresponsive nodes, start and stop node processes, and recover nodes."
+    href="remove-nodes/"
     icon="/images/section_icons/deploy/manual-deployment.png">}}
-
-  {{<index/item
-    title="Upgrade YugabyteDB software"
-    body="Upgrade YugabyteDB software powering your universes."
-    href="upgrade-software/"
-    icon="/images/section_icons/manage/enterprise/upgrade_universe.png">}}
-
-{{</index/block>}}
-
-### Kubernetes
-
-{{<index/block>}}
-
-  {{<index/item
-    title="Edit Kubernetes overrides"
-    body="Modify the Helm chart overrides."
-    href="edit-helm-overrides/"
-    icon="/images/section_icons/manage/enterprise/edit_universe.png">}}
-
-  {{<index/item
-    title="Migrate to Helm 3"
-    body="Migrate your deployment from Helm 2 to Helm 3."
-    href="migrate-to-helm3/"
-    icon="/images/section_icons/manage/enterprise.png">}}
 
 {{</index/block>}}
