@@ -38,6 +38,7 @@ interface AddLinuxVersionModalProps {
   onHide: () => void;
   onSubmit: (values: ImageBundle) => void;
   editDetails?: ImageBundle;
+  existingImageBundles?: ImageBundle[];
 }
 
 interface ImageBundleExtendedProps {
@@ -83,8 +84,10 @@ const useStyles = makeStyles((theme) => ({
 const getOverrides = (editDetails: ImageBundle & ImageBundleExtendedProps) => {
   if (!isNonEmptyObject(editDetails)) return {};
   return {
-    sshUserOverride: values(editDetails?.details.regions)[0]?.sshUserOverride ?? editDetails?.sshUserOverride,
-    sshPortOverride: values(editDetails?.details.regions)[0]?.sshPortOverride ?? editDetails?.sshPortOverride
+    sshUserOverride:
+      values(editDetails?.details.regions)[0]?.sshUserOverride ?? editDetails?.sshUserOverride,
+    sshPortOverride:
+      values(editDetails?.details.regions)[0]?.sshPortOverride ?? editDetails?.sshPortOverride
   };
 };
 
@@ -94,7 +97,8 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
   visible,
   onHide,
   onSubmit,
-  editDetails = {}
+  editDetails = {},
+  existingImageBundles = []
 }) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion'
@@ -115,7 +119,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
       ...editDetails,
       ...getOverrides(editDetails as any)
     },
-    resolver: yupResolver(getAddLinuxVersionSchema(providerType, t))
+    resolver: yupResolver(getAddLinuxVersionSchema(providerType, t, existingImageBundles as any))
   });
 
   const CPU_ARCH_OPTIONS = [
@@ -187,6 +191,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               options={CPU_ARCH_OPTIONS}
               name="details.arch"
               orientation={RadioGroupOrientation.HORIZONTAL}
+              isDisabled={isEditMode}
             />
           </div>
         )}
