@@ -309,13 +309,13 @@ WalSndErrorCleanup(void)
 		sendFile = -1;
 	}
 
+	if (IsYugaByteEnabled() && MyReplicationSlot != NULL)
+		YBCDestroyVirtualWal();
+
 	if (MyReplicationSlot != NULL)
 		ReplicationSlotRelease();
 
 	ReplicationSlotCleanup();
-
-	if (IsYugaByteEnabled())
-		YBCDestroyVirtualWal();
 
 	replication_active = false;
 
