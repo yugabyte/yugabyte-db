@@ -18,23 +18,25 @@ If you plan to script this in a loop, then a pause of approximately 60 seconds i
 
 Your `data/log/conf` directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
 
-## Before you begin
+## Review major changes in previous YugabyteDB releases
 
 Before starting the upgrade, review the following major changes to YugabyteDB. Depending on the upgrade you are planning, you may need to make changes to your automation.
 
-### Upgrading to v2.16.0
+### Upgrading from versions earlier than v2.16.0
 
-The YB Controller (YBC) service was introduced for all universes (except Kubernetes). YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YBA 2.16.0 and later.
 
-**Impact**
+YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 
-- Operating system (OS) upgrades and patches - if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
+**Impacts**
 
 - Firewall ports - update your firewall rules to allow incoming TCP traffic on port 18018, which is used by YBC, for all nodes in a universe.
 
-### Upgrading to v2.18.0
+- OS patching procedure - if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
 
-YBC was introduced for Kubernetes clusters. Refer to [Upgrading to 2.16.0](#upgrading-to-v2-16-0).
+### Upgrading from versions earlier than v2.18.0
+
+YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2160).
 
 ## Install new version of YugabyteDB
 
