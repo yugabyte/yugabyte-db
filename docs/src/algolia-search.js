@@ -278,10 +278,19 @@ import algoliasearch from 'algoliasearch';
     const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
+    const searchScript = document.getElementById('algolia-search-script');
+    const faultToleranceParam = searchScript.getAttribute('data-tolerance');
+
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
     };
+
+    if (faultToleranceParam) {
+      if (searchValue.includes('_')) {
+        searchOptions.typoTolerance = false;
+      }
+    }
 
     if (pageItems && pageItems > 0) {
       searchOptions.page = pageItems - 1;
