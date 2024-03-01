@@ -26,7 +26,7 @@ if (typeof detectExternalLink === 'function') {
 </script>
 
 {{- if .Site.Params.algolia_docsearch -}}
-  <script src="/js/search.js" id="algolia-search-script"{{- if .Site.Params.algolia_fault_tolerance }} data-tolerance="true"{{- end }}></script>
+  <script src="/js/search.js" id="algolia-search-script"{{- if .Site.Params.algolia_sequence_expressions }} data-sequence-expressions="true"{{- end }}></script>
 {{- end -}}
 
 {{- with .Site.Params.kapa_ai -}}

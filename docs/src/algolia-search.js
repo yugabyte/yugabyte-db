@@ -258,7 +258,7 @@ import algoliasearch from 'algoliasearch';
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
-    const searchValue = searchInput.value.trim();
+    let searchValue = searchInput.value.trim();
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
       setTimeout(() => {
@@ -278,17 +278,17 @@ import algoliasearch from 'algoliasearch';
     const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
-    const searchScript = document.getElementById('algolia-search-script');
-    const faultToleranceParam = searchScript.getAttribute('data-tolerance');
-
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
     };
 
-    if (faultToleranceParam) {
-      if (searchValue.includes('_')) {
-        searchOptions.typoTolerance = false;
+    if (searchValue.includes('_')) {
+      const searchScript = document.getElementById('algolia-search-script');
+      const sequenceExpressions = searchScript.getAttribute('data-sequence-expressions');
+
+      if (sequenceExpressions) {
+        searchValue = searchValue.replace(/_/g, '-');
       }
     }
 
