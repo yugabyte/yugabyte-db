@@ -725,6 +725,7 @@ class PgClientServiceImpl::Impl {
     std::vector<master::TSInformationPB> live_tservers;
     RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
     GetLockStatusRequestPB lock_status_req;
+    lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
       // TODO(pglocks): Forward the request to tservers hosting the involved tablets of the txn,
       // as opposed to broadcasting the request to all live tservers.
