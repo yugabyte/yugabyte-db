@@ -478,9 +478,9 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
     term_ = term;
 
     for (const auto& ts_desc : descs) {
-      if (!ts_desc->IsLive()) {
-        // Ignore dead tservers since they should be resolved.
-        // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+      if (!ts_desc->HasYsqlCatalogLease()) {
+        // Ignore tservers with expired lease since they should be resolved.
+        // TODO(#13369): ensure these tservers abort/block ops until they successfully heartbeat.
         continue;
       }
 
@@ -755,16 +755,18 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
 void BackendsCatalogVersionTS::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << resp_.ShortDebugString();
 
-  // First, check if the tserver is considered dead.
-  if (!target_ts_desc_->IsLive()) {
+  // First, check if the tserver's lease expired.
+  if (!target_ts_desc_->HasYsqlCatalogLease()) {
     // A similar check is done in RetryingTSRpcTask::DoRpcCallback.  That check is hit when this RPC
-    // failed and tserver is dead.  This check is hit when this RPC succeeded and tserver is dead.
-    // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+    // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
+    // lease expired.
+    // TODO(#13369): ensure lease-expired tservers abort/block ops until they successfully
+    // heartbeat.
     LOG_WITH_PREFIX(WARNING)
-        << "TS " << permanent_uuid() << " is DEAD. Assume backends on that TS"
+        << "TS " << permanent_uuid() << " catalog lease expired. Assume backends on that TS"
         << " will be resolved to sufficient catalog version";
     TransitionToCompleteState();
-    found_dead_ = true;
+    found_lease_expired_ = true;
     return;
   }
 
@@ -831,16 +833,16 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
 
   // There are multiple cases where we consider a tserver to be resolved:
   // - Num lagging backends is zero: directly resolved
-  // - Tserver was found dead in HandleResponse: indirectly resolved assuming issue #13369.
-  // - Tserver was found dead in DoRpcCallback: (same).
+  // - Tserver lease expired in HandleResponse: indirectly resolved assuming issue #13369.
+  // - Tserver lease expired in DoRpcCallback: (same).
   // - Tserver was found behind in HandleResponse: indirectly resolved for compatibility during
   //   upgrade: it is possible backends are actually behind.
   // - Tserver was found behind in DoRpcCallback: (same).
-  bool indirectly_resolved = found_dead_ || found_behind_;
+  bool indirectly_resolved = found_lease_expired_ || found_behind_;
   if (!rpc_.status().ok()) {
     // Only way for rpc status to be not okay is from TransitionToCompleteState in
     // RetryingTSRpcTask::DoRpcCallback.  That can happen in any of the following ways:
-    // - ts died.
+    // - ts expired lease.
     // - ts is on an older version that doesn't support the RPC.
     DCHECK_EQ(state(), MonitoredTaskState::kComplete);
     DCHECK(!resp_.has_error()) << LogPrefix() << resp_.error().ShortDebugString();
@@ -850,10 +852,12 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   // Find failures.
   Status status;
   if (!indirectly_resolved) {
-    // Only live tservers can be considered to have failures since dead or behind tservers are
-    // considered resolved.  Dead tservers could still get resp error like catalog version too old,
-    // but we don't want to throw error when they are already considered resolved.
-    // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+    // Only tservers holding valid leases can be considered to have failures since lease-expired or
+    // behind tservers are considered resolved.  Tservers with expired leases could still get resp
+    // error like catalog version too old, but we don't want to throw an error when they are already
+    // considered resolved.
+    // TODO(#13369): ensure lease-expired tservers abort/block ops until they successfully
+    // heartbeat.
 
     if (resp_.has_error()) {
       if (state() == MonitoredTaskState::kComplete) {
@@ -875,11 +879,12 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
 
   if (auto job = job_.lock()) {
     if (indirectly_resolved) {
-      // There are three cases of indirectly resolved tservers, outlined in a comment above.
-      if (found_dead_ || !target_ts_desc_->IsLive()) {
-        // The two tserver-found-dead cases.
+      // There are four cases of indirectly resolved tservers, outlined in a comment above.
+      if (found_lease_expired_ || !target_ts_desc_->HasYsqlCatalogLease()) {
+        // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
-            << "tserver died, so assuming its backends are at latest catalog version";
+            << "tserver catalog lease expired, so assuming its backends are at latest catalog"
+            << " version";
       } else {
         // The two tserver-found-behind cases.
         LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";

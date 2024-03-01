@@ -85,6 +85,13 @@ DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_m
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
+// TODO(#13369): use this flag in tserver.
+DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
+    "Lease period between master and tserver that guarantees YSQL system catalog is not stale."
+    " Must be higher than --heartbeat_interval_ms, preferrably many times higher.");
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
+
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
 DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,

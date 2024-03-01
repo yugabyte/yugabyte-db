@@ -137,9 +137,9 @@ class BackendsCatalogVersionTS;
 //     accumulated progress in the first place.
 //   - On tserver network partitioning, master may be unable to reach a tserver to determine whether
 //     its backends satisfy the requested db+ver.  In that case, rely on tserver to block its own
-//     backends from functioning when its "lease" with master expires.  An example implementation of
-//     "lease" is FLAGS_tserver_unresponsive_timeout_ms to determine whether master views the
-//     tserver as live.  The blocking is currently not implemented and is required for correctness.
+//     backends from functioning when its catalog lease with master expires.  This lease is
+//     implemented by master/tserver flag --master_ts_ysql_catalog_lease_ms.
+//     TODO(#13369): the blocking is currently not implemented and is required for correctness.
 //
 // - Ownership: there are multiple in-memory objects that it is worth mentioning the memory model.
 //   - YsqlBackendsManager: there is only a single instance of this owned by master
@@ -402,10 +402,10 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   // the response error complains about mismatched schema most likely due to not having run
   // upgrade_ysql.
   bool found_behind_ = false;
-  // Whether the tserver is considered dead (expired).  This is checked and set true on
-  // HandleResponse.  It may be the case that this is not set and tserver is found dead through a
+  // Whether the tserver's catalog lease expired.  This is checked and set true on HandleResponse.
+  // It may be the case that this is not set and tserver's lease is found expired through a
   // different way (e.g. rpc failure).
-  bool found_dead_ = false;
+  bool found_lease_expired_ = false;
 };
 
 }  // namespace master

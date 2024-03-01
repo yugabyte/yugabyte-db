@@ -317,6 +317,8 @@ class TSDescriptor {
 
   virtual bool IsLiveAndHasReported() const;
 
+  bool HasYsqlCatalogLease() const;
+
   // Is the ts in a read-only placement.
   bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
 
