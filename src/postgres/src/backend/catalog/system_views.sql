@@ -1230,6 +1230,22 @@ LANGUAGE INTERNAL
 STRICT STABLE PARALLEL SAFE
 AS 'jsonb_path_query_first_tz';
 
+
+CREATE OR REPLACE FUNCTION
+  yb_pg_generate_bundle (queryid int8)
+RETURNS boolean
+LANGUAGE INTERNAL
+STABLE PARALLEL SAFE
+AS 'yb_pg_generate_bundle';
+
+CREATE OR REPLACE FUNCTION
+  yb_pg_stop_bundle (queryid int8)
+RETURNS boolean
+LANGUAGE INTERNAL
+STABLE PARALLEL SAFE
+AS 'yb_pg_stop_bundle';
+
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather

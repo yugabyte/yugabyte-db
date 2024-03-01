@@ -1090,4 +1090,14 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
 
+extern int64_t bundleQueryId;
+extern TimestampTz start;
+extern TimestampTz end;
+extern bool debuggingBundle;
+typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, double total_time,
+		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid);
+
+extern bundlePgssPtr bundleptr;
+
+
 #endif /* PG_YB_UTILS_H */

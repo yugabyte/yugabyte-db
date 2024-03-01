@@ -105,6 +105,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+// #include "postgres/contrib/pg_stat_statements/pg_stat_statements.c"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -4520,8 +4521,55 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query_len = strlen(*redacted_query);
 }
 
+TimestampTz start,end;
+int64_t bundleQueryId;
+bool debuggingBundle;
+bundlePgssPtr bundleptr;
 
-// void bundle(){
-// 	dumpAshData();
+Datum
+yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
+{
+	//This function is mainly for setting variables.
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers can generate bundles"))));
 
-// }
+	debuggingBundle = true;
+	start = GetCurrentTimestamp();
+	bool is_queryid_null = PG_ARGISNULL(0);
+	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	bundleQueryId = queryid;
+	if(bundleQueryId)
+	;
+
+
+    PG_RETURN_BOOL(true);
+}
+
+Datum
+yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details acquired for a specific query id
+{
+
+	// This is for logging.
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("only superusers can stop and print bundle details"))));
+	
+	end = GetCurrentTimestamp();
+	bool is_queryid_null = PG_ARGISNULL(0);
+	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	if(queryid)
+	;
+
+	bundleptr(0,0,"-",0,0,NULL,0,0);
+	dumpAshData(queryid ,start ,end);
+
+	//resetting the values
+
+	start =  INT64_MAX;
+	end = INT64_MIN;
+	debuggingBundle = false;
+	PG_RETURN_BOOL(true);
+}
