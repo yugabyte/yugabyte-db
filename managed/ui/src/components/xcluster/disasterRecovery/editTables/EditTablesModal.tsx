@@ -24,6 +24,7 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
+  XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
@@ -103,20 +104,37 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
   );
 
+  const sourceUniverseIndexTableUuids =
+    sourceUniverseTablesQuery.data
+      ?.filter((table) => table.isIndexTable)
+      .map((table) => getTableUuid(table)) ?? [];
+
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
+      const filteredBootstrapRequiredTableUuids =
+        props.xClusterConfig.type === XClusterConfigType.TXN
+          ? bootstrapRequiredTableUUIDs.filter(
+              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
+            )
+          : bootstrapRequiredTableUUIDs;
+      const filteredTableUuids =
+        props.xClusterConfig.type === XClusterConfigType.TXN
+          ? formValues.tableUuids.filter(
+              (tableUuid) => !sourceUniverseIndexTableUuids.includes(tableUuid)
+            )
+          : formValues.tableUuids;
       const bootstrapParams =
-        bootstrapRequiredTableUUIDs.length > 0
+        filteredBootstrapRequiredTableUuids.length > 0
           ? {
-              tables: bootstrapRequiredTableUUIDs,
+              tables: filteredBootstrapRequiredTableUuids,
               backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig?.value
+                storageConfigUUID: formValues.storageConfig?.value.uuid
               }
             }
           : undefined;
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
-            tables: formValues.tableUuids
+            tables: filteredTableUuids
           })
         : editXClusterConfigTables(xClusterConfig.uuid, formValues.tableUuids, bootstrapParams);
     },
@@ -274,16 +292,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           const hasSelectionError = false;
 
           try {
-            // We pass null as the target universe in the following method because add table does not
-            // support the case where a matching table does not exist on the target universe.
             bootstrapTableUuids = await getTablesForBootstrapping(
               formValues.tableUuids,
               sourceUniverseUuid,
-              null /* targetUniverseUUID */,
+              targetUniverseUuid,
               sourceUniverseTables,
-              xClusterConfig.tables,
-              xClusterConfig.type,
-              xClusterConfig.usedForDr
+              xClusterConfig.type
             );
           } catch (error: any) {
             toast.error(
@@ -484,18 +498,35 @@ const getXClusterConfigNamespaces = (
   return Array.from(selectedNamespaceUuid);
 };
 
+const getDefaultSelectedTableUuids = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[]
+): string[] => {
+  const defaultSelectedTableUuids = new Set<string>();
+  const tableUuidToTable = Object.fromEntries(
+    sourceUniverseTables.map((table) => [getTableUuid(table), table])
+  );
+  xClusterConfig.tables.forEach((tableUuid) => {
+    const sourceUniverseTable = tableUuidToTable[tableUuid];
+    if (sourceUniverseTable) {
+      // The xCluster config table exists in the source universe.
+      // We add this table and include any associcated index tables it has.
+      defaultSelectedTableUuids.add(tableUuid);
+      sourceUniverseTable.indexTableIDs?.forEach((indexTableId) =>
+        defaultSelectedTableUuids.add(indexTableId)
+      );
+    }
+  });
+  return Array.from(defaultSelectedTableUuids);
+};
+
 const getDefaultFormValues = (
   xClusterConfig: XClusterConfig,
   sourceUniverseTables: YBTable[],
   sourceUniverseNamespace: UniverseNamespace[]
 ): Partial<EditTablesFormValues> => {
-  const sourceUniverseTableUuids = sourceUniverseTables.map((table) =>
-    formatUuidForXCluster(getTableUuid(table))
-  );
   return {
-    tableUuids: xClusterConfig.tables.filter((xClusterTableUuid) =>
-      sourceUniverseTableUuids.includes(xClusterTableUuid)
-    ),
+    tableUuids: getDefaultSelectedTableUuids(xClusterConfig, sourceUniverseTables),
     namespaceUuids: getXClusterConfigNamespaces(
       xClusterConfig,
       sourceUniverseTables,
