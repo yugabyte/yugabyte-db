@@ -20,6 +20,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/postgres-minicluster.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
