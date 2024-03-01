@@ -5476,6 +5476,20 @@
       },
       "type" : "object"
     },
+    "ImageBundleUpgradeInfo" : {
+      "properties" : {
+        "clusterUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "imageBundleUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "clusterUuid", "imageBundleUuid" ],
+      "type" : "object"
+    },
     "ImpactedXClusterConnectedUniverse" : {
       "properties" : {
         "universeName" : {
@@ -14302,10 +14316,12 @@
         "forceVMImageUpgrade" : {
           "type" : "boolean"
         },
-        "imageBundleUUID" : {
-          "description" : "ImageBundle to be used for upgrade",
-          "format" : "uuid",
-          "type" : "string"
+        "imageBundles" : {
+          "description" : "Available since YBA version 2.21.1.0. ImageBundles for provider to be used for upgrade",
+          "items" : {
+            "$ref" : "#/definitions/ImageBundleUpgradeInfo"
+          },
+          "type" : "array"
         },
         "importedState" : {
           "enum" : [ "NONE", "STARTED", "MASTERS_ADDED", "TSERVERS_ADDED", "IMPORTED" ],
