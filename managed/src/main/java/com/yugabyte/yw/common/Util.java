@@ -23,6 +23,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
@@ -1056,5 +1057,23 @@ public class Util {
     } catch (MalformedURLException e) {
       throw new RuntimeException("Malformed URL: " + urlString);
     }
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (provider.getUuid() != null) {
+      List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+    }
+
+    return imageBundleUUID;
   }
 }
