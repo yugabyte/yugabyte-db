@@ -173,6 +173,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     currentUniverseUuid !== targetUniverseUuid
       ? [currentUniverseQuery.data, participantUniverseQuery.data]
       : [participantUniverseQuery.data, currentUniverseQuery.data];
+
+  // Polling for live metrics and config updates.
   useInterval(() => {
     if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
       queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverse?.universeUUID));
@@ -181,9 +183,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(universeQueryKey.detail(targetUniverse?.universeUUID));
     }
   }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
-  // Polling for metrics and config updates.
   useInterval(() => {
-    queryClient.invalidateQueries(metricQueryKey.ALL); // TODO: Add a dedicated key for 'latest xCluster metrics'.
+    queryClient.invalidateQueries(metricQueryKey.live());
   }, PollingIntervalMs.XCLUSTER_METRICS);
   useInterval(() => {
     const xClusterConfigStatus = drConfigQuery.data?.status;
