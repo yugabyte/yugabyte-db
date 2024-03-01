@@ -31,6 +31,12 @@
   vars:
     air_gapped: "{{ air_gap | default(false) }}"
   tasks:
+    - name: "Set up GPG key for AlmaLinux 8 instances"
+      raw: rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
+      when: >
+        not air_gapped and ansible_distribution == 'AlmaLinux'
+        and ansible_distribution_major_version == '8'
+
     - name: "Install python36 on RHEL8 family"
       raw: >
         (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
