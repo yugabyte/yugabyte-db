@@ -223,10 +223,7 @@ SELECT helio_api.shard_collection('db', 'create_view_tests_view_1', '{ "_id": "h
 ERROR:  Namespace db.create_view_tests_view_1 is a view, not a collection
 -- can drop/rename a view
 SELECT helio_api.rename_collection('db', 'create_view_tests_view_1', 'create_view_tests_view_4');
-ERROR:  function helio_api.rename_collection(unknown, unknown, unknown) does not exist
-LINE 1: SELECT helio_api.rename_collection('db', 'create_view_tests_...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  Namespace db.create_view_tests_view_1 is a view, not a collection
 SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "create_view_tests_view_1" }');
                               document                              
 --------------------------------------------------------------------
