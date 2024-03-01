@@ -413,7 +413,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
       vector<string> extra_flags;
       for (const auto& flag : opts_.extra_tserver_flags) {
         if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back(flag);
+          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
         }
       }
       // we need 1 yb controller server for each tserver
