@@ -1,5 +1,6 @@
 import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 import _ from 'lodash';
 
@@ -57,7 +58,7 @@ export const SoftwareUpgradeTaskType = {
  *  - error - The error string from the current universe
  */
 export const getUniverseStatus = (universe) => {
-  if (!universe) {
+  if (!universe?.universeDetails) {
     return { state: UniverseState.UNKNOWN, error: '' };
   }
   const {
