@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -55,5 +56,6 @@ public class BaseTaskDependencies {
   private final AutoFlagUtil autoFlagUtil;
   private final Commissioner commissioner;
   private final NodeUIApiHelper nodeUIApiHelper;
+  private final ImageBundleUtil imageBundleUtil;
   private final ReleaseManager releaseManager;
 }

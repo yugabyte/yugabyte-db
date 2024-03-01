@@ -176,10 +176,12 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -1747,6 +1749,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return Provider.getOrBadRequest(
                             UUID.fromString(cluster.userIntent.provider));
                       });
+              ProviderDetails providerDetails = provider.getDetails();
+              CloudType cloudType = universe.getNodeDeploymentMode(n);
+              params.sshUser =
+                  StringUtils.isNotBlank(providerDetails.sshUser)
+                      ? providerDetails.sshUser
+                      : cloudType.getSshUser();
+              params.sshPort = providerDetails.sshPort.toString();
+              UniverseDefinitionTaskParams.Cluster cluster =
+                  universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
+              UUID imageBundleUUID =
+                  Util.retreiveImageBundleUUID(
+                      universe.getUniverseDetails().arch, cluster.userIntent, provider);
+              if (imageBundleUUID != null) {
+                ImageBundle.NodeProperties toOverwriteNodeProperties =
+                    imageBundleUtil.getNodePropertiesOrFail(
+                        imageBundleUUID,
+                        n.cloudInfo.region,
+                        cluster.userIntent.providerType.toString());
+                params.sshPort = toOverwriteNodeProperties.getSshPort().toString();
+                params.sshUser = toOverwriteNodeProperties.getSshUser();
+              }
+
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();
@@ -1755,6 +1779,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.nodeAgentInstallDir = installPath;
               params.nodeAgentPort = serverPort;
               params.reinstall = reinstall;
+              if (StringUtils.isNotEmpty(n.sshUserOverride)) {
+                params.sshUser = n.sshUserOverride;
+              }
+              if (n.sshPortOverride != null) {
+                params.sshPort = n.sshPortOverride.toString();
+              }
               InstallNodeAgent task = createTask(InstallNodeAgent.class);
               task.initialize(params);
               subTaskGroup.addSubTask(task);
