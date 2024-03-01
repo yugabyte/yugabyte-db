@@ -89,16 +89,15 @@ Fault tolerance is applied to all regions in the cluster, including those added 
 
 ![Add Cluster Wizard - Primary region and size](/images/yb-cloud/cloud-addcluster-partition.png)
 
-**Region** - For each region, specify the following:
+**Regions** - For each region, choose the following:
 
-- [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
-- VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
-- number of nodes to deploy in the regions.
-- number of virtual CPUs per node.
-- disk size per node (in GB).
-- disk input output (I/O) operations per second (IOPS) per node (AWS only)
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
+- the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+- the number of nodes to deploy in the regions; each region has the same number of nodes.
 
 To add additional regions to the cluster, click **Add Region**.
+
+**Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
