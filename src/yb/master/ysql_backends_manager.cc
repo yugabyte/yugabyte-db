@@ -36,6 +36,8 @@
 
 using namespace std::chrono_literals;
 
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+
 DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
     60 * 1000, // 60s
     "WaitForYsqlBackendsCatalogVersion master-to-tserver RPC timeout.");
@@ -69,15 +71,28 @@ YsqlBackendsManager::YsqlBackendsManager(
 
 namespace {
 
-// Check the leadership (and initialization of catalog).  Return ok if those conditions are
-// satisfied.  If not satisfied, fill the response error code and then return status.
+// Check the leadership:
+// - initialization of catalog
+// - lease period elapsed since leadership
+// Return ok if those conditions are satisfied.  If not satisfied, fill the response error code and
+// return status.
 Status CheckLeadership(
-    ScopedLeaderSharedLock* l, WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
+    ScopedLeaderSharedLock* l, CatalogManager* catalog_manager,
+    WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   if (!l->IsInitializedAndIsLeader()) {
     // Do the same thing as case !l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc) in
     // MasterServiceBase::HandleOnLeader.
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
+  }
+  if (catalog_manager->TimeSinceElectedLeader() <
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms))) {
+    return SetupError(
+        resp->mutable_error(),
+        STATUS(
+          TryAgain,
+          "Recently became leader: cannot yet serve WaitForYsqlBackendsCatalogVersion requests")
+          .CloneAndAddErrorCode(MasterError(MasterErrorPB::IN_TRANSITION_CAN_RETRY)));
   }
   return Status::OK();
 }
@@ -129,7 +144,7 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     if (PREDICT_FALSE(!FLAGS_TEST_wait_for_ysql_backends_catalog_version_take_leader_lock)) {
       l.Unlock();
     } else {
-      RETURN_NOT_OK(CheckLeadership(&l, resp));
+      RETURN_NOT_OK(CheckLeadership(&l, master_->catalog_manager_impl(), resp));
     }
     Status s;
     // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make sure
@@ -269,7 +284,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     // tracker and then we add the job to the jobs tracker, meaning that job would be missed
     // by the one-time cleanup.  But this is a test flag, so don't worry about it.
   } else {
-    RETURN_NOT_OK(CheckLeadership(&l, resp));
+    RETURN_NOT_OK(CheckLeadership(&l, master_->catalog_manager_impl(), resp));
   }
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(job);
   RETURN_NOT_OK(job->Launch(master_->catalog_manager()->leader_ready_term()));

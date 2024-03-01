@@ -41,6 +41,7 @@ class PgBackendsTest : public LibPqTestBase {
   void SetUp() override {
     LibPqTestBase::SetUp();
 
+    start_time_ = MonoTime::Now();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB("yugabyte")));
 
@@ -97,8 +98,12 @@ class PgBackendsTest : public LibPqTestBase {
   }
 
  protected:
-  PgOid catalog_version_db_oid_ = kPgInvalidOid;
-  static constexpr int kCatalogLeaseSec = 10;
+  void WaitOutInitialCatalogLeasePeriod() {
+    const auto sleep_time =
+        MonoDelta::FromSeconds(kCatalogLeaseSec) - (MonoTime::Now() - start_time_);
+    LOG(INFO) << "Sleep " << sleep_time << " to wait out lease period of master in fresh cluster";
+    SleepFor(sleep_time);
+  }
 
   void BumpCatalogVersion(int num_versions) {
     LibPqTestBase::BumpCatalogVersion(num_versions, conn_.get());
@@ -147,8 +152,15 @@ class PgBackendsTest : public LibPqTestBase {
     ASSERT_EQ(expected_num_jobs, num_jobs);
   }
 
+  // Cluster started at least since this time.  Useful for tests that need to wait out the catalog
+  // lease period since master is freshly created and therefore became leader recently at the start
+  // of the test.
+  MonoTime start_time_;
+
   std::unique_ptr<client::YBClient> client_;
   std::unique_ptr<PGConn> conn_;
+  PgOid catalog_version_db_oid_ = kPgInvalidOid;
+  static constexpr int kCatalogLeaseSec = 10;
   static constexpr int kCatalogManagerBgTaskWaitMs = 1000;
   static constexpr int kMasterTserverRpcTimeoutSec = 30;
 };
@@ -190,10 +202,11 @@ TEST_F(PgBackendsTest, CachedVersion) {
 // Requests on a future version should be rejected.  If they were accepted, master would be
 // busy-waiting, and it would not be easy to cancel the job.
 TEST_F(PgBackendsTest, FutureVersion) {
+  WaitOutInitialCatalogLeasePeriod();
   // Use timeout of zero because invalid argument should return immediately.
   auto res = client_->WaitForYsqlBackendsCatalogVersion(
       "yugabyte", 999, MonoDelta::kZero /* timeout */);
-  ASSERT_NOK(res);
+  ASSERT_NOK(res) << res.get();
   const Status& s = res.status();
   ASSERT_TRUE(s.IsInvalidArgument()) << s;
   auto msg = s.message().ToBuffer();
@@ -314,6 +327,8 @@ TEST_F(PgBackendsTest, MultipleWaiters) {
   const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got catalog version " << cat_ver;
 
+  WaitOutInitialCatalogLeasePeriod();
+
   TestThreadHolder thread_holder;
   constexpr int kNumThreads = 5;
   CountDownLatch latch(kNumThreads + 1);
@@ -369,6 +384,7 @@ class PgBackendsTestConnLimit : public PgBackendsTest {
 };
 
 TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
+  WaitOutInitialCatalogLeasePeriod();
   LOG_WITH_FUNC(INFO) << "Beginning test";
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
   // zero is initially cached by the YsqlBackendsManager, so a version of zero means the following
@@ -389,7 +405,7 @@ TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
         "yugabyte",
         cat_ver,
         MonoDelta::FromSeconds(kMasterTserverRpcTimeoutSec) + 5s /* timeout */);
-    ASSERT_NOK(res);
+    ASSERT_NOK(res) << res.get();
     Status s = res.status();
     ASSERT_TRUE(s.IsCombined()) << s;
     ASSERT_STR_CONTAINS(s.message().ToBuffer(), "job is failed");
@@ -433,6 +449,8 @@ TEST_F_EX(PgBackendsTest,
   LOG(INFO) << "Start create index connection";
   PGConn conn_index = ASSERT_RESULT(Connect());
   ASSERT_OK(conn_index.Execute("CREATE TABLE t (i int)"));
+
+  WaitOutInitialCatalogLeasePeriod();
 
   LOG(INFO) << "Do create index";
   const auto start = MonoTime::Now();
@@ -645,6 +663,7 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
   latch.Wait();
   LOG(INFO) << "Spawn write threads done";
 
+  WaitOutInitialCatalogLeasePeriod();
   LOG(INFO) << "Start DDLs";
   constexpr int kNumBumps = RegularBuildVsDebugVsSanitizers(10, 5, 5);
   for (int i = 0; i < kNumBumps; ++i) {
@@ -864,6 +883,8 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
   const int ts_idx = RandomUniformInt(1, num_ts - 1);
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
 
+  WaitOutInitialCatalogLeasePeriod();
+
   LOG(INFO) << "Stop heartbeating for ts " << ts_idx << " (zero-indexed)";
   ASSERT_OK(cluster_->SetFlag(ts, "TEST_tserver_disable_heartbeat", "true"));
 
@@ -941,6 +962,7 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
     return s;
   }
 
+  WaitOutInitialCatalogLeasePeriod();
   if (keep_alive) {
     LOG(INFO) << "Stop heartbeating for that ts";
     RETURN_NOT_OK(cluster_->SetFlag(ts, "TEST_tserver_disable_heartbeat", "true"));

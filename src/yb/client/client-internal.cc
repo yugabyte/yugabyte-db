@@ -178,6 +178,8 @@ class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
     return internal::StatusFromResp(*resp_);
   }
 
+  bool ShouldRetry(const Status& status) override;
+
  private:
   RespClass* resp_;
   std::string name_;
@@ -310,6 +312,18 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterReportNewAutoFlagConfigVersion);
+
+template<class ProxyClass, class RespClass>
+bool SyncClientMasterRpc<ProxyClass, RespClass>::ShouldRetry(const Status& status) {
+  return internal::ClientMasterRpcBase::ShouldRetry(status);
+}
+
+template<>
+bool SyncClientMasterRpc<master::MasterAdminProxy,
+                         WaitForYsqlBackendsCatalogVersionResponsePB>::ShouldRetry(
+    const Status& status) {
+  return status.IsTryAgain();
+}
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

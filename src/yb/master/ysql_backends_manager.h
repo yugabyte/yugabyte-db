@@ -136,10 +136,14 @@ class BackendsCatalogVersionTS;
 //     master leader, jobs are started from scratch.  This is no big issue since there is no major
 //     accumulated progress in the first place.
 //   - On tserver network partitioning, master may be unable to reach a tserver to determine whether
-//     its backends satisfy the requested db+ver.  In that case, rely on tserver to block its own
-//     backends from functioning when its catalog lease with master expires.  This lease is
-//     implemented by master/tserver flag --master_ts_ysql_catalog_lease_ms.
-//     TODO(#13369): the blocking is currently not implemented and is required for correctness.
+//     its backends satisfy the requested db+ver.  master_ts_ysql_catalog_lease_ms bounds the amount
+//     of time we can be in this uncertain state.  The lease needs to be handled on both sides:
+//     - tserver: block its own backends from functioning when its "lease" with master expires.
+//       TODO(#13369): the blocking is currently not implemented and is required for correctness.
+//     - master: if newly elected as leader, it currently won't know when all tservers have
+//       re-registered.  In other words, it doesn't know all the tservers that exist.  Since there
+//       could always exist a tserver that is network partitioned, the new master must wait the
+//       lease period before it can be sure all tservers are accounted for.
 //
 // - Ownership: there are multiple in-memory objects that it is worth mentioning the memory model.
 //   - YsqlBackendsManager: there is only a single instance of this owned by master
