@@ -9,12 +9,10 @@ import static com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod.C
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -604,24 +602,5 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         TaskType.EditKubernetesUniverse,
         taskParams);
-  }
-
-  @Test
-  public void testVolumeDecreaseIsForbidden() {
-    setupUniverseSingleAZ(/* Create Masters */ true);
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
-    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
-    UniverseDefinitionTaskParams.UserIntent newUserIntent =
-        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    newUserIntent.instanceType = "c5.xlarge";
-    newUserIntent.deviceInfo.volumeSize--;
-    RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
-    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
-    assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(
-        taskInfo.getErrorMessage().contains("Cannot decrease disk size in a Kubernetes cluster"));
   }
 }

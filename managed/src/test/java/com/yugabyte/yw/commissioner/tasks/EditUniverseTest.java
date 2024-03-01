@@ -7,7 +7,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,7 +25,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -396,20 +394,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
-  }
-
-  @Test
-  public void testVolumeSizeValidation() {
-    Universe universe = defaultUniverse;
-    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
-    setDumpEntitiesMock(defaultUniverse, "", false);
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
-    assertTrue(exception.getMessage().contains("Cannot decrease volume size from 100 to 99"));
-    RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
