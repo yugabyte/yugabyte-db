@@ -1,6 +1,5 @@
 import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 import _ from 'lodash';
 
