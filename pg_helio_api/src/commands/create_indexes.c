@@ -2653,7 +2653,8 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 				{
 					/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
 					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("hnsw index is not supported yet")));
+									errmsg(
+										"hnsw index is not supported for this cluster tier")));
 				}
 				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_TYPE_HNSW);
 				cosmosSearchOptions->indexKind = MongoCdbIndexKind_VectorSearch_Hnsw;

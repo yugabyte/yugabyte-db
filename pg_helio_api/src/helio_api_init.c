@@ -143,7 +143,7 @@ bool EnableGeospatialSupport = DEFAULT_ENABLE_GEOSPATIAL;
  * GUC to enable HNSW index type and query for vector search.
  * This is disabled by default.
  */
-#define DEFAULT_ENABLE_VECTOR_HNSW_INDEX false
+#define DEFAULT_ENABLE_VECTOR_HNSW_INDEX true
 bool EnableVectorHNSWIndex = DEFAULT_ENABLE_VECTOR_HNSW_INDEX;
 
 /*

@@ -3329,9 +3329,10 @@ ValidateVectorQuerySpec(pgbson *vectorQuerySpecValue, char **queryVectorPath,
 			{
 				/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("hnsw index is not supported yet"),
+								errmsg(
+									"hnsw index is not supported for this cluster tier"),
 								errhint(
-									"hnsw index is not supported yet. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.")));
+									"hnsw index is not supported for this cluster tier. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.")));
 			}
 
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
