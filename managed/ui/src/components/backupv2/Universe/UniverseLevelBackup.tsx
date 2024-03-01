@@ -21,6 +21,7 @@ import { BackupThrottleParameters } from '../components/BackupThrottleParameters
 import { AdvancedRestoreNewModal } from '../components/advancedRestore/AdvancedRestoreNewModal';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 
 import './UniverseLevelBackup.scss';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
@@ -34,8 +35,14 @@ interface UniverseBackupProps {
 
 const isPITRSupported = (version: string): boolean => {
   //PITR is supported from 2.14
-  const [major, minor] = version.split('.');
-  return parseInt(major, 10) > 2 || (parseInt(major, 10) === 2 && parseInt(minor, 10) >= 14);
+  const PITR_THRESHOLD_VERSION = '2.14.0.0';
+  return compareYBSoftwareVersions({
+    versionA: version,
+    versionB: PITR_THRESHOLD_VERSION,
+    options: {
+      suppressFormatError: true
+    }
+  }) >= 0;
 };
 
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {

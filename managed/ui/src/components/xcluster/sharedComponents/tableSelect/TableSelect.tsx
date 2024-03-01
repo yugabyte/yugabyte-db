@@ -460,10 +460,13 @@ export const TableSelect = (props: TableSelectProps) => {
   ]);
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
-    compareYBSoftwareVersions(
-      TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-      ybSoftwareVersion,
-      true
+    compareYBSoftwareVersions({
+      versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      versionB: ybSoftwareVersion,
+      options: {
+        suppressFormatError: true
+      }
+    }
     ) < 0 &&
     !participantsHaveLinkedXClusterConfig;
   return (
