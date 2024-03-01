@@ -36,7 +36,7 @@ The fault tolerance (FT) of a YugabyteDB universe is the maximum number of fault
 
 ### Replication factor
 
-YugabyteDB replicates data across nodes (or fault domains) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB universe. FT and RF are correlated. To achieve a FT of `k` nodes, the universe has to be configured with a RF of (2k + 1). For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+YugabyteDB replicates data across fault domains (Regions or Availability Zones) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB universe. FT and RF are correlated. To achieve a FT of `f` fault domains, the universe has to be configured with a RF of (2f + 1). For example, to survive the outage of 2 fault domains, a cluster needs 2 * 2 + 1 fault domains. While the 2 fault domains are offline, the remaining 3 fault domains can continue to serve reads and writes without interruption. Universes with an RF of 1 can tolerate 0 faults.
 
 ## Tablet peers
 
