@@ -288,11 +288,16 @@ export interface YBTable {
   pgSchemaName: string;
   relationType: YBTableRelationType;
   sizeBytes: number;
-  tableID: string;
+  tableID: string; // UUID without `-`
   tableName: string;
   tableType: TableType;
-  tableUUID: string;
+  tableUUID: string; // UUID with `-`
   walSizeBytes: number;
+
+  // mainTableUUID is provided for index tables when the
+  // query param `xClusterSupportedOnly` is true
+  mainTableUUID?: string;
+  indexTableIDs?: string[];
 }
 
 export interface UniverseNamespace {

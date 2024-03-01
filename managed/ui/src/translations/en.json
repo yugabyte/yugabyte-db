@@ -896,8 +896,7 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Confirm Full Copy",
-                "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
+                "nextButton": "Next: Confirm Full Copy"
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
@@ -944,6 +943,8 @@
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
           "databaseSelectionCount": "{{selectedDatabaseCount}} out of {{availableDatabaseCount}} database(s) selected",
+          "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
+          "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",

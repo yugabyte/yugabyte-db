@@ -12031,6 +12031,13 @@
           "description" : "Colocation parent id",
           "type" : "string"
         },
+        "indexTableIDs" : {
+          "description" : "Index Table IDs of main table",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "keySpace" : {
           "description" : "Keyspace",
           "type" : "string"
