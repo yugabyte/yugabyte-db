@@ -371,7 +371,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * `include_db_type`: (Optional) Add this flag to include the database type for each table.
-* `include_table_id`: (Optional) Add this flag to include the table ID for each table.
+* `include_table_id`: (Optional) Add this flag to include the unique UUID associated with the table.
 * `include_table_type`: (Optional) Add this flag to include the table type for each table.
 
 Returns tables in the following format, depending on the flags used:
@@ -438,7 +438,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
 * *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
@@ -471,7 +471,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *table_id*: The unique UUID associated with the table to be compacted.
-* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
 * *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
@@ -594,7 +594,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The identifier (ID) of the table.
+* *table_id*: The unique UUID associated with the table.
 
 **Example**
 
@@ -622,7 +622,7 @@ yb-admin \
 * *db_type*: The type of database. Valid values include ysql and ycql.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
-* *timeout_in_seconds*: Specifies duration, in seconds when the CLI timeouts waiting for flushing to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration (in seconds) when the CLI timeouts waiting for flushing to end. Default value is `20`.
 * *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
 
 **Example**
@@ -647,8 +647,8 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* table_id: The identifier (ID) of the table.
-* *timeout_in_seconds*: Specifies duration, in seconds when the CLI timeouts waiting for flushing to end. Default value is `20`.
+* table_id: The unique UUID associated with the table.
+* *timeout_in_seconds*: Specifies duration (in seconds) when the CLI timeouts waiting for flushing to end. Default value is `20`.
 * *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
 
 **Example**
@@ -664,7 +664,6 @@ Flushed [yugabyte.table_name] tables.
 ```
 
 ---
-
 
 #### backfill_indexes_for_table
 
@@ -875,8 +874,8 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
 * *table_name*: The name of the table name.
-* *table_id*: The identifier (ID) of the table.
-* *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
+* *table_id*: The unique UUID associated with the table.
+* *flush_timeout_in_seconds*: Specifies duration (in seconds) before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
 
 When this command runs, a `snapshot_id` is generated and printed.
 
@@ -2193,7 +2192,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the table. (`table_id`).
 
 **Example**
 
