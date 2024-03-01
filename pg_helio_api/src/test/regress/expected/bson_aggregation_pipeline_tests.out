@@ -56,20 +56,20 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$addFields": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                                  QUERY PLAN                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ], "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
 (5 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$set": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                                  QUERY PLAN                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ], "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -274,6 +274,46 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
  { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "xyz" : "2" }
 (5 rows)
 
+-- $addFields then addFields is inlined.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
+                                                                                                   document                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : "1" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : "2" }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : "3" }
+(3 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_3500 collection
+   Output: bson_dollar_add_fields(collection.document, '{ "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : { "$numberInt" : "3" }, "xyz" : "$_id" }'::bson)
+   Recheck Cond: (collection.shard_key_value = '3500'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '3500'::bigint)
+(5 rows)
+
+-- $project then addFields can be inlined only on exclusion today
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+                                              document                                              
+----------------------------------------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "1" }, "xyz" : "1" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "$numberInt" : "1" }, "xyz" : "2" }
+ { "_id" : "3", "a" : { "$numberInt" : "1" }, "b" : "yes", "c" : true, "xyz" : "3" }
+(3 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_3500 collection
+   Output: bson_dollar_add_fields(collection.document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::bson)
+   Recheck Cond: (collection.shard_key_value = '3500'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '3500'::bigint)
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 1 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+ERROR:  Cannot do exclusion on field boolean in inclusion projection.
 -- replaceRoot
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "e": {  "f": "$a.b" } } }, { "$replaceRoot": { "newRoot": "$e" } } ], "cursor": {} }');
                                    document                                   

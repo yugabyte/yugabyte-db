@@ -13,6 +13,7 @@
 
 #include <storage/lockdefs.h>
 #include <access/attnum.h>
+#include <utils/uuid.h>
 
 #include "io/helio_bson_core.h"
 
@@ -71,6 +72,9 @@ typedef struct
 
 	/* View definition if applicable */
 	pgbson *viewDefinition;
+
+	/* The UUID of the collection or view */
+	pg_uuid_t collectionUUID;
 
 	/* creation_time column attribute number */
 	AttrNumber mongoDataCreationTimeVarAttrNumber;

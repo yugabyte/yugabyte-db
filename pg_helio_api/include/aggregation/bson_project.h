@@ -132,4 +132,7 @@ void TraverseObjectAndAppendToWriter(bson_iter_t *parentIterator,
 									 ProjectDocumentState *projectDocState,
 									 bool isInNestedArray);
 
+
+bool TryInlineProjection(Node *currentExpr, Oid functionOid, const
+						 bson_value_t *projectValue);
 #endif

@@ -88,6 +88,21 @@ BuildBsonPathTree(bson_iter_t *pathSpecification,
 
 
 /*
+ * Given a pre-built tree, merges another iterator into the tree.
+ */
+void
+MergeBsonPathTree(BsonIntermediatePathNode *root,
+				  bson_iter_t *pathSpecification,
+				  BuildBsonPathTreeContext *context,
+				  bool forceLeafExpression,
+				  bool *hasFields)
+{
+	*hasFields = BuildBsonPathTreeCore(pathSpecification, root, context,
+									   forceLeafExpression);
+}
+
+
+/*
  * Helper method for BuildBsonPathTree.
  * See method comment for details.
  */
@@ -189,6 +204,11 @@ BuildBsonPathTreeCore(bson_iter_t *pathSpecification, BsonIntermediatePathNode *
 
 		if (alreadyExists)
 		{
+			if (context->skipIfAlreadyExists)
+			{
+				continue;
+			}
+
 			context->buildPathTreeFuncs->validateAlreadyExistsNodeFunc(
 				context->pathTreeState, &path,
 				childNode);
@@ -289,7 +309,9 @@ DetermineChildNodeTypeWithContext(const bson_value_t *value,
 								  BuildBsonPathTreeContext *context)
 {
 	NodeType childNodeType = DetermineChildNodeType(value, forceLeafExpression);
-	if (childNodeType == NodeType_LeafField && context->pathTreeState != NULL)
+	if (childNodeType == NodeType_LeafField &&
+		context->pathTreeState != NULL &&
+		!context->skipParseAggregationExpressions)
 	{
 		childNodeType = NodeType_LeafFieldWithContext;
 	}

@@ -68,6 +68,9 @@ typedef struct BuildBsonPathTreeContext
 	/* INOUT: the state of the tree which is used/modified for special find query operators. */
 	void *pathTreeState;
 
+	/* Skip if a node already exists */
+	bool skipIfAlreadyExists;
+
 	/* IN: Useful functions to handle intermediate stages while building the path tree */
 	BuildBsonPathTreeFunctions *buildPathTreeFuncs;
 } BuildBsonPathTreeContext;
@@ -97,6 +100,11 @@ BsonIntermediatePathNode * BuildBsonPathTree(bson_iter_t *pathSpecification,
 											 BuildBsonPathTreeContext *context,
 											 bool forceLeafExpression,
 											 bool *hasFields);
+void MergeBsonPathTree(BsonIntermediatePathNode *root,
+					   bson_iter_t *pathSpecification,
+					   BuildBsonPathTreeContext *context,
+					   bool forceLeafExpression,
+					   bool *hasFields);
 
 /*
  * Helper function to cast a node as an projection leaf node

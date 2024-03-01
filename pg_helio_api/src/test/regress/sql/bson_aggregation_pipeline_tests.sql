@@ -73,6 +73,16 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 -- unwind and addfields
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unwind": "$a.b" }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
 
+-- $addFields then addFields is inlined.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
+
+-- $project then addFields can be inlined only on exclusion today
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 1 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
+
 -- replaceRoot
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "e": {  "f": "$a.b" } } }, { "$replaceRoot": { "newRoot": "$e" } } ], "cursor": {} }');
 

@@ -52,6 +52,7 @@
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 #include "vector/vector_common.h"
+#include "aggregation/bson_project.h"
 
 
 /*
@@ -858,8 +859,11 @@ ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollectio
 	AggregationPipelineBuildContext validationContext = { 0 };
 	validationContext.databaseNameDatum = databaseDatum;
 
+	pg_uuid_t *collectionUuid = NULL;
 	Query *validationQuery = GenerateBaseTableQuery(databaseDatum,
-													baseCollection, &validationContext);
+													baseCollection,
+													collectionUuid,
+													&validationContext);
 	validationQuery = MutateQueryWithPipeline(validationQuery, pipelineValue,
 											  &validationContext);
 	pfree(validationQuery);
@@ -999,6 +1003,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	StringView collectionName = { 0 };
 	bson_value_t pipelineValue = { 0 };
+	pg_uuid_t *collectionUuid = NULL;
 
 	bool explain = false;
 	bool hasCursor = false;
@@ -1049,6 +1054,20 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		{
 			/* We ignore this for now (TODO Support this) */
 		}
+		else if (StringViewEqualsCString(&keyView, "collectionUUID"))
+		{
+			EnsureTopLevelFieldType("collectionUUID", &aggregationIterator,
+									BSON_TYPE_BINARY);
+			if (value->value.v_binary.subtype != BSON_SUBTYPE_UUID ||
+				value->value.v_binary.data_len != 16)
+			{
+				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+									"field collectionUUID must be of UUID type")));
+			}
+
+			collectionUuid = palloc(sizeof(pg_uuid_t));
+			memcpy(&collectionUuid->data, value->value.v_binary.data, 16);
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(MongoBadValue),
@@ -1076,7 +1095,8 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	}
 	else
 	{
-		query = GenerateBaseTableQuery(database, &collectionName, &context);
+		query = GenerateBaseTableQuery(database, &collectionName, collectionUuid,
+									   &context);
 	}
 
 	/* Remember the base query - this will be needed since we need to update the cursor function on the base RTE */
@@ -1125,6 +1145,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	bson_value_t projection = { 0 };
 	bson_value_t sort = { 0 };
 	bson_value_t skip = { 0 };
+	pg_uuid_t *collectionUuid = NULL;
 
 	while (bson_iter_next(&findIterator))
 	{
@@ -1217,7 +1238,8 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 						errmsg("Collection name can't be empty.")));
 	}
 
-	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, &context);
+	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
+										  &context);
 	Query *baseQuery = query;
 
 	/* First apply match */
@@ -1301,6 +1323,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	bson_value_t filter = { 0 };
 	bson_value_t limit = { 0 };
 	bson_value_t skip = { 0 };
+	pg_uuid_t *collectionUuid = NULL;
 
 	while (bson_iter_next(&countIterator))
 	{
@@ -1347,7 +1370,8 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 						errmsg("Collection name can't be empty.")));
 	}
 
-	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, &context);
+	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
+										  &context);
 
 	/* First apply match */
 	if (filter.value_type != BSON_TYPE_EOD)
@@ -1424,6 +1448,7 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
 	bool hasDistinct = false;
 	bson_value_t filter = { 0 };
 	StringView distinctKey = { 0 };
+	pg_uuid_t *collectionUuid = NULL;
 
 	while (bson_iter_next(&distinctIter))
 	{
@@ -1481,7 +1506,8 @@ GenerateDistinctQuery(Datum databaseDatum, pgbson *distinctSpec)
 						errmsg("Distinct key cannot have embedded nulls")));
 	}
 
-	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, &context);
+	Query *query = GenerateBaseTableQuery(databaseDatum, &collectionName, collectionUuid,
+										  &context);
 
 	/* First apply match */
 	if (filter.value_type != BSON_TYPE_EOD)
@@ -1633,6 +1659,13 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 	TargetEntry *firstEntry = linitial(query->targetList);
 
 	Expr *currentProjection = firstEntry->expr;
+
+	/* Projection followed by projection - try to inline */
+	if (TryInlineProjection((Node *) currentProjection, functionOid, existingValue))
+	{
+		return query;
+	}
+
 	pgbson *docBson = PgbsonInitFromBuffer(
 		(char *) existingValue->value.v_doc.data,
 		existingValue->value.v_doc.data_len);
@@ -3518,6 +3551,7 @@ ExtractViewDefinitionAndPipeline(Datum databaseDatum, pgbson *viewDefinition,
  */
 Query *
 GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView,
+					   pg_uuid_t *collectionUuid,
 					   AggregationPipelineBuildContext *context)
 {
 	Query *query = makeNode(Query);
@@ -3533,6 +3567,24 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	MongoCollection *collection =
 		GetMongoCollectionOrViewByNameDatum(databaseDatum, collectionNameDatum,
 											AccessShareLock);
+
+	/* CollectionUUID mismatch when collection doesn't exist */
+	if (collectionUuid != NULL)
+	{
+		if (collection == NULL)
+		{
+			ereport(ERROR, (errcode(MongoCollectionUUIDMismatch),
+							errmsg("Namespace %s has a mismatch on collectionUUID",
+								   context->namespaceName)));
+		}
+
+		if (memcmp(collectionUuid->data, collection->collectionUUID.data, 16) != 0)
+		{
+			ereport(ERROR, (errcode(MongoCollectionUUIDMismatch),
+							errmsg("Namespace %s has a mismatch on collectionUUID",
+								   context->namespaceName)));
+		}
+	}
 
 	List *pipelineStages = NIL;
 	if (collection != NULL && collection->viewDefinition != NULL)
@@ -4171,8 +4223,11 @@ TryHandleSimplifyAggregationRequest(SupportRequestSimplify *simplifyRequest)
 		text *collectionText = DatumGetTextP(aggregationConst->constvalue);
 		StringView collectionView = CreateStringViewFromText(collectionText);
 
+		pg_uuid_t *collectionUuid = NULL;
 		Query *collectionQuery = GenerateBaseTableQuery(databaseConst->constvalue,
-														&collectionView, &baseContext);
+														&collectionView,
+														collectionUuid,
+														&baseContext);
 
 		/* Now that we have the query, swap out the RTE with this */
 		RangeTblEntry *newEntry = MakeSubQueryRte(collectionQuery, 0, 0, "collection",

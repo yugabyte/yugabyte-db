@@ -135,6 +135,10 @@ static void BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *stat
 												  BuildBsonPathTreeContext *
 												  pathTreeContext);
 static bool FilterNodeToWrite(void *state, int currentIndex);
+static void PostProcessParseProjectNode(void *state, const StringView *path,
+										BsonPathNode *node,
+										bool *isExclusionIfNoInclusion,
+										bool *hasFieldsForIntermediate);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -697,6 +701,158 @@ ProjectDocumentWithState(pgbson *sourceDocument,
 									state->projectNonMatchingFields,
 									&projectDocState, isInNestedArray);
 	return PgbsonWriterGetPgbson(&writer);
+}
+
+
+/*
+ * Tries to inline a left Projection expression with a right Projection expression
+ * to create a merged expression if possible.
+ */
+bool
+TryInlineProjection(Node *currentExprNode, Oid functionOid, const
+					bson_value_t *projectValue)
+{
+	/* All projection operators are FuncExprs - skip if it's not a FuncExpr */
+	if (!IsA(currentExprNode, FuncExpr))
+	{
+		return false;
+	}
+
+	FuncExpr *currentExpr = (FuncExpr *) currentExprNode;
+	if (currentExpr->funcid != BsonDollarProjectFunctionOid() &&
+		currentExpr->funcid != BsonDollarAddFieldsFunctionOid())
+	{
+		return false;
+	}
+
+	if (currentExpr->funcid == BsonDollarProjectFunctionOid() &&
+		functionOid == BsonDollarAddFieldsFunctionOid())
+	{
+		MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
+														  "projection context",
+														  ALLOCSET_DEFAULT_SIZES);
+
+		BuildBsonPathTreeContext contextCopy = { 0 };
+		BsonIntermediatePathNode *root;
+		MemoryContext oldContext = MemoryContextSwitchTo(tempContext);
+
+		/* First build a tree from the current: We use this to detect inclusion/exclusion */
+		Const *projectConst = lsecond(currentExpr->args);
+		pgbson *pathSpec = DatumGetPgBson(projectConst->constvalue);
+
+		bson_iter_t pathSpecIter;
+		PgbsonInitIterator(pathSpec, &pathSpecIter);
+
+		/*
+		 * See the input for bson_dollar_project this replicates building that tree
+		 * This would also do input validation and management for the tree.
+		 */
+		BsonProjectionContext projectContext = {
+			.forceProjectId = false,
+			.allowInclusionExclusion = false,
+			.pathSpecIter = &pathSpecIter,
+			.querySpec = NULL,
+		};
+		BsonProjectionQueryState projectionState = { 0 };
+		BuildBsonPathTreeForDollarProject(&projectionState, &projectContext);
+
+		/* TODO: Handle inclusion projection */
+		if (!projectionState.hasExclusion || projectionState.hasInclusion)
+		{
+			return false;
+		}
+
+		/* First step, create a tree of the addFields */
+		BsonValueInitIterator(projectValue, &pathSpecIter);
+		BuildBsonPathTreeContext addFieldsContext = { 0 };
+		addFieldsContext.buildPathTreeFuncs = &DefaultPathTreeFuncs;
+		addFieldsContext.skipParseAggregationExpressions = true;
+
+		bool hasFieldsIgnore = false;
+		bool forceLeafExpression = true;
+		root = BuildBsonPathTree(&pathSpecIter, &addFieldsContext,
+								 forceLeafExpression, &hasFieldsIgnore);
+
+		BuildBsonPathTreeContext pathTreeContext = { 0 };
+		BuildBsonPathTreeFunctions functions = DefaultPathTreeFuncs;
+		functions.postProcessLeafNodeFunc = PostProcessParseProjectNode;
+		pathTreeContext.buildPathTreeFuncs = &functions;
+		pathTreeContext.allowInclusionExclusion = true;
+		pathTreeContext.skipParseAggregationExpressions = true;
+		pathTreeContext.pathTreeState = &contextCopy;
+
+		/* Add any new nodes that aren't specified as Exclusions */
+		pathTreeContext.skipIfAlreadyExists = true;
+
+		PgbsonInitIterator(pathSpec, &pathSpecIter);
+		MergeBsonPathTree(root, &pathSpecIter,
+						  &pathTreeContext,
+						  forceLeafExpression, &hasFieldsIgnore);
+		MemoryContextSwitchTo(oldContext);
+
+		if (contextCopy.hasInclusion)
+		{
+			MemoryContextDelete(tempContext);
+			return false;
+		}
+
+		/*
+		 * If there's a $project exclusion, if it's followed by an addFields
+		 * then we can treat the exclusion as an addFields with each field
+		 * being a $$REMOVE. This is because an exclusion projects all of the original
+		 * doc except the fields specified. AddFields also projects all of the original
+		 * doc and adds the new fields. Consequently an addFields with the exclusion field
+		 * being $$REMOVE and the addFields is semantically equivalent.
+		 */
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+
+		bson_iter_t sourceIter;
+		pgbson *sourceDoc = PgbsonInitEmpty();
+		PgbsonInitIterator(sourceDoc, &sourceIter);
+		bool isInNestedArray = false;
+		ProjectDocumentState projectDocState = {
+			.isPositionalAlreadyEvaluated = false,
+			.parentDocument = sourceDoc,
+			.hasExclusion = contextCopy.hasExclusion,
+			.projectDocumentFuncs = { 0 },
+			.pendingProjectionState = NULL
+		};
+
+		bool projectNonMatchingFields = true;
+		TraverseObjectAndAppendToWriter(&sourceIter, root, &writer,
+										projectNonMatchingFields,
+										&projectDocState, isInNestedArray);
+
+		pgbson *targetBson = PgbsonWriterGetPgbson(&writer);
+		projectConst->constvalue = PointerGetDatum(targetBson);
+		currentExpr->funcid = functionOid;
+
+		MemoryContextDelete(tempContext);
+		return true;
+	}
+
+	if (currentExpr->funcid == BsonDollarAddFieldsFunctionOid() &&
+		functionOid == BsonDollarAddFieldsFunctionOid())
+	{
+		/*
+		 * AddFields followed by add fields, in this case, we can concat the 2 together
+		 * They will be treated as a single addFields in the end.
+		 */
+		Const *addFieldsConst = lsecond(currentExpr->args);
+		pgbson *left = DatumGetPgBson(addFieldsConst->constvalue);
+
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+		PgbsonWriterConcat(&writer, left);
+		PgbsonWriterConcatBytes(&writer, projectValue->value.v_doc.data,
+								projectValue->value.v_doc.data_len);
+
+		addFieldsConst->constvalue = PointerGetDatum(PgbsonWriterGetPgbson(&writer));
+		return true;
+	}
+
+	return false;
 }
 
 
@@ -1656,4 +1812,46 @@ PopulateReplaceRootExpressionDataFromSpec(AggregationExpressionData *expressionD
 	GetBsonValueForReplaceRoot(&pathSpecIter, &bsonValue);
 
 	ParseAggregationExpressionData(expressionData, &bsonValue);
+}
+
+
+/*
+ * PostProcess with a project node during the inlining of projection
+ * stages during planning.
+ * Currently, this tracks exclusions that are of the type value == 0
+ * and makes them fields with the variable $$REMOVE
+ */
+static void
+PostProcessParseProjectNode(void *state, const StringView *path,
+							BsonPathNode *node, bool *isExclusionIfNoInclusion,
+							bool *hasFieldsForIntermediate)
+{
+	DefaultPathTreeFuncs.postProcessLeafNodeFunc(state, path, node,
+												 isExclusionIfNoInclusion,
+												 hasFieldsForIntermediate);
+
+	BuildBsonPathTreeContext *context = (BuildBsonPathTreeContext *) state;
+	if (NodeType_IsLeaf(node->nodeType) &&
+		!StringViewEquals(&node->field, &IdFieldStringView))
+	{
+		BsonLeafPathNode *leafNode = (BsonLeafPathNode *) node;
+		if (leafNode->fieldData.kind == AggregationExpressionKind_Constant &&
+			BsonValueIsNumber(&leafNode->fieldData.value))
+		{
+			bool included = BsonValueAsDouble(&leafNode->fieldData.value) != 0;
+			if (!included)
+			{
+				context->hasExclusion = true;
+
+				/* Path: 0 is the same as $$REMOVE */
+				leafNode->fieldData.value.value_type = BSON_TYPE_UTF8;
+				leafNode->fieldData.value.value.v_utf8.str = "$$REMOVE";
+				leafNode->fieldData.value.value.v_utf8.len = 8;
+				return;
+			}
+		}
+	}
+
+	/* Presume inclusion otherwise */
+	context->hasInclusion = true;
 }

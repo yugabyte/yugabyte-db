@@ -79,6 +79,7 @@ Query * MigrateQueryToSubQuery(Query *parse, AggregationPipelineBuildContext *co
 Aggref * CreateMultiArgAggregate(Oid aggregateFunctionId, List *args, List *argTypes,
 								 ParseState *parseState);
 Query * GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView,
+							   pg_uuid_t *collectionUuid,
 							   AggregationPipelineBuildContext *context);
 Query * GenerateBaseAgnosticQuery(Datum databaseDatum,
 								  AggregationPipelineBuildContext *context);

@@ -352,8 +352,11 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 			.length = existingValue->value.v_utf8.len,
 			.string = existingValue->value.v_utf8.str
 		};
+		pg_uuid_t *collectionUuid = NULL;
 		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-											&collectionFrom, &subPipelineContext);
+											&collectionFrom,
+											collectionUuid,
+											&subPipelineContext);
 	}
 	else if (existingValue->value_type == BSON_TYPE_DOCUMENT)
 	{
@@ -402,8 +405,11 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		AggregationPipelineBuildContext subPipelineContext = { 0 };
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+		pg_uuid_t *collectionUuid = NULL;
 		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-											&collectionName, &subPipelineContext);
+											&collectionName,
+											collectionUuid,
+											&subPipelineContext);
 
 		if (pipelineValue.value_type != BSON_TYPE_EOD)
 		{
@@ -1188,12 +1194,15 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 
 	/* For the right query, generate a base table query for the right collection */
+	pg_uuid_t *collectionUuid = NULL;
 	bool isRightQueryAgnostic = lookupArgs->from.length == 0;
 	Query *rightQuery = isRightQueryAgnostic ?
 						GenerateBaseAgnosticQuery(context->databaseNameDatum,
 												  &subPipelineContext) :
 						GenerateBaseTableQuery(context->databaseNameDatum,
-											   &lookupArgs->from, &subPipelineContext);
+											   &lookupArgs->from,
+											   collectionUuid,
+											   &subPipelineContext);
 
 	/* Create a parse_state for this session */
 	ParseState *parseState = make_parsestate(NULL);

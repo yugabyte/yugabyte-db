@@ -842,8 +842,10 @@ GeneratePrefilteringVectorSearchQuery(Query *searchQuery,
 	/*
 	 * 2. construct filterQuery: add match expression into where clause, replace targetList with ctid
 	 */
+	pg_uuid_t *collectionUuid = NULL;
 	Query *filterQuery = GenerateBaseTableQuery(context->databaseNameDatum,
 												&context->collectionNameView,
+												collectionUuid,
 												context);
 
 	/* Before we can do prefiltering we need to make sure that
