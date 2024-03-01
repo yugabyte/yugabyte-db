@@ -1410,20 +1410,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             throw new IllegalArgumentException("'Name' tag value cannot be changed.");
           }
         }
-        if (cluster.userIntent.deviceInfo != null
-            && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.numVolumes != null) {
-          int prevSize =
-              univCluster.userIntent.deviceInfo.volumeSize
-                  * univCluster.userIntent.deviceInfo.numVolumes;
-          int curSize =
-              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
-          if (curSize < prevSize
-              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
-            throw new IllegalArgumentException(
-                "Cannot decrease volume size from " + prevSize + " to " + curSize);
-          }
-        }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
