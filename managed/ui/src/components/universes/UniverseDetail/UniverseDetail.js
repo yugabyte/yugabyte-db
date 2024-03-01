@@ -135,7 +135,6 @@ class UniverseDetail extends Component {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
-        this.props.fetchProviderRunTimeConfigs(providerUUID);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -243,6 +242,7 @@ class UniverseDetail extends Component {
       modal,
       modal: { showModal, visibleModal },
       universe,
+      tasks,
       universe: { currentUniverse, supportedReleases },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
@@ -747,11 +747,11 @@ class UniverseDetail extends Component {
                             <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade Database Version
                             </YBLabelWithIcon>
-                            {this.showUpgradeMarker() && (
+                            {/* {this.showUpgradeMarker() && (
                               <span className="badge badge-pill badge-red pull-right">
                                 {updateAvailable}
                               </span>
-                            )}
+                            )} */}
                           </YBMenuItem>
                         </RbacValidator>
                       )}
