@@ -270,7 +270,7 @@ To migrate your installation from Replicated, do the following:
 
 1. Validate YBA is up and running with the correct data, including Prometheus.
 
-    At this point, if you find problems, you can revert to your Replicated installation using the `replicated-migrate rollback` command. Note that any changes made with the new YBA (either using the UI or the API) will not be reflected after the rollback.
+    At this point, if you find problems, you can revert to your Replicated installation using the `replicated-migrate rollback` command. Note that any changes made with the new YBA (either using the UI or the API) will not be reflected after the rollback. After the new YBA comes up succesfully, do not attempt to rollback to the original Replicated install of YBA. Rollback is only intended for scenarios where the migration fails.
 
     In particular, do not configure HA until running the `finish` command (next step) on all instances.
 
