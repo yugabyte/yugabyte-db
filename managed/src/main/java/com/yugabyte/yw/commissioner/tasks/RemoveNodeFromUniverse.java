@@ -166,7 +166,8 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
           universe,
           currentNode,
           () -> findNewMasterIfApplicable(universe, currentNode),
-          masterReachable);
+          masterReachable,
+          true /* ignore stop error */);
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
