@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "executor/execdesc.h"
 #include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
@@ -1098,6 +1099,7 @@ typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, doub
 		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid);
 
 extern bundlePgssPtr bundleptr;
+extern QueryDesc querydescriptor;
 
 
 #endif /* PG_YB_UTILS_H */

@@ -4525,6 +4525,7 @@ TimestampTz start,end;
 int64_t bundleQueryId;
 bool debuggingBundle;
 bundlePgssPtr bundleptr;
+QueryDesc querydescriptor;
 
 Datum
 yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
@@ -4556,15 +4557,40 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 (errmsg("only superusers can stop and print bundle details"))));
-	
-	end = GetCurrentTimestamp();
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	
+
+	if(bundleQueryId != PG_GETARG_INT64(0)){
+		ereport(LOG, (errmsg("query id does not match the query id of the bundle" )));
+		PG_RETURN_BOOL(false);
+	}
+	
+	if(!debuggingBundle){
+		ereport(LOG, (errmsg("bundle did not start yet")));
+		PG_RETURN_BOOL(false);
+	}
+
+
+
+	end = GetCurrentTimestamp();
 	if(queryid)
 	;
 
 	bundleptr(0,0,"-",0,0,NULL,0,0);
 	dumpAshData(queryid ,start ,end);
+
+
+//querydescriptor is just storing a shallow copy but we want a deep copy.
+	if(strlen(querydescriptor.sourceText) == 0) {
+		ereport(LOG, (errmsg("query descriptor is null")));
+	}
+	else{
+		FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
+		fprintf(fptr, "%s\n" , querydescriptor.sourceText);
+		fclose(fptr);
+	}
+
 
 	//resetting the values
 

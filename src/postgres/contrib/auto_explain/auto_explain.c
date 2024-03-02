@@ -18,6 +18,7 @@
 #include "executor/instrument.h"
 #include "jit/jit.h"
 #include "utils/guc.h"
+#include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
 
@@ -377,10 +378,13 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			 * reported.  This isn't ideal but trying to do it here would
 			 * often result in duplication.
 			 */
-			
-			FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","a");
-			fprintf(fptr, "duration: %.3f ms  plan:\n%s" , msec,es->str->data);
-			fclose(fptr);
+
+			if(debuggingBundle){
+				FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
+				fprintf(fptr, "duration: %.3f ms  plan:\n%s" , msec,es->str->data);
+				fclose(fptr);
+			}
+
 			ereport(LOG,
 					(errmsg("duration: %.3f ms  plan:\n%s",
 							msec, es->str->data),

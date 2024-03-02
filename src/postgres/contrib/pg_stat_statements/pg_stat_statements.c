@@ -1307,6 +1307,11 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
+
+	if(debuggingBundle && bundleQueryId == queryDesc->plannedstmt->queryId){
+		querydescriptor = (*queryDesc);
+	}
+
 }
 
 /*
