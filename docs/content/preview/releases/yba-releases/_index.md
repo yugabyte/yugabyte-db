@@ -12,7 +12,7 @@ cascade:
 
 ## Releases
 
-| Release series | Released | End of maintenance support | End of Life (EOL) |
+| YBA Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
 | [v2.20](v2.20/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 | [v2.19](v2.19/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.19" release >}} | No support | n/a |
@@ -25,3 +25,42 @@ For end-of-life releases, see [Releases at end of life](../release-notes/#eol-re
 For information on release support policy, see [Release support policy](../#release-support-policy).
 
 For information on release versioning, see [Versioning](../versioning/).
+
+## Compatibility with YugabyteDB
+
+YugabyteDB Anywhere (YBA) is a control plane for deploying and managing YugabyteDB universes. You can use YBA to deploy universes with an equivalent or earlier version of YugabyteDB.
+
+### Supported versions
+
+The current version of YBA always supports the two most recent LTS release series, and any intervening STS releases that are still under support. This provides a span of support of approximately 2 years.
+
+The following table shows the compatibility between versions of YBA and YugabyteDB.
+
+| YBA version | Supported YugabyteDB Release Series |
+| :--- | :--- |
+| 2024.1 (Upcoming) | v2024.1 (Upcoming)<br>[v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS) |
+| 2.20.x | [v2.20](/preview/releases/release-notes/v2.20/) (LTS)<br>[v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
+| 2.18.x | [v2.18](/preview/releases/release-notes/v2.18/) (STS)<br>[v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
+| 2.14.x | [v2.14](/preview/releases/release-notes/v2.14/) (LTS) |
+
+Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
+
+{{< warning title="YugabyteDB v2.14 End of Maintenance" >}}
+v2.14 will reach end of maintenance in mid-2024. If you are running universes on v2.14.x, you should consider upgrading those universes to the next LTS release series (v2.20). The next stable version of YBA (v2024.1) will not support the v2.14 release series of YugabyteDB.
+{{< /warning >}}
+
+For information on managing YugabyteDB releases and upgrading universes using YBA, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).
+
+For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](/preview/releases/release-notes).
+
+### Upgrading YBA
+
+Keep YBA up-to-date with the latest stable version to get the latest fixes and improvements, as well as to be able to deploy the latest releases of YugabyteDB.
+
+Note that you cannot deploy or upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
+
+{{< warning title="Replicated end of life" >}}
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YBA v2.20.1 or later using Replicated.
+{{< /warning >}}
+
+For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../yugabyte-platform/upgrade/upgrade-yp-installer/).

@@ -76,29 +76,6 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 - 8 GB memory
 - 200 GB disk space
 
-## Supported YugabyteDB versions
-
-YugabyteDB Anywhere supports _all_ officially supported versions of YugabyteDB.
-
-You can use YBA {{< yb-version version="stable" format="short">}} to deploy releases from the following release series:
-
-- [v2.14](/preview/releases/release-notes/v2.14/) (LTS)
-- [v2.18](/preview/releases/release-notes/v2.18/) (STS)
-- [v2.20](/preview/releases/release-notes/v2.20/) (LTS)
-
-Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
-
-{{<note title="Upgrading YugabyteDB and YBA">}}
-
-If you are running universes on v2.14.x, you should consider upgrading those universes to the next LTS release series (v2.20).
-
-You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. To upgrade to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
-
-- For information on upgrading YugabyteDB Anywhere, refer to [Upgrade YugabyteDB Anywhere](../../../upgrade/upgrade-yp-installer/).
-- For information on managing YugabyteDB releases and upgrading universes, refer to [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-
-{{</note>}}
-
 ## Prepare the host
 
 YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).

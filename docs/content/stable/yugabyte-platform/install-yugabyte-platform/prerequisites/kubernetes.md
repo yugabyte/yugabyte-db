@@ -52,20 +52,6 @@ A Kubernetes node is expected to meet the following requirements:
 - 250 GB SSD disk (minimum)
 - 64-bit CPU architecture
 
-## Supported YugabyteDB versions
-
-YugabyteDB Anywhere supports _all_ officially supported versions of YugabyteDB.
-
-You can use YBA {{< yb-version version="stable" format="short">}} to deploy releases from the following release series:
-
-- [v2.14](/preview/releases/release-notes/v2.14/)
-- [v2.18](/preview/releases/release-notes/v2.18/)
-- [v2.20](/preview/releases/release-notes/v2.20/)
-
-Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
-
-For information on managing YugabyteDB releases and upgrading universes, refer to [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-
 ## Prepare the cluster
 
 The minimum version for a Kubernetes cluster and Helm chart are as follows:
