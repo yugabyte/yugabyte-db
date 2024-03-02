@@ -614,11 +614,13 @@ class WaitOnConflictResolver : public ConflictResolver {
       WaitQueue* wait_queue,
       LockBatch* lock_batch,
       uint64_t request_start_us,
+      int64_t request_id,
       CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
-        trace_(Trace::CurrentTrace()), request_start_us_(request_start_us), deadline_(deadline) {}
+        trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
+        request_id_(request_id), deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -667,7 +669,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, deadline_,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -689,7 +691,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, deadline_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
@@ -733,6 +735,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   TracePtr trace_;
   // Stores the start time of the underlying rpc request that created this resolver.
   uint64_t request_start_us_ = 0;
+  const int64_t request_id_;
   CoarseTimePoint deadline_;
 };
 
@@ -1337,6 +1340,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    HybridTime read_time,
                                    int64_t txn_start_us,
                                    uint64_t request_start_us,
+                                   int64_t request_id,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
@@ -1363,7 +1367,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1381,6 +1385,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  HybridTime intial_resolution_ht,
                                  int64_t txn_start_us,
                                  uint64_t request_start_us,
+                                 int64_t request_id,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
@@ -1403,7 +1408,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
