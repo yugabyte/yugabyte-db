@@ -48,6 +48,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+
 DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
              "tablet server before considering it unresponsive. Unresponsive servers are not "
@@ -382,6 +384,11 @@ bool TSDescriptor::IsLive() const {
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
+}
+
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsRemoved();
 }
 
 std::string TSDescriptor::ToString() const {

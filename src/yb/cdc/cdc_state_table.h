@@ -15,8 +15,6 @@
 #include <shared_mutex>
 #include <unordered_set>
 
-#include "yb/cdc/cdc_types.h"
-
 #include "yb/client/table_handle.h"
 
 #include "yb/util/opid.h"

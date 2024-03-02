@@ -12,7 +12,6 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include <cstddef>
-#include <list>
 #include <map>
 #include <vector>
 #include <gtest/gtest.h>
@@ -25,7 +24,11 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
 
 namespace yb {

@@ -199,6 +199,7 @@
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
+      OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
 
       [Install]
       WantedBy=multi-user.target

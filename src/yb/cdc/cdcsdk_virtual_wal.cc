@@ -10,16 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <queue>
-#include <unordered_set>
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xrepl_types.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/util/monotime.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/opid.h"
-
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 
 DEFINE_RUNTIME_uint32(
@@ -263,6 +253,8 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
       Format("Couldn't find entry in the tablet checkpoint map for tablet_id: $0", tablet_id));
   const NextGetChangesRequestInfo& info = tablet_next_req_map_[tablet_id];
   req->set_stream_id(stream_id.ToString());
+  // Make the CDC service return the values as QLValuePB.
+  req->set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
   req->set_tablet_id(tablet_id);
   req->set_safe_hybrid_time(info.safe_hybrid_time);
   req->set_wal_segment_index(info.wal_segment_index);
