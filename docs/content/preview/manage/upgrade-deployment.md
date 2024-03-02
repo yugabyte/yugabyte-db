@@ -24,7 +24,7 @@ Before starting the upgrade, review the following major changes to YugabyteDB. D
 
 ### Upgrading from versions earlier than v2.16.0
 
-The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YBA 2.16.0 and later.
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for v2.16.0 and later.
 
 YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 
