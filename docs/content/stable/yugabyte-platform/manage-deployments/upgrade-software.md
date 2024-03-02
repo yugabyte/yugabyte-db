@@ -23,3 +23,5 @@ When performing a database upgrade, do the following:
 1. [View and import releases](../upgrade-software-install/#view-and-import-releases). Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available and, if necessary, import the release into YugabyteDB Anywhere.
 
 1. [Upgrade a universe](../upgrade-software-install/#upgrade-a-universe). Perform a rolling upgrade on a live universe deployment.
+
+For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](../../../releases/yba-releases/).
