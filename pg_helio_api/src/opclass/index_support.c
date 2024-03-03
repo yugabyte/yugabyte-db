@@ -781,8 +781,13 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		context->hasVectorSearchQuery = context->hasVectorSearchQuery ||
 										hasVectorSearch;
 
+		/* Ignore primary key lookup paths parented in a bitmap scan:
+		 * This can happen because a RUM index lookup can produce a 0 cost query as well
+		 * and Postgres picks both and does a BitmapAnd - instead rely on a top level index path.
+		 */
 		if (IsBtreePrimaryKeyIndex(indexPath->indexinfo) &&
-			list_length(indexPath->indexclauses) > 1)
+			list_length(indexPath->indexclauses) > 1 &&
+			parentType != PARENTTYPE_INVALID)
 		{
 			context->primaryKeyLookupPath = indexPath;
 		}
