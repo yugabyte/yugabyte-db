@@ -817,6 +817,11 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 		}
 
 		/* Attr 5 is collection_uuid */
+		Datum uuidDatum = heap_getattr(tuple, 5, tupleDescriptor, &isNull);
+		if (!isNull)
+		{
+			collection->collectionUUID = *DatumGetUUIDP(uuidDatum);
+		}
 
 		if (tupleDescriptor->natts >= 6)
 		{

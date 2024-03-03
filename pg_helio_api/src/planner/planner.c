@@ -812,24 +812,6 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 				rte->requiredPerms = ACL_SELECT;
 #endif
 				rte->rellockmode = AccessShareLock;
-
-				/* 2. Perform Function-specific actions */
-				if (funcExpr->funcid == ApiSampleCollectionFunctionId())
-				{
-					/* Add TABLESAMPLE SYSTEM_ROWS(n) clause to the now converted RTE Relation*/
-					TableSampleClause *tablesample_sys_rows = makeNode(TableSampleClause);
-					tablesample_sys_rows->tsmhandler =
-						ExtensionTableSampleSystemRowsFunctionId();
-
-					Node *rowCountArg = (Node *) lthird(funcExpr->args);
-
-					/* TODO: Undo this - we should not need to eagerly evaluate params. */
-					rowCountArg = (Node *) GetConstParamValue(rowCountArg,
-															  context->boundParams);
-
-					tablesample_sys_rows->args = list_make1(rowCountArg);
-					rte->tablesample = tablesample_sys_rows;
-				}
 			}
 		}
 
@@ -910,27 +892,6 @@ IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParam
 	{
 		return true;
 	}
-	else if (funcExpr->funcid == ApiSampleCollectionFunctionId())
-	{
-		if (list_length(funcExpr->args) != 3)
-		{
-			ereport(ERROR, (errmsg("Sample collection method must have 3 arguments.")));
-		}
-
-		Node *rowCountArg = (Node *) lthird(funcExpr->args);
-		if (!IsA(rowCountArg, Const))
-		{
-			rowCountArg = EvaluateBoundParameters(rowCountArg, boundParams);
-		}
-
-		if (!IsA(rowCountArg, Const))
-		{
-			/* in this case, we will call the function directly */
-			return false;
-		}
-
-		return true;
-	}
 
 	return false;
 }
@@ -938,7 +899,7 @@ IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParam
 
 /*
  * IsMongoCollectionBasedRTE returns whether the given node is a
- * collection() or sample_collection RTE.
+ * collection() RTE.
  */
 bool
 IsMongoCollectionBasedRTE(RangeTblEntry *rte)
@@ -965,8 +926,7 @@ IsMongoCollectionBasedRTE(RangeTblEntry *rte)
 		return false;
 	}
 
-	if (funcExpr->funcid != ApiCollectionFunctionId() &&
-		funcExpr->funcid != ApiSampleCollectionFunctionId())
+	if (funcExpr->funcid != ApiCollectionFunctionId())
 	{
 		return false;
 	}

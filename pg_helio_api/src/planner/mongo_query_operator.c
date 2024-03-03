@@ -185,6 +185,28 @@ static const MongoOperatorInfo QueryOperators[] = {
 		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
 		{ NULL, BSON_INDEX_STRATEGY_INVALID }
 	},
+	{
+		{ "$alwaysTrue", QUERY_OPERATOR_ALWAYS_TRUE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$alwaysTrue", QUERY_OPERATOR_ALWAYS_TRUE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+	},
+	{
+		{ "$alwaysFalse", QUERY_OPERATOR_ALWAYS_FALSE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ "$alwaysFalse", QUERY_OPERATOR_ALWAYS_FALSE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID }
+	},
 
 	/* element */
 	{

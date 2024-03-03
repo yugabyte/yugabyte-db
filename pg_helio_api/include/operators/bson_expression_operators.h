@@ -394,6 +394,8 @@ void HandleDollarStrCaseCmp(pgbson *doc, const bson_value_t *operatorValue,
  * New operator functions that use the pre parsed framework
  *************************************************************
  */
+void HandlePreParsedDollarAvg(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarBsonSize(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarBinarySize(pgbson *doc, void *arguments,
@@ -444,6 +446,9 @@ void HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarSum(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
+void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
@@ -476,6 +481,7 @@ void ParseDollarSubstr(const bson_value_t *argument, AggregationExpressionData *
 void ParseDollarSubstrBytes(const bson_value_t *argument,
 							AggregationExpressionData *data);
 void ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data);
 
 /* Shared functions for operator handlers */
 void * ParseFixedArgumentsForExpression(const bson_value_t *argumentValue,

@@ -127,6 +127,8 @@ static int32_t GetEndValueForDollarRange(bson_value_t *endValue);
 static int32_t GetStepValueForDollarRange(bson_value_t *stepValue);
 static void HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
 									AggregationExpressionData *data);
+static void HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
+									AggregationExpressionData *data);
 static void SetResultArrayForDollarRange(int32_t startValue, int32_t endValue,
 										 int32_t stepValue, bson_value_t *result);
 static void ValidateArraySizeLimit(int32_t startValue, int32_t endValue,
@@ -137,6 +139,8 @@ static int32 FindIndexInArrayForElement(bson_value_t *array, bson_value_t *eleme
 static void SetResultArrayForDollarReverse(bson_value_t *array, bson_value_t *result);
 static void SetResultValueForDollarMaxMin(const bson_value_t *inputArgument,
 										  bson_value_t *result, bool isFindMax);
+static void SetResultValueForDollarSumAvg(const bson_value_t *inputArgument,
+										  bson_value_t *result, bool isSum);
 
 /*
  * validate second and third argument of dollar slice operator
@@ -2427,7 +2431,7 @@ HandlePreParsedDollarMin(pgbson *doc, void *arguments,
 
 
 /*
- * This function parses the input for operator $max.
+ * This function parses the input for operator $min.
  * The input is specified of type {$min: <expression>} where expression can be any expression.
  * In case the expression is an array it gives the minimum element in array otherwise returns the resolved expression as it is.
  */
@@ -2436,6 +2440,74 @@ ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data)
 {
 	bool isMax = false;
 	HandlerForParsingMinMax(isMax, argument, data);
+}
+
+
+/*
+ * This function parses the input for operator $sum.
+ * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the sum of elements in array.
+ */
+void
+ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	bool isSum = true;
+	HandlerForParsingSumAvg(isSum, argument, data);
+}
+
+
+/*
+ * This function parses the input for operator $avg.
+ * The input is specified of type {$sum: <expression>} where expression can be any expression.
+ * In case the expression is an array it gives the sum of elements in array.
+ */
+void
+ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	bool isSum = false;
+	HandlerForParsingSumAvg(isSum, argument, data);
+}
+
+
+/*
+ * This function handles the pre-parsed $sum input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarSum(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isSum = true;
+	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * This function handles the pre-parsed $avg input and results the maximum element in the given argument.
+ */
+void
+HandlePreParsedDollarAvg(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(
+		(AggregationExpressionData *) arguments, doc,
+		&childResult,
+		isNullOnEmpty);
+
+	bson_value_t result = { 0 };
+	bool isSum = false;
+	SetResultValueForDollarSumAvg(&childResult.value, &result, isSum);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
@@ -2472,6 +2544,49 @@ HandlerForParsingMinMax(bool isMax, const bson_value_t *argument,
 	if (IsAggregationExpressionConstant(argumentData))
 	{
 		SetResultValueForDollarMaxMin(&argumentData->value, &data->value, isMax);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(argumentData);
+		return;
+	}
+
+	data->operator.arguments = argumentData;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+}
+
+
+/*
+ * This function is a common function to parse sum and avg operator.
+ * This takes in bool isSum as extra argument to confirm whether to process for sum or avg operator.
+ */
+static void
+HandlerForParsingSumAvg(bool isSum, const bson_value_t *argument,
+						AggregationExpressionData *data)
+{
+	char *opName = isSum ? "$sum" : "$avg";
+	AggregationExpressionData *argumentData = palloc0(
+		sizeof(AggregationExpressionData));
+
+	/*
+	 * When operator expects a single argument and input is an array of single element,
+	 * evaluate the element as argument (not as a list) to match the scenario when input is not an array.
+	 */
+	if (argument->value_type == BSON_TYPE_ARRAY &&
+		BsonDocumentValueCountKeys(argument) == 1)
+	{
+		argumentData = ParseFixedArgumentsForExpression(argument,
+														1,
+														opName,
+														&argumentData->operator.
+														argumentsKind);
+	}
+	else
+	{
+		ParseAggregationExpressionData(argumentData, argument);
+	}
+
+	if (IsAggregationExpressionConstant(argumentData))
+	{
+		SetResultValueForDollarSumAvg(&argumentData->value, &data->value, isSum);
 		data->kind = AggregationExpressionKind_Constant;
 		pfree(argumentData);
 		return;
@@ -2538,6 +2653,85 @@ SetResultValueForDollarMaxMin(const bson_value_t *inputArgument, bson_value_t *r
 		{
 			result->value = arrayElem->value;
 			result->value_type = arrayElem->value_type;
+		}
+	}
+}
+
+
+/*
+ * Given an evaluated expression for $sum/$avg - computes the result and
+ * writes it as a result.
+ */
+static void
+SetResultValueForDollarSumAvg(const bson_value_t *inputArgument, bson_value_t *result,
+							  bool isSum)
+{
+	/* Default value for $sum/$avg */
+	if (isSum)
+	{
+		result->value_type = BSON_TYPE_INT32;
+		result->value.v_int32 = 0;
+	}
+	else
+	{
+		result->value_type = BSON_TYPE_NULL;
+	}
+
+	/* In case the element is null return as default result value is null. */
+	if (IsExpressionResultNullOrUndefined(inputArgument))
+	{
+		return;
+	}
+
+	if (BsonValueIsNumber(inputArgument))
+	{
+		*result = *inputArgument;
+		return;
+	}
+
+	/* For any other case set the inputArgument as it is */
+	if (inputArgument->value_type != BSON_TYPE_ARRAY)
+	{
+		return;
+	}
+
+	bson_iter_t arrayIterator;
+	BsonValueInitIterator(inputArgument, &arrayIterator);
+	bson_value_t currentSum = { 0 };
+	currentSum.value_type = BSON_TYPE_INT32;
+	int count = 0;
+	while (bson_iter_next(&arrayIterator))
+	{
+		const bson_value_t *arrayElem = bson_iter_value(&arrayIterator);
+
+		/* As per the the expected behaviour operator only considers the non-null and the non-missing values for the comparison. */
+		if (IsExpressionResultNullOrUndefined(arrayElem))
+		{
+			continue;
+		}
+
+		if (!BsonValueIsNumber(arrayElem))
+		{
+			/* Skip non-numeric values */
+			continue;
+		}
+
+		bool overFlowedFromInt64Ignore = false;
+		AddNumberToBsonValue(&currentSum, arrayElem, &overFlowedFromInt64Ignore);
+		count++;
+	}
+
+	if (count > 0)
+	{
+		if (!isSum)
+		{
+			double sum = BsonValueAsDouble(&currentSum);
+			result->value_type = BSON_TYPE_DOUBLE;
+			result->value.v_double = sum / count;
+		}
+		else
+		{
+			*result = currentSum;
 		}
 	}
 }

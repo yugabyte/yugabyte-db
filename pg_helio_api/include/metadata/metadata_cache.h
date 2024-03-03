@@ -72,7 +72,6 @@ Oid IndexSpecAsBsonFunctionId(void);
 Oid IndexBuildIsInProgressFunctionId(void);
 Oid ApiCursorStateFunctionId(void);
 Oid ApiCurrentCursorStateFunctionId(void);
-Oid ApiSampleCollectionFunctionId(void);
 Oid ExtensionTableSampleSystemRowsFunctionId(void);
 
 /* bson_value functions */

@@ -16,7 +16,7 @@
 #include "common/base64.h" /* Postgres base64 encode / decode functions */
 #include "common/hmac.h"   /* Postgres hmac functions */
 #include "utils/varlena.h" /* Postgres variable-length builtIn types functions*/
-#include "server/common/cryptohash.h"
+#include "common/cryptohash.h"
 
 /* Including Postgresql headers for test helper functions.*/
 #include "common/saslprep.h" /* Postgres SASLprep normalization functions */

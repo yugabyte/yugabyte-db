@@ -1389,7 +1389,7 @@ bson_dollar_expr(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_text(PG_FUNCTION_ARGS)
 {
-	ereport(ERROR, (errcode(MongoInvalidOptions),
+	ereport(ERROR, (errcode(MongoIndexNotFound),
 					errmsg("text index required for $text query")));
 	PG_RETURN_BOOL(false);
 }

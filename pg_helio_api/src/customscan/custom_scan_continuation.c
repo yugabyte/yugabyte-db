@@ -659,6 +659,29 @@ ValidateCursorCustomScanPlan(Plan *plan)
 			return;
 		}
 
+		case T_Result:
+		{
+			/* Queries that can evaluate to a const (e.g. a filter of $alwaysFalse) can be made into a Result. */
+			Result *result = castNode(Result, plan);
+			if (result->plan.lefttree != NULL || result->plan.righttree != NULL ||
+				result->resconstantqual == NULL)
+			{
+				elog(LOG,
+					 "Unsupported combination of query with streaming cursors, found result with leftPlan %d, rightPlan %d, const %d",
+					 result->plan.lefttree != NULL ?
+					 result->plan.lefttree->type : 0,
+					 result->plan.righttree != NULL ?
+					 result->plan.righttree->type : 0,
+					 result->resconstantqual != NULL);
+
+				/* Raise the error without the enum (to avoid cross PG version values). */
+				ereport(ERROR, (errmsg(
+									"Unsupported combination of query with streaming cursors")));
+			}
+
+			return;
+		}
+
 		default:
 		{
 			/* Log the notice in server/client logs */
@@ -667,9 +690,8 @@ ValidateCursorCustomScanPlan(Plan *plan)
 				 plan->type);
 
 			/* Raise the error without the enum (to avoid cross PG version values). */
-			ereport(ERROR,
-					(errmsg(
-						 "Unsupported combination of query with streaming cursors")));
+			ereport(ERROR, (errmsg(
+								"Unsupported combination of query with streaming cursors")));
 		}
 	}
 }

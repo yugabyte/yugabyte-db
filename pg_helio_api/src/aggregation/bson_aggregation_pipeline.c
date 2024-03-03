@@ -3046,15 +3046,15 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_GROUP);
 
-	/* Push prior stuff to a subquery first since we're gonna aggregate our way */
-	query = MigrateQueryToSubQuery(query, context);
-
 	/* Part 1, let's do the group */
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(MongoLocation15947),
 						errmsg("a group's fields must be specified in an object")));
 	}
+
+	/* Push prior stuff to a subquery first since we're gonna aggregate our way */
+	query = MigrateQueryToSubQuery(query, context);
 
 	/* Take the current output (That's to be grouped)*/
 	TargetEntry *origEntry = linitial(query->targetList);
@@ -3090,9 +3090,9 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	parseState->p_next_resno = 1;
 	parseState->p_expr_kind = EXPR_KIND_GROUP_BY;
 
-	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
-								 true);
-	List *groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue), trueConst);
+	bool isBoolNull = false;
+	List *groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
+								 makeBoolConst(true, isBoolNull));
 	FuncExpr *groupFunc = makeFuncExpr(
 		BsonExpressionGetFunctionOid(), BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
@@ -3574,8 +3574,9 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		if (collection == NULL)
 		{
 			ereport(ERROR, (errcode(MongoCollectionUUIDMismatch),
-							errmsg("Namespace %s has a mismatch on collectionUUID",
-								   context->namespaceName)));
+							errmsg(
+								"Namespace %s has a mismatch on collectionUUID: Collection does not exist",
+								context->namespaceName)));
 		}
 
 		if (memcmp(collectionUuid->data, collection->collectionUUID.data, 16) != 0)

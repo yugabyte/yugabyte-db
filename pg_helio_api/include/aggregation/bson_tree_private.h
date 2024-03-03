@@ -78,12 +78,14 @@ inline static void
 pg_attribute_noreturn()
 ThrowErrorOnIntermediateMismatch(BsonPathNode * node, const StringView * relativePath)
 {
+	int errorCode = MongoLocation31250;
 	StringInfo errorMessageStr = makeStringInfo();
 	appendStringInfo(errorMessageStr, "Path collision at %.*s", relativePath->length,
 					 relativePath->string);
 
 	if (node->field.length < relativePath->length)
 	{
+		errorCode = MongoLocation31249;
 		StringView substring = StringViewSubstring(relativePath,
 												   node->field.length +
 												   1);
@@ -91,7 +93,7 @@ ThrowErrorOnIntermediateMismatch(BsonPathNode * node, const StringView * relativ
 						 substring.length, substring.string);
 	}
 
-	ereport(ERROR, (errcode(MongoFailedToParse),
+	ereport(ERROR, (errcode(errorCode),
 					errmsg("%s", errorMessageStr->data)));
 }
 

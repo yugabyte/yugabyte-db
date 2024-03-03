@@ -155,7 +155,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$atan", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ATAN },
 	{ "$atan2", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ATAN2 },
 	{ "$atanh", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ATANH },
-	{ "$avg", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_AVG },
+	{ "$avg", NULL, &ParseDollarAvg, &HandlePreParsedDollarAvg,
+	  FEATURE_AGG_OPERATOR_AVG },
 	{ "$binarySize", NULL, &ParseDollarBinarySize, &HandlePreParsedDollarBinarySize,
 	  FEATURE_AGG_OPERATOR_BINARYSIZE },
 	{ "$bsonSize", NULL, &ParseDollarBsonSize, &HandlePreParsedDollarBsonSize,
@@ -295,7 +296,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$substrCP", NULL, &ParseDollarSubstrCP, &HandlePreParsedDollarSubstrCP,
 	  FEATURE_AGG_OPERATOR_SUBSTRCP },
 	{ "$subtract", &HandleDollarSubtract, NULL, NULL, FEATURE_AGG_OPERATOR_SUBTRACT },
-	{ "$sum", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_SUM },
+	{ "$sum", NULL, &ParseDollarSum, &HandlePreParsedDollarSum,
+	  FEATURE_AGG_OPERATOR_SUM },
 	{ "$switch", &HandleDollarSwitch, NULL, NULL, FEATURE_AGG_OPERATOR_SWITCH },
 	{ "$tan", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_TAN },
 	{ "$tanh", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_TANH },
@@ -333,6 +335,12 @@ static const StringView RemoveVariableName =
 {
 	.length = 6,
 	.string = "REMOVE"
+};
+
+static const StringView CurrentVariableName =
+{
+	.length = 7,
+	.string = "CURRENT"
 };
 
 /*
@@ -1012,6 +1020,15 @@ GetVariableFromContext(StringView variableName,
 	/* Not found, try static well known variables */
 	if (StringViewEquals(&variableName, &RootVariableName) &&
 		currentDocument != NULL)
+	{
+		*variableValue = ConvertPgbsonToBsonValue(currentDocument);
+		return true;
+	}
+
+	/* If we get here, $$CURRENT was not overriden, so we set $$CURRENT to $$ROOT
+	 * TODO: Remove this once we move to the new framework.
+	 */
+	if (StringViewEquals(&variableName, &CurrentVariableName))
 	{
 		*variableValue = ConvertPgbsonToBsonValue(currentDocument);
 		return true;
@@ -2009,6 +2026,13 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 			{
 				expressionData->kind = AggregationExpressionKind_Path;
 				expressionData->value = *value;
+
+				if (strlen(value->value.v_utf8.str) != value->value.v_utf8.len)
+				{
+					ereport(ERROR, (errcode(MongoLocation16411),
+									errmsg(
+										"FieldPath field names may not contain embedded nulls")));
+				}
 			}
 		}
 		else
@@ -2415,8 +2439,17 @@ EvaluateAggregationExpressionSystemVariableToWriter(const AggregationExpressionD
 
 		case AggregationExpressionSystemVariableKind_Current:
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Variable $$CURRENT not supported yet")));
+			if (!GetVariableFromContext(CurrentVariableName, variableContext, document,
+										&variableValue))
+			{
+				/*
+				 * Once expressions are moved to the new framework GetVariableFromContext
+				 * won't handle $$CURRENT. $$CURRENT == $$ROOT default will get handled here.
+				 */
+				variableValue = ConvertPgbsonToBsonValue(document);
+			}
+
+			break;
 		}
 
 		case AggregationExpressionSystemVariableKind_Remove:

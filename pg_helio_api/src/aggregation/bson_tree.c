@@ -525,7 +525,7 @@ ValidateAndSetLeafNodeData(BsonPathNode *childNode, const bson_value_t *value,
 {
 	if (childNode->nodeType == NodeType_Intermediate)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(MongoLocation31250),
 						errmsg("Path collision at %.*s", relativePath->length,
 							   relativePath->string)));
 	}

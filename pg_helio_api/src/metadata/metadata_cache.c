@@ -144,9 +144,6 @@ typedef struct HelioApiOidCacheData
 	/* OID of the ApiSchema.list_indexes function */
 	Oid IndexSpecAsBsonFunctionId;
 
-	/* OID of the sample_collection function */
-	Oid ApiSampleCollectionFunctionId;
-
 	/* OID of the TABLESAMPLE SYSTEM_ROWS(n) function */
 	Oid ExtensionTableSampleSystemRowsFunctionId;
 
@@ -2046,29 +2043,6 @@ IndexSpecAsBsonFunctionId(void)
 	}
 
 	return Cache.IndexSpecAsBsonFunctionId;
-}
-
-
-/*
- * ApiSampleCollectionFunctionId returns the OID of the sample_collection function.
- */
-Oid
-ApiSampleCollectionFunctionId(void)
-{
-	InitializeHelioApiExtensionCache();
-
-	if (Cache.ApiSampleCollectionFunctionId == InvalidOid)
-	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
-											makeString("sample_collection"));
-		Oid paramOids[3] = { TEXTOID, TEXTOID, INT8OID };
-		bool missingOK = false;
-
-		Cache.ApiSampleCollectionFunctionId =
-			LookupFuncName(functionNameList, 3, paramOids, missingOK);
-	}
-
-	return Cache.ApiSampleCollectionFunctionId;
 }
 
 

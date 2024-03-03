@@ -21,7 +21,7 @@
 #include <catalog/pg_am.h>
 #include <optimizer/pathnode.h>
 #include "nodes/pg_list.h"
-#include <server/pg_config_manual.h>
+#include <pg_config_manual.h>
 
 #include "query/query_operator.h"
 #include "planner/mongo_query_operator.h"

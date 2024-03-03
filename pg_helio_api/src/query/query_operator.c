@@ -581,6 +581,8 @@ CreateQualForBsonValueExpressionCore(const bson_value_t *expression,
 				case QUERY_OPERATOR_NOR:
 				case QUERY_OPERATOR_EXPR:
 				case QUERY_OPERATOR_TEXT:
+				case QUERY_OPERATOR_ALWAYS_FALSE:
+				case QUERY_OPERATOR_ALWAYS_TRUE:
 				{
 					regexFound = false;
 					addObjectArrayFilter = true;
@@ -1047,7 +1049,9 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		operatorType != QUERY_OPERATOR_OR &&
 		operatorType != QUERY_OPERATOR_NOR &&
 		operatorType != QUERY_OPERATOR_EXPR &&
-		operatorType != QUERY_OPERATOR_TEXT)
+		operatorType != QUERY_OPERATOR_TEXT &&
+		operatorType != QUERY_OPERATOR_ALWAYS_TRUE &&
+		operatorType != QUERY_OPERATOR_ALWAYS_FALSE)
 	{
 		/* invalid query operator such as $eq at top level of query document */
 		/* We throw feature not supported since $where and such might be specified here */
@@ -1062,6 +1066,22 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 							"name that starts with a '$' symbol, consider using "
 							"$getField or $setField.",
 							mongoOperatorName)));
+	}
+
+	if (operatorType == QUERY_OPERATOR_ALWAYS_TRUE ||
+		operatorType == QUERY_OPERATOR_ALWAYS_FALSE)
+	{
+		const bson_value_t *value = bson_iter_value(queryDocIterator);
+		if (!BsonValueIsNumberOrBool(value) || BsonValueAsInt32(value) != 1)
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse),
+							errmsg("%s must be an integer value of 1",
+								   operatorType == QUERY_OPERATOR_ALWAYS_TRUE ?
+								   "$alwaysTrue" : "$alwaysFalse")));
+		}
+
+		bool isNull = false;
+		return (Expr *) makeBoolConst(operatorType == QUERY_OPERATOR_ALWAYS_TRUE, isNull);
 	}
 
 	if (operatorType == QUERY_OPERATOR_EXPR)
