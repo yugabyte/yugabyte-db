@@ -25,3 +25,19 @@ When performing a database upgrade, do the following:
 1. [Upgrade a universe](../upgrade-software-install/#upgrade-a-universe). Perform a rolling upgrade on a live universe deployment.
 
 For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](../../../releases/yba-releases/).
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Prepare to upgrade"
+    body="Review changes that may affect your automation."
+    href="../upgrade-software-prepare/"
+    icon="/images/section_icons/quick_start/install.png">}}
+
+  {{<index/item
+    title="Upgrade a universe"
+    body="Perform a rolling upgrade on a live universe deployment."
+    href="../upgrade-software-install/"
+    icon="/images/section_icons/quick_start/install.png">}}
+
+{{</index/block>}}
