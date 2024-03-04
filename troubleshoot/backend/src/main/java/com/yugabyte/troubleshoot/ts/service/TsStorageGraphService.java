@@ -220,27 +220,31 @@ public class TsStorageGraphService implements GraphSourceIF {
             groupedLineEntry -> {
               LineKey key = groupedLineEntry.getKey();
               GroupedLine groupedLine = groupedLineEntry.getValue();
-              GraphResponse.GraphData graphData = new GraphResponse.GraphData();
+              GraphData graphData = new GraphData();
               graphData.setName(key.getLabels().remove(ALIAS));
               if (key.getLabels().containsKey(GraphFilter.instanceName.name())) {
                 graphData.setInstanceName(key.getLabels().remove(GraphFilter.instanceName.name()));
               }
               graphData.setLabels(key.getLabels());
               for (var valueGroup : groupedLine.values.entrySet()) {
-                graphData.x.add(valueGroup.getKey().toEpochMilli());
                 OptionalDouble average =
                     valueGroup.getValue().stream().mapToDouble(a -> a).average();
                 if (average.isEmpty()) {
                   log.warn("No values for {} at {}", key, valueGroup.getKey());
                   continue;
                 }
-                graphData.y.add(String.valueOf(average.getAsDouble()));
+                graphData
+                    .getPoints()
+                    .add(
+                        new GraphPoint()
+                            .setX(valueGroup.getKey().toEpochMilli())
+                            .setY(average.getAsDouble()));
               }
               response.getData().add(graphData);
             });
-    Comparator<GraphResponse.GraphData> graphDataComparator =
-        Comparator.comparing(GraphResponse.GraphData::getInstanceNameOrEmpty)
-            .thenComparing(GraphResponse.GraphData::getNameOrEmpty);
+    Comparator<GraphData> graphDataComparator =
+        Comparator.comparing(GraphData::getInstanceNameOrEmpty)
+            .thenComparing(GraphData::getNameOrEmpty);
     response.setData(response.getData().stream().sorted(graphDataComparator).toList());
     return response;
   }

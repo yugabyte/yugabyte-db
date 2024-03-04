@@ -254,6 +254,9 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     createLocaleCheckTask(new ArrayList<>(universe.getNodes()))
         .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
+    createCheckGlibcTask(new ArrayList<>(universe.getNodes()), newVersion)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
     addBasicPrecheckTasks();
   }
 

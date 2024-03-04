@@ -373,6 +373,24 @@ public class CertificateHelperTest extends FakeDBApplication {
         + "-----END RSA PRIVATE KEY-----\n";
   }
 
+  public static String getDSAKeyContent() {
+    return "-----BEGIN PRIVATE KEY-----\n"
+        + "MIICXQIBADCCAjUGByqGSM44BAEwggIoAoIBAQCPeTXZuarpv6vtiHrPSVG28y7F\n"
+        + "njuvNxjo6sSWHz79NgbnQ1GpxBgzObgJ58KuHFObp0dbhdARrbi0eYd1SYRpXKwO\n"
+        + "jxSzNggooi/6JxEKPWKpk0U0CaD+aWxGWPhL3SCBnDcJoBBXsZWtzQAjPbpUhLYp\n"
+        + "H51kjviDRIZ3l5zsBLQ0pqwudemYXeI9sCkvwRGMn/qdgYHnM423krcw17njSVkv\n"
+        + "aAmYchU5Feo9a4tGU8YzRY+AOzKkwuDycpAlbk4/ijsIOKHEUOThjBopo33fXqFD\n"
+        + "3ktm/wSQPtXPFiPhWNSHxgjpfyEc2B3KI8tuOAdl+CLjQr5ITAV2OTlgHNZnAh0A\n"
+        + "uvaWpoV499/e5/pnyXfHhe8ysjO65YDAvNVpXQKCAQAWplxYIEhQcE51AqOXVwQN\n"
+        + "NNo6NHjBVNTkpcAtJC7gT5bmHkvQkEq9rI837rHgnzGC0jyQQ8tkL4gAQWDt+coJ\n"
+        + "syB2p5wypifyRz6Rh5uixOdEvSCBVEy1W4AsNo0fqD7UielOD6BojjJCilx4xHjG\n"
+        + "jQUntxyaOrsLC+EsRGiWOefTznTbEBplqiuH9kxoJts+xy9LVZmDS7TtsC98kOmk\n"
+        + "ltOlXVNb6/xF1PYZ9j897buHOSXC8iTgdzEpbaiH7B5HSPh++1/et1SEMWsiMt7l\n"
+        + "U92vAhErDR8C2jCXMiT+J67ai51LKSLZuovjntnhA6Y8UoELxoi34u1DFuHvF9ve\n"
+        + "BB8CHQCWDhl4+Ii6NaSz3vFt12ghpp/KP6hiGV8KRFZm\n"
+        + "-----END PRIVATE KEY-----\n";
+  }
+
   @Test
   public void testUploadRootCA() {
     UUID rootCA = null;

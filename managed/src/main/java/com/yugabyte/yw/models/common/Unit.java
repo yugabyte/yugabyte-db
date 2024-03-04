@@ -56,6 +56,13 @@ public enum Unit {
           .displayName("day(s)")
           .metricName("day")
           .integer(true)
+          .thresholdConditionReadOnly(true)),
+  MEGABYTE(
+      new UnitBuilder()
+          .measure(Measure.SIZE)
+          .displayName("MB(s)")
+          .metricName("MB")
+          .integer(true)
           .thresholdConditionReadOnly(true));
 
   private final Measure measure;

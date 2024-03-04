@@ -51,6 +51,7 @@ typedef struct
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
 	} opts; 					/* options, or NULL if none */
+	GeolocationDistance ts_distance;
 } TableSpaceCacheEntry;
 
 /*
@@ -188,6 +189,7 @@ get_tablespace(Oid spcid)
 	 * yb_opts and pg_opts.
 	 */
 	spc->opts.pg_opts = opts;
+	spc->ts_distance = UNKNOWN_DISTANCE;
 	return spc;
 }
 
@@ -208,6 +210,12 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	if (spc->opts.yb_opts == NULL)
 	{
 		return UNKNOWN_DISTANCE;
+	}
+
+	if (spc->ts_distance != UNKNOWN_DISTANCE)
+	{
+		/* return cached geolocation distance */
+		return spc->ts_distance;
 	}
 
 	const char *current_cloud = YBGetCurrentCloud();
@@ -312,6 +320,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	MemoryContextSwitchTo(oldContext);
 	MemoryContextDelete(tablespaceDistanceContext);
 
+	spc->ts_distance = farthest;
 	return farthest;
 }
 
@@ -408,7 +417,8 @@ get_tablespace_io_concurrency(Oid spcid)
 {
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 
-	if (!spc->opts.pg_opts || spc->opts.pg_opts->effective_io_concurrency < 0)
+	if (!spc->opts.pg_opts || spc->opts.pg_opts->effective_io_concurrency < 0
+			|| IsYugaByteEnabled())
 		return effective_io_concurrency;
 	else
 		return spc->opts.pg_opts->effective_io_concurrency;
