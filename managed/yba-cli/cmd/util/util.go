@@ -123,6 +123,11 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
+// GetStringArrayPointer returns the pointer to a string array
+func GetArrayPointer(in []interface{}) *[]interface{} {
+	return &in
+}
+
 // CreateSingletonList returns a list of single entry from an interface
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
