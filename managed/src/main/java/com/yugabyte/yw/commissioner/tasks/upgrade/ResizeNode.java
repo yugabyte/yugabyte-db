@@ -252,10 +252,11 @@ public class ResizeNode extends UpgradeTaskBase {
                 justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
-
-            // Persist changes in the universe.
-            createPersistResizeNodeTask(userIntent, cluster.uuid)
-                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+            if (!instanceChangingNodes.isEmpty() || !justModifyDeviceNodes.isEmpty()) {
+              // Persist changes in the universe.
+              createPersistResizeNodeTask(userIntent, cluster.uuid)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
+            }
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (flagsProvided) {

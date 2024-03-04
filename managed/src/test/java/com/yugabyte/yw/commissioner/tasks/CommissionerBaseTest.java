@@ -407,11 +407,14 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
-    if (taskInfo.getTaskParams().has("nodeName")) {
+    if (taskInfo.getTaskParams() != null && taskInfo.getTaskParams().has("nodeName")) {
       sb.append("(");
       sb.append(taskInfo.getTaskParams().get("nodeName").textValue());
       if (taskInfo.getTaskParams().has("serverType")) {
         sb.append(" ").append(taskInfo.getTaskParams().get("serverType").textValue());
+      }
+      if (taskInfo.getTaskParams().has("state")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("state").textValue());
       }
       if (taskInfo.getTaskParams().has("process")) {
         sb.append(" ").append(taskInfo.getTaskParams().get("process").textValue());
