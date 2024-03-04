@@ -33,6 +33,15 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBefore
   ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
   ASSERT_OK(UpdatePrimaryKey(1 /* key */, 9 /* value */, &test_cluster_));
 
+  OpId historical_max_op_id;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        historical_max_op_id = GetHistoricalMaxOpId(tablets);
+        return historical_max_op_id > OpId::Invalid();
+      },
+      MonoDelta::FromSeconds(5),
+      "historical_max_op_id should change"));
+
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 2, 1, 1, 0, 0};
   const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 1, 0, 0};
