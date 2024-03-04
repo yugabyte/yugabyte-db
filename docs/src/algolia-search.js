@@ -258,7 +258,9 @@ import algoliasearch from 'algoliasearch';
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
-    let searchValue = searchInput.value.trim();
+    const searchedTerm = searchInput.value.trim();
+
+    let searchValue = searchedTerm;
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
       setTimeout(() => {
@@ -306,7 +308,7 @@ import algoliasearch from 'algoliasearch';
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
-          document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
+          document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchedTerm}"</b></li>`;
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
