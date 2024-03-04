@@ -57,7 +57,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { GCPRegionMutation, GCPAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface GCPProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -82,6 +86,7 @@ interface GCPProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybFirewallTags: string;
+  imageBundles: ImageBundle[]
 }
 
 const ProviderCredentialType = {
@@ -240,6 +245,9 @@ export const GCPProviderCreateForm = ({
       formValues.sshKeypairName,
       sshPrivateKeyContent
     );
+    
+    const imageBundles = constructImageBundlePayload(formValues);
+
     const providerPayload: YBProviderMutation = {
       code: ProviderCode.GCP,
       name: formValues.providerName,
@@ -276,7 +284,8 @@ export const GCPProviderCreateForm = ({
           name: zone.code,
           subnet: regionFormValues.sharedSubnet ?? ''
         }))
-      }))
+      })),
+      imageBundles
     };
     try {
       await createInfraProvider(providerPayload);
@@ -471,6 +480,7 @@ export const GCPProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.gcp} viewMode='CREATE'/>
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>

@@ -24,13 +24,16 @@ import {
   UniverseFormData,
   VolumeType
 } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   PROVIDER_FIELD,
   DEVICE_INFO_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  CPU_ARCHITECTURE_FIELD
 } from '../../../utils/constants';
 
 interface VolumeInfoFieldProps {
@@ -86,6 +89,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const instanceType = isDedicatedMasterField
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -100,10 +104,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   // Update field is based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid],
-    () => api.getInstanceTypes(provider?.uuid),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, [], isOsPatchingEnabled ? cpuArch : null),
     { enabled: !!provider?.uuid }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);

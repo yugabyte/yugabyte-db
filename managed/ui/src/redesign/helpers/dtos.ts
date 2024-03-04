@@ -144,6 +144,7 @@ export interface UserIntent {
   masterGFlags: FlagsObject | FlagsArray;
   tserverGFlags: FlagsObject | FlagsArray;
   instanceTags: FlagsObject | FlagsArray;
+  imageBundleUUID: string;
 }
 
 export const ClusterType = {

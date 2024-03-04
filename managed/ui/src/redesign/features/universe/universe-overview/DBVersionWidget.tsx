@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Box, Typography, Link } from '@material-ui/core';
 import { YBTooltip } from '../../../components';
 import { YBWidget } from '../../../../components/panels';
+import clsx from 'clsx';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { DBUpgradeModal } from '../universe-actions/rollback-upgrade/DBUpgradeModal';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
@@ -81,13 +82,12 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       )}
       {[SoftwareUpgradeState.FINALIZE_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
         upgradeState
-      ) &&
-        universeStatus.state !== UniverseState.GOOD && (
+      ) && (
           <YBTooltip
             title={
               upgradeState === SoftwareUpgradeState.FINALIZE_FAILED
-                ? `Failed to finalize upgrade to v${failedTaskTargetVersion}`
-                : `Failed to upgrade database version to v${failedTaskTargetVersion}`
+                ? `Failed to finalize upgrade to v${minifiedCurrentVersion}`
+                : `Failed to upgrade database version to v${minifiedCurrentVersion}`
             }
           >
             <span>
@@ -138,7 +138,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
           noHeader
           noMargin
           size={1}
-          className={classes.versionContainer}
+          className={clsx('overview-widget-database', classes.versionContainer)}
           body={
             <Box
               display={'flex'}

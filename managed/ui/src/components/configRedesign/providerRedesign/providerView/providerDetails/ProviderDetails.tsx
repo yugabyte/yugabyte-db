@@ -116,7 +116,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
             <ProviderEditView providerConfig={providerConfig} linkedUniverses={linkedUniverses} />
           </TabPanel>
           <TabPanel classes={{ root: styles.tabPanel }} value={ProviderDetailsTab.UNIVERSES}>
-            <UniverseTable linkedUniverses={linkedUniverses} />
+            <UniverseTable linkedUniverses={linkedUniverses} providerConfig={providerConfig} />
           </TabPanel>
           {providerConfig.code === ProviderCode.ON_PREM && (
             <TabPanel

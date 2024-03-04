@@ -1,13 +1,19 @@
-import { ChangeEvent, ReactElement } from 'react';
+import { ChangeEvent, ReactElement, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
 import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
-import { sortVersionStrings } from './DBVersionHelper';
-import { DEFAULT_ADVANCED_CONFIG, UniverseFormData } from '../../../utils/dto';
-import { SOFTWARE_VERSION_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
+import { getActiveDBVersions, sortVersionStrings } from './DBVersionHelper';
+import { DEFAULT_ADVANCED_CONFIG, UniverseFormData, YBSoftwareMetadata } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
+import {
+  SOFTWARE_VERSION_FIELD,
+  PROVIDER_FIELD,
+  CPU_ARCHITECTURE_FIELD
+} from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface DBVersionFieldProps {
@@ -19,11 +25,17 @@ const getOptionLabel = (option: Record<string, string>): string => option.label 
 const renderOption = (option: Record<string, string>): string => option.label;
 
 //Minimal fields
-const transformData = (data: string[]) => {
-  return data.map((item) => ({
-    label: item,
-    value: item
-  }));
+const transformData = (data: string[] | Record<string, YBSoftwareMetadata>) => {
+  if (data && Array.isArray(data)) {
+    return data.map((item) => ({
+      label: item,
+      value: item
+    }));
+  } else if (typeof data === 'object' && data !== null) {
+    return getActiveDBVersions(data);
+  } else {
+    return [];
+  }
 };
 
 export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement => {
@@ -33,10 +45,13 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
 
   const { data, isLoading } = useQuery(
-    [QUERY_KEY.getDBVersionsByProvider, provider?.uuid],
-    () => api.getDBVersionsByProvider(provider?.uuid),
+    [QUERY_KEY.getDBVersions, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getDBVersions(true, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
@@ -49,6 +64,12 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       select: transformData
     }
   );
+
+  useEffect(() => {
+    if (isOsPatchingEnabled && !disabled) {
+      setValue(SOFTWARE_VERSION_FIELD, null);
+    }
+  }, [cpuArch, isOsPatchingEnabled]);
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(SOFTWARE_VERSION_FIELD, option?.value ?? DEFAULT_ADVANCED_CONFIG.ybSoftwareVersion, {
@@ -65,8 +86,8 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       rules={{
         required: !disabled
           ? (t('universeForm.validation.required', {
-              field: t('universeForm.advancedConfig.dbVersion')
-            }) as string)
+            field: t('universeForm.advancedConfig.dbVersion')
+          }) as string)
           : ''
       }}
       render={({ field, fieldState }) => {

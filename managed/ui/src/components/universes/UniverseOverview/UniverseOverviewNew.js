@@ -474,11 +474,14 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-
+    
     if (isNullOrEmpty(currentUniverse)) return;
+
+    const clusterWidgetSize = isDedicatedNodes ? 4 : this.hasReadReplica(currentUniverse) ? 3 : 4;
+
     if (isRollBackFeatureEnabled) {
       return (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -489,7 +492,7 @@ export default class UniverseOverviewNew extends Component {
       );
     } else {
       return isDedicatedNodes ? (
-        <Col lg={4} sm={8} md={8} xs={12}>
+        <Col lg={clusterWidgetSize} sm={8} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -498,7 +501,7 @@ export default class UniverseOverviewNew extends Component {
           />
         </Col>
       ) : (
-        <Col lg={2} sm={6} md={4} xs={8}>
+        <Col lg={clusterWidgetSize} sm={6} md={6} xs={12}>
           <ClusterInfoPanelContainer
             type={'primary'}
             universeInfo={currentUniverse}
@@ -513,7 +516,7 @@ export default class UniverseOverviewNew extends Component {
   getReadReplicaClusterWidget = (currentUniverse) => {
     if (isNullOrEmpty(currentUniverse)) return;
     return (
-      <Col lg={2} sm={6} md={4} xs={8}>
+      <Col lg={3} sm={6} md={6} xs={12}>
         <ClusterInfoPanelContainer
           type={'read-replica'}
           universeInfo={currentUniverse}
@@ -574,7 +577,7 @@ export default class UniverseOverviewNew extends Component {
     const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
 
     return (
-      <Col lg={isDedicatedNodes && hasReadReplicaCluster ? 2 : 4} md={6} sm={8} xs={12}>
+      <Col lg={isDedicatedNodes && hasReadReplicaCluster ? 3 : 4} md={6} sm={8} xs={12}>
         <HealthInfoPanel healthCheck={healthCheck} universeInfo={universeInfo} />
       </Col>
     );
@@ -596,11 +599,11 @@ export default class UniverseOverviewNew extends Component {
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
       ? [
-          {
-            metric: 'container_volume_max_usage',
-            name: 'size'
-          }
-        ]
+        {
+          metric: 'container_volume_max_usage',
+          name: 'size'
+        }
+      ]
       : null;
     const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
@@ -794,13 +797,17 @@ export default class UniverseOverviewNew extends Component {
     const infoWidget = (
       <YBWidget
         className={'overview-widget-database'}
-        headerLeft={'Version'}
         headerRight={showUpdate && !universePaused ? upgradeLink() : null}
+        noHeader
+        size={1}
         body={
-          <FlexContainer className={'centered'} direction={'column'}>
-            <FlexGrow>
+          <FlexContainer className={'cost-widget centered'} direction={'row'}>
+            <FlexShrink>
+              <span className="version__label">{'Version'}</span>
+            </FlexShrink>
+            <FlexShrink>
               <DatabasePanel universeInfo={universeInfo} tasks={tasks} />
-            </FlexGrow>
+            </FlexShrink>
             <FlexShrink>
               {lastUpdateDate && (
                 <div className="text-lightgray text-light">
@@ -821,7 +828,7 @@ export default class UniverseOverviewNew extends Component {
       />
     );
     return (
-      <Col lg={2} md={4} sm={4} xs={6}>
+      <Col lg={4} md={4} sm={4} xs={6}>
         {infoWidget}
       </Col>
     );
@@ -881,7 +888,6 @@ export default class UniverseOverviewNew extends Component {
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
-          {isRollBackFeatureEnabled && (
             <Col lg={4} md={6} sm={8} xs={12}>
               <DBVersionWidget
                 higherVersionCount={updateAvailable}
@@ -889,10 +895,8 @@ export default class UniverseOverviewNew extends Component {
                 failedTaskDetails={failedTask}
               />
             </Col>
-          )}
         </Row>
         <Row>
-          {!isRollBackFeatureEnabled && this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo, isRollBackFeatureEnabled)}
           {this.hasReadReplica(universeInfo) && this.getReadReplicaClusterWidget(universeInfo)}
           {this.getCPUWidget(universeInfo, isRollBackFeatureEnabled)}
