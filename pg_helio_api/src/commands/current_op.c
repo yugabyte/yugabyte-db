@@ -1339,7 +1339,7 @@ WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity, pgbson_writer *wr
 	int val_count;
 
 	deconstruct_array(val_array,
-					  ARR_ELEMTYPE(val_array), -1, false, TYPALIGN_INT,
+					  ARR_ELEMTYPE(val_array), sizeof(int64), true, TYPALIGN_INT,
 					  &val_datums, &val_is_null_marker, &val_count);
 
 	PgbsonWriterAppendInt32(writer, "writeConflicts", 14, val_count);
