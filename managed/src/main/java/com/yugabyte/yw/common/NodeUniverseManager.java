@@ -467,7 +467,7 @@ public class NodeUniverseManager extends DevopsBase {
         if (StringUtils.isBlank(context.getSshPort())
             && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           sshPort = "22";
-        } else if (!StringUtils.isNotBlank(context.getSshPort())) {
+        } else if (StringUtils.isNotBlank(context.getSshPort())) {
           sshPort = context.getSshPort();
         }
         commandArgs.add("--port");
