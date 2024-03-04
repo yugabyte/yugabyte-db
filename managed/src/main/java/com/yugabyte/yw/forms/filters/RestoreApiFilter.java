@@ -32,6 +32,7 @@ public class RestoreApiFilter {
   private Set<String> sourceUniverseNameList;
   private Set<UUID> storageConfigUUIDList;
   private Set<UUID> universeUUIDList;
+  private Set<UUID> restoreUUIDList;
   private boolean onlyShowDeletedSourceUniverses;
 
   public RestoreFilter toFilter() {
@@ -44,6 +45,9 @@ public class RestoreApiFilter {
     }
     if (!CollectionUtils.isEmpty(universeNameList)) {
       builder.universeNameList(universeNameList);
+    }
+    if (!CollectionUtils.isEmpty(restoreUUIDList)) {
+      builder.restoreUUIDList(restoreUUIDList);
     }
     if (!CollectionUtils.isEmpty(sourceUniverseNameList)) {
       builder.sourceUniverseNameList(sourceUniverseNameList);

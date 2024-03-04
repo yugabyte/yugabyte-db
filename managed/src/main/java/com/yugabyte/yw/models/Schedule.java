@@ -142,6 +142,7 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private long frequency;
 
+  @ApiModelProperty(value = "Request body for the task", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;

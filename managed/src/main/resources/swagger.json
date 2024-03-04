@@ -1998,6 +1998,14 @@
     },
     "BackupApiFilter" : {
       "properties" : {
+        "backupUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "dateRangeEnd" : {
           "description" : "The end date for backup filter.",
           "example" : "2022-12-12T13:07:18Z",
@@ -2063,7 +2071,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "keyspaceList", "onlyShowDeletedConfigs", "onlyShowDeletedUniverses", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "required" : [ "backupUUIDList", "keyspaceList", "onlyShowDeletedConfigs", "onlyShowDeletedUniverses", "scheduleUUIDList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "BackupPagedApiQuery" : {
@@ -10279,6 +10287,14 @@
         "onlyShowDeletedSourceUniverses" : {
           "type" : "boolean"
         },
+        "restoreUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "sourceUniverseNameList" : {
           "items" : {
             "type" : "string"
@@ -10318,7 +10334,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "onlyShowDeletedSourceUniverses", "sourceUniverseNameList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "required" : [ "onlyShowDeletedSourceUniverses", "restoreUUIDList", "sourceUniverseNameList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
       "type" : "object"
     },
     "RestoreBackupParams" : {

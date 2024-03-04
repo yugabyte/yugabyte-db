@@ -318,6 +318,9 @@ public class Restore extends Model {
     if (!CollectionUtils.isEmpty(filter.getStorageConfigUUIDList())) {
       appendInClause(query, "storage_config_uuid", filter.getStorageConfigUUIDList());
     }
+    if (!CollectionUtils.isEmpty(filter.getRestoreUUIDList())) {
+      appendInClause(query, "restore_uuid", filter.getRestoreUUIDList());
+    }
     if (!CollectionUtils.isEmpty(filter.getUniverseNameList())) {
       String universeName =
           "select t0.universe_uuid in"
