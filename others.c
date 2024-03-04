@@ -67,6 +67,16 @@ static char uuid_generate_func_name[30] = "";
 
 static Datum ora_greatest_least(FunctionCallInfo fcinfo, bool greater);
 
+#if PG_VERSION_NUM >= 170000
+
+#define CURRENT_LXID	(MyProc->vxid.lxid)
+
+#else
+
+#define CURRENT_LXID	(MyProc->lxid)
+
+#endif
+
 #if PG_VERSION_NUM < 160000
 
 static Oid
@@ -131,7 +141,7 @@ get_uuid_generate_func_oid(bool *reset_fmgr)
 {
 	Oid			result = InvalidOid;
 
-	if (uuid_generate_func_lxid != MyProc->lxid ||
+	if (uuid_generate_func_lxid != CURRENT_LXID ||
 		uuid_generate_func_oid == InvalidOid ||
 		strcmp(orafce_sys_guid_source, uuid_generate_func_name) != 0)
 	{
@@ -194,7 +204,7 @@ get_uuid_generate_func_oid(bool *reset_fmgr)
 		if (!OidIsValid(result))
 			elog(ERROR, "function \"%s\" doesn't exist", orafce_sys_guid_source);
 
-		uuid_generate_func_lxid = MyProc->lxid;
+		uuid_generate_func_lxid = CURRENT_LXID;
 		uuid_generate_func_oid = result;
 		strcpy(uuid_generate_func_name, orafce_sys_guid_source);
 		*reset_fmgr = true;

@@ -74,6 +74,16 @@ alert_signal_data *signals;
 /* in sec 1000 days */
 #define MAXWAIT		86400000
 
+#if PG_VERSION_NUM >= 170000
+
+#define CURRENT_LXID	(MyProc->vxid.lxid)
+
+#else
+
+#define CURRENT_LXID	(MyProc->lxid)
+
+#endif
+
 
 static void unregister_event(int event_id, int sid);
 static char* find_and_remove_message_item(int message_id, int sid,
@@ -1087,7 +1097,7 @@ orafce_xact_cb(XactEvent event, void *arg)
 		 * MyProc->lxid already invalided. So we need to invalid pointer to
 		 * obsolete buffer here.
 		 */
-		if (local_buf_lxid != MyProc->lxid)
+		if (local_buf_lxid != CURRENT_LXID)
 			signals = NULL;
 	}
 	else if (event == XACT_EVENT_COMMIT && signals)
@@ -1162,12 +1172,12 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 	event = PG_GETARG_TEXT_P(0);
 	message = (!PG_ARGISNULL(1)) ? PG_GETARG_TEXT_P(1) : NULL;
 
-	if (local_buf_lxid != MyProc->lxid)
+	if (local_buf_lxid != CURRENT_LXID)
 	{
 		local_buf_cxt = AllocSetContextCreate(TopTransactionContext,
 											  "dbms_alert local buffer",
 											  ALLOCSET_START_SMALL_SIZES);
-		local_buf_lxid = MyProc->lxid;
+		local_buf_lxid = CURRENT_LXID;
 
 		signals = NULL;
 		last_signal = NULL;
