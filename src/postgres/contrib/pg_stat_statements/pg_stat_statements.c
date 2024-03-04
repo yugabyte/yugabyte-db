@@ -92,6 +92,7 @@
 
 
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "commands/explain.h"
 
 PG_MODULE_MAGIC;
 
@@ -1309,7 +1310,33 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 
 	if(debuggingBundle && bundleQueryId == queryDesc->plannedstmt->queryId){
-		querydescriptor = (*queryDesc);
+		// querydescriptor = (*queryDesc);
+
+		//trying to print explain plan
+			ExplainState *es = NewExplainState();
+
+			es->analyze = false;
+			es->verbose = false;
+			es->buffers = false;
+			es->timing = false;
+			es->summary = false;
+			es->format =EXPLAIN_FORMAT_TEXT;
+			es->rpc = false;
+
+			ExplainBeginOutput(es);
+			ExplainQueryText(es, queryDesc);
+			ExplainPrintPlan(es, queryDesc);
+			if (es->costs)
+				ExplainPrintJITSummary(es, queryDesc);
+			ExplainEndOutput(es);
+
+				/* Remove last line break */
+			if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+				es->str->data[--es->str->len] = '\0';
+
+			FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
+			fprintf(fptr, "QUERY PLAN:\n%s" ,es->str->data);
+			fclose(fptr);
 	}
 
 }

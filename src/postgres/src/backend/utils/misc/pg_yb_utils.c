@@ -4572,25 +4572,12 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 	}
 
 
-
 	end = GetCurrentTimestamp();
 	if(queryid)
 	;
 
 	bundleptr(0,0,"-",0,0,NULL,0,0);
-	dumpAshData(queryid ,start ,end);
-
-
-//querydescriptor is just storing a shallow copy but we want a deep copy.
-	if(strlen(querydescriptor.sourceText) == 0) {
-		ereport(LOG, (errmsg("query descriptor is null")));
-	}
-	else{
-		FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-		fprintf(fptr, "%s\n" , querydescriptor.sourceText);
-		fclose(fptr);
-	}
-
+	// dumpAshData(queryid ,start ,end);
 
 	//resetting the values
 

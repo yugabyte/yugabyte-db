@@ -379,11 +379,6 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			 * often result in duplication.
 			 */
 
-			if(debuggingBundle){
-				FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
-				fprintf(fptr, "duration: %.3f ms  plan:\n%s" , msec,es->str->data);
-				fclose(fptr);
-			}
 
 			ereport(LOG,
 					(errmsg("duration: %.3f ms  plan:\n%s",
