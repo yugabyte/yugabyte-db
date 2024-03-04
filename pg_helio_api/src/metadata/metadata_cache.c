@@ -402,6 +402,21 @@ typedef struct HelioApiOidCacheData
 	/* OID of the timestamptz_zone postgres method which shifts the current timestamp to the specified timezone */
 	Oid PostgresTimestampToZoneFunctionId;
 
+	/* OID of the make_interval postgres method which creates interval from taking in date part units.*/
+	Oid PostgresMakeIntervalFunctionId;
+
+	/* OID of the timestamp_pl_interval postgres method which increments timestamp with given interval size.*/
+	Oid PostgresAddIntervalToTimestampFunctionId;
+
+	/* OID of the date_pl_interval postgres method which increments timestamp with given interval size.*/
+	Oid PostgresAddIntervalToDateFunctionId;
+
+	/* OID of the timestamp_zone postgres method which shifts the current timestamp to the specified timezone.*/
+	Oid PostgresTimestampToZoneWithoutTzFunctionId;
+
+	/* OID of the to_date postgres method which given a formatted text and string date gives you date object.*/
+	Oid PostgresToDateFunctionId;
+
 	/* OID of Rum Index access methods */
 	Oid RumIndexAmId;
 
@@ -1740,6 +1755,65 @@ PostgresTimestampToZoneFunctionId(void)
 {
 	return GetPostgresInternalFunctionId(&Cache.PostgresTimestampToZoneFunctionId,
 										 "timestamptz_zone");
+}
+
+
+/*
+ * Returns the OID of the "make_interval" internal postgres method
+ */
+Oid
+PostgresMakeIntervalFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresMakeIntervalFunctionId,
+										 "make_interval");
+}
+
+
+/*
+ * Returns the OID of the "timestamp_pl_interval" internal postgres method
+ */
+Oid
+PostgresAddIntervalToTimestampFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(
+		&Cache.PostgresAddIntervalToTimestampFunctionId,
+		"timestamp_pl_interval");
+}
+
+
+/*
+ * Returns the OID of the "date_pl_interval" internal postgres method
+ */
+Oid
+PostgresAddIntervalToDateFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(
+		&Cache.PostgresAddIntervalToDateFunctionId,
+		"date_pl_interval");
+}
+
+
+/*
+ * Returns the OID of the "timestamp_zone" internal postgres method
+ */
+Oid
+PostgresTimestampToZoneWithoutTzFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(
+		&Cache.PostgresTimestampToZoneWithoutTzFunctionId,
+		"timestamp_zone");
+}
+
+
+/*
+ * Returns the OID of the "to_date" internal postgres method
+ */
+Oid
+PostgresToDateFunctionId(void)
+{
+	return GetPostgresInternalFunctionId(
+		&Cache.PostgresToDateFunctionId,
+		"to_date");
 }
 
 

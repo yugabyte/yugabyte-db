@@ -27,6 +27,13 @@
 #define MINUTES_IN_HOUR 60
 #define DAYS_IN_WEEK 7
 
+/*
+ * This represents unix ms for 0001-01-01.
+ * Significance for this is it's used in dateFromParts.
+ * This is the base underlying year for calculations we add year, month, day, hour, minute, seconds interval to this timestamp.
+ */
+#define DATE_FROM_PART_START_DATE_MS -62135596800000L
+
 /* --------------------------------------------------------- */
 /* Type declaration */
 /* --------------------------------------------------------- */
@@ -49,6 +56,9 @@ typedef enum DatePart
 	DatePart_IsoDayOfWeek = 12,
 } DatePart;
 
+static const char *isoDateFormat = "IYYY-IW-ID";
+static const char *defaultTimezone = "UTC";
+
 static const char *monthNamesCamelCase[12] = {
 	"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 };
@@ -59,10 +69,46 @@ static const char *monthNamesLowerCase[12] = {
 	"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
 };
 
+/* Struct that represents the parsed arguments to a $dateFromParts expression. */
+typedef struct DollarDateFromParts
+{
+	AggregationExpressionData year;
+	AggregationExpressionData isoWeekYear;
+	AggregationExpressionData month;
+	AggregationExpressionData isoWeek;
+	AggregationExpressionData isoDayOfWeek;
+	AggregationExpressionData day;
+	AggregationExpressionData hour;
+	AggregationExpressionData minute;
+	AggregationExpressionData second;
+	AggregationExpressionData millisecond;
+	AggregationExpressionData timezone;
+	bool isISOWeekDate;
+} DollarDateFromParts;
+
+/* Struct that represents the bson_value_t arguments to a $dateFromParts input values. */
+typedef struct DollarDateFromPartsBsonValue
+{
+	bson_value_t year;
+	bson_value_t isoWeekYear;
+	bson_value_t month;
+	bson_value_t isoWeek;
+	bson_value_t isoDayOfWeek;
+	bson_value_t day;
+	bson_value_t hour;
+	bson_value_t minute;
+	bson_value_t second;
+	bson_value_t millisecond;
+	bson_value_t timezone;
+} DollarDateFromPartsBsonValue;
+
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
+static inline bool IsDollarDatePartsInputConstant(DollarDateFromParts *datePart);
+static inline bool IsInputForDatePartNull(
+	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
 static void HandleDatePartOperator(pgbson *doc, const bson_value_t *operatorValue,
 								   ExpressionResult *expressionResult,
 								   const char *operatorName, DatePart datePart);
@@ -70,17 +116,42 @@ static bool ParseDatePartOperatorArgument(const bson_value_t *operatorValue,
 										  const char *operatorName,
 										  bson_value_t *dateExpression,
 										  bson_value_t *timezoneExpression);
+static void ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
+									   bson_value_t *isoWeekYear, bson_value_t *month,
+									   bson_value_t *isoWeek,
+									   bson_value_t *isoDayOfWeek, bson_value_t *day,
+									   bson_value_t *hour, bson_value_t *minute,
+									   bson_value_t *second, bson_value_t *millisecond,
+									   bson_value_t *timezone, bool *isIsoWeekDate);
 static ExtensionTimezone ParseTimezone(StringView timezone);
 static int64_t ParseUtcOffset(StringView offset);
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 													  ExtensionTimezone timezone);
 static bool TryParseTwoDigitNumber(StringView str, uint32_t *result);
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
+static inline int GetDayOfWeek(int year, int month, int day);
+static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64
+									 hour, int64 minute, float8 second);
+static int GetIsoWeeksForYear(int64 year);
+static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
+											  timezoneToApply);
 static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs,
 												 ExtensionTimezone timezone);
 static Datum GetPgTimestampFromUnixEpoch(int64_t epochInMs);
 static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
 										  StringView format);
+static inline void SetDefaultValueForDatePart(bson_value_t *datePart, bson_type_t
+											  bsonType, int64 defaultValue);
+static void SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
+									  ExtensionTimezone timezoneToApply,
+									  bson_value_t *result);
+static void SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
+										 ExtensionTimezone
+										 timezoneToApply,
+										 bson_value_t *result);
+static void ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey);
+static void ValidateInputForDateFromParts(
+	DollarDateFromPartsBsonValue *dateFromPartsValue, bool isIsoWeekDate);
 
 /* These 3 methods are specialized for creating a date string. */
 static void WriteCharAndAdvanceBuffer(char **buffer, const char *end, char value);
@@ -1631,4 +1702,748 @@ GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart)
 	}
 
 	return result;
+}
+
+
+/*
+ * New Method Implementation for aggrgegation operators
+ */
+
+
+/* This function handles $dateFromParts after parsing and gives the result as BSON_TYPE_DATETIME */
+void
+HandlePreParsedDollarDateFromParts(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult)
+{
+	DollarDateFromParts *dollarOpArgs = arguments;
+	bool isNullOnEmpty = false;
+
+	DollarDateFromPartsBsonValue dateFromPartsValue = {
+		.hour = { 0 },
+		.minute = { 0 },
+		.second = { 0 },
+		.millisecond = { 0 },
+		.timezone = { 0 },
+		.isoWeekYear = { 0 },
+		.isoWeek = { 0 },
+		.isoDayOfWeek = { 0 },
+		.year = { 0 },
+		.month = { 0 },
+		.day = { 0 },
+	};
+	ExpressionResult childExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&dollarOpArgs->hour, doc,
+									  &childExpression,
+									  isNullOnEmpty);
+	dateFromPartsValue.hour = childExpression.value;
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&dollarOpArgs->minute, doc, &childExpression,
+									  isNullOnEmpty);
+	dateFromPartsValue.minute = childExpression.value;
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&dollarOpArgs->second, doc, &childExpression,
+									  isNullOnEmpty);
+	dateFromPartsValue.second = childExpression.value;
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&dollarOpArgs->millisecond, doc, &childExpression,
+									  isNullOnEmpty);
+	dateFromPartsValue.millisecond = childExpression.value;
+	ExpressionResultReset(&childExpression);
+
+	EvaluateAggregationExpressionData(&dollarOpArgs->timezone, doc, &childExpression,
+									  isNullOnEmpty);
+	dateFromPartsValue.timezone = childExpression.value;
+	ExpressionResultReset(&childExpression);
+
+	if (dollarOpArgs->isISOWeekDate)
+	{
+		/* If using ISO week date parts */
+		EvaluateAggregationExpressionData(&dollarOpArgs->isoWeekYear, doc,
+										  &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.isoWeekYear = childExpression.value;
+		ExpressionResultReset(&childExpression);
+
+		EvaluateAggregationExpressionData(&dollarOpArgs->isoWeek, doc, &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.isoWeek = childExpression.value;
+		ExpressionResultReset(&childExpression);
+
+		EvaluateAggregationExpressionData(&dollarOpArgs->isoDayOfWeek, doc,
+										  &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.isoDayOfWeek = childExpression.value;
+		ExpressionResultReset(&childExpression);
+	}
+	else
+	{
+		EvaluateAggregationExpressionData(&dollarOpArgs->year, doc, &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.year = childExpression.value;
+		ExpressionResultReset(&childExpression);
+
+		EvaluateAggregationExpressionData(&dollarOpArgs->month, doc, &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.month = childExpression.value;
+		ExpressionResultReset(&childExpression);
+
+		EvaluateAggregationExpressionData(&dollarOpArgs->day, doc, &childExpression,
+										  isNullOnEmpty);
+		dateFromPartsValue.day = childExpression.value;
+		ExpressionResultReset(&childExpression);
+	}
+
+
+	bson_value_t result = { .value_type = BSON_TYPE_DATE_TIME };
+	if (IsInputForDatePartNull(&dateFromPartsValue, dollarOpArgs->isISOWeekDate))
+	{
+		result.value_type = BSON_TYPE_NULL;
+		ExpressionResultSetValue(expressionResult, &result);
+		return;
+	}
+
+	ValidateInputForDateFromParts(&dateFromPartsValue, dollarOpArgs->isISOWeekDate);
+	StringView timezoneToParse = {
+		.string = dateFromPartsValue.timezone.value.v_utf8.str,
+		.length = dateFromPartsValue.timezone.value.v_utf8.len
+	};
+	ExtensionTimezone timezoneToApply = ParseTimezone(timezoneToParse);
+	if (!dollarOpArgs->isISOWeekDate)
+	{
+		SetResultForDateFromParts(&dateFromPartsValue, timezoneToApply, &result);
+	}
+	else
+	{
+		SetResultForDateFromIsoParts(&dateFromPartsValue, timezoneToApply, &result);
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* This function parses the input argument of the format : */
+
+/* {
+ *  $dateFromParts : {
+ *      'year': <year>, 'month': <month>, 'day': <day>,
+ *      'hour': <hour>, 'minute': <minute>, 'second': <second>,
+ *      'millisecond': <ms>, 'timezone': <tzExpression>
+ *  }
+ * }
+ * This function also validates the input expression and stores the result in case all the arguments are constant
+ */
+void
+ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation40519), errmsg(
+							"$dateFromParts only supports an object as its argument")));
+	}
+
+	bson_value_t year = { 0 };
+	bson_value_t isoWeekYear = { 0 };
+	bson_value_t month = { 0 };
+	bson_value_t isoWeek = { 0 };
+	bson_value_t isoDayOfWeek = { 0 };
+	bson_value_t day = { 0 };
+	bson_value_t hour = { 0 };
+	bson_value_t minute = { 0 };
+	bson_value_t second = { 0 };
+	bson_value_t millisecond = { 0 };
+	bson_value_t timezone = {
+		.value_type = BSON_TYPE_UTF8, .value.v_utf8.str = "UTC", .value.v_utf8.len = 3
+	};
+
+	bool isIsoWeekDate;
+	ParseInputForDateFromParts(argument, &year, &isoWeekYear, &month, &isoWeek,
+							   &isoDayOfWeek, &day, &hour, &minute, &second, &millisecond,
+							   &timezone, &isIsoWeekDate);
+
+	DollarDateFromParts *dateFromParts = palloc0(sizeof(DollarDateFromParts));
+
+	/* Set the value is iso date format or not. */
+	dateFromParts->isISOWeekDate = isIsoWeekDate;
+
+	if (dateFromParts->isISOWeekDate)
+	{
+		ParseAggregationExpressionData(&dateFromParts->isoWeekYear, &isoWeekYear);
+		ParseAggregationExpressionData(&dateFromParts->isoWeek, &isoWeek);
+		ParseAggregationExpressionData(&dateFromParts->isoDayOfWeek, &isoDayOfWeek);
+	}
+	else
+	{
+		ParseAggregationExpressionData(&dateFromParts->year, &year);
+		ParseAggregationExpressionData(&dateFromParts->month, &month);
+		ParseAggregationExpressionData(&dateFromParts->day, &day);
+	}
+	ParseAggregationExpressionData(&dateFromParts->hour, &hour);
+	ParseAggregationExpressionData(&dateFromParts->minute, &minute);
+	ParseAggregationExpressionData(&dateFromParts->second, &second);
+	ParseAggregationExpressionData(&dateFromParts->millisecond, &millisecond);
+	ParseAggregationExpressionData(&dateFromParts->timezone, &timezone);
+
+	if (IsDollarDatePartsInputConstant(dateFromParts))
+	{
+		bson_value_t result = { .value_type = BSON_TYPE_DATE_TIME };
+
+		DollarDateFromPartsBsonValue dateFromPartsBsonValue = {
+			.hour = dateFromParts->hour.value,
+			.minute = dateFromParts->minute.value,
+			.second = dateFromParts->second.value,
+			.millisecond = dateFromParts->millisecond.value,
+			.timezone = dateFromParts->timezone.value,
+			.isoWeekYear = dateFromParts->isoWeekYear.value,
+			.isoWeek = dateFromParts->isoWeek.value,
+			.isoDayOfWeek = dateFromParts->isoDayOfWeek.value,
+			.year = dateFromParts->year.value,
+			.month = dateFromParts->month.value,
+			.day = dateFromParts->day.value,
+		};
+		if (IsInputForDatePartNull(&dateFromPartsBsonValue,
+								   dateFromParts->isISOWeekDate))
+		{
+			result.value_type = BSON_TYPE_NULL;
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+			pfree(dateFromParts);
+			return;
+		}
+
+		ValidateInputForDateFromParts(&dateFromPartsBsonValue,
+									  dateFromParts->isISOWeekDate);
+		StringView timezoneToParse = {
+			.string = dateFromParts->timezone.value.value.v_utf8.str,
+			.length = dateFromParts->timezone.value.value.v_utf8.len
+		};
+		ExtensionTimezone timezoneToApply = ParseTimezone(timezoneToParse);
+		if (!dateFromParts->isISOWeekDate)
+		{
+			SetResultForDateFromParts(&dateFromPartsBsonValue, timezoneToApply, &result);
+		}
+		else
+		{
+			SetResultForDateFromIsoParts(&dateFromPartsBsonValue, timezoneToApply,
+										 &result);
+		}
+
+		data->value = result;
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(dateFromParts);
+	}
+	else
+	{
+		data->operator.arguments = dateFromParts;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+	}
+}
+
+
+/* A function to create postgres interval object given the amount of year, month, week, day, hour, second. */
+static Datum
+GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64 hour, int64
+						minute, float8 second)
+{
+	return OidFunctionCall7(PostgresMakeIntervalFunctionId(),
+							year, month, week, day, hour, minute, Float8GetDatum(second));
+}
+
+
+/* A function which when given a year tells if that year has 52 / 53 ISO weeks. */
+/* This is required for adjusting the isoweeks when input of isoweeks is 0. */
+/* We tend to reduce isoYear argument by 1 and set the value to isoWeek as 52/53. */
+static int
+GetIsoWeeksForYear(int64 year)
+{
+	int dowDec28 = GetDayOfWeek(year, 12, 28);
+
+	/* ISO 8601 specifies that if December 28 is a Monday, then the year has 53 weeks. */
+	/* If the day of the week for December 28 is Monday (1), then the year has 53 weeks. */
+	/* Otherwise, it has 52 weeks. */
+	return (dowDec28 == 1) ? 53 : 52;
+}
+
+
+/* Function to calculate the day of the week for the given year month and day
+ *  Sakamoto’s algorithm is used here for its simplicity and effectiveness
+ *  This proposes to give data in O(1) taking into account the leap year as well.
+ */
+static inline int
+GetDayOfWeek(int year, int month, int day)
+{
+	static int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
+	year -= month < 3;
+	return (year + (year / 4) - (year / 100) + (year / 400) + t[month - 1] + day) % 7;
+}
+
+
+/* This is a helper function which just transforms the timestamp to a particular timezone. */
+/* This function returns a datum containing instance of timestamp and not timestamptz. */
+static Datum
+GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
+								 timezoneToApply)
+{
+	/* Timezone is utc offset need to make calculations in epoch */
+	if (timezoneToApply.isUtcOffset)
+	{
+		/* changing the sign as original input is in UTC and +04:30 means we need to subtract -04:30 epochms to get utc timestamp */
+		float8 offsetMsFloat = (float8) timezoneToApply.offsetInMs;
+		float8 secondsAdjust = 0 - (offsetMsFloat / MILLISECONDS_IN_SECOND);
+		Datum interval = GetIntervalFromDatePart(0, 0, 0, 0, 0, 0, secondsAdjust);
+		return OidFunctionCall2(PostgresAddIntervalToTimestampFunctionId(),
+								timestamp, interval);
+	}
+
+	/* Adjusting to timezone specified for olson. */
+	return OidFunctionCall2(PostgresTimestampToZoneWithoutTzFunctionId(),
+							CStringGetTextDatum(timezoneToApply.id), timestamp);
+}
+
+
+/* A utility function to check if the struct DollarDateFromParts has constant values. */
+/* This helps us optimize the flow */
+static inline bool
+IsDollarDatePartsInputConstant(DollarDateFromParts *datePart)
+{
+	if (!IsAggregationExpressionConstant(&datePart->hour) ||
+		!IsAggregationExpressionConstant(&datePart->minute) ||
+		!IsAggregationExpressionConstant(&datePart->second) ||
+		!IsAggregationExpressionConstant(&datePart->millisecond) ||
+		!IsAggregationExpressionConstant(&datePart->timezone))
+	{
+		return false;
+	}
+
+	/* If datePart uses ISO week dates, check ISO week components */
+	if (datePart->isISOWeekDate)
+	{
+		return IsAggregationExpressionConstant(&datePart->isoWeekYear) &&
+			   IsAggregationExpressionConstant(&datePart->isoWeek) &&
+			   IsAggregationExpressionConstant(&datePart->isoDayOfWeek);
+	}
+
+	/* Otherwise, check year, month, day, and minute components */
+	return IsAggregationExpressionConstant(&datePart->year) &&
+		   IsAggregationExpressionConstant(&datePart->month) &&
+		   IsAggregationExpressionConstant(&datePart->day);
+}
+
+
+/* A function to check if any input part is null. */
+/* In case of any null input we should not process any further and return null as output. */
+static inline bool
+IsInputForDatePartNull(DollarDateFromPartsBsonValue *dateFromPartsValue, bool
+					   isIsoWeekDate)
+{
+	if (IsExpressionResultNullOrUndefined(&dateFromPartsValue->hour) ||
+		IsExpressionResultNullOrUndefined(&dateFromPartsValue->minute) ||
+		IsExpressionResultNullOrUndefined(&dateFromPartsValue->second) ||
+		IsExpressionResultNullOrUndefined(&dateFromPartsValue->millisecond) ||
+		IsExpressionResultNullOrUndefined(&dateFromPartsValue->timezone))
+	{
+		return true;
+	}
+
+	/* Check based on whether the date uses ISO week dates */
+	if (isIsoWeekDate)
+	{
+		return IsExpressionResultNullOrUndefined(&dateFromPartsValue->isoWeekYear) ||
+			   IsExpressionResultNullOrUndefined(&dateFromPartsValue->isoWeek) ||
+			   IsExpressionResultNullOrUndefined(&dateFromPartsValue->isoDayOfWeek);
+	}
+
+	/* Check for null or undefined in standard date parts */
+	return IsExpressionResultNullOrUndefined(&dateFromPartsValue->year) ||
+		   IsExpressionResultNullOrUndefined(&dateFromPartsValue->month) ||
+		   IsExpressionResultNullOrUndefined(&dateFromPartsValue->day);
+}
+
+
+/* A function which takes in the input argument of format $dateFromParts: {input document arg} */
+/* It extracts the required fields from the document. */
+static void
+ParseInputForDateFromParts(const bson_value_t *argument, bson_value_t *year,
+						   bson_value_t *isoWeekYear, bson_value_t *month,
+						   bson_value_t *isoWeek,
+						   bson_value_t *isoDayOfWeek, bson_value_t *day,
+						   bson_value_t *hour, bson_value_t *minute,
+						   bson_value_t *second, bson_value_t *millisecond,
+						   bson_value_t *timezone, bool *isIsoWeekDate)
+{
+	*isIsoWeekDate = false;
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "year") == 0)
+		{
+			*year = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "isoWeekYear") == 0)
+		{
+			*isoWeekYear = *bson_iter_value(&docIter);
+			*isIsoWeekDate = true;
+		}
+		else if (strcmp(key, "month") == 0)
+		{
+			*month = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "isoWeek") == 0)
+		{
+			*isoWeek = *bson_iter_value(&docIter);
+			*isIsoWeekDate = true;
+		}
+		else if (strcmp(key, "day") == 0)
+		{
+			*day = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "isoDayOfWeek") == 0)
+		{
+			*isoDayOfWeek = *bson_iter_value(&docIter);
+			*isIsoWeekDate = true;
+		}
+		else if (strcmp(key, "hour") == 0)
+		{
+			*hour = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "minute") == 0)
+		{
+			*minute = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "second") == 0)
+		{
+			*second = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "millisecond") == 0)
+		{
+			*millisecond = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "timezone") == 0)
+		{
+			*timezone = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation40518), errmsg(
+								"Unrecognized argument to $dateFromParts: %s", key),
+							errhint(
+								"Unrecognized argument to $dateFromParts, unexpected key")));
+		}
+	}
+
+	/* Both the isodate part and normal date part present */
+	if (*isIsoWeekDate && year->value_type != BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation40489), errmsg(
+							"$dateFromParts does not allow mixing natural dates with ISO dates")));
+	}
+
+	/* In case of ISO date normal date part should not be present */
+	if (*isIsoWeekDate && (month->value_type != BSON_TYPE_EOD || day->value_type !=
+						   BSON_TYPE_EOD))
+	{
+		ereport(ERROR, (errcode(MongoLocation40525), errmsg(
+							"$dateFromParts does not allow mixing natural dates with ISO dates")));
+	}
+
+	/* Either year or isoWeekYear is a must given it's type is iso format or non-iso format */
+	if ((!(*isIsoWeekDate) && year->value_type == BSON_TYPE_EOD) ||
+		(*isIsoWeekDate && isoWeekYear->value_type == BSON_TYPE_EOD))
+	{
+		ereport(ERROR, (errcode(MongoLocation40516), errmsg(
+							"$dateFromParts requires either 'year' or 'isoWeekYear' to be present")));
+	}
+
+	/* Set default values if not present */
+	if (!(*isIsoWeekDate) && month->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(month, BSON_TYPE_INT64, 1);
+	}
+	if (!(*isIsoWeekDate) && day->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(day, BSON_TYPE_INT64, 1);
+	}
+
+	if (*isIsoWeekDate && isoDayOfWeek->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(isoDayOfWeek, BSON_TYPE_INT64, 1);
+	}
+	if (*isIsoWeekDate && isoWeek->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(isoWeek, BSON_TYPE_INT64, 1);
+	}
+
+	if (hour->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(hour, BSON_TYPE_INT64, 0);
+	}
+	if (minute->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(minute, BSON_TYPE_INT64, 0);
+	}
+	if (second->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(second, BSON_TYPE_INT64, 0);
+	}
+	if (millisecond->value_type == BSON_TYPE_EOD)
+	{
+		SetDefaultValueForDatePart(millisecond, BSON_TYPE_INT64, 0);
+	}
+}
+
+
+/* This function takes is all the date parts and verifies the input type as per the expected behaviour. */
+static void
+ValidateInputForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue, bool
+							  isIsoWeekDate)
+{
+	/* Validating Input type */
+	if (isIsoWeekDate)
+	{
+		ValidateDatePart(DatePart_IsoWeekYear, &dateFromPartsValue->isoWeekYear,
+						 "isoWeekYear");
+		ValidateDatePart(DatePart_IsoWeek, &dateFromPartsValue->isoWeek, "isoWeek");
+		ValidateDatePart(DatePart_IsoDayOfWeek, &dateFromPartsValue->isoDayOfWeek,
+						 "isoDayOfWeek");
+	}
+	else
+	{
+		ValidateDatePart(DatePart_Year, &dateFromPartsValue->year, "year");
+		ValidateDatePart(DatePart_Month, &dateFromPartsValue->month, "month");
+		ValidateDatePart(DatePart_DayOfMonth, &dateFromPartsValue->day, "day");
+	}
+
+	ValidateDatePart(DatePart_Hour, &dateFromPartsValue->hour, "hour");
+	ValidateDatePart(DatePart_Minute, &dateFromPartsValue->minute, "minute");
+	ValidateDatePart(DatePart_Second, &dateFromPartsValue->second, "second");
+	ValidateDatePart(DatePart_Millisecond, &dateFromPartsValue->millisecond,
+					 "millisecond");
+
+	if (dateFromPartsValue->timezone.value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoLocation40517), errmsg(
+							"timezone must evaluate to a string, found %s", BsonTypeName(
+								dateFromPartsValue->timezone.value_type)),
+						errhint(
+							"timezone must evaluate to a string, found %s", BsonTypeName(
+								dateFromPartsValue->timezone.value_type)
+							)));
+	}
+}
+
+
+/* A function which based on the input date part type validates the input range and input type */
+static void
+ValidateDatePart(DatePart datePart, bson_value_t *inputValue, char *inputKey)
+{
+	/* Validate input type */
+	bool checkFixedInteger = false;
+	if (!BsonValueIsNumber(inputValue) || !IsBsonValueFixedInteger(inputValue) ||
+		(datePart == DatePart_Millisecond && !IsBsonValue64BitInteger(inputValue,
+																	  checkFixedInteger)))
+	{
+		ereport(ERROR, (errcode(MongoLocation40515), errmsg(
+							"'%s' must evaluate to an integer, found %s with value :%s",
+							inputKey, BsonTypeName(inputValue->value_type),
+							BsonValueToJsonForLogging(inputValue)),
+						errhint(
+							"'%s' must evaluate to an integer, found %s", inputKey,
+							BsonTypeName(inputValue->value_type))));
+	}
+	int64 datePartValue = BsonValueAsInt64(inputValue);
+
+	/* Validate Range */
+	switch (datePart)
+	{
+		case DatePart_Year:
+		case DatePart_IsoWeekYear:
+		{
+			if (datePartValue < 1 || datePartValue > 9999)
+			{
+				ereport(ERROR, (errcode(datePart == DatePart_Year ? MongoLocation40523 :
+										MongoLocation31095), errmsg(
+									"'%s' must evaluate to an integer in the range 1 to 9999, found %s",
+									inputKey, BsonValueToJsonForLogging(inputValue)),
+								errhint(
+									"'%s' must evaluate to an integer in the range 1 to 9999, found %ld",
+									inputKey, datePartValue)));
+			}
+
+			break;
+		}
+
+		case DatePart_Month:
+		case DatePart_DayOfMonth:
+		case DatePart_IsoWeek:
+		case DatePart_IsoDayOfWeek:
+		case DatePart_Hour:
+		case DatePart_Minute:
+		{
+			if (datePartValue < -32768 || datePartValue > 32767)
+			{
+				ereport(ERROR, (errcode(MongoLocation31034), errmsg(
+									"'%s' must evaluate to a value in the range [-32768, 32767]; value %s is not in range",
+									inputKey, BsonValueToJsonForLogging(inputValue)),
+								errhint(
+									"'%s' must evaluate to a value in the range [-32768, 32767]; value %ld is not in range",
+									inputKey, datePartValue)));
+			}
+			break;
+		}
+
+		case DatePart_Second:
+		case DatePart_Millisecond:
+		{
+			/* as per the tests we should throw error for bit values >= 2^54 */
+			if (datePartValue >= 18014398509481984 || datePartValue <= -18014398509481984)
+			{
+				ereport(ERROR, (errcode(MongoDurationOverflow), errmsg(
+									"Overflow casting from a lower-precision duration to a higher-precision duration"
+									)));
+			}
+			break;
+		}
+
+		default:
+		{
+			break;
+		}
+	}
+
+	/* Convert all the values to same base post validation. */
+	inputValue->value_type = BSON_TYPE_INT64;
+	inputValue->value.v_int64 = datePartValue;
+}
+
+
+/* A common helper function to set default value for date part. */
+static inline void
+SetDefaultValueForDatePart(bson_value_t *datePart, bson_type_t bsonType, int64
+						   defaultValue)
+{
+	datePart->value.v_int64 = defaultValue;
+	datePart->value_type = bsonType;
+}
+
+
+/*
+ * This function sets the result value after processing input for non-ISO date parts.
+ */
+static void
+SetResultForDateFromParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
+						  ExtensionTimezone
+						  timezoneToApply, bson_value_t *result)
+{
+	Datum timestampStart = GetPgTimestampFromUnixEpoch(DATE_FROM_PART_START_DATE_MS);
+	float8 millis = (float8) dateFromPartsValue->millisecond.value.v_int64;
+	float8 secondsAdjustedWithMillis = dateFromPartsValue->second.value.v_int64 +
+									   (millis / MILLISECONDS_IN_SECOND);
+
+	Datum interval = GetIntervalFromDatePart(dateFromPartsValue->year.value.v_int64 - 1,
+											 dateFromPartsValue->month.value.v_int64 - 1,
+											 0,
+											 dateFromPartsValue->day.value.v_int64 - 1,
+											 dateFromPartsValue->hour.value.v_int64,
+											 dateFromPartsValue->minute.value.v_int64,
+											 secondsAdjustedWithMillis);
+
+	Datum timestampPlusInterval = OidFunctionCall2(
+		PostgresAddIntervalToTimestampFunctionId(),
+		timestampStart, interval);
+
+	Datum resultTimeWithZone;
+
+	/* Optimization as all calculations are in UTC by default so, no need to change timezone. */
+	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, defaultTimezone) == 0)
+	{
+		resultTimeWithZone = timestampPlusInterval;
+	}
+	else
+	{
+		resultTimeWithZone = GetPgTimestampAdjustedToTimezone(timestampPlusInterval,
+															  timezoneToApply);
+	}
+
+	Datum resultEpoch = OidFunctionCall2(PostgresDatePartFunctionId(),
+										 CStringGetTextDatum("epoch"),
+										 resultTimeWithZone);
+
+	result->value.v_datetime = (int64) (DatumGetFloat8(resultEpoch) * 1000);
+}
+
+
+/*
+ * This function sets the result value after processing input for isoDateParts
+ */
+static void
+SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromPartsValue,
+							 ExtensionTimezone timezoneToApply,
+							 bson_value_t *result)
+{
+	int64 isoYearValue = dateFromPartsValue->isoWeekYear.value.v_int64;
+	int64 isoWeekDaysValue = dateFromPartsValue->isoDayOfWeek.value.v_int64;
+	int64 isoWeekValue = dateFromPartsValue->isoWeek.value.v_int64;
+
+	/* This is a special handling for 0 as in this case as  $dateFromPartsValue carries or subtracts the difference from other date parts to calculate the date. */
+	/* In this case we have to subtract year by 1 and based on what year has isoWeek we need to set that value it could be 52 or 53. */
+	if (isoWeekValue == 0)
+	{
+		isoYearValue -= 1;
+		isoWeekValue = GetIsoWeeksForYear(isoYearValue);
+	}
+
+	char buffer[25] = { 0 };
+	sprintf(buffer, "%ld-%ld-%ld", isoYearValue,
+			isoWeekValue,
+			isoWeekDaysValue);
+	Datum toDateResult = OidFunctionCall2(PostgresToDateFunctionId(),
+										  CStringGetTextDatum(buffer),
+										  CStringGetTextDatum(isoDateFormat));
+	int64 daysAdjust = 0;
+	if (isoWeekDaysValue > 7)
+	{
+		daysAdjust += isoWeekDaysValue - 7;
+	}
+	else if (isoWeekDaysValue <= 0)
+	{
+		daysAdjust -= -isoWeekDaysValue + 7;
+	}
+
+	float8 secondsAdjustedWithMillis = dateFromPartsValue->second.value.v_int64 +
+									   ((dateFromPartsValue->millisecond.value.v_int64 *
+										 1.0) / MILLISECONDS_IN_SECOND);
+
+	Datum interval = GetIntervalFromDatePart(0,
+											 0,
+											 0,
+											 daysAdjust,
+											 dateFromPartsValue->hour.value.v_int64,
+											 dateFromPartsValue->minute.value.v_int64,
+											 secondsAdjustedWithMillis);
+
+	Datum datePlusInterval = OidFunctionCall2(PostgresAddIntervalToDateFunctionId(),
+											  toDateResult, interval);
+
+	Datum resultTimeWithZone;
+
+	/* Optimization as all calculations are in UTC by default so, no need to change timezone. */
+	if (!timezoneToApply.isUtcOffset && strcmp(timezoneToApply.id, defaultTimezone) == 0)
+	{
+		resultTimeWithZone = datePlusInterval;
+	}
+	else
+	{
+		resultTimeWithZone = GetPgTimestampAdjustedToTimezone(datePlusInterval,
+															  timezoneToApply);
+	}
+
+	Datum resultEpoch = OidFunctionCall2(PostgresDatePartFunctionId(),
+										 CStringGetTextDatum("epoch"),
+										 resultTimeWithZone);
+
+	result->value.v_datetime = (int64) (DatumGetFloat8(resultEpoch) * 1000);
 }

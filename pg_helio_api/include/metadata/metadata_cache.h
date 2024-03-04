@@ -131,6 +131,11 @@ Oid PostgresDrandomFunctionId(void);
 Oid PostgresToTimestamptzFunctionId(void);
 Oid PostgresDatePartFunctionId(void);
 Oid PostgresTimestampToZoneFunctionId(void);
+Oid PostgresMakeIntervalFunctionId(void);
+Oid PostgresAddIntervalToTimestampFunctionId(void);
+Oid PostgresAddIntervalToDateFunctionId(void);
+Oid PostgresTimestampToZoneWithoutTzFunctionId(void);
+Oid PostgresToDateFunctionId(void);
 
 /* Index AM */
 Oid RumIndexAmId(void);
