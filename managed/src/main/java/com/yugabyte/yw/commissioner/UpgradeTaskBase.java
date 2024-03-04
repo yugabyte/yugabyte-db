@@ -56,13 +56,13 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   private List<ServerType> canBeIgnoredServerTypes = Arrays.asList(ServerType.CONTROLLER);
 
-  protected static final UpgradeContext DEFAULT_CONTEXT =
+  public static final UpgradeContext DEFAULT_CONTEXT =
       UpgradeContext.builder()
           .reconfigureMaster(false)
           .runBeforeStopping(false)
           .processInactiveMaster(false)
           .build();
-  protected static final UpgradeContext RUN_BEFORE_STOPPING =
+  public static final UpgradeContext RUN_BEFORE_STOPPING =
       UpgradeContext.builder()
           .reconfigureMaster(false)
           .runBeforeStopping(true)
