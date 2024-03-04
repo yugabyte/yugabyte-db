@@ -2,15 +2,15 @@ Run build first.
 
 Run individual tests like
 
-    pg15_tests/test_D29226.sh fastdebug --gcc11
+    pg15_tests/test_D29226.sh
 
 Run a test n times like
 
-    pg15_tests/run_test_n_times.sh pg15_tests/test_D29226.sh 10 debug --clang15
+    pg15_tests/run_test_n_times.sh pg15_tests/test_D29226.sh 10
 
 Run all tests once like
 
-    pg15_tests/run_tests.sh fastdebug --clang16
+    pg15_tests/run_tests.sh
 
 run_tests.sh can alternatively take test specs as input, where a test spec is
 of the form <program><tab><descriptor>[<tab><flaky>]:
@@ -37,7 +37,7 @@ Make sure new tests pass 10x in a row to avoid introducing flaky tests, and
 make sure all tests pass (at least once) to avoid regressions.  Note: it may be
 more convenient to use jenkins to cover passing and flaky tests:
 
-    pg15_tests/get_shell_test_specs.sh | pg15_tests/run_tests.sh fastdebug --clang16
+    pg15_tests/get_shell_test_specs.sh | pg15_tests/run_tests.sh
     # ...and trigger jenkins
 
 In the later stages of pg15, there will be no more need for these tests because

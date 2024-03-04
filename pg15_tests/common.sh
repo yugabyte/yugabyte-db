@@ -8,6 +8,8 @@ cd "$(git rev-parse --show-toplevel)"
 
 _build_cmd=(
   ./yb_build.sh
+  "$(basename "$(readlink build/latest)" | cut -d - -f 1)" # build type
+  --"$(basename "$(readlink build/latest)" | cut -d - -f 2)" # build compiler
   "$@"
 )
 
