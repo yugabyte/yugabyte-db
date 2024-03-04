@@ -464,10 +464,10 @@ public class NodeUniverseManager extends DevopsBase {
         String sshPort = provider.getDetails().sshPort.toString();
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (context.getSshPort() == null
+        if (StringUtils.isBlank(context.getSshPort())
             && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           sshPort = "22";
-        } else {
+        } else if (!StringUtils.isNotBlank(context.getSshPort())) {
           sshPort = context.getSshPort();
         }
         commandArgs.add("--port");
