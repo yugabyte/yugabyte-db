@@ -18,7 +18,7 @@ ysql_dump is a utility for backing up a YugabyteDB database into a plain-text, S
 
 ysql_dump only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [ysql_dumpall](../ysql-dumpall/).
 
-Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh-meta-commands/#-i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
+Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh-meta-commands/#i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
 While running ysql_dump, you should examine the output for any warnings (printed on standard error).
 
@@ -120,7 +120,7 @@ Dump only the object definitions (schema), not data.
 
 This option is the inverse of [`-a|--data-only`](#a-data-only).
 
-(Do not confuse this with the [`-n|--schema`](#n-schema-schema-schema) option, which uses the word “schema” in a different meaning.)
+(Do not confuse this with the [`-n|--schema`](#n-schema-schema-schema) option, which uses the word "schema" in a different meaning.)
 
 To exclude table data for only a subset of tables in the database, see [`--exclude-table-data`](#exclude-table-data).
 
