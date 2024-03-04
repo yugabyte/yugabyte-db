@@ -569,6 +569,31 @@ message SysSnapshotEntryPB {
   optional int32 retention_duration_hours = 8;
 }
 
+message SysCloneStatePB {
+  // State for clone operation.
+  enum State {
+    CREATING = 1;
+    RESTORING = 2;
+    RESTORED = 3;
+  }
+
+  message TabletData {
+    optional string source_tablet_id = 1;
+    optional string target_tablet_id = 2;
+  }
+
+  repeated TabletData tablet_data = 1;
+  optional bytes source_snapshot_id = 2;
+  optional bytes target_snapshot_id = 3;
+  optional string source_namespace_id = 4;
+  optional uint32 clone_request_seq_no = 5;
+  optional fixed64 restore_time = 6;
+
+  // Aggregate state of the clone operation. Valid transitions:
+  // CREATING --> RESTORING --> RESTORED
+  optional State aggregate_state = 7;
+}
+
 message SchemaVersionMappingPB {
   required uint32 producer_schema_version = 1;
   required uint32 consumer_schema_version = 2;

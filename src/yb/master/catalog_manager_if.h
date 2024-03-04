@@ -16,8 +16,8 @@
 #include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
-
 #include "yb/common/schema.h"
+
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -127,7 +127,6 @@ class CatalogManagerIf {
       uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
-  virtual bool catalog_version_table_in_perdb_mode() const = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
@@ -299,7 +298,7 @@ class CatalogManagerIf {
 
   virtual intptr_t tablet_locations_version() const = 0;
 
-  virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;

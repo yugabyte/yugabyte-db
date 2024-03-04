@@ -1324,6 +1324,32 @@ TEST_F(PgCatalogVersionTest, SimulateLaggingPGInUpgradeFinalization) {
   ASSERT_STR_CONTAINS(status.ToString(), msg);
 }
 
+class PgCatalogVersionMasterLeadershipChange : public PgCatalogVersionTest {
+ protected:
+  int GetNumMasters() const override { return 3; }
+};
+
+TEST_F_EX(PgCatalogVersionTest, ChangeMasterLeadership,
+          PgCatalogVersionMasterLeadershipChange) {
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  WaitForCatalogVersionToPropagate();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE t(id INT)"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER TABLE t ADD COLUMN c2 TEXT"));
+  LOG(INFO) << "Disable next master leader to set catalog version table in perdb mode";
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_disable_set_catalog_version_table_in_perdb_mode", "true"));
+  auto leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "Failing over master leader.";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  auto new_leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "The new master leader is at " << leader_master_index;
+  CHECK_NE(leader_master_index, new_leader_master_index);
+  ASSERT_OK(conn_yugabyte.Execute("CREATE INDEX idx ON t(id)"));
+}
+
 TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
 
   const std::vector<std::vector<string>> ddlLists = {

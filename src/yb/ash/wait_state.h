@@ -28,6 +28,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/uuid.h"
 
+DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(TEST_export_ash_uuids_as_hex_strings);
 
@@ -317,8 +318,7 @@ struct AshAuxInfo {
 
 class WaitStateInfo {
  public:
-  WaitStateInfo() {}
-  explicit WaitStateInfo(AshMetadata&& meta);
+  WaitStateInfo();
   virtual ~WaitStateInfo() = default;
 
   void set_code(WaitStateCode c);
@@ -384,7 +384,12 @@ class WaitStateInfo {
   void TEST_SleepForTests(uint32_t sleep_time_ms);
   static bool TEST_EnteredSleep();
 
-  static WaitStateInfoPtr CreateIfAshIsEnabled();
+  template <class T>
+  static std::shared_ptr<T> CreateIfAshIsEnabled() {
+    return FLAGS_ysql_yb_enable_ash
+              ? std::make_shared<T>()
+              : nullptr;
+  }
 
   virtual void VTrace(int level, GStringPiece data) {
     VTraceTo(nullptr, level, data);

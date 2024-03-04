@@ -493,7 +493,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
     YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
-    const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set)
+    const YBCPgAshConfig* ash_config)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -515,7 +515,7 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id, ash_metadata, is_ash_metadata_set));
+      tserver_shared_object_, session_id, ash_config));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -1928,7 +1928,26 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
 }
 
 Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
-  return tserver_shared_object_->catalog_version_table_in_perdb_mode();
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  if (!tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value()) {
+    // If this tserver has just restarted, it may not have received any
+    // heartbeat response from yb-master that has set a value in
+    // catalog_version_table_in_perdb_mode_ in the shared memory object
+    // yet. Let's wait with 500ms interval until a value is set or until
+    // a 10-second timeout.
+    auto status = LoggedWaitFor(
+        [this]() -> Result<bool> {
+          return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
+        },
+        10s /* timeout */,
+        "catalog_version_table_in_perdb_mode is not set shared memory",
+        500ms /* initial_delay */,
+        1.0 /* delay_multiplier */);
+    RETURN_NOT_OK_PREPEND(
+        status,
+        "Failed to find out pg_yb_catalog_version mode");
+  }
+  return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
@@ -2246,23 +2265,18 @@ Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationS
   return pg_session_->GetReplicationSlotStatus(slot_name);
 }
 
-Result<cdc::GetTabletListToPollForCDCResponsePB> PgApiImpl::GetTabletListToPollForCDC(
-    const std::string& stream_id, const PgObjectId& table_id) {
-  return pg_session_->pg_client().GetTabletListToPollForCDC(table_id, stream_id);
+Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
 }
 
-Result<cdc::SetCDCCheckpointResponsePB> PgApiImpl::SetCDCTabletCheckpoint(
-    const std::string& stream_id, const std::string& tablet_id,
-    const YBCPgCDCSDKCheckpoint *checkpoint,
-    uint64_t safe_time, bool is_initial_checkpoint) {
-  return pg_session_->pg_client().SetCDCTabletCheckpoint(
-      stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint);
+Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
+  return pg_session_->pg_client().DestroyVirtualWALForCDC();
 }
 
-Result<cdc::GetChangesResponsePB> PgApiImpl::GetCDCChanges(
-    const std::string& stream_id, const std::string& tablet_id,
-    const YBCPgCDCSDKCheckpoint *checkpoint) {
-  return pg_session_->pg_client().GetCDCChanges(stream_id, tablet_id, checkpoint);
+Result<cdc::GetConsistentChangesResponsePB> PgApiImpl::GetConsistentChangesForCDC(
+    const std::string &stream_id) {
+  return pg_session_->pg_client().GetConsistentChangesForCDC(stream_id);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,

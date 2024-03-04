@@ -871,7 +871,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                                 host_port_user["user"],
                                                 host_port_user["port"]))
 
-    def get_device_names(self, args, host_info):
+    def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
 
     def update_ansible_vars(self, args):
@@ -1058,13 +1058,19 @@ class UpdateMountedDisksMethod(AbstractInstancesMethod):
 
     def update_ansible_vars_with_args(self, args):
         super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def get_device_names(args, host_info=None):
+        self.cloud.get_device_names(args)
 
     def callback(self, args):
         # Need to verify that all disks are mounted by UUUID
         host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
+                args.search_pattern))
         ansible = self.cloud.setup_ansible(args)
         self.update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
         logging.debug(pprint(self.extra_vars))

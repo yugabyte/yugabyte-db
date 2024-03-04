@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
@@ -131,6 +132,8 @@ public class Util {
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
+
+  public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
@@ -1082,5 +1085,23 @@ public class Util {
     } catch (MalformedURLException e) {
       throw new RuntimeException("Malformed URL: " + urlString);
     }
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (provider.getUuid() != null) {
+      List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+    }
+
+    return imageBundleUUID;
   }
 }

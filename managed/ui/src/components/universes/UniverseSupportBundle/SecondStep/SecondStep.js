@@ -6,6 +6,8 @@ import { useSelector } from 'react-redux';
 import { find } from 'lodash';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
 import { UniverseState } from '../../helpers/universeHelpers';
+import { YBInput, YBLabel } from '../../../../redesign/components';
+import { Box, Typography } from '@material-ui/core';
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
@@ -17,6 +19,7 @@ const filterTypes = [
 export const selectionOptions = [
   { label: 'All', value: 'All' },
   { label: 'Application logs', value: 'ApplicationLogs' },
+  { label: 'YBA Metadata', value: 'YbaMetadata' },
   { label: 'Universe logs', value: 'UniverseLogs' },
   { label: 'Output files', value: 'OutputFiles' },
   { label: 'Error files', value: 'ErrorFiles' },
@@ -24,11 +27,17 @@ export const selectionOptions = [
   { label: 'Instance files', value: 'Instance' },
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
-  { label: 'Node agent logs', value: 'NodeAgent' }
+  { label: 'Node agent logs', value: 'NodeAgent' },
+  { label: 'Core Files', value: 'CoreFiles' }
 ];
 
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
 const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo' };
+
+const CoreFilesProps = {
+  maxNumRecentCores: 1,
+  maxCoreFileSize: 25000000000
+};
 
 const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
@@ -38,9 +47,11 @@ export const updateOptions = (
   dateType,
   selectionOptionsValue,
   setIsDateTypeCustom,
+  coreFileParams,
   startDate = new Date(),
   endDate = new Date()
 ) => {
+  let payloadObj = {};
   if (dateType === 'custom') {
     setIsDateTypeCustom(true);
     return;
@@ -57,11 +68,15 @@ export const updateOptions = (
       components.push(selectionOptions[index].value);
     }
   });
-  return {
+  payloadObj = {
     startDate: convertToISODateString(startDate),
     endDate: convertToISODateString(endDate),
     components: components
   };
+  if (components.find((c) => c === 'CoreFiles')) {
+    payloadObj = { ...payloadObj, ...coreFileParams };
+  }
+  return payloadObj;
 };
 
 export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) => {
@@ -69,6 +84,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
   );
+  const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false);
   const refs = useRef([]);
 
@@ -84,7 +100,8 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
     const changedOptions = updateOptions(
       selectedFilterType,
       selectionOptionsValue,
-      setIsDateTypeCustom
+      setIsDateTypeCustom,
+      coreFileParams
     );
     onOptionsChange(changedOptions);
   }
@@ -95,10 +112,14 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
     const changedOptions = updateOptions(
       selectedFilterType,
       selectionOptionsValue,
-      setIsDateTypeCustom
+      setIsDateTypeCustom,
+      coreFileParams
     );
     onOptionsChange(changedOptions);
   }
+
+  const isCoreFileSelected =
+    selectionOptionsValue[selectionOptions.findIndex((e) => e.value === 'CoreFiles')];
 
   return (
     <div className="universe-support-bundle-step-two">
@@ -121,6 +142,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
                 'customWithValue',
                 selectionOptionsValue,
                 setIsDateTypeCustom,
+                coreFileParams,
                 startEnd.start,
                 startEnd.end
               );
@@ -149,7 +171,8 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
                   const changedOptions = updateOptions(
                     filterType.value,
                     selectionOptionsValue,
-                    setIsDateTypeCustom
+                    setIsDateTypeCustom,
+                    coreFileParams
                   );
                   onOptionsChange(changedOptions);
                 }}
@@ -200,7 +223,8 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
                 const changedOptions = updateOptions(
                   selectedFilterType,
                   [...selectionOptionsValue],
-                  setIsDateTypeCustom
+                  setIsDateTypeCustom,
+                  coreFileParams
                 );
                 onOptionsChange(changedOptions);
               }}
@@ -211,6 +235,55 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
           </div>
         ))}
       </div>
+      {isCoreFileSelected && (
+        <Box className="core-file-container">
+          <Typography className="title">Override Core files properties (Optional)</Typography>
+          <Box display="flex" mt={1} flexDirection={'row'} width="100%">
+            <YBLabel width="225px">Maximum number of recent core files</YBLabel>
+            <YBInput
+              onChange={(e) => {
+                const updatedObj = {
+                  maxCoreFileSize: coreFileParams.maxCoreFileSize,
+                  maxNumRecentCores: e.target.value < 1 ? 1 : e.target.value
+                };
+                setCoreFileParams({ ...updatedObj });
+                const changedOptions = updateOptions(
+                  selectedFilterType,
+                  [...selectionOptionsValue],
+                  setIsDateTypeCustom,
+                  { ...updatedObj }
+                );
+                onOptionsChange(changedOptions);
+              }}
+              value={coreFileParams.maxNumRecentCores}
+              type="number"
+              style={{ width: '250px' }}
+            />
+          </Box>
+          <Box display="flex" mt={1} flexDirection={'row'} width="100%">
+            <YBLabel width="225px">Maximum core file size (in bytes)</YBLabel>
+            <YBInput
+              onChange={(e) => {
+                const updatedObj = {
+                  maxCoreFileSize: e.target.value < 1 ? 1 : e.target.value,
+                  maxNumRecentCores: coreFileParams.maxNumRecentCores
+                };
+                setCoreFileParams({ ...updatedObj });
+                const changedOptions = updateOptions(
+                  selectedFilterType,
+                  [...selectionOptionsValue],
+                  setIsDateTypeCustom,
+                  { ...updatedObj }
+                );
+                onOptionsChange(changedOptions);
+              }}
+              value={coreFileParams.maxCoreFileSize}
+              type="number"
+              style={{ width: '250px' }}
+            />
+          </Box>
+        </Box>
+      )}
     </div>
   );
 };

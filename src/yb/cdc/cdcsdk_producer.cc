@@ -589,7 +589,8 @@ void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info
 void FillDDLInfo(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const SchemaDetails current_schema_details,
-    const TableName table_name,
+    const TableName& table_name,
+    const TableId& table_id,
     GetChangesResponsePB* resp) {
   const SchemaVersion& schema_version = current_schema_details.schema_version;
   SchemaPB schema_pb;
@@ -598,6 +599,7 @@ void FillDDLInfo(
   RowMessage* row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_DDL);
   row_message->set_table(table_name);
+  row_message->set_table_id(table_id);
   for (const auto& column : schema_pb.columns()) {
     CDCSDKColumnInfoPB* column_info;
     column_info = row_message->mutable_schema()->add_column_info();
@@ -669,7 +671,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     }
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    FillDDLInfo(tablet_peer, schema_details, table_name, resp);
+    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp);
 
     return schema_details;
   }
@@ -713,6 +715,7 @@ Status PopulateCDCSDKIntentRecord(
   }
 
   std::string table_name = tablet->metadata()->table_name();
+  auto table_id = tablet->metadata()->table_id();
   Slice prev_key;
   CDCSDKProtoRecordPB proto_record;
   RowMessage* row_message = proto_record.mutable_row_message();
@@ -831,6 +834,7 @@ Status PopulateCDCSDKIntentRecord(
         schema = *schema_details.schema;
         schema_version = schema_details.schema_version;
         table_name = table_info->table_name;
+        table_id = table_info->table_id;
         schema_packing_storage = SchemaPackingStorage(tablet->table_type());
         schema_packing_storage.AddSchema(schema_version, schema);
       }
@@ -947,6 +951,7 @@ Status PopulateCDCSDKIntentRecord(
       }
     }
     row_message->set_table(table_name);
+    row_message->set_table_id(table_id);
 
     // Get the next intent to see if it should go into a new record.
     bool is_last_intent = (i == intents.size() -1);
@@ -1016,6 +1021,7 @@ Status PopulateCDCSDKIntentRecord(
       row_message->IsInitialized() && row_message->op() == RowMessage_Op_UPDATE &&
       end_of_transaction) {
     row_message->set_table(table_name);
+    row_message->set_table_id(table_id);
     if (metadata.GetRecordType() != cdc::CDCRecordType::CHANGE) {
       VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
               << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -1106,6 +1112,7 @@ void FillCommitRecordForSingleShardTransaction(
 
     row_message->set_op(RowMessage_Op_COMMIT);
     row_message->set_table(table_name);
+    row_message->set_table_id(table_id);
     row_message->set_commit_time(commit_timestamp);
     // No need to add record_time to the Commit record since it does not have any intent associated
     // with it.
@@ -1155,7 +1162,8 @@ Status PopulateCDCSDKWriteRecord(
     schema_version = schema_details.schema_version;
   }
 
-  std::string table_name = tablet_ptr->metadata()->table_name();
+  auto table_name = tablet_ptr->metadata()->table_name();
+  auto table_id = tablet_ptr->metadata()->table_id();
   SchemaPackingStorage schema_packing_storage(tablet_ptr->table_type());
   schema_packing_storage.AddSchema(schema_version, schema);
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
@@ -1243,6 +1251,7 @@ Status PopulateCDCSDKWriteRecord(
       modified_columns.clear();
       row_message->set_pgschema_name(schema.SchemaName());
       row_message->set_table(table_name);
+      row_message->set_table_id(table_id);
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
 
@@ -1437,7 +1446,7 @@ Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
 
 Status PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
-    const Schema& schema) {
+    const TableId& table_id, const Schema& schema) {
   SCHECK(
       msg->has_change_metadata_request(), InvalidArgument,
       Format(
@@ -1449,6 +1458,7 @@ Status PopulateCDCSDKDDLRecord(
   row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_DDL);
   row_message->set_table(table_name);
+  row_message->set_table_id(table_id);
   row_message->set_commit_time(msg->hybrid_time());
 
   CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
@@ -1695,6 +1705,7 @@ Status PopulateCDCSDKSnapshotRecord(
     const qlexpr::QLTableRow* row,
     const Schema& schema,
     const TableName& table_name,
+    const TableId& table_id,
     ReadHybridTime time,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
@@ -1707,6 +1718,7 @@ Status PopulateCDCSDKSnapshotRecord(
   proto_record = resp->add_cdc_sdk_proto_records();
   row_message = proto_record->mutable_row_message();
   row_message->set_table(table_name);
+  row_message->set_table_id(table_id);
   row_message->set_op(RowMessage_Op_READ);
   row_message->set_pgschema_name(schema.SchemaName());
   row_message->set_commit_time(time.read.ToUint64());
@@ -2223,9 +2235,11 @@ Status HandleGetChangesForSnapshotRequest(
     RETURN_NOT_OK(tablet_ptr->SafeTime(tablet::RequireLease::kTrue, time.read, deadline));
     auto iter = VERIFY_RESULT(
         tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
+    auto table_id =
+        colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id;
     while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
       RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
-          resp, &row, *schema_details.schema, *table_name, time, enum_oid_label_map,
+          resp, &row, *schema_details.schema, *table_name, table_id, time, enum_oid_label_map,
           composite_atts_map, from_op_id, next_key, tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
       fetched++;
     }
@@ -2652,7 +2666,7 @@ Status GetChangesForCDCSDK(
                 !boost::ends_with(table_name, kTablegroupParentTableNameSuffix) &&
                 !boost::ends_with(table_name, kColocationParentTableNameSuffix)) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                  msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
+                  msg, resp->add_cdc_sdk_proto_records(), table_name, table_id, current_schema));
             }
 
             AcknowledgeStreamedMsg(

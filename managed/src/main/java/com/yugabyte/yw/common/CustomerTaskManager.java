@@ -500,6 +500,12 @@ public class CustomerTaskManager {
         }
         taskParams = nodeTaskParams;
         break;
+      case ReplaceNodeInUniverse:
+        nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
+        nodeName = oldTaskParams.get("nodeName").textValue();
+        nodeTaskParams.nodeName = nodeName;
+        taskParams = nodeTaskParams;
+        break;
       case BackupUniverse:
         // V1 Restore Task
         universeUUIDStr = oldTaskParams.get("universeUUID").textValue();

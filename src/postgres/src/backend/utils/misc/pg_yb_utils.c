@@ -857,10 +857,13 @@ YBInitPostgresBackend(
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
-		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
-					  &MyProc->yb_is_ash_metadata_set);
+		YBCPgAshConfig ash_config;
+		ash_config.metadata = &MyProc->yb_ash_metadata;
+		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
+		ash_config.yb_enable_ash = &yb_enable_ash;
+		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
-		if (YBEnableAsh())
+		if (yb_ash_enable_infra)
 			YbAshInstallHooks();
 
 		/*
@@ -880,7 +883,7 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
-		if (YBEnableAsh())
+		if (yb_ash_enable_infra)
 			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }

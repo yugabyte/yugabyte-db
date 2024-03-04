@@ -12,12 +12,18 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
-#include "yb/cdc/cdc_state_table.h"
 #include "yb/master/tasks_tracker.h"
+
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/tostring.h"
 
 namespace yb {

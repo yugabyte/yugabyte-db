@@ -1039,7 +1039,7 @@ PostmasterMain(int argc, char *argv[])
 		ApplyLauncherRegister();
 
 	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
 		YbAshRegister();
 
 	/*

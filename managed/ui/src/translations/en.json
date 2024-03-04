@@ -1605,7 +1605,8 @@
         "validationMsg": {
           "nameRequired": "Name is required",
           "globalYBImagenameRequired": "Machine Image ID is required",
-          "amiRequired": "Ami ID is Required"
+          "amiRequired": "Ami ID is Required",
+          "linuxVersionAlreadyExists": "Image bundle with same name exists"
         }
       },
       "upgradeModal": {

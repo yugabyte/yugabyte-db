@@ -14,6 +14,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -1136,6 +1138,35 @@ public class GFlagsUtil {
       trimData.put(key.trim(), value.trim());
     }
     return trimData;
+  }
+
+  public static PerProcessFlags trimFlags(PerProcessFlags perProcessFlags) {
+    if (perProcessFlags == null) {
+      return null;
+    }
+    if (perProcessFlags.value != null) {
+      Map<ServerType, Map<String, String>> trimData = new HashMap<>();
+      for (Map.Entry<ServerType, Map<String, String>> entry : perProcessFlags.value.entrySet()) {
+        trimData.put(entry.getKey(), trimFlags(entry.getValue()));
+      }
+      perProcessFlags.value = trimData;
+    }
+    return perProcessFlags;
+  }
+
+  public static SpecificGFlags trimFlags(SpecificGFlags specificGFlags) {
+    if (specificGFlags == null) {
+      return specificGFlags;
+    }
+    trimFlags(specificGFlags.getPerProcessFlags());
+    if (specificGFlags.getPerAZ() != null) {
+      Map<UUID, PerProcessFlags> trimData = new HashMap<>();
+      for (Map.Entry<UUID, PerProcessFlags> entry : specificGFlags.getPerAZ().entrySet()) {
+        trimData.put(entry.getKey(), trimFlags(entry.getValue()));
+      }
+      specificGFlags.setPerAZ(trimData);
+    }
+    return specificGFlags;
   }
 
   public static String mergeCSVs(String csv1, String csv2, boolean mergeKeyValues) {
