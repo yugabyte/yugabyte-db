@@ -1,5 +1,5 @@
-	org.yb.pgsql.TestPgBatchExecution
-	org.yb.pgsql.TestPgRegressTypesNumeric
+JAVA	org.yb.pgsql.TestPgBatchExecution
+JAVA	org.yb.pgsql.TestPgRegressTypesNumeric
 integration-tests_xcluster_ysql-test	XClusterYsqlTest.DmlOperationsBlockedOnStandbyCluster
 integration-tests_xcluster_ysql_index-test	XClusterYsqlIndexTest.FailedCreateIndex
 pgwrapper_pg_ddl_atomicity-test	PgDdlAtomicitySanityTest.TestChangedPkColOrder

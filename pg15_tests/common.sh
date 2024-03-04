@@ -25,31 +25,6 @@ test_result_dir=build/latest/pg15_tests
 # This assumes latest symlink is already present/correct.
 mkdir -p "$test_result_dir"
 
-# Output test result into results_file.  If result is a failure, copy the
-# test_output_path with date suffix for preservation (so it doesn't get
-# overwritten).
-handle_test_result() {
-  test_output_path=$1
-  test_descriptor=$2
-  result=$3
-  results_file=$4
-  datetime=$(date -Iseconds)
-
-  # In case of failure, persist failure output.
-  if [ "$result" -ne 0 ]; then
-    cp -r "$test_output_path" "$test_output_path"."$datetime"
-  fi
-
-  if [ $# -eq 4 ]; then
-    # Output tsv row: date, test, exit code
-    echo -e "$datetime\t$test_descriptor\t$result" | tee -a "$test_result_dir/$results_file"
-  else
-    fail_rate=$5
-    # Output tsv row: date, test, exit code, fail rate
-    echo -e "$datetime\t$test_descriptor\t$result\t$fail_rate" | tee -a "$test_result_dir/$results_file"
-  fi
-}
-
 grep_in_cxx_test() {
   query=$1
   gtest_filter=$2

@@ -6,10 +6,10 @@ cd pg15_tests
 # All tests should start with "test_".
 diff <(find . -name '*.sh' | grep -v '^./test_' | sort) - <<EOT
 ./common.sh
-./run_flaky_tests.sh
-./run_passing_tests.sh
-./run_shell_tests.sh
+./get_flaky_test_specs.sh
+./get_shell_test_specs.sh
 ./run_test_n_times.sh
+./run_tests.sh
 EOT
 
 # flaky_tests.tsv and passing_tests.tsv.
