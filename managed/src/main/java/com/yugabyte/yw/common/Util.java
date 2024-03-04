@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
@@ -45,6 +47,7 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -62,6 +65,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -129,6 +133,8 @@ public class Util {
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
+  public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
+
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
@@ -139,6 +145,9 @@ public class Util {
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
+  private static final List<String> specialCharacters =
+      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
@@ -154,6 +163,10 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static final String HTTP_SCHEME = "http://";
+
+  public static final String HTTPS_SCHEME = "https://";
 
   public static volatile String YBA_VERSION;
 
@@ -900,7 +913,8 @@ public class Util {
     }
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
-        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+        new DigestInputStream(
+            new BufferedInputStream(new FileInputStream(filePath.toFile())), md)) {
       while (dis.read() != -1)
         ; // Empty loop to clear the data
       md = dis.getMessageDigest();
@@ -1031,5 +1045,63 @@ public class Util {
   public static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
+  }
+
+  /** Get randomly generated password inline with YB's password policy */
+  public static String getRandomPassword() {
+    byte[] password = new byte[16];
+    new Random().nextBytes(password);
+    String generatedPassword = new String(password, Charset.forName("UTF-8"));
+    // To be consistent with password policy
+    Integer randomInt = new Random().nextInt(26);
+    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
+    String uppercaseLetter = lowercaseLetter.toUpperCase();
+    generatedPassword +=
+        (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+            + lowercaseLetter
+            + uppercaseLetter
+            + String.valueOf(randomInt));
+    return generatedPassword;
+  }
+
+  /**
+   * Validate url string and get URL object
+   *
+   * @param url
+   * @param defaultHttpScheme
+   * @return
+   */
+  public static URL validateAndGetURL(String url, boolean defaultHttpScheme) {
+    String urlString = url;
+    if (!urlString.startsWith(HTTP_SCHEME) && !urlString.startsWith(HTTPS_SCHEME)) {
+      urlString = (defaultHttpScheme ? HTTP_SCHEME : HTTPS_SCHEME) + urlString;
+    }
+    try {
+      URL urlInstance = new URL(urlString);
+      if (StringUtils.isBlank(urlInstance.getHost())) {
+        throw new RuntimeException("Malformed URL: " + urlString);
+      }
+      return urlInstance;
+    } catch (MalformedURLException e) {
+      throw new RuntimeException("Malformed URL: " + urlString);
+    }
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (provider.getUuid() != null) {
+      List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+    }
+
+    return imageBundleUUID;
   }
 }

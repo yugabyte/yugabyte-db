@@ -120,7 +120,7 @@ This page allows you to do the following:
 
 - Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is helpful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
-- Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustration to select the tables or database for which to restart the replication:
+- Restart the replication by clicking **Actions > Restart Replication**. Use the dialog shown in the following illustration to select the databases (YSQL) or keyspaces and tables (YCQL) for which to restart the replication:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
@@ -180,6 +180,7 @@ The current implementation of xCluster replication in YugabyteDB Anywhere has th
 - If you rotate the root certificate on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
 - The xCluster replication creation task might clash with scheduled backups. It is recommended to wait for the scheduled backup to finish, and then restart the replication.
 - To set up a transactional xCluster replication for a database, a matching database (not necessarily with its tables) must exist on the target universe so you can set up PITR on the target.
+- Setting up xCluster replication between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported.
 
 <!--
 

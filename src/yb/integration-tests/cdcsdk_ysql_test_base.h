@@ -12,7 +12,6 @@
 
 #pragma once
 #include <algorithm>
-#include <chrono>
 #include <utility>
 #include <vector>
 
@@ -20,46 +19,25 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 
-#include "yb/cdc/cdc_types.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
-#include "yb/gutil/walltime.h"
-#include "yb/rocksdb/db.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.h"
-#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -70,25 +48,16 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/tablet/tablet_types.pb.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::map;
 using std::min;
@@ -138,6 +107,8 @@ DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
+DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_uint32(cdcsdk_max_consistent_records);
 
 namespace yb {
 
@@ -180,11 +151,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   struct GetAllPendingChangesResponse {
     vector<CDCSDKProtoRecordPB> records;
+    // The record count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN,
+    // COMMIT in that order.
+    int record_count[8];
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
   };
 
-  Result<string> GetUniverseId(Cluster* cluster);
+  Result<string> GetUniverseId(PostgresMiniCluster* cluster);
 
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 
@@ -200,8 +174,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint64_t term, const uint64_t index);
 
   Status WriteRowsToTwoTables(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, const char* const first_table_name,
-      const char* const second_table_name, uint32_t num_cols = 2);
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
+      const char* const first_table_name, const char* const second_table_name,
+      uint32_t num_cols = 2);
 
   void VerifyStreamDeletedFromCdcState(
       client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -217,86 +192,94 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyTransactionParticipant(const TabletId& tablet_id, const OpId& opid);
 
-  Status DropDB(Cluster* cluster);
+  Status DropDB(PostgresMiniCluster* cluster);
 
-  Status TruncateTable(Cluster* cluster, const std::vector<string>& table_ids);
+  Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
   Status WriteRows(
-      uint32_t start, uint32_t end, Cluster* cluster,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(uint32_t start, uint32_t end, Cluster* cluster, uint32_t num_cols);
+  Status WriteRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols);
 
-  void DropTable(Cluster* cluster, const char* table_name = kTableName);
+  void DropTable(PostgresMiniCluster* cluster, const char* table_name = kTableName);
 
   Status WriteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t num_cols = 2,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t num_cols = 2,
       const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
       const bool trasaction_enabled = true);
 
-  Status CreateTableWithoutPK(Cluster* cluster);
+  Status CreateTableWithoutPK(PostgresMiniCluster* cluster);
 
   Status WriteAndUpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
       const std::multimap<uint32_t, uint32_t>& col_val_map, const std::string& table_id);
 
-  Status CreateColocatedObjects(Cluster* cluster);
+  Status CreateColocatedObjects(PostgresMiniCluster* cluster);
 
   Status AddColocatedTable(
-      Cluster* cluster, const TableName& table_name, const std::string& table_group_name = "tg1");
+      PostgresMiniCluster* cluster, const TableName& table_name,
+      const std::string& table_group_name = "tg1");
 
-  Status PopulateColocatedData(Cluster* cluster, int insert_count, bool transaction = false);
+  Status PopulateColocatedData(
+      PostgresMiniCluster* cluster, int insert_count, bool transaction = false);
 
   Status WriteEnumsRows(
-      uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix = "",
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
       string database_name = kNamespaceName, string table_name = kTableName,
       string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateNestedCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteNestedCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteNestedCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateRangeCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
 
-  Status WriteRangeCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+  Status WriteRangeCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
   Result<YBTableName> CreateRangeArrayCompositeTable(
-      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "");
-  Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster);
+      PostgresMiniCluster* cluster, const uint32_t num_tablets,
+      const std::string& type_suffix = "");
+  Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, PostgresMiniCluster* cluster);
 
-  Status UpdateRows(uint32_t key, uint32_t value, Cluster* cluster);
+  Status UpdateRows(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
-  Status UpdatePrimaryKey(uint32_t key, uint32_t value, Cluster* cluster);
+  Status UpdatePrimaryKey(uint32_t key, uint32_t value, PostgresMiniCluster* cluster);
 
   Status UpdateRows(
-      uint32_t key, const std::map<std::string, uint32_t>& col_val_map, Cluster* cluster);
+      uint32_t key, const std::map<std::string, uint32_t>& col_val_map,
+      PostgresMiniCluster* cluster);
 
   Status UpdateRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map1,
       const std::map<std::string, uint32_t>& col_val_map2, uint32_t num_cols);
 
   Status UpdateDeleteRowsHelper(
-      uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t key,
+      uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
       const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols);
 
-  Status DeleteRows(uint32_t key, Cluster* cluster);
+  Status DeleteRows(uint32_t key, PostgresMiniCluster* cluster);
 
-  Status SplitTablet(const TabletId& tablet_id, Cluster* cluster);
+  Status SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpCluster();
 
@@ -461,6 +444,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0);
 
+  Status InitVirtualWAL(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id = 1);
+
+  Status DestroyVirtualWAL(const uint64_t session_id = 1);
+
+  Result<GetAllPendingChangesResponse> GetAllPendingChangesFromCdc(
+      const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
+      bool init_virtual_wal, const uint64_t session_id = 1);
+
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -486,6 +479,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestGetChanges(
       const uint32_t replication_factor, bool add_tables_without_primary_key = false);
+
+  Result<GetConsistentChangesResponsePB> GetConsistentChangesFromCDC(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id = 1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -555,8 +552,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
-  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
-
   uint32_t GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -596,6 +591,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count);
 
   void CheckRecordsConsistency(const std::vector<CDCSDKProtoRecordPB>& records);
+
+  void CheckRecordCount(GetAllPendingChangesResponse resp, int expected_dml_records);
+
+  void CheckRecordsConsistencyWithWriteId(const std::vector<CDCSDKProtoRecordPB>& records);
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,

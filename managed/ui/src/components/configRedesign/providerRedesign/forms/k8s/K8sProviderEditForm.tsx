@@ -13,6 +13,7 @@ import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import {
@@ -79,7 +80,10 @@ import {
   K8sRegionMutation,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 
@@ -131,6 +135,7 @@ export const K8sProviderEditForm = ({
   const [regionSelection, setRegionSelection] = useState<K8sRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
   const featureFlags = useSelector((state: any) => state.featureFlags);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<K8sProviderEditFormFieldValues>({
@@ -159,7 +164,9 @@ export const K8sProviderEditForm = ({
 
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (
@@ -268,7 +275,8 @@ export const K8sProviderEditForm = ({
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
-    getIsFormDisabled(formMethods.formState, providerConfig);
+    getIsFormDisabled(formMethods.formState, providerConfig) ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -439,10 +447,7 @@ export const K8sProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -509,7 +514,10 @@ export const K8sProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />

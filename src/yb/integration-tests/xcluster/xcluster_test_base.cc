@@ -30,6 +30,7 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -60,6 +61,16 @@ namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
+
+namespace {
+
+Result<master::MasterReplicationProxy> GetMasterProxy(XClusterTestBase::Cluster& cluster) {
+  return master::MasterReplicationProxy(
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+}
+
+}  // namespace
 
 Status XClusterTestBase::PostSetUp() {
   if (!producer_tables_.empty()) {
@@ -281,11 +292,8 @@ Status XClusterTestBase::SetupUniverseReplication(
       bootstrap_ids, opts);
 }
 
-Status XClusterTestBase::SetupUniverseReplication(
-    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<TableId>& producer_table_ids,
-    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
+Status XClusterTestBase::SetupCertificates(
+    const xcluster::ReplicationGroupId& replication_group_id) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // replication_group_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -300,6 +308,16 @@ Status XClusterTestBase::SetupUniverseReplication(
         RecursiveCopy::kFalse));
     LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << universe_sub_dir;
   }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::SetupUniverseReplication(
+    MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& producer_table_ids,
+    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
+  RETURN_NOT_OK(SetupCertificates(replication_group_id));
 
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
@@ -883,6 +901,24 @@ Status XClusterTestBase::WaitForSafeTime(
   return Status::OK();
 }
 
+Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow() {
+  auto producer_master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
+  HybridTime now = producer_master->clock()->Now();
+  for (auto ts : producer_cluster()->mini_tablet_servers()) {
+    now.MakeAtLeast(ts->server()->clock()->Now());
+  }
+
+  master::GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
+      std::string() /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  auto namespace_id = resp.namespace_().id();
+
+  return WaitForSafeTime(namespace_id, now);
+}
+
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
     const std::vector<xrepl::StreamId>& stream_ids, bool is_paused) {
   master::PauseResumeXClusterProducerStreamsRequestPB req;
@@ -992,5 +1028,9 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
   }
   // Colocated database
   return GetTablegroupParentTable(&producer_cluster_, namespace_name);
+}
+
+Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy() {
+  return GetMasterProxy(producer_cluster_);
 }
 } // namespace yb

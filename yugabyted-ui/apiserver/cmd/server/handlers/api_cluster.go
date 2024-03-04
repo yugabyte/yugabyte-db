@@ -25,7 +25,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
         masterAddressesFuture := make(chan helpers.MasterAddressesFuture)
         go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
-        go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+        go c.helper.GetMastersFuture(mastersFuture)
         go c.helper.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
         go c.helper.GetMasterAddressesFuture(masterAddressesFuture)
 

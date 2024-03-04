@@ -15255,20 +15255,30 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (sql->len > 0)
 	{
 		PQExpBuffer tag = createPQExpBuffer();
+		PQExpBuffer use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
 		else
 			appendPQExpBuffer(tag, "%s %s", type, name);
 
+		if (dopt->include_yb_metadata)
+		{
+			use_roles_sql = createPQExpBuffer();
+			appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+		}
+
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 					 tag->data, nspname,
 					 NULL,
 					 owner ? owner : "",
 					 false, "ACL", SECTION_NONE,
-					 sql->data, "", NULL,
-					 &(objDumpId), 1,
+					 dopt->include_yb_metadata ? use_roles_sql->data : sql->data,
+					 "", NULL, &(objDumpId), 1,
 					 NULL, NULL);
+		if (dopt->include_yb_metadata)
+			destroyPQExpBuffer(use_roles_sql);
+
 		destroyPQExpBuffer(tag);
 	}
 

@@ -9,11 +9,4 @@ public class GraphMetadata {
   private String name;
   private Double threshold;
   private Map<GraphFilter, List<String>> filters;
-
-  public enum GraphFilter {
-    queryId,
-    dbId,
-    universeUuid,
-    instanceName
-  }
 }

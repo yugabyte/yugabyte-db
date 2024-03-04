@@ -7,8 +7,8 @@ CREATE
             node_name varchar(1000) NOT NULL,
 
             query_id bigint NOT NULL,
-            calls bigint NOT NULL,
-            rows bigint NOT NULL,
+            rps double precision NOT NULL,
+            rows_avg double precision NOT NULL,
             avg_latency double precision NOT NULL,
             mean_latency double precision,
             p90_latency double precision,

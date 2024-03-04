@@ -6,13 +6,13 @@ DATA_built = $(EXTENSION)--1.0.sql
 DATA = $(wildcard $(EXTENSION)--*--*.sql)
 
 REGRESS_OPTS =--temp-config=./pg_cron.conf --temp-instance=./tmp_check
-REGRESS = pg_cron-test
+REGRESS = pg_cron-test 
 
 # compilation configuration
 MODULE_big = $(EXTENSION)
 OBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
 ifeq ($(CC),gcc)
-    PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-maybe-uninitialized -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
+    PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-uninitialized -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
 else
     PG_CPPFLAGS = -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-implicit-fallthrough -Iinclude -I$(libpq_srcdir)
 endif

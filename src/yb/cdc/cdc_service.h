@@ -23,18 +23,14 @@
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/async_initializer.h"
 
-#include "yb/common/schema.h"
-
 #include "yb/master/master_client.fwd.h"
 
 #include "yb/rocksdb/rate_limiter.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/net/net_util.h"
-#include "yb/util/service_util.h"
 #include "yb/util/semaphore.h"
 
 #include <boost/optional.hpp>
@@ -51,6 +47,7 @@ class Thread;
 namespace cdc {
 
 class CDCServiceContext;
+class CDCSDKVirtualWAL;
 
 }  // namespace cdc
 
@@ -84,6 +81,8 @@ static const char* const kCheckpointType = "checkpoint_type";
 static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
+static const char* const kCDCSDKSlotEntryTabletId = "dummy_id_for_replication_slot";
+
 struct TabletCheckpoint {
   OpId op_id;
   // Timestamp at which the op ID was last updated.
@@ -139,6 +138,19 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetCheckpointRequestPB* req,
       GetCheckpointResponsePB* resp,
       rpc::RpcContext rpc) override;
+
+  // Walsender StartReplication RPCs
+  void InitVirtualWALForCDC(
+      const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void GetConsistentChanges(
+      const GetConsistentChangesRequestPB* req, GetConsistentChangesResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void DestroyVirtualWALForCDC(
+      const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
@@ -245,6 +257,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
  private:
   friend class XClusterProducerBootstrap;
+  friend class CDCSDKVirtualWAL;
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadership);
@@ -277,14 +290,14 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status InsertRowForColocatedTableInCDCStateTable(
       const TabletStreamInfo& producer_tablet, const TableId& colocated_table_id,
-      const OpId& commit_op_id, const HybridTime& cdc_sdk_safe_time);
+      const OpId& commit_op_id, const std::optional<HybridTime>& cdc_sdk_safe_time);
 
   Status UpdateCheckpointAndActiveTime(
       const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
-      uint64_t last_record_hybrid_time,
+      uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK, bool force_update = false,
-      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid, const bool is_snapshot = false,
-      const std::string& snapshot_key = "", const TableId& colocated_table_id = "");
+      const bool is_snapshot = false, const std::string& snapshot_key = "",
+      const TableId& colocated_table_id = "");
 
   Status UpdateSnapshotDone(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -344,6 +357,8 @@ class CDCServiceImpl : public CDCServiceIf {
                      std::vector<client::internal::RemoteTabletServer*>* servers);
 
   std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(client::internal::RemoteTabletServer* ts);
+
+  std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(HostPort hostport);
 
   OpId GetMinSentCheckpointForTablet(const std::string& tablet_id);
 
@@ -515,6 +530,10 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unordered_set<std::string> paused_xcluster_producer_streams_ GUARDED_BY(mutex_);
 
   uint32_t xcluster_config_version_ GUARDED_BY(mutex_) = 0;
+
+  // Map of session_id (uint64) to VirtualWAL instance.
+  std::unordered_map<uint64_t, std::shared_ptr<CDCSDKVirtualWAL>> session_virtual_wal_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace cdc

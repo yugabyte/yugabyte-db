@@ -4,12 +4,13 @@ import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 import { useTranslation } from 'react-i18next';
+import { Typography } from '@material-ui/core';
 
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { Universe, UniverseNamespace } from '../../../redesign/helpers/dtos';
+import { TableType, Universe, UniverseNamespace } from '../../../redesign/helpers/dtos';
 import {
   api,
   drConfigQueryKey,
@@ -26,6 +27,7 @@ import { XClusterConfigStatus } from '../constants';
 
 import { XClusterTableType } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
+import { DrConfig } from '../disasterRecovery/dtos';
 
 import styles from './RestartConfigModal.module.scss';
 
@@ -56,7 +58,7 @@ interface CommonRestartConfigModalProps {
 type RestartConfigModalProps =
   | (CommonRestartConfigModalProps & {
       isDrInterface: true;
-      drConfigUuid: string;
+      drConfig: DrConfig;
     })
   | (CommonRestartConfigModalProps & { isDrInterface: false });
 
@@ -110,11 +112,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   const restartConfigMutation = useMutation(
     (values: RestartXClusterConfigFormValues) => {
       return props.isDrInterface
-        ? api.restartDrConfig(props.drConfigUuid, {
-            dbs: selectedKeyspaces.map((namespaceName) => namespaceToNamespaceUuid[namespaceName]),
-            bootstrapParams: {
-              backupRequestParams: { storageConfigUUID: values.storageConfig.value }
-            }
+        ? api.restartDrConfig(props.drConfig.uuid, {
+            dbs: selectedKeyspaces.map((namespaceName) => namespaceToNamespaceUuid[namespaceName])
           })
         : restartXClusterConfig(xClusterConfig.uuid, values.tableUUIDs, {
             backupRequestParams: {
@@ -124,11 +123,9 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     },
     {
       onSuccess: (response) => {
-        closeModal();
-
         const invalidateQueries = () => {
           if (props.isDrInterface) {
-            queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
+            queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfig.uuid));
           }
           queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
         };
@@ -143,8 +140,21 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
                 </a>
               </span>
             );
+          } else {
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t(`success.taskSuccess.${props.isDrInterface ? 'dr' : 'xCluster'}`)}
+              </Typography>
+            );
           }
         };
+
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
+        closeModal();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
@@ -182,7 +192,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   const getFormSubmitLabel = (formStep: FormStep) => {
     switch (formStep) {
       case FormStep.SELECT_TABLES:
-        return t('step.selectTables.submitButton');
+        return t(`step.selectTables.submitButton.${props.isDrInterface ? 'dr' : 'xCluster'}`);
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
       default:
@@ -227,9 +237,11 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   return (
     <YBModalForm
       size="large"
-      title={t('title')}
+      title={t(`title.${props.isDrInterface ? 'dr' : 'xCluster'}`)}
       visible={isVisible}
-      validate={(values: RestartXClusterConfigFormValues) => validateForm(values, currentStep)}
+      validate={(values: RestartXClusterConfigFormValues) =>
+        validateForm(values, currentStep, props.isDrInterface, configTableType)
+      }
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
       submitLabel={submitLabel}
@@ -247,13 +259,24 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
             const errors = formik.current.errors as FormikErrors<RestartXClusterConfigFormErrors>;
             return (
               <>
-                <div className={styles.formInstruction}>{t('step.selectTables.instruction')}</div>
+                <div className={styles.formInstruction}>
+                  {t(
+                    `step.selectTables.instruction.${
+                      props.isDrInterface
+                        ? 'dr'
+                        : configTableType === TableType.PGSQL_TABLE_TYPE
+                        ? 'xClusterYsql'
+                        : 'xClusterYcql'
+                    }`
+                  )}
+                </div>
                 <ConfigTableSelect
                   {...{
                     xClusterConfig,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       formik.current.setFieldValue('tableUUIDs', tableUUIDs),
+                    isDrInterface: !!props.isDrInterface,
                     configTableType,
                     selectedKeyspaces,
                     setSelectedKeyspaces,
@@ -268,9 +291,19 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
             return (
               <>
                 <div className={styles.formInstruction}>
-                  {t('step.configureBootstrap.instruction')}
+                  {t(
+                    `step.configureBootstrap.instruction.${props.isDrInterface ? 'dr' : 'xCluster'}`
+                  )}
                 </div>
-                <ConfigureBootstrapStep formik={formik} />
+                <ConfigureBootstrapStep
+                  isDrInterface={!!props.isDrInterface}
+                  formik={formik}
+                  storageConfigUuid={
+                    props.isDrInterface
+                      ? props.drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+                      : undefined
+                  }
+                />
               </>
             );
           }
@@ -282,7 +315,12 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   );
 };
 
-const validateForm = async (values: RestartXClusterConfigFormValues, formStep: FormStep) => {
+const validateForm = async (
+  values: RestartXClusterConfigFormValues,
+  formStep: FormStep,
+  isDrInterface: boolean,
+  tableType: TableType
+) => {
   // Since our formik verision is < 2.0 , we need to throw errors instead of
   // returning them in custom async validation:
   // https://github.com/jaredpalmer/formik/issues/1392#issuecomment-606301031
@@ -292,15 +330,19 @@ const validateForm = async (values: RestartXClusterConfigFormValues, formStep: F
       const errors: Partial<RestartXClusterConfigFormErrors> = {};
       if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
         errors.tableUUIDs = {
-          title: 'No tables selected.',
-          body: 'Select at least 1 table to proceed'
+          title: `No ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+          } selected.`,
+          body: `Select at least 1 ${
+            tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+          } to proceed`
         };
       }
       throw errors;
     }
     case FormStep.CONFIGURE_BOOTSTRAP: {
       const errors: Partial<RestartXClusterConfigFormErrors> = {};
-      if (!values.storageConfig) {
+      if (!values.storageConfig && !isDrInterface) {
         errors.storageConfig = 'Backup storage configuration is required.';
       }
 

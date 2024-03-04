@@ -19,7 +19,7 @@ You can export cluster metrics to third-party tools for analysis and customizati
 
 Currently, YugabyteDB Managed supports export to [Datadog](https://docs.datadoghq.com/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), and [Sumo Logic](https://www.sumologic.com). Metrics export is not available for Sandbox clusters.
 
-Exporting metrics counts against your data transfer allowance, and may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+Exporting metrics counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 ## Prerequisites
 

@@ -29,6 +29,7 @@ export const getEnabledDrConfigActions = (
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
+    case DrConfigState.ERROR:
       return [DrConfigActions.DELETE];
     case DrConfigState.REPLICATING:
       return [
@@ -39,7 +40,7 @@ export const getEnabledDrConfigActions = (
         DrConfigActions.FAILOVER
       ];
     case DrConfigState.HALTED:
-      return [DrConfigActions.DELETE, DrConfigActions.EDIT_TARGET];
+      return [DrConfigActions.DELETE, DrConfigActions.EDIT, DrConfigActions.EDIT_TARGET];
     default:
       return assertUnreachableCase(drConfig.state);
   }

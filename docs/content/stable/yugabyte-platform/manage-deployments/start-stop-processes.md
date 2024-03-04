@@ -21,7 +21,7 @@ In some cases, the system might experience an unrecoverable error. To mitigate, 
 
 If a node needs the intervention, you can click its associated **Actions > Stop Processes**.
 
-Once the YB-TServer and, possibly, YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
+After the YB-TServer and, possibly, YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
 Generally, when a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped. This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
 

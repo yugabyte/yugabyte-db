@@ -321,6 +321,7 @@ ExecInsert(ModifyTableState *mtstate,
 		   TupleTableSlot *planSlot,
 		   TupleTableSlot *srcSlot,
 		   ResultRelInfo *returningRelInfo,
+		   YBCPgStatement blockInsertStmt,
 		   EState *estate,
 		   bool canSetTag)
 {
@@ -559,7 +560,7 @@ ExecInsert(ModifyTableState *mtstate,
 				 * locked and released in this call.
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
-				newId = YBCHeapInsert(slot, tuple, estate);
+				newId = YBCHeapInsert(slot, tuple, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
@@ -628,7 +629,7 @@ ExecInsert(ModifyTableState *mtstate,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				newId = YBCHeapInsert(slot, tuple, estate);
+				newId = YBCHeapInsert(slot, tuple, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -1357,7 +1358,7 @@ ExecCrossPartitionUpdate(ModifyTableState *mtstate,
 
 	*inserted_tuple = ExecInsert(mtstate, slot, planSlot,
 							orig_slot, resultRelInfo,
-							estate, canSetTag);
+							NULL, estate, canSetTag);
 
 	/* Revert ExecPrepareTupleRouting's node change. */
 	estate->es_result_relation_info = resultRelInfo;
@@ -1562,7 +1563,6 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
 		bool is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
-		bms_free(primary_key_bms);
 
 		/*
 		 * TODO(alex): It probably makes more sense to pass a
@@ -2591,6 +2591,17 @@ ExecModifyTable(PlanState *pstate)
 
 	estate->es_result_relation_info = resultRelInfo;
 
+	YBCPgStatement blockInsertStmt = NULL;
+	bool hasInserts = false;
+	Relation relation = resultRelInfo->ri_RelationDesc;
+	if (IsYBRelation(relation) && operation == CMD_INSERT) {
+		HandleYBStatus(YBCPgNewInsertBlock(
+			YBCGetDatabaseOid(relation), YbGetRelfileNodeId(relation),
+			YBCIsRegionLocal(relation),
+			estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
+			&blockInsertStmt));
+	}
+
 	/*
 	 * Fetch rows from subplan(s), and execute the required table modification
 	 * for each row.
@@ -2778,11 +2789,12 @@ ExecModifyTable(PlanState *pstate)
 		switch (operation)
 		{
 			case CMD_INSERT:
+				hasInserts = true;
 				if (!proute)
 				{
 					slot = ExecInsert(node, slot, planSlot,
 									  NULL, estate->es_result_relation_info,
-									  estate, node->canSetTag);
+									  blockInsertStmt, estate, node->canSetTag);
 				}
 				else
 				{
@@ -2795,7 +2807,7 @@ ExecModifyTable(PlanState *pstate)
 
 					slot = ExecInsert(node, slot, planSlot,
 								  NULL, estate->es_result_relation_info,
-								  estate, node->canSetTag);
+								  blockInsertStmt, estate, node->canSetTag);
 
 					/* Revert ExecPrepareTupleRouting's state change. */
 					estate->es_result_relation_info = resultRelInfo;
@@ -2826,6 +2838,13 @@ ExecModifyTable(PlanState *pstate)
 			estate->es_result_relation_info = saved_resultRelInfo;
 			return slot;
 		}
+	}
+
+	if (blockInsertStmt) {
+		if (hasInserts)
+			YBCApplyWriteStmt(blockInsertStmt, relation);
+		else
+			YBCPgDeleteStatement(blockInsertStmt);
 	}
 
 	/* Restore es_result_relation_info before exiting */

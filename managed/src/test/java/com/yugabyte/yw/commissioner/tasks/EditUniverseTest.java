@@ -65,6 +65,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -72,22 +73,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
+          TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
-          TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -110,30 +113,33 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
+          TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
           TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
+          TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
-          TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -213,6 +219,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+
+      mockLocaleCheckResponse(mockNodeUniverseManager);
+
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
     } catch (Exception e) {
@@ -223,6 +232,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -256,7 +267,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskInfo> instanceActions = subTasksByPosition.get(1);
+    List<TaskInfo> instanceActions = subTasksByPosition.get(2);
     assertEquals(
         new ArrayList<>(
             Arrays.asList(

@@ -64,6 +64,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/util/callsite_profiling.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/capabilities.h"
@@ -100,11 +101,11 @@ DEFINE_UNKNOWN_string(metrics_snapshotter_table_metrics_whitelist,
     "Table metrics to record in native metrics storage.");
 TAG_FLAG(metrics_snapshotter_table_metrics_whitelist, advanced);
 
-constexpr int kTServerMetricsSnapshotterYbClientDefaultTimeoutMs =
+constexpr int kTServerMetricsSnapshotterYBClientDefaultTimeoutMs =
   yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
 DEFINE_UNKNOWN_int32(tserver_metrics_snapshotter_yb_client_default_timeout_ms,
-    kTServerMetricsSnapshotterYbClientDefaultTimeoutMs,
+    kTServerMetricsSnapshotterYBClientDefaultTimeoutMs,
     "Default timeout for the YBClient embedded into the tablet server that is used "
     "by metrics snapshotter.");
 TAG_FLAG(tserver_metrics_snapshotter_yb_client_default_timeout_ms, advanced);
@@ -612,7 +613,7 @@ Status MetricsSnapshotter::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;

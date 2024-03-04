@@ -3152,6 +3152,22 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	else
 		ahprintf(AH, "SET row_security = off;\n");
 
+	static bool first_run = true;
+	if (AH->public.dopt->include_yb_metadata && first_run)
+	{
+		first_run = false;
+		ahprintf(AH, "\n-- Set variable use_tablespaces (if not already set)\n"
+					 "\\if :{?use_tablespaces}\n"
+					 "\\else\n"
+					 "\\set use_tablespaces true\n"
+					 "\\endif\n");
+		ahprintf(AH, "\n-- Set variable use_roles (if not already set)\n"
+					 "\\if :{?use_roles}\n"
+					 "\\else\n"
+					 "\\set use_roles true\n"
+					 "\\endif\n");
+	}
+
 	ahprintf(AH, "\n");
 }
 
@@ -3431,7 +3447,12 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 		PQclear(res);
 	}
 	else
-		ahprintf(AH, "%s;\n\n", qry->data);
+		if (AH->public.dopt->include_yb_metadata)
+			ahprintf(AH, "\\if :use_tablespaces\n"
+						 "    %s;\n"
+						 "\\endif\n\n", qry->data);
+		else
+			ahprintf(AH, "%s;\n\n", qry->data);
 
 	if (AH->currTablespace)
 		free(AH->currTablespace);
@@ -3673,7 +3694,14 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			appendPQExpBufferStr(temp, "ALTER ");
 			_getObjectDescription(temp, te, AH);
 			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
-			ahprintf(AH, "%s\n\n", temp->data);
+
+			if (AH->public.dopt->include_yb_metadata)
+				ahprintf(AH, "\\if :use_roles\n"
+							 "    %s\n"
+							 "\\endif\n\n", temp->data);
+			else
+				ahprintf(AH, "%s\n\n", temp->data);
+
 			destroyPQExpBuffer(temp);
 		}
 		else if (strcmp(te->desc, "CAST") == 0 ||

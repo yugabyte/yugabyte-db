@@ -31,11 +31,12 @@ import {
   MetricTimeRange,
   StandardMetricTimeRangeOption,
   XClusterTable,
-  XClusterTableCandidate
+  MainTableReplicationCandidate
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import { DrConfigState } from './disasterRecovery/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -87,7 +88,7 @@ export const CurrentReplicationLag = ({
     replicationUuid: xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
-    metricQueryKey.latest(replciationLagMetricRequestParams, '1', 'hour'),
+    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
     () => fetchReplicationLag(replciationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
@@ -170,7 +171,7 @@ export const CurrentTableReplicationLag = ({
     tableId
   };
   const tableLagQuery = useQuery(
-    metricQueryKey.latest(replciationLagMetricRequestParams, '1', 'hour'),
+    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
     () => fetchReplicationLag(replciationLagMetricRequestParams),
     {
       enabled: queryEnabled
@@ -355,8 +356,13 @@ export const parseFloatIfDefined = (input: string | number | undefined) => {
 export const getEnabledConfigActions = (
   replication: XClusterConfig,
   sourceUniverse: Universe | undefined,
-  targetUniverse: Universe | undefined
+  targetUniverse: Universe | undefined,
+  drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
+  if (drConfigState === DrConfigState.ERROR) {
+    // When DR config is in error state, we only allow the DR config delete operation.
+    return [];
+  }
   if (
     UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
     UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
@@ -488,7 +494,7 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
 export const isTableToggleable = (
-  table: XClusterTableCandidate,
+  table: MainTableReplicationCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
   table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||
@@ -500,19 +506,30 @@ export const isTableToggleable = (
  */
 export const augmentTablesWithXClusterDetails = (
   ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[]
+  xClusterConfigTables: XClusterTableDetails[],
+  metricTraces?: MetricTrace[]
 ): XClusterTable[] => {
-  const ybTableMap = new Map<string, YBTable>();
-  ybTable.forEach((table) => {
-    const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
-    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
-  });
+  const ybTableMap = new Map<string, YBTable>(
+    ybTable.map((table) => {
+      const { tableUUID, ...tableDetails } = table;
+      const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
+      return [adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID }];
+    })
+  );
+  const tableIdToReplicationLag = new Map<string, number | undefined>(
+    // Casting `trace.tableId` as string because we currently don't have specific types for each possible metric trace.
+    // Metric trace with table level replication lag will have a string tableId provided.
+    metricTraces?.map((trace) => [
+      trace.tableId as string,
+      parseFloatIfDefined(trace.y[trace.y.length - 1])
+    ])
+  );
   const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
     const ybTableDetails = ybTableMap.get(table.tableId);
+    const replicationLag = tableIdToReplicationLag.get(table.tableId);
     if (ybTableDetails) {
       const { tableId, ...xClusterTableDetails } = table;
-      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
+      tables.push({ ...ybTableDetails, ...xClusterTableDetails, replicationLag });
     } else {
       console.error(
         `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
@@ -532,9 +549,7 @@ export const getTablesForBootstrapping = async (
   sourceUniverseUuid: string,
   targetUniverseUuid: string | null,
   sourceUniverseTables: YBTable[],
-  tableUuidsInConfig: string[],
-  xClusterConfigType: XClusterConfigType,
-  isUsedForDr: boolean
+  xClusterConfigType: XClusterConfigType
 ) => {
   // Check if bootstrap is required, for each selected table
   let bootstrapTest: { [tableUUID: string]: boolean } = {};
@@ -545,17 +560,6 @@ export const getTablesForBootstrapping = async (
     selectedTableUuids.map(formatUuidForXCluster),
     xClusterConfigType
   );
-  if (isUsedForDr) {
-    // For DR, we always need to collect backup storage config for bootstrapping when the
-    // user adds a new table to the config. The need_bootstrap endpoint will not return true for this
-    // case. Thus, we need to set the test to true for these tables.
-    const tableUuidsInConfigSet = new Set(tableUuidsInConfig);
-    selectedTableUuids.forEach((tableUuid) => {
-      if (!tableUuidsInConfigSet.has(tableUuid)) {
-        bootstrapTest[tableUuid] = true;
-      }
-    });
-  }
 
   const bootstrapRequiredTableUUIDs = new Set<string>();
   if (bootstrapTest) {

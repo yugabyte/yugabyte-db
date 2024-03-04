@@ -11,8 +11,10 @@ import static org.mockito.ArgumentMatchers.isNull;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -41,8 +43,6 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterK8SNodeResourceSpec;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.TserverK8SNodeResourceSpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -74,6 +74,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
   @Mock Resource<YBUniverse> ybUniverseResource;
   @Mock RuntimeConfGetter confGetter;
+  @Mock RuntimeConfGetter confGetterForOperatorUtils;
   @Mock YBInformerFactory informerFactory;
   @Mock SharedIndexInformer<YBUniverse> ybUniverseInformer;
   @Mock Indexer<YBUniverse> indexer;
@@ -107,7 +108,11 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
+    OperatorUtils operatorUtils = new OperatorUtils(confGetterForOperatorUtils);
     Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
+    Mockito.when(
+            confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
+        .thenReturn("");
     ybUniverseReconciler =
         new YBUniverseReconciler(
             client,
@@ -120,7 +125,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             null,
             kubernetesStatusUpdator,
             confGetter,
-            customerTaskManager);
+            customerTaskManager,
+            operatorUtils);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -366,18 +372,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setNumNodes(1L);
     spec.setZoneFilter(zones);
     spec.setReplicationFactor((long) 1);
-    spec.setAssignPublicIP(true);
-    spec.setUseTimeSync(true);
     spec.setEnableYSQL(true);
-    spec.setEnableYEDIS(false);
     spec.setEnableYCQL(false);
     spec.setEnableNodeToNodeEncrypt(false);
     spec.setEnableClientToNodeEncrypt(false);
     spec.setYsqlPassword(null);
     spec.setYcqlPassword(null);
     spec.setProviderName(defaultProvider.getName());
-    spec.setMasterK8SNodeResourceSpec(new MasterK8SNodeResourceSpec());
-    spec.setTserverK8SNodeResourceSpec(new TserverK8SNodeResourceSpec());
     DeviceInfo deviceInfo = new DeviceInfo();
     spec.setDeviceInfo(deviceInfo);
 

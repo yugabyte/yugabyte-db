@@ -537,6 +537,9 @@ AllocateRelationDesc(Form_pg_class relp)
 	/* YB properties will be loaded lazily */
 	relation->yb_table_properties = NULL;
 
+	relation->primary_key_bms = NULL;
+	relation->full_primary_key_bms = NULL;
+
 	/*
 	 * Copy the relation tuple form
 	 *

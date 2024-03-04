@@ -205,6 +205,10 @@ class TabletPeerTest : public YBTabletTest {
         "");
     ASSERT_OK(retryable_requests_manager.Init(clock()));
     ASSERT_OK(tablet_peer_->SetBootstrapping());
+    raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+      .name = "raft_notifications",
+      .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+    });
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
@@ -213,6 +217,7 @@ class TabletPeerTest : public YBTabletTest {
                                            table_metric_entity_,
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
+                                           raft_notifications_pool_.get(),
                                            tablet_prepare_pool_.get(),
                                            &retryable_requests_manager,
                                            nullptr /* consensus_meta */,
@@ -356,6 +361,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.

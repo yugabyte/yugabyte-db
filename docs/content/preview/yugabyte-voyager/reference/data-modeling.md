@@ -18,7 +18,7 @@ For most workloads, it is recommended to use HASH partitioning because it effici
 
 RANGE sharding can be advantageous for particular use cases, such as time series. When querying data for specific time ranges, using RANGE sharding to split the data into the specific time ranges will help improve the speed and efficiency of the query.
 
-Additionally, you can use a combination of HASH and RANGE sharding for your [primary key](../../../explore/indexes-constraints/primary-key-ysql/) by choosing a HASH value as the [partition key](../../../develop/learn/data-modeling-ycql/#partition-key-columns-required), and a RANGE value as the [clustering key](../../../develop/learn/data-modeling-ycql/#clustering-key-columns-optional).
+Additionally, you can use a combination of HASH and RANGE sharding for your [primary key](../../../explore/ysql-language-features/indexes-constraints/primary-key-ysql/) by choosing a HASH value as the [partition key](../../../develop/learn/data-modeling-ycql/#partition-key-columns-required), and a RANGE value as the [clustering key](../../../develop/learn/data-modeling-ycql/#clustering-key-columns-optional).
 
 ## Learn more
 

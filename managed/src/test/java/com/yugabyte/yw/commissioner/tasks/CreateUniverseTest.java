@@ -55,6 +55,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks, // PreNodeProvision
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks, // PostNodeProvision
+          TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
@@ -147,6 +149,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+
+      mockLocaleCheckResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
     }

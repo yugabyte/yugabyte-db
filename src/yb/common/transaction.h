@@ -124,7 +124,9 @@ struct TransactionStatusResult {
 
   TransactionStatusResult() {}
 
-  TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_,
+      Status expected_deadlock_status_ = Status::OK());
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,

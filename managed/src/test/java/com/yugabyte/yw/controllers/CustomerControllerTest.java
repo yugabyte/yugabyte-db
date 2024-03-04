@@ -205,6 +205,7 @@ public class CustomerControllerTest extends FakeDBApplication {
                 method,
                 uri,
                 "Cannot parse parameter cUUID as UUID: Invalid UUID string: null",
+                null,
                 null)),
         ybpError);
     assertAuditEntry(0, customer.getUuid());
@@ -1056,7 +1057,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     final String method = "POST";
     final String uri = baseRoute + customer.getUuid() + "/metrics";
-    YBPError expectedYBPError = new YBPError(method, uri, userVisibleMessage, null);
+    YBPError expectedYBPError = new YBPError(method, uri, userVisibleMessage, null, null);
 
     doThrow(new PlatformServiceException(BAD_REQUEST, userVisibleMessage))
         .when(mockMetricQueryHelper)

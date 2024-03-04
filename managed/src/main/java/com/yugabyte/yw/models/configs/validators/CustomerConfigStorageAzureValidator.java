@@ -55,7 +55,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
       if (azureData.regionLocations != null) {
         for (RegionLocations location : azureData.regionLocations) {
           if (StringUtils.isEmpty(location.region)) {
-            throwBeanValidatorError(
+            throwBeanConfigDataValidatorError(
                 CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
           }
           validateUrl(
@@ -76,14 +76,14 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
     // Assuming azure backup location will always start with https://
     if (azUriPath.length() < 8 || !AZ_URL_SCHEMES.contains(protocol)) {
       String exceptionMsg = "Invalid azUriPath format: " + azUriPath;
-      throwBeanValidatorError(fieldName, exceptionMsg);
+      throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
     } else {
       String[] splitLocation = AZUtil.getSplitLocationValue(azUriPath);
       int splitLength = splitLocation.length;
       if (splitLength < 2) {
         // azUrl and container should be there in backup location.
         String exceptionMsg = "Invalid azUriPath format: " + azUriPath;
-        throwBeanValidatorError(fieldName, exceptionMsg);
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
       }
 
       String azUrl = "https://" + splitLocation[0];
@@ -96,11 +96,11 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
             .validateOnBlobContainerClient(blobContainerClient, permissions);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
-        throwBeanValidatorError(fieldName, exceptionMsg);
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
       } catch (Exception e) {
         if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
           String exceptionMsg = "Cannot access " + azUrl;
-          throwBeanValidatorError(fieldName, exceptionMsg);
+          throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
         }
         throw e;
       }

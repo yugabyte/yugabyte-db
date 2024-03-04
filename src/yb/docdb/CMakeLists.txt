@@ -29,7 +29,7 @@ ADD_YB_LIBRARY(docdb_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc

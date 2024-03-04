@@ -369,3 +369,15 @@ DROP EVENT TRIGGER evt_ddl_start;
 -- The next GRANT SELECT should not cause any catalog version change.
 GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
+
+-- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
+CREATE TABLE base (t int);
+CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
+CREATE UNIQUE INDEX ON mv(t);
+:display_catalog_version;
+-- nonconcurrent refreshes should bump catalog version.
+REFRESH MATERIALIZED VIEW mv;
+:display_catalog_version;
+-- concurrent refreshes should not bump catalog version.
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+:display_catalog_version;

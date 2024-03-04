@@ -1,29 +1,43 @@
 import { useState } from 'react';
 import {
   BootstrapTable,
-  ExpandColumnComponentProps,
   Options,
   SortOrder as ReactBSTableSortOrder,
   TableHeaderColumn
 } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
+import moment from 'moment';
+import { Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import { api, metricQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
-import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
-import { XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+import { SortOrder } from '../../../../redesign/helpers/constants';
+import {
+  liveMetricTimeRangeUnit,
+  liveMetricTimeRangeValue,
+  MetricName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
 import { getTableUuid } from '../../../../utils/tableUtils';
 
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import {
+  MetricsQueryParams,
+  TableType,
+  Universe,
+  YBTable
+} from '../../../../redesign/helpers/dtos';
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
+import { NodeAggregation, SplitType } from '../../../metrics/dtos';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -35,8 +49,9 @@ interface RowItem {
 
 interface ConfigTableSelectProps {
   xClusterConfig: XClusterConfig;
-  selectedTableUUIDs: string[];
+  isDrInterface: boolean;
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  selectedTableUUIDs: string[];
   configTableType: XClusterTableType;
   selectedKeyspaces: string[];
   setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
@@ -46,8 +61,7 @@ interface ConfigTableSelectProps {
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
-
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -57,6 +71,7 @@ export const ConfigTableSelect = ({
   xClusterConfig,
   selectedTableUUIDs,
   setSelectedTableUUIDs,
+  isDrInterface,
   configTableType,
   selectedKeyspaces,
   setSelectedKeyspaces,
@@ -68,6 +83,7 @@ export const ConfigTableSelect = ({
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof RowItem>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
@@ -80,6 +96,30 @@ export const ConfigTableSelect = ({
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  );
+
+  const replicationLagMetricSettings = {
+    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
+    nodeAggregation: NodeAggregation.MAX,
+    splitType: SplitType.TABLE
+  };
+  const replciationLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [replicationLagMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    xClusterConfigUuid: xClusterConfig.uuid,
+    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
+    end: moment().format('X')
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.live(
+      replciationLagMetricRequestParams,
+      liveMetricTimeRangeValue,
+      liveMetricTimeRangeUnit
+    ),
+    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    {
+      enabled: !!sourceUniverseQuery.data
+    }
   );
 
   if (
@@ -169,17 +209,14 @@ export const ConfigTableSelect = ({
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data
   );
 
   const tablesForSelection = tablesInConfig.filter(
-    (xClusterTable) =>
-      xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
-      xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
+    (xClusterTable) => xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
   const rowItems = getRowItemsFromTables(tablesForSelection);
-  const sourceUniverse = sourceUniverseQuery.data;
-  const sourceUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
@@ -189,15 +226,17 @@ export const ConfigTableSelect = ({
       setSortOrder(sortOrder);
     }
   };
-
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
       <div className={styles.tableToolbar}>
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search for keyspace.."
+          placeHolder="Search for database.."
           onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
         />
       </div>
@@ -218,14 +257,13 @@ export const ConfigTableSelect = ({
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={configTableType}
               sourceUniverseUUID={sourceUniverseUUID}
-              sourceUniverseNodePrefix={sourceUniverseNodePrefix}
               handleTableSelect={handleTableToggle}
               handleAllTableSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
             expandColumnVisible: true,
-            expandColumnComponent: expandColumnComponent,
+            expandColumnComponent: ExpandColumnComponent,
             columnWidth: 25
           }}
           selectRow={{
@@ -272,16 +310,21 @@ export const ConfigTableSelect = ({
           />
         </div>
       )}
-      {configTableType === TableType.PGSQL_TABLE_TYPE ? (
-        <div>
-          Tables in {selectedKeyspaces.length} of {rowItems.length} database(s) selected
-        </div>
+      {configTableType === TableType.YQL_TABLE_TYPE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length,
+            availableTableCount: tablesForSelection.length
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {tablesForSelection.length} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedKeyspaces.length,
+            availableDatabaseCount: rowItems.length
+          })}
+        </Typography>
       )}
-
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
           {selectionError && (
@@ -305,21 +348,6 @@ export const ConfigTableSelect = ({
         </div>
       )}
     </>
-  );
-};
-
-const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComponentProps) => {
-  if (!isExpandableRow) {
-    return '';
-  }
-  return (
-    <div>
-      {isExpanded ? (
-        <i className="fa fa-caret-up" aria-hidden="true" />
-      ) : (
-        <i className="fa fa-caret-down" aria-hidden="true" />
-      )}
-    </div>
   );
 };
 

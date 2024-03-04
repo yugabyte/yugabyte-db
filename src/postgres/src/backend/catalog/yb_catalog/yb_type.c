@@ -186,7 +186,7 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 	return type_entity;
 }
 
-const Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype, Oid typbasetype) {
+Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype, Oid typbasetype) {
 	Oid primitive_type_oid;
 	switch (typtype)
 	{
@@ -1376,6 +1376,173 @@ int64_t
 YbUnixEpochToPostgresEpoch(int64_t unix_t)
 {
 	return unix_t - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY);
+}
+
+bool
+YbTypeDetails(Oid elmtype, int *elmlen, bool *elmbyval, char *elmalign)
+{
+	switch (elmtype)
+	{
+		case TEXTOID:
+		case XMLOID:
+		case BYTEAOID:
+		case INT2VECTOROID:
+		case OIDVECTOROID:
+		case BPCHAROID:
+		case VARCHAROID:
+		case INETOID:
+		case NUMERICOID:
+		case BITOID:
+		case VARBITOID:
+		case TSVECTOROID:
+		case GTSVECTOROID:
+		case TSQUERYOID:
+		case JSONBOID:
+			*elmlen = -1;
+			*elmbyval = false;
+			*elmalign = 'i';
+			break;
+		case PATHOID:
+		case RECORDOID:
+		case TXID_SNAPSHOTOID:
+			*elmlen = -1;
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case CSTRINGOID:
+			*elmlen = -2;
+			*elmbyval = false;
+			*elmalign = 'c';
+			break;
+		case NAMEOID:
+			*elmlen = NAMEDATALEN;
+			*elmbyval = false;
+			*elmalign = 'c';
+			break;
+		case UUIDOID:
+			*elmlen = UUID_LEN;
+			*elmbyval = false;
+			*elmalign = 'c';
+			break;
+		case INTERVALOID:
+			*elmlen = sizeof(Interval);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case BOXOID:
+			*elmlen = sizeof(BOX);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case CIRCLEOID:
+			*elmlen = sizeof(CIRCLE);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case LINEOID:
+			*elmlen = sizeof(LINE);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case LSEGOID:
+			*elmlen = sizeof(LSEG);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case POINTOID:
+			*elmlen = sizeof(Point);
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case MACADDR8OID:
+			*elmlen = sizeof(macaddr8);
+			*elmbyval = false;
+			*elmalign = 'i';
+			break;
+		case MACADDROID:
+			*elmlen = sizeof(macaddr);
+			*elmbyval = false;
+			*elmalign = 'i';
+			break;
+		case REGPROCOID:
+		case OIDOID:
+		case REGPROCEDUREOID:
+		case REGOPEROID:
+		case REGOPERATOROID:
+		case REGCLASSOID:
+		case REGTYPEOID:
+		case REGROLEOID:
+		case REGNAMESPACEOID:
+		case REGCONFIGOID:
+		case REGDICTIONARYOID:
+			*elmlen = sizeof(Oid);
+			*elmbyval = true;
+			*elmalign = 'i';
+			break;
+		case TIDOID:
+			*elmlen = sizeof(ItemPointerData);
+			*elmbyval = false;
+			*elmalign = 's';
+			break;
+		case XIDOID:
+			*elmlen = sizeof(TransactionId);
+			*elmbyval = true;
+			*elmalign = 'i';
+			break;
+		case CIDOID:
+			*elmlen = sizeof(CommandId);
+			*elmbyval = true;
+			*elmalign = 'i';
+			break;
+		case ACLITEMOID:
+			*elmlen = sizeof(AclItem);
+			*elmbyval = false;
+			*elmalign = 'i';
+			break;
+		case TIMETZOID:
+			*elmlen = 12; /* sizeof(TimeTzADT) gives 16 */
+			*elmbyval = false;
+			*elmalign = 'd';
+			break;
+		case CASHOID:
+		case INT8OID:
+		case TIMESTAMPOID:
+		case TIMEOID:
+		case TIMESTAMPTZOID:
+		case LSNOID:
+			*elmlen = sizeof(int64);
+			*elmbyval = true;
+			*elmalign = 'd';
+			break;
+		case INT4OID:
+		case FLOAT4OID:
+		case DATEOID:
+		case ANYOID:
+			*elmlen = sizeof(int32);
+			*elmbyval = true;
+			*elmalign = 'i';
+			break;
+		case INT2OID:
+			*elmlen = sizeof(int16);
+			*elmbyval = true;
+			*elmalign = 's';
+			break;
+		case BOOLOID:
+		case CHAROID:
+			*elmlen = sizeof(char);
+			*elmbyval = true;
+			*elmalign = 'c';
+			break;
+		case FLOAT8OID:
+			*elmlen = 8;
+			*elmbyval = FLOAT8PASSBYVAL;
+			*elmalign = 'd';
+			break;
+		/* TODO: Extend support to other types as well. */
+		default:
+			return false;
+	}
+	return true;
 }
 
 /*

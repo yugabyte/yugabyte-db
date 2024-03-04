@@ -2,10 +2,11 @@
 
 import { Component, Suspense, lazy } from 'react';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
-// import { ReleaseListContainer } from '../components/releases';
 
-const ReleaseListContainer = lazy(() =>
-  import('../components/releases/ReleaseList/ReleaseListContainer')
+const ReleaseFlowDecision = lazy(() =>
+  import('../components/releases/ReleaseFlowDecision').then(({ ReleaseFlowDecision }) => ({
+    default: ReleaseFlowDecision
+  }))
 );
 
 class Releases extends Component {
@@ -13,7 +14,7 @@ class Releases extends Component {
     return (
       <div className="dashboard-container">
         <Suspense fallback={YBLoadingCircleIcon}>
-          <ReleaseListContainer />
+          <ReleaseFlowDecision />
         </Suspense>
       </div>
     );

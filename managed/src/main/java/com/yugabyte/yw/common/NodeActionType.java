@@ -32,7 +32,9 @@ public enum NodeActionType {
   // Hard reboot the node (stop + start).
   HARD_REBOOT,
   // Re-provision node with already stopped processes.
-  REPROVISION;
+  REPROVISION,
+  // REplace an node.
+  REPLACE;
 
   NodeActionType() {
     this(false);
@@ -74,6 +76,8 @@ public enum NodeActionType {
         return completed ? "Performed preflight check" : "Performing preflight check";
       case REPROVISION:
         return completed ? "Re-provisioned" : "Re-provisioning";
+      case REPLACE:
+        return completed ? "Replaced" : "Replacing";
       default:
         return null;
     }
@@ -102,6 +106,8 @@ public enum NodeActionType {
         return TaskType.PrecheckNodeDetached;
       case REPROVISION:
         return TaskType.ReprovisionNode;
+      case REPLACE:
+        return TaskType.ReplaceNodeInUniverse;
       default:
         return null;
     }
@@ -131,6 +137,8 @@ public enum NodeActionType {
         return CustomerTask.TaskType.PrecheckNode;
       case REPROVISION:
         return CustomerTask.TaskType.ReprovisionNode;
+      case REPLACE:
+        return CustomerTask.TaskType.Replace;
       default:
         return null;
     }

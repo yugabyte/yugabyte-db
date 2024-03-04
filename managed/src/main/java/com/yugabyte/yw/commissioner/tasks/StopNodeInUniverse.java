@@ -74,9 +74,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           SubTaskGroupType.StoppingNodeProcesses,
           null);
     }
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   private void freezeUniverseInTxn(Universe universe) {
@@ -150,7 +148,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           universe,
           currentNode,
           () -> findNewMasterIfApplicable(universe, currentNode),
-          instanceExists);
+          instanceExists,
+          false /* ignore stop error */);
 
       // Update Node State to Stopped
       createSetNodeStateTask(currentNode, NodeState.Stopped)

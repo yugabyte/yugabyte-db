@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMutation } from 'react-query';
+import { toast } from 'react-toastify';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
 import { ReleaseState, Releases } from '../dtos';
+import { ReleasesAPI } from '../../api';
 
 interface DisableReleaseModalProps {
-  data: Releases | null;
+  data: Releases;
   open: boolean;
   onClose: () => void;
   onActionPerformed: () => void;
@@ -27,11 +31,37 @@ export const DisableReleaseModal = ({
 }: DisableReleaseModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
+  const releaseUuid = data.release_uuid;
 
-  const handleSubmit = async () => {
-    // TODO: Write an useMutation call to make an API call to ensure it updates release metadata - updateReleaseMetadata (PUT) from api.ts
-    // TODO: onSuccess on above mutation call, ensure to call onActionPerformed() which will get fresh set of releasaes
-    // to be displayed in ReleaseList page
+  // State variable
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // PUT API call to disable the release
+  const disableRelease = useMutation(
+    (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, releaseUuid!),
+    {
+      onSuccess: (response: any) => {
+        toast.success('Disabled release successfully');
+        onActionPerformed();
+        onClose();
+      },
+      onError: () => {
+        toast.error('Failed to disable release');
+      }
+    }
+  );
+
+  const handleSubmit = () => {
+    const payload: any = {};
+    Object.assign(payload, data);
+    payload.state =
+      data.state === ReleaseState.ACTIVE ? ReleaseState.DISABLED : ReleaseState.ACTIVE;
+    setIsSubmitting(true);
+    disableRelease.mutate(payload, { onSettled: () => resetModal() });
+  };
+
+  const resetModal = () => {
+    setIsSubmitting(false);
   };
 
   return (
@@ -54,6 +84,7 @@ export const DisableReleaseModal = ({
         className: helperClasses.root,
         dividers: true
       }}
+      isSubmitting={isSubmitting}
       titleContentProps={helperClasses.modalTitle}
     >
       <Box mt={2}>

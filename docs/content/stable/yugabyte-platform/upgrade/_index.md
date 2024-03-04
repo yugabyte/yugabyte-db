@@ -17,12 +17,18 @@ You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
 | Method | Using | Use If |
 | :--- | :--- | :--- |
 | [YBA&nbsp;Installer](./upgrade-yp-installer/) | yba-ctl CLI | Your installation already uses YBA Installer. |
-| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1 or later using Replicated. |
+| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated. |
 | [Kubernetes](./upgrade-yp-kubernetes/) | Helm chart | You're deploying in Kubernetes. |
 
 If you are upgrading a YBA installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
 If you have upgraded YBA to version 2.12 or later and [xCluster replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
+
+{{< note title="Upgrading YBA on deprecated operating systems" >}}
+
+If you are running YugabyteDB Anywhere v2.20.x on a [deprecated OS](../../reference/configuration/operating-systems/#yugabytedb-anywhere), you will need to update your OS before you can upgrade YBA to the next major release.
+
+{{< /note >}}
 
 <div class="row">
 

@@ -51,21 +51,21 @@
 /* DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
-/* DocDB Remote filter cost */
+/* DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */
 #define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
 #define YB_DEFAULT_LOCAL_THROUGHPUT_COST 64000.0
 
-/* 
- * TODO : Since we cannot currently estimate the number of key value pairs per 
- * tuple, we use a constant heuristic value of 3. 
+/*
+ * TODO : Since we cannot currently estimate the number of key value pairs per
+ * tuple, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE 3
-/* 
- * TODO : Since we cannot currently estimate the number of SST files per 
- * table, we use a constant heuristic value of 3. 
+/*
+ * TODO : Since we cannot currently estimate the number of SST files per
+ * table, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
 

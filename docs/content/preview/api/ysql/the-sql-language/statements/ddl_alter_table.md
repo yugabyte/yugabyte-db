@@ -67,6 +67,30 @@ Renaming a table is a non blocking metadata change operation.
 {{< /note >}}
 
 
+#### SET TABLESPACE *tablespace_name*
+
+Asynchronously change the tablespace of an existing table. 
+The tablespace change will immediately reflect in the config of the table, however the tablet move by the load balancer happens in the background. 
+While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
+
+##### Example
+
+```sql
+yugabyte=# ALTER TABLE bank_transactions_eu SET TABLESPACE eu_central_1_tablespace;
+```
+
+```output
+NOTICE:  Data movement for table bank_transactions_eu is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER TABLE
+```
+
+
+Tables can be moved to the default tablespace using:
+```sql
+ALTER TABLE table_name SET TABLESPACE pg_default;
+```
+
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.

@@ -16,8 +16,11 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
 
 DECLARE_bool(TEST_enable_xcluster_api_v2);
+DECLARE_uint32(cdc_wal_retention_time_secs);
+DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 
 namespace yb {
 namespace master {
@@ -115,6 +118,21 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return promise.get_future().get();
   }
 
+  Status VerifyWalRetentionOfTable(
+      const TableId& table_id, uint32 wal_retention_secs = FLAGS_cdc_wal_retention_time_secs) {
+    auto tablets = ListTableActiveTabletLeadersPeers(producer_cluster(), table_id);
+    SCHECK_GE(
+        tablets.size(), static_cast<size_t>(1), IllegalState,
+        Format("No active tablets found for table $0", table_id));
+    for (const auto& tablet : tablets) {
+      SCHECK_EQ(
+          tablet->tablet_metadata()->wal_retention_secs(), wal_retention_secs, IllegalState,
+          Format("Tablet: $0", tablet->tablet_metadata()->LogPrefix()));
+    }
+
+    return Status::OK();
+  }
+
   CatalogManager* catalog_manager_;
   LeaderEpoch epoch_;
   YBClient* client_;
@@ -122,6 +140,8 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
 };
 
 TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+
   // Create two tables in two schemas.
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
   PgSchemaName pg_schema_name2 = "myschema";
@@ -162,6 +182,9 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
   ASSERT_EQ(resp.table_infos(0).table_name(), kTableName2);
   ASSERT_EQ(resp.table_infos(1).table_name(), kTableName1);
 
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
+
   ASSERT_OK(client_->XClusterDeleteOutboundReplicationGroup(kReplicationGroupId));
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
@@ -184,6 +207,9 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   ASSERT_EQ(out_namespace_id.size(), 1);
   ASSERT_EQ(out_namespace_id[0], namespace_id_);
 
+  // Wait for the new streams to be ready.
+  auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+
   // We should have 2 streams now.
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
@@ -194,7 +220,6 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   // Make sure only the namespace that was added is returned.
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_2));
 
-  auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
       ns1_table_id_1, ns1_table_id_2, all_xcluster_streams_initial, ns1_info));
 
@@ -235,6 +260,91 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
   auto final_xcluster_streams = CleanupAndGetAllXClusterStreams();
   ASSERT_TRUE(final_xcluster_streams.empty());
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, AddTable) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1, 0));
+
+  ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
+
+  // Wait for the new streams to be ready.
+  ASSERT_OK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+
+  auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  ASSERT_EQ(all_xcluster_streams_initial.size(), 1);
+
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
+
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+
+  all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
+  ASSERT_EQ(all_xcluster_streams_initial.size(), 2);
+
+  auto ns1_info = ASSERT_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+  ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(
+      table_id_1, table_id_2, all_xcluster_streams_initial, ns1_info));
+
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredEmptyTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
+
+  std::promise<Result<bool>> promise;
+
+  ASSERT_OK(client_->IsXClusterBootstrapRequired(
+      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+
+  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
+  ASSERT_FALSE(is_bootstrap_required);
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithData) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+  std::shared_ptr<client::YBTable> table_2;
+  ASSERT_OK(producer_client()->OpenTable(table_id_2, &table_2));
+  ASSERT_OK(InsertRowsInProducer(0, 10, table_2));
+
+  ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
+
+  std::promise<Result<bool>> promise;
+
+  ASSERT_OK(client_->IsXClusterBootstrapRequired(
+      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+
+  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
+  ASSERT_TRUE(is_bootstrap_required);
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeletedData) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName2));
+  std::shared_ptr<client::YBTable> table_2;
+  ASSERT_OK(producer_client()->OpenTable(table_id_2, &table_2));
+  ASSERT_OK(InsertRowsInProducer(0, 10, table_2));
+  ASSERT_OK(DeleteRowsInProducer(0, 10, table_2));
+
+  ASSERT_OK(client_->XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {kNamespaceName}));
+
+  std::promise<Result<bool>> promise;
+
+  ASSERT_OK(client_->IsXClusterBootstrapRequired(
+      CoarseMonoClock::Now() + kDeadline, kReplicationGroupId, namespace_id_,
+      [&promise](Result<bool> result) { promise.set_value(std::move(result)); }));
+
+  auto is_bootstrap_required = ASSERT_RESULT(promise.get_future().get());
+  ASSERT_FALSE(is_bootstrap_required);
 }
 
 }  // namespace master

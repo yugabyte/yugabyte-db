@@ -88,6 +88,9 @@ DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 
+DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
+     "Enabled packing inserted columns into a single packed value in postgres layer.");
+
 namespace yb {
 namespace pggate {
 namespace {
@@ -490,7 +493,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
     YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
-    const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set)
+    const YBCPgAshConfig* ash_config)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -512,7 +515,7 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id, ash_metadata, is_ash_metadata_set));
+      tserver_shared_object_, session_id, ash_config));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -1323,8 +1326,9 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
-  return down_cast<PgDmlWrite*>(handle)->BindRow(columns, count);
+Status PgApiImpl::DmlBindRow(
+    YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count) {
+  return down_cast<PgDmlWrite*>(handle)->BindRow(ybctid, columns, count);
 }
 
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
@@ -1437,13 +1441,30 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 
 // Insert ------------------------------------------------------------------------------------------
 
+Result<PgStatement*> PgApiImpl::NewInsertBlock(
+    const PgObjectId& table_id,
+    bool is_region_local,
+    YBCPgTransactionSetting transaction_setting) {
+  if (!FLAGS_ysql_pack_inserted_value) {
+    return nullptr;
+  }
+
+  auto stmt = std::make_unique<PgInsert>(
+      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ true);
+  RETURN_NOT_OK(stmt->Prepare());
+  PgStatement *result = nullptr;
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), &result));
+  return result;
+}
+
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
                             bool is_region_local,
                             PgStatement **handle,
-                            YBCPgTransactionSetting transaction_setting) {
+                            YBCPgTransactionSetting transaction_setting,
+                            PgStatement *block_insert_stmt) {
   *handle = nullptr;
   auto stmt = std::make_unique<PgInsert>(
-      pg_session_, table_id, is_region_local, transaction_setting);
+      pg_session_, table_id, is_region_local, transaction_setting, /* packed= */ false);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1906,6 +1927,29 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   return info.num_entries();
 }
 
+Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  if (!tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value()) {
+    // If this tserver has just restarted, it may not have received any
+    // heartbeat response from yb-master that has set a value in
+    // catalog_version_table_in_perdb_mode_ in the shared memory object
+    // yet. Let's wait with 500ms interval until a value is set or until
+    // a 10-second timeout.
+    auto status = LoggedWaitFor(
+        [this]() -> Result<bool> {
+          return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
+        },
+        10s /* timeout */,
+        "catalog_version_table_in_perdb_mode is not set shared memory",
+        500ms /* initial_delay */,
+        1.0 /* delay_multiplier */);
+    RETURN_NOT_OK_PREPEND(
+        status,
+        "Failed to find out pg_yb_catalog_version mode");
+  }
+  return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
@@ -2189,13 +2233,16 @@ void PgApiImpl::ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
 
 Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
                                            const PgOid database_oid,
+                                           YBCPgReplicationSlotSnapshotAction snapshot_action,
                                            PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(
+      pg_session_, slot_name, database_oid, snapshot_action);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
 }
 
-Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicationSlot(
+    PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -2208,9 +2255,28 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlot
   return pg_session_->ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlot(slot_name);
+}
+
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return pg_session_->GetReplicationSlotStatus(slot_name);
+}
+
+Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
+}
+
+Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
+  return pg_session_->pg_client().DestroyVirtualWALForCDC();
+}
+
+Result<cdc::GetConsistentChangesResponsePB> PgApiImpl::GetConsistentChangesForCDC(
+    const std::string &stream_id) {
+  return pg_session_->pg_client().GetConsistentChangesForCDC(stream_id);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
@@ -2227,6 +2293,10 @@ Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
   }
   PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
   return pg_stmt->Exec();
+}
+
+Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistory() {
+  return pg_session_->ActiveSessionHistory();
 }
 
 } // namespace pggate

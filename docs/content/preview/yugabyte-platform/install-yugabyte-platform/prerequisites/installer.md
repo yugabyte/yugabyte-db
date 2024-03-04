@@ -45,8 +45,26 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 ## Software requirements
 
-- A [supported operating system](../../../../reference/configuration/operating-systems/#yugabytedb-anywhere).
-- Python v3.8 to 3.11 must be installed.
+- You can install YugabyteDB Anywhere onto any [x86 Linux operating system](../../../../reference/configuration/operating-systems/#yugabytedb-anywhere) supported by YugabyteDB. YugabyteDB Anywhere doesn't support ARM architectures (but can be used to deploy universes to ARM-based nodes).
+
+    YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
+
+- Python v3.8 to 3.11 must be installed, and both `python` and `python3` must point to Python 3. One way to achieve this is to use `alternatives`. For example:
+
+    ```sh
+    sudo yum install @python38 -y
+    sudo alternatives --config python
+    # choose Python 3.8 from list
+
+    sudo alternatives --config python3
+    # choose Python 3.8 from list
+
+    python -V
+    # output: Python 3.8.16
+
+    python3 -V
+    # output: Python 3.8.16
+    ```
 
 ## Hardware requirements
 
@@ -55,6 +73,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 - 4 cores
 - 8 GB memory
 - 215 GB disk space
+- x86 architecture
 
 ## Other
 

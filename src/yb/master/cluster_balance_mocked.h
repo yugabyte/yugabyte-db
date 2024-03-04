@@ -28,7 +28,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
-  void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const override {
+  void GetAllDescriptors(TSDescriptorVector* ts_descs) const override {
     *ts_descs = ts_descs_;
   }
 

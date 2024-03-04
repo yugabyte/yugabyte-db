@@ -91,7 +91,8 @@ static int yb_server_write_auth_passthroug_request_pkt(od_client_t *client,
 
 	msg = kiwi_fe_write_authentication(NULL, client->startup.user.value,
 					   client->startup.database.value,
-					   client_address);
+					   client_address,
+					   client->tls ? YB_LOGICAL_ENCRYPTED_CONN : YB_LOGICAL_UNENCRYPTED_CONN);
 
 	/* Send `Auth Passthrough Request` packet. */
 	rc = od_write(&server->io, msg);
@@ -144,7 +145,7 @@ static machine_msg_t *yb_read_auth_pkt_from_server(od_client_t *client,
 static void yb_client_exit_mid_passthrough(od_server_t *server,
 					   od_instance_t *instance)
 {
-	machine_msg_t *msg = kiwi_fe_write_password(NULL, NULL, 0);
+	machine_msg_t *msg = kiwi_fe_write_password(NULL, "", 0);
 	if (od_write(&server->io, msg) == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, NULL,
 			 server, "write error in sever: %s",

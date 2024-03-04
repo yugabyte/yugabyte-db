@@ -114,6 +114,46 @@
   to = "/preview/explore/fault-tolerance/"
 
 [[redirects]]
+  from = "/preview/explore/indexes-constraints/covering-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/covering-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/partial-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/partial-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/primary-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/primary-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/secondary-indexes-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/secondary-indexes-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/secondary-indexes-with-jsonb-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/secondary-indexes-with-jsonb-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/unique-index-ycql/"
+  to = "/preview/explore/ycql-language/indexes-constraints/unique-index-ycql"
+
+[[redirects]]
+  from = "/preview/explore/indexes-constraints/*"
+  to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
+
+[[redirects]]
+  from = "/stable/explore/indexes-constraints/*"
+  to = "/stable/explore/ysql-language-features/indexes-constraints/:splat"
+
+[[redirects]]
+  from = "/preview/explore/json-support/jsonb-ysql/"
+  to = "/preview/explore/ysql-language-features/jsonb-ysql/"
+
+[[redirects]]
+  from = "/preview/explore/json-support/jsonb-ycql/"
+  to = "/preview/explore/ycql-language/jsonb-ycql/"
+
+[[redirects]]
   from = "/explore/tunable-reads/"
   to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
 
@@ -621,6 +661,19 @@
   force = true
 
 [[redirects]]
+  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.16/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.18/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.14/explore/indexes-constraints/"
+  force = true
+
+[[redirects]]
   from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
   to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
@@ -676,56 +729,60 @@
 # Build an app was in quick-start, now in develop
 
 [[redirects]]
+  from = "/preview/develop/build-apps/*"
+  to = "/preview/tutorials/build-apps/:splat"
+
+[[redirects]]
   from = "/preview/quick-start/build-apps/*"
-  to = "/preview/develop/build-apps/"
+  to = "/preview/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/develop/build-apps/"
+  to = "/preview/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
-  to = "/preview/develop/build-apps/cloud-add-ip/"
+  to = "/preview/tutorials/build-apps/cloud-add-ip/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
-  to = "/preview/develop/build-apps/c/cloud-ysql-c/"
+  to = "/preview/tutorials/build-apps/c/cloud-ysql-c/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
-  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
+  to = "/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
-  to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
+  to = "/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
-  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
+  to = "/preview/tutorials/build-apps/go/cloud-ysql-go/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
-  to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
+  to = "/preview/tutorials/build-apps/java/cloud-ysql-jdbc/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
-  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
+  to = "/preview/tutorials/build-apps/nodejs/cloud-ysql-node/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
-  to = "/preview/develop/build-apps/php/cloud-ysql-php/"
+  to = "/preview/tutorials/build-apps/php/cloud-ysql-php/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
-  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
+  to = "/preview/tutorials/build-apps/python/cloud-ysql-python/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
-  to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
+  to = "/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
-  to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  to = "/preview/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -942,6 +999,13 @@
 [[redirects]]
   from = "/stable/migrate/migrate-from-postgresql/"
   to = "/stable/manage/data-migration/bulk-export-ysql/"
+  force = true
+
+# CDC tutorials was in explore, now in Tutorials
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/cdc-tutorials/*"
+  to = "/preview/tutorials/cdc-tutorials/:splat"
   force = true
 
 
@@ -1177,7 +1241,7 @@
 [[headers]]
   #
   # https://docs.netlify.com/configure-builds/file-based-configuration/#headers
-  #
+  # CSP
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
@@ -1186,6 +1250,7 @@
         ;
 
         connect-src 'self'
+            https://app.clearbit.com
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
             https://raw.githubusercontent.com/
@@ -1199,12 +1264,15 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.6.0.min.js
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
+            https://netlify-rum.netlify.app
+            https://tag.clearbitscripts.com
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1214,6 +1282,7 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
+            https://x.clearbitjs.com
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1246,6 +1315,7 @@
             https://raw.githubusercontent.com/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://www.gstatic.com
         ;
 
         child-src 'self' 'unsafe-inline'

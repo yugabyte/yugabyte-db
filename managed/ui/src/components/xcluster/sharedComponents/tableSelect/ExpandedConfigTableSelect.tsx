@@ -28,7 +28,6 @@ interface ExpandedConfigTableSelectProps {
   selectedTableUUIDs: string[];
   tableType: XClusterTableType;
   sourceUniverseUUID: string;
-  sourceUniverseNodePrefix: string;
   handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
@@ -38,7 +37,6 @@ export const ExpandedConfigTableSelect = ({
   selectedTableUUIDs,
   tableType,
   sourceUniverseUUID,
-  sourceUniverseNodePrefix,
   handleTableSelect,
   handleAllTableSelect
 }: ExpandedConfigTableSelectProps) => {
@@ -89,10 +87,8 @@ export const ExpandedConfigTableSelect = ({
           dataField="status"
           dataFormat={(xClusterTableStatus: XClusterTableStatus, xClusterTable: XClusterTable) => (
             <XClusterTableStatusLabel
+              replicationLag={xClusterTable.replicationLag}
               status={xClusterTableStatus}
-              streamId={xClusterTable.streamId}
-              sourceUniverseTableUuid={getTableUuid(xClusterTable)}
-              sourceUniverseNodePrefix={sourceUniverseNodePrefix}
               sourceUniverseUuid={sourceUniverseUUID}
             />
           )}

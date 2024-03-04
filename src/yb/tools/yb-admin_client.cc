@@ -160,13 +160,13 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
 using master::BackupRowEntryPB;
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
-using master::AbortSnapshotRestoreRequestPB;
-using master::AbortSnapshotRestoreResponsePB;
 using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;

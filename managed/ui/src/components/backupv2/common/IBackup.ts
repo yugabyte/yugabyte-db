@@ -67,7 +67,7 @@ export interface IBackup {
   commonBackupInfo: ICommonBackupInfo;
   isFullBackup: boolean;
   hasIncrementalBackups: boolean;
-  lastIncrementalBackupTime: number;
+  lastIncrementalBackupTime: string;
   lastBackupState: Backup_States;
   backupType: TableType;
   category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';

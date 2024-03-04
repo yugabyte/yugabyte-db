@@ -19,6 +19,7 @@ interface DrBannerSectionProps {
 
 const useStyles = makeStyles((theme) => ({
   bannerContainer: {
+    marginBottom: theme.spacing(2),
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1)

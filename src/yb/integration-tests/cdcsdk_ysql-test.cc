@@ -12,12 +12,18 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
-#include "yb/cdc/cdc_state_table.h"
 #include "yb/master/tasks_tracker.h"
+
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -7264,8 +7270,142 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
   }
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Fail the alter table ADD column, this will give us two CHANGE_METADATA_OPs
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT;"));
+
+  // Perform a multi shard transaction, so that we get DMLs in between the two CHANGE_METADATA_OPs
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (generate_series(1,5),1);"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set value_1 = 2 where key = 5;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6,1);"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table where key = 1;"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Sleep to ensure that rollback has taken place
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  // Call getChanges to consume the records
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume any remaining records.
+  auto prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestInsertAndUpdateIntentsWithIncompleteRows)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 5;
+
+  // This test checks the behaviour when the intents batch contains incomplete set of rows for the
+  // insert and an update record at the end of the batch. If packed row is enabled a single intent
+  // will have data for all the columns.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", 4));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {1, 3, 2, 0, 0, 0, 3, 3};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1,1,1);"));
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 2, col3 = 3 where col1 = 1;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2,2,2,2);"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Call getChanges to consume the records
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume the remaining records.
+  auto prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3,3,3,3);"));
+  ASSERT_OK(conn.Execute("UPDATE test_table set col2 = 4, col3 = 4 where col1 = 1;"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  // Call getChanges to consume the records
+  prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  // Call getChanges to consume the remaining records.
+  prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
+    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+    UpdateRecordCount(record, count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 41;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -7277,7 +7417,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
-  // Number of rows is intentionally kept equal to the value of cdc_max_stream_intent_records.
+  // Number of rows is intentionally kept equal to one less then the value of
+  // cdc_max_stream_intent_records.
   const int row_count = 40;
   ASSERT_OK(WriteRowsHelper(0, row_count, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
@@ -7523,7 +7664,7 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
   ASSERT_OK(conn.Execute("create publication pub for all tables;"));
 
   ASSERT_OK(conn.FetchFormat(
-      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       "test_replication_slot_create_with_view"));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
@@ -7582,6 +7723,155 @@ TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
 
   ASSERT_OK(conn.Execute("set yb_enable_replication_commands = true;"));
   ASSERT_OK(conn.Execute("create publication pub2 for all tables;"));
+}
+
+// This test validates that the checkpoint (both OpId as well as cdc_sdk_safe_time) is not moved
+// ahead incorrectly beyond what the client has explicitly acknowledged
+TEST_F(CDCSDKYsqlTest, TestSafetimeUpdateFromExplicitCheckPoint) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  const int expected_count[] = {2, 15, 0, 0, 0, 0, 3, 3};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  ASSERT_OK(WriteRowsHelper(0, 5, &test_cluster_, true));
+
+  // First GetChanges call to consume the first transaction
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for(auto record : get_changes_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+
+  ASSERT_OK(WriteRowsHelper(5, 10, &test_cluster_, true));
+
+  // Second GetChanges call with from_op_id and explicit checkpoint same as first GetChanges
+  // response checkpoint. This simulates the situation where Kafka has acknowledged all the records
+  // in the first transaction
+  auto explicit_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(get_changes_resp.safe_hybrid_time());
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
+  for (auto record : get_changes_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+
+  // Third GetChanges call with from_op_id equal to second GetChanges response checkpoint, and
+  // explicit checkpoint equal to first GetChanges response checkpoint. This
+  // simulates the situation where connector requests further records but Kafka has not acknowledged
+  // the second transaction.
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
+  for (auto record : get_changes_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+
+  auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 1);
+
+  auto cp_from_tablet_list = get_tablets_resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
+
+  // Fourth GetChanges call with checkpoint and safe_hybrid_time from the response of
+  // GetTabletListToPoll. This simulates connector restart. If the safe time is properly updated in
+  // state table then GetChanges should return the records corresponding to the second transaction
+  // in the response. Also, since we will be calling GetChanges with an OpId different from the last
+  // streamed OpId for the tablet, the cached schema will be invalidated and we will also receive a
+  // DDL record in the response.
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &cp_from_tablet_list, 0, cp_from_tablet_list.snapshot_time()));
+  for (auto record : get_changes_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+// This test validates that the cdc_sdk_safe_time is moved forward only when the client specifies an
+// explicit checkpoint with snapshot_time
+TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(0, 5, &test_cluster_, true));
+
+  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(WriteRowsHelper(5, 10, &test_cluster_, true));
+  auto explicit_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(get_changes_resp.safe_hybrid_time());
+  auto checkpointed_time = explicit_checkpoint.snapshot_time();
+
+  // This GetChanges call would update the cdc_sdk_safe_time in the state table as its explicit
+  // checkpoint is initialized with snapshot time.
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
+  auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_NE(row.cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_EQ(row.cdc_sdk_safe_time, HybridTime::FromPB(checkpointed_time));
+
+  ASSERT_OK(WriteRowsHelper(10, 15, &test_cluster_, true));
+
+  // This GetChanges call will not update the cdc_sdk_safe_time in the state table as its explicit
+  // checkpoint is not initialized with snapshot time.
+  get_changes_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint(),
+      &get_changes_resp.cdc_sdk_checkpoint()));
+  row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_NE(row.cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_EQ(row.cdc_sdk_safe_time, HybridTime::FromPB(checkpointed_time));
+}
+
+TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  // cdc_state entry for the replication slot should only be seen when replication commands are
+  // enabled and a consistent_snapshot stream is created.
+  CDCStateTable cdc_state_table(test_client());
+  auto stream_id_1 = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id_1, tablets[0].tablet_id()));
+  auto entry_1 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id_1}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_1.has_value());
+  ASSERT_EQ(entry_1->confirmed_flush_lsn.value(), 2);
+  ASSERT_EQ(entry_1->restart_lsn.value(), 1);
+  ASSERT_EQ(entry_1->xmin.value(), 1);
+  ASSERT_EQ(entry_1->record_id_commit_time.value(), checkpoint.snapshot_time());
+  ASSERT_EQ(entry_1->cdc_sdk_safe_time.value(), checkpoint.snapshot_time());
+
+  // On a non-consistent snapshot stream, we should not see the entry for replication slot.
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_FALSE(entry_2.has_value());
 }
 
 }  // namespace cdc

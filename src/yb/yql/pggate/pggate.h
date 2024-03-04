@@ -120,7 +120,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
+            const YBCPgAshConfig* ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -166,6 +166,7 @@ class PgApiImpl {
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
+  Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
 
@@ -458,7 +459,7 @@ class PgApiImpl {
                              int n_attr_values,
                              YBCPgExpr *attr_values);
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
-  Status DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count);
+  Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
@@ -520,11 +521,17 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Insert.
+  Result<PgStatement*> NewInsertBlock(
+      const PgObjectId& table_id,
+      bool is_region_local,
+      YBCPgTransactionSetting transaction_setting);
+
   Status NewInsert(const PgObjectId& table_id,
                    bool is_region_local,
                    PgStatement **handle,
                    YBCPgTransactionSetting transaction_setting =
-                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL,
+                   PgStatement *block_insert_handle = nullptr);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -734,18 +741,33 @@ class PgApiImpl {
   // Create Replication Slot.
   Status NewCreateReplicationSlot(const char *slot_name,
                                   const PgOid database_oid,
+                                  YBCPgReplicationSlotSnapshotAction snapshot_action,
                                   PgStatement **handle);
-  Status ExecCreateReplicationSlot(PgStatement *handle);
+  Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
+      PgStatement *handle);
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name);
+
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
+
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
+
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
+
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
  private:
   class Interrupter;

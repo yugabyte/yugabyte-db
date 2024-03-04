@@ -212,6 +212,7 @@ static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
  * the inner relation of a nestloop join; it can't be used on the outer side,
  * nor in a merge or hash join.  In that context, values for the other rels'
  * attributes are available and fixed during any one scan of the indexpath.
+ * YB: Values are not fixed in batched nested loop joins by nature of a batch.
  *
  * An IndexPath is generated and submitted to add_path() for each plain or
  * parameterized index scan this routine deems potentially interesting for

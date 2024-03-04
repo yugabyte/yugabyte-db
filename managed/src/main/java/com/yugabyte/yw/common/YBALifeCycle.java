@@ -15,11 +15,15 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.controllers.handlers.EnvProxySelector;
 import io.ebean.DB;
 import java.net.ProxySelector;
+import lombok.extern.slf4j.Slf4j;
 import play.Environment;
 import play.db.ebean.EbeanDynamicEvolutions;
 
 /** Play lifecycle does not give onStartup event */
+@Slf4j
 public class YBALifeCycle {
+
+  private static final String ENV_PROXY_SELECTOR_PARAM = "yb.env_proxy_selector.enabled";
 
   private final Config config;
   private final ConfigHelper configHelper;
@@ -40,7 +44,10 @@ public class YBALifeCycle {
 
   /** This is invoked before any migrations start and first thing after YBA module is loaded. */
   void onStart() {
-    ProxySelector.setDefault(new EnvProxySelector());
+    if (config.getBoolean(ENV_PROXY_SELECTOR_PARAM)) {
+      log.info("Env proxy selector enabled");
+      ProxySelector.setDefault(new EnvProxySelector());
+    }
     checkIfDowngrade();
   }
 

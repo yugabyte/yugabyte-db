@@ -1831,15 +1831,32 @@ YBCValidatePlacement(const char *placement_info)
 /*  Replication Slot Functions. */
 
 void
-YBCCreateReplicationSlot(const char *slot_name)
+YBCCreateReplicationSlot(const char *slot_name,
+						 CRSSnapshotAction snapshot_action,
+						 uint64_t *consistent_snapshot_time)
 {
 	YBCPgStatement handle;
 
+	YBCPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
+	switch (snapshot_action)
+	{
+		case CRS_NOEXPORT_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT;
+			break;
+		case CRS_USE_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
+			break;
+		case CRS_EXPORT_SNAPSHOT:
+			/* We return an 'Unsupported' error earlier. */
+			pg_unreachable();
+	}
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 MyDatabaseId,
+												 repl_slot_snapshot_action,
 												 &handle));
 
-	YBCStatus status = YBCPgExecCreateReplicationSlot(handle);
+	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 	if (YBCStatusIsAlreadyPresent(status))
 	{
 		YBCFreeStatus(status);
@@ -1870,32 +1887,62 @@ YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 }
 
 void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot)
+{
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
+
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgGetReplicationSlot(slot_name, replication_slot), error_message);
+}
+
+void
 YBCGetReplicationSlotStatus(const char *slot_name,
 							bool *active)
 {
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active),
-		&not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
+
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgGetReplicationSlotStatus(slot_name, active), error_message);
 }
 
 void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
 
 	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
 											   &handle));
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgExecDropReplicationSlot(handle), error_message);
+}
 
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(YBCPgExecDropReplicationSlot(handle),
-								 &not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+void
+YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
+						size_t numrelations)
+{
+	Assert(MyDatabaseId);
+
+	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
+											 numrelations));
+}
+
+void
+YBCDestroyVirtualWalForCDC()
+{
+	HandleYBStatus(YBCPgDestroyVirtualWalForCDC());
+}
+
+void
+YBCGetCDCConsistentChanges(const char *stream_id,
+						   YBCPgChangeRecordBatch **record_batch)
+{
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
 }

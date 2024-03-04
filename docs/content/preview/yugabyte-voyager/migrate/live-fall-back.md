@@ -10,8 +10,6 @@ menu:
     parent: migration-types
     weight: 104
 techPreview: /preview/releases/versioning/#feature-availability
-rightNav:
-  hideH4: true
 type: docs
 ---
 
@@ -310,7 +308,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
 
 {{< /note >}}
 
@@ -425,6 +423,60 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
+#### Import indexes and triggers
+
+Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
+
+- The exported snapshot has been completely imported on the target.
+- All the events accumulated on local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) have caught up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true
+```
+
+If any of the CREATE INDEX DDLs fail in the preceding command, drop the INVALID indexes on the target database using:
+
+```sql
+DO $$
+DECLARE
+  index_name text;
+BEGIN
+  FOR index_name IN (
+    SELECT indexrelid::regclass
+    FROM pg_index
+    WHERE indisvalid = false
+  )
+  LOOP
+    EXECUTE 'DROP INDEX ' || index_name;
+  END LOOP;
+END $$;
+```
+
+and then retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true \
+        --ignore-exist true
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
 ### Archive changes (Optional)
 
 As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
@@ -461,6 +513,10 @@ Perform the following steps as part of the cutover process:
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
 
+       {{<note title="Event duplication">}}
+The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source database. For such situations, it is recommended to manually verify data in the source or target database to ensure accuracy and consistency.
+        {{</note>}}
+
     1. The [import data to source](../../reference/data-migration/import-data/#import-data-to-source) command automatically starts applying changes (captured from the target YugabyteDB) back to the source database.
     Note that the [export data from source](#export-data-from-source) process transforms to a `import data to source` process, so if it gets terminated for any reason, you need to restart the process using `import data to source` command as suggested in the `export data from source` output.
 
@@ -473,20 +529,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
-1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \
-            --post-import-data true
-    ```
-
-    Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -508,21 +551,19 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     ```sql
     --disable triggers
-
     BEGIN
         FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
         LOOP
-           EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
+          EXECUTE IMMEDIATE 'ALTER TABLE '||R.owner||'."'||R.object_name||'" DISABLE ALL TRIGGERS';
         END LOOP;
     END;
     /
 
     --disable referential constraints
-
     BEGIN
         FOR c IN (SELECT table_name, constraint_name
-                FROM user_constraints
-                WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
+          FROM user_constraints
+          WHERE constraint_type IN ('R') AND OWNER = '<SCHEMA_NAME>')
         LOOP
           EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
         END LOOP;
@@ -560,6 +601,8 @@ Perform the following steps as part of the cutover process:
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
+
+    **Note** that for Oracle migrations, restoring sequences after cutover on the source-replica database is currently unsupported, and you need to restore sequences manually.
 
 1. Re-enable triggers and foreign-key constraints on the source database using the following PL/SQL commands on the source schema as a privileged user:
 
@@ -613,7 +656,7 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
-1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-1. yb-voyager provides limited support for data types during CDC of `export data from target` phase. For example, data types such as DECIMAL and Timestamp are not supported.
+- Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
+- SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
+- In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

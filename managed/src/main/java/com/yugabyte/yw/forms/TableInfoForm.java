@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import java.util.UUID;
 import lombok.Builder;
 import lombok.Data;
@@ -64,6 +65,9 @@ public class TableInfoForm {
     @ApiModelProperty(value = "Main Table UUID of index tables")
     public final UUID mainTableUUID;
 
+    @ApiModelProperty(value = "Index Table IDs of main table")
+    public final List<String> indexTableIDs;
+
     @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
     public final String pgSchemaName;
 
@@ -76,7 +80,8 @@ public class TableInfoForm {
     @JsonIgnore
     public boolean isColocatedChildTable() {
       // Colocated parent tables do not have ParentTableId set.
-      if (this.colocated
+      if (this.colocated != null
+          && this.colocated
           && this.colocationParentId != null
           && this.relationType != MasterTypes.RelationType.COLOCATED_PARENT_TABLE_RELATION) {
         return true;

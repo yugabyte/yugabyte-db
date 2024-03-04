@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import clsx from 'clsx';
-import { Box, Typography, makeStyles, Tab, useTheme } from '@material-ui/core';
+import { Box, Typography, makeStyles, Tab, useTheme, Tooltip } from '@material-ui/core';
 import { Add } from '@material-ui/icons';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
 import { DeploymentStatus } from './ReleaseDeploymentStatus';
@@ -10,8 +10,13 @@ import { ImportedArchitecture } from './ImportedArchitecture';
 import { InUseUniverses } from './InUseUniverses';
 import { YBButton } from '../../../components';
 import { ModalTitle, ReleasePlatformArchitecture, ReleaseState, Releases } from './dtos';
+import { isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import { ReactComponent as Delete } from '../../../../redesign/assets/trashbin.svg';
+import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+
+const DOCS_LINK = 'https://docs.yugabyte.com/preview/releases/yba-releases/';
+const MAX_RELEASE_TAG_CHAR = 10;
 
 const useStyles = makeStyles((theme) => ({
   sidePanel: {
@@ -39,6 +44,10 @@ const useStyles = makeStyles((theme) => ({
   },
   floatBoxRight: {
     float: 'right'
+  },
+  flexRow: {
+    display: 'flex',
+    flexDirection: 'row'
   },
   flexColumn: {
     display: 'flex',
@@ -96,6 +105,24 @@ const useStyles = makeStyles((theme) => ({
     padding: '0px',
     borderColor: '#DDE1E6',
     borderStyle: 'solid'
+  },
+  releaseTagBox: {
+    border: '1px',
+    borderRadius: '6px',
+    padding: '4px 6px 4px 6px',
+    backgroundColor: theme.palette.grey[200],
+    maxWidth: 'fit-content',
+    marginLeft: theme.spacing(0.5)
+  },
+  releaseTagText: {
+    color: theme.palette.grey[700]
+  },
+  smallerReleaseText: {
+    fontWeight: 400,
+    fontFamily: 'Inter',
+    fontSize: '11.5px',
+    color: theme.palette.grey[900],
+    alignSelf: 'center'
   }
 }));
 
@@ -108,13 +135,13 @@ type ReleaseDetailsTab = typeof ReleaseDetailsTab[keyof typeof ReleaseDetailsTab
 const DEFAULT_TAB = ReleaseDetailsTab.IMPORTED_ARCHITECTURE;
 
 interface ReleaseDetailsProps {
-  data: Releases | null;
+  data: Releases;
   onSidePanelClose: () => void;
   onNewReleaseButtonClick: () => void;
   onEditArchitectureClick: () => void;
   onDeleteReleaseButtonClick: () => void;
   onDisableReleaseButtonClick: () => void;
-  onSetReleaseArchitecture: (selectedArchitecture: ReleasePlatformArchitecture) => void;
+  onSetReleaseArchitecture: (selectedArchitecture: ReleasePlatformArchitecture | null) => void;
   onSetModalTitle: (modalTitle: string) => void;
 }
 
@@ -144,11 +171,15 @@ export const ReleaseDetails = ({
 
   const formatReleaseDetails = (releaseDetailsKey: string) => {
     const key = releaseDetailsMap[releaseDetailsKey];
-    const value = data?.[key];
+    let value = data?.[key];
+    if (!value) {
+      value = 'NA';
+    }
+
     if (key === releaseDetailsMap.releaseNote) {
       return (
         <Box className={helperClasses.releaseMetadataValue}>
-          <Link target="_blank" to={value}>
+          <Link target="_blank" to={DOCS_LINK}>
             <span>{t('releases.releaseNote')}</span>
           </Link>
         </Box>
@@ -156,6 +187,38 @@ export const ReleaseDetails = ({
     }
     if (key === releaseDetailsMap.status) {
       return <DeploymentStatus data={data} />;
+    }
+    if (key === releaseDetailsMap.version) {
+      return (
+        <Box className={helperClasses.flexRow}>
+          <Box className={helperClasses.releaseMetadataValue}>{value}</Box>
+          {isNonEmptyString(data.release_tag) && (
+            <>
+              <Box className={helperClasses.releaseTagBox}>
+                <span
+                  className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
+                >
+                  {data.release_tag.length > MAX_RELEASE_TAG_CHAR
+                    ? `${data.release_tag.substring(0, 10)}...`
+                    : data.release_tag}
+                </span>
+              </Box>
+              <span>
+                {data.release_tag.length > MAX_RELEASE_TAG_CHAR && (
+                  <Tooltip title={data.release_tag} arrow placement="top">
+                    <img src={InfoMessageIcon} alt="info" />
+                  </Tooltip>
+                )}
+              </span>
+            </>
+          )}
+        </Box>
+      );
+    }
+    if (key === releaseDetailsMap.support) {
+      return (
+        <Box className={helperClasses.releaseMetadataValue}>{t(`releases.type.${value}`)}</Box>
+      );
     }
     return <Box className={helperClasses.releaseMetadataValue}>{value}</Box>;
   };
@@ -246,6 +309,7 @@ export const ReleaseDetails = ({
             <TabPanel value={ReleaseDetailsTab.IMPORTED_ARCHITECTURE}>
               <YBButton
                 className={helperClasses.floatBoxRight}
+                disabled={data?.artifacts.length >= 3}
                 variant="secondary"
                 size="large"
                 startIcon={<Add />}

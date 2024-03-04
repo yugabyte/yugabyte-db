@@ -19,10 +19,10 @@ public class PgStatStatements extends Model {
 
   private UUID universeId;
   private String nodeName;
-
   private long queryId;
-  private long calls;
-  private long rows;
+
+  private double rps;
+  private double rowsAvg;
   private double avgLatency;
   private Double meanLatency;
   private Double p90Latency;

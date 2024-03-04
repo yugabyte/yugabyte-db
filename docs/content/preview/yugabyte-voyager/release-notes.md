@@ -13,6 +13,40 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.6.5 - February 13, 2024
+
+### New features
+
+- Support for [live migration](../migrate/live-migrate/) from PostgreSQL databases with the option of [fall-forward](../migrate/live-fall-forward/), using which you can switch to a source-replica PostgreSQL database if an issue arises during migration {{<badge/tp>}}.
+
+### Enhancements
+
+- The live migration workflow has been optimized for [Importing indexes and triggers](../migrate/live-migrate/#import-indexes-and-triggers) on the target YugabyteDB. Instead of creating indexes on target after cutover, they can now be created concurrently with the CDC phase of `import-data-to-target`. This ensures that the time consuming task of creating indexes on the target YugabyteDB is completed before the cutover process.
+
+- The `--post-import-data` flag of import schema has been renamed to `--post-snapshot-import` to incorporate live migration workflows.
+
+- Enhanced [analyze schema](../reference/schema-migration/analyze-schema/) to report the unsupported extensions on YugabyteDB.
+
+- Improved UX of `yb-voyager get data-migration-report` for large set of tables by adding pagination.
+
+- The YugabyteDB debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1 and later.
+
+- Enhanced [export data status](../reference/data-migration/export-data/#export-data-status) command to report number of rows exported for each table in case of offline migration.
+
+- Reduced default value of `--parallel-jobs` for import data to target YugabyteDB to 0.25 of total cores (from 0.5), to improve stability of target YugabyteDB.
+
+### Bug fixes
+
+- Fixed a bug in the CDC phase of [import data](../reference/data-migration/import-data/) where parallel ingestion of events with different primary keys having same unique keys was leading to unique constraint errors.
+
+- Fixed an issue in [yb-voyager initiate cutover to target](../reference/cutover-archive/cutover/#cutover-to-target) where fallback intent is stored even if you decide to abort the process in the confirmation prompt.
+
+- Fixed an issue in [yb-voyager end migration](../reference/end-migration/) where the source database is not cleaned up if `--save-migration-reports` flag is set to false.
+
+- yb-voyager now gracefully shuts down all child processes on exit, to prevent orphan processes.
+
+- Fixed a bug in live migration where "\r\n" in text data was silently converted to "\n". This was affecting snapshot phase of live migration as well as offline migration with BETA_FAST_DATA_EXPORT.
+
 ## v1.6.1 - December 14, 2023
 
 ### Bug fixes

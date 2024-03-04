@@ -14,11 +14,9 @@ type: docs
 
 Kubernetes provides you with an option of employing remote disks using dynamic provisioning or local storage which has to be preprovisioned.
 
-Local storage provides great performance, but the data is not replicated and can be lost if the node fails. This option is ideal for databases, such as YugabyteDB, that manage their own replication and can guarantee high availability (HA).
+Local storage provides great performance, but the data is not replicated and can be lost if the pod is moved to a different node for maintenance operations, or if a node fails. Remote storage has slightly lower performance but the data is resilient to failures.
 
-Remote storage has slightly lower performance but the data is resilient to failures. This type of storage is absolutely essential for databases that do not offer HA (for example, traditional relational databases, such as PostgreSQL and MySQL).
-
-The following table summarizes the features and when to use local or remote storage:
+The following table summarizes the tradeoffs of local vs remote storage:
 
 <table>
   <tr>
@@ -32,12 +30,7 @@ The following table summarizes the features and when to use local or remote stor
     <td>Yes</td>
   </tr>
   <tr>
-    <td>Ideal deployment strategy with YugabyteDB</td>
-    <td>Use for latency sensitive apps <br> Add remote storage to increase capacity / cost-efficient tiering</td>
-    <td>Use for large disk capacity per node</td>
-  </tr>
-  <tr>
-    <td>Disk storage resilient to failures</td>
+    <td>Disk storage resilient to failures or pod movement</td>
     <td>No</td>
     <td>Yes</td>
   </tr>
@@ -63,6 +56,6 @@ The following table summarizes the features and when to use local or remote stor
   </tr>
 </table>
 
+While local storage offers higher throughput and lower latency at a lower cost, it comes with significant limitations. Maintenance operations like cluster node pool upgrades, or rolling operations to upgrade software or set flags can cause a pod to lose its local copy and require a full remote bootstrap of all local tablets from its peers. This can be time consuming for large databases. Further, for large clusters, there is always a non-zero risk of another pod movement happening during these maintenance operations, which would cause data loss for a subset of tablets. Therefore, using local storage is not recommended for most production use cases.
 
-It is generally preferable to use local storage where possible for higher performance and lower costs. For information on how to deploy YugabyteDB on Kubernetes using local SSDs, see [Single-zone GKE](/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd/).
 

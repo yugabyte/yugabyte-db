@@ -15,8 +15,6 @@
 #include <shared_mutex>
 #include <unordered_set>
 
-#include "yb/cdc/cdc_types.h"
-
 #include "yb/client/table_handle.h"
 
 #include "yb/util/opid.h"
@@ -83,6 +81,10 @@ struct CDCStateTableEntry {
   std::optional<uint64_t> active_time;
   std::optional<uint64_t> cdc_sdk_safe_time;
   std::optional<std::string> snapshot_key;
+  std::optional<uint64_t> confirmed_flush_lsn;
+  std::optional<uint64_t> restart_lsn;
+  std::optional<uint32_t> xmin;
+  std::optional<uint64_t> record_id_commit_time;
 
   std::string ToString() const;
 };
@@ -96,6 +98,10 @@ struct CDCStateTableEntrySelector {
   CDCStateTableEntrySelector&& IncludeActiveTime();
   CDCStateTableEntrySelector&& IncludeCDCSDKSafeTime();
   CDCStateTableEntrySelector&& IncludeSnapshotKey();
+  CDCStateTableEntrySelector&& IncludeConfirmedFlushLSN();
+  CDCStateTableEntrySelector&& IncludeRestartLSN();
+  CDCStateTableEntrySelector&& IncludeXmin();
+  CDCStateTableEntrySelector&& IncludeRecordIdCommitTime();
   std::unordered_set<std::string> columns_;
 };
 
@@ -106,17 +112,16 @@ class CDCStateTableRange;
 // uses the YBClient and YBSession to access the table.
 class CDCStateTable {
  public:
-  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init)
-      : async_client_init_(async_client_init) {}
-  explicit CDCStateTable(client::YBClient* client) : client_(client) {}
+  explicit CDCStateTable(client::AsyncClientInitializer* async_client_init);
+  explicit CDCStateTable(client::YBClient* client);
 
   static const std::string& GetNamespaceName();
   static const std::string& GetTableName();
   static Result<master::CreateTableRequestPB> GenerateCreateCdcStateTableRequest();
 
-  Status InsertEntries(
-      const std::vector<CDCStateTableEntry>& entries)
-      EXCLUDES(mutex_);
+  Status InsertEntries(const std::vector<CDCStateTableEntry>& entries) EXCLUDES(mutex_);
+  Status InsertEntriesAsync(
+      const std::vector<CDCStateTableEntry>& entries, StdStatusCallback callback) EXCLUDES(mutex_);
   Status UpdateEntries(
       const std::vector<CDCStateTableEntry>& entries, const bool replace_full_map = false,
       const std::vector<std::string>& keys_to_delete = {}) EXCLUDES(mutex_);
@@ -142,6 +147,13 @@ class CDCStateTable {
   Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);
   Status OpenTable(client::TableHandle* cdc_table);
+  template <class CDCEntry>
+  Status WriteEntriesAsync(
+      const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,
+      StdStatusCallback callback, QLOperator condition_op = QL_OP_NOOP,
+      const bool replace_full_map = false, const std::vector<std::string>& keys_to_delete = {})
+      EXCLUDES(mutex_);
+
   template <class CDCEntry>
   Status WriteEntries(
       const std::vector<CDCEntry>& entries, QLWriteRequestPB::QLStmtType statement_type,

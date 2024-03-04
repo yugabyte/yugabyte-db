@@ -83,6 +83,24 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
+#define DECLARE_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
+  Result<master::BOOST_PP_CAT(method, ResponsePB)> method( \
+      const master::BOOST_PP_CAT(method, RequestPB)& req);
+
+#define DECLARE_SYNC_LEADER_MASTER_RPC(i, data, set) DECLARE_SYNC_LEADER_MASTER_RPC_IMP set
+
+#define DECLARE_SYNC_LEADER_MASTER_RPCS(rpcs) \
+  BOOST_PP_SEQ_FOR_EACH(DECLARE_SYNC_LEADER_MASTER_RPC, ~, rpcs)
+
+// Add the methods that we want to invoke on master leader here.
+// These functions will take a const reference to the request of the corresponding type as input and
+// return a Result of the appropriate response.
+// Ex: Result<SetupUniverseReplicationResponsePB>
+// SetupUniverseReplication(SetupUniverseReplicationRequestPB req);
+#define CLIENT_SYNC_LEADER_MASTER_RPC_LIST \
+  ((Replication, SetupUniverseReplication)) \
+  ((Replication, IsSetupUniverseReplicationDone)) \
+
 template<class T> class scoped_refptr;
 
 namespace yb {
@@ -607,7 +625,8 @@ class YBClient {
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
-      CoarseTimePoint deadline = CoarseTimePoint());
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      uint64_t *consistent_snapshot_time = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -647,9 +666,7 @@ class YBClient {
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
       std::optional<uint64_t>* stream_creation_time = nullptr);
 
-  Status GetCDCStream(
-      const ReplicationSlotName& replication_slot_name,
-      xrepl::StreamId* stream_id);
+  Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
@@ -717,6 +734,14 @@ class YBClient {
 
   Status XClusterReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
+
+  Status AddTablesToUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+  Status RemoveTablesFromUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, const std::vector<TableId>& tables);
+
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const NamespaceId& namespace_id, const master::XClusterSafeTimeFilter& filter);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -998,6 +1023,8 @@ class YBClient {
   Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
+  DECLARE_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
+
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
@@ -1088,3 +1115,7 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
+
+#undef DECLARE_SYNC_LEADER_MASTER_RPC_IMP
+#undef DECLARE_SYNC_LEADER_MASTER_RPC
+#undef DECLARE_SYNC_LEADER_MASTER_RPCS

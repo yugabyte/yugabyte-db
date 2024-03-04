@@ -147,6 +147,9 @@ public class CustomerTask extends Model {
     @EnumValue("Hard Reboot")
     HardReboot,
 
+    @EnumValue("Replace")
+    Replace,
+
     @EnumValue("Edit")
     Edit,
 
@@ -356,7 +359,10 @@ public class CustomerTask extends Model {
     ReprovisionNode,
 
     @EnumValue("Install")
-    Install;
+    Install,
+
+    @EnumValue("UpdateProxyConfig")
+    UpdateProxyConfig;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -375,6 +381,8 @@ public class CustomerTask extends Model {
           return completed ? "Removed " : "Removing ";
         case ResizeNode:
           return completed ? "Resized Node " : "Resizing Node ";
+        case Replace:
+          return completed ? "Replaced Node" : "Replacing Node";
         case Resume:
           return completed ? "Resumed " : "Resuming ";
         case Start:
@@ -398,9 +406,9 @@ public class CustomerTask extends Model {
         case SoftwareUpgradeYB:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case FinalizeUpgrade:
-          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+          return completed ? "Finalized Upgrade " : "Finalizing Upgrade ";
         case RollbackUpgrade:
-          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
+          return completed ? "Rolled back upgrade " : "Rolling back upgrade ";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
@@ -515,6 +523,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case UpdateProxyConfig:
+          return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         default:
           return null;
       }

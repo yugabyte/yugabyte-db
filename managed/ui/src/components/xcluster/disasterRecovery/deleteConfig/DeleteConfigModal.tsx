@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 
-import { YBInput, YBModal, YBModalProps } from '../../../../redesign/components';
+import { YBCheckbox, YBInput, YBModal, YBModalProps } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
@@ -39,6 +39,7 @@ export const DeleteConfigModal = ({
   redirectUrl
 }: DeleteConfigModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isForceDelete, setIsForceDelete] = useState<boolean>(false);
   const [confirmationText, setConfirmationText] = useState<string>('');
   const classes = useStyles();
   const queryClient = useQueryClient();
@@ -46,7 +47,7 @@ export const DeleteConfigModal = ({
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const deleteDrConfigMutation = useMutation(
-    (drConfig: DrConfig) => api.deleteDrConfig(drConfig.uuid),
+    (drConfig: DrConfig) => api.deleteDrConfig(drConfig.uuid, isForceDelete),
     {
       onSuccess: (response, drConfig) => {
         const invalidateQueries = () => {
@@ -124,6 +125,16 @@ export const DeleteConfigModal = ({
       size="sm"
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       cancelTestId={`${MODAL_NAME}-CancelButton`}
+      footerAccessory={
+        <YBCheckbox
+          label="Force Delete"
+          checked={isForceDelete}
+          onChange={(e) => {
+            setIsForceDelete(e.target.checked);
+          }}
+          size="medium"
+        />
+      }
       {...modalProps}
     >
       <Typography variant="body2">

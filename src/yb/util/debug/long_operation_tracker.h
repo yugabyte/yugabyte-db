@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "yb/util/monotime.h"
 
@@ -34,10 +35,39 @@ class LongOperationTracker {
   LongOperationTracker(LongOperationTracker&&) = default;
   LongOperationTracker& operator=(LongOperationTracker&&) = default;
 
+  void Swap(LongOperationTracker* rhs);
+
   struct TrackedOperation;
 
  private:
   std::shared_ptr<TrackedOperation> tracked_operation_;
+};
+
+
+class TrackedUniqueLock {
+ public:
+  TrackedUniqueLock() = default;
+  explicit TrackedUniqueLock(std::mutex& mutex) // NOLINT
+      : lock_(mutex),
+        lot_("TrackedUniqueLock", std::chrono::seconds(1)) {}
+
+  void unlock() {
+    lock_.unlock();
+    lot_ = {};
+  }
+
+  void swap(TrackedUniqueLock& rhs) {
+    lock_.swap(rhs.lock_);
+    lot_.Swap(&rhs.lot_);
+  }
+
+  std::unique_lock<std::mutex>& impl() {
+    return lock_;
+  }
+
+ private:
+  std::unique_lock<std::mutex> lock_;
+  LongOperationTracker lot_;
 };
 
 } // namespace yb

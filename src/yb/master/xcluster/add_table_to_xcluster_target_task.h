@@ -21,7 +21,15 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/post_tablet_create_task_base.h"
 
-namespace yb::master {
+namespace yb {
+
+namespace client {
+class XClusterRemoteClient;
+}  // namespace client
+
+namespace master {
+
+class UniverseReplicationInfo;
 
 // This task adds a newly created table in the consumer xCluster universe to transactional
 // replication group. The table must be in PREPARING state with all tablets created at the start of
@@ -31,8 +39,8 @@ namespace yb::master {
 class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
  public:
   AddTableToXClusterTargetTask(
-      CatalogManager& catalog_manager, rpc::Messenger& messenger, TableInfoPtr table_info,
-      const LeaderEpoch& epoch);
+      scoped_refptr<UniverseReplicationInfo> universe, CatalogManager& catalog_manager,
+      rpc::Messenger& messenger, TableInfoPtr table_info, const LeaderEpoch& epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToXClusterTarget;
@@ -44,15 +52,22 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
 
  private:
   Status FirstStep() override;
-  Status BootstrapTableCallback(client::BootstrapProducerResult bootstrap_result);
-  Status AddTableToReplicationGroup(TableId producer_table_id, std::string bootstrap_id);
+  Status AddTableToReplicationGroup(client::BootstrapProducerResult bootstrap_result);
   Status WaitForSetupUniverseReplicationToFinish();
   Status RefreshAndGetXClusterSafeTime();
   Status WaitForXClusterSafeTimeCaughtUp();
 
+  // Returns nullopt if the namespace is no longer part of xCluster replication, otherwise returns a
+  // valid safe time.
+  Result<std::optional<HybridTime>> GetXClusterSafeTimeWithoutDdlQueue(const LeaderEpoch& epoch);
+
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
-  xcluster::ReplicationGroupId replication_group_id_;
+  scoped_refptr<UniverseReplicationInfo> universe_;
+  std::shared_ptr<client::XClusterRemoteClient> remote_client_;
+  XClusterManagerIf& xcluster_manager_;
+  bool is_db_scoped_ = false;
 };
 
-}  // namespace yb::master
+}  // namespace master
+}  // namespace yb

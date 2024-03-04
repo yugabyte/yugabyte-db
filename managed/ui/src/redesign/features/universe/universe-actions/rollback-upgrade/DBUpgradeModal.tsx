@@ -67,19 +67,21 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   let finalOptions: Record<string, any>[] = [];
   const latestStableVersion = fetchLatestStableVersion(releases);
   const latestCurrentRelease = fetchCurrentLatestVersion(releases, currentRelease);
-  if (latestStableVersion) finalOptions = [latestStableVersion];
+  if (latestStableVersion && _.gte(latestStableVersion.version, currentRelease))
+    finalOptions = [latestStableVersion];
   if (latestCurrentRelease) finalOptions = [...finalOptions, latestCurrentRelease];
+  const sortedVersions = Object.keys(releases).sort(sortVersion);
+  const currentReleaseIndex = sortedVersions.indexOf(currentRelease ?? '');
+  const versionsAboveCurrent = sortedVersions.slice(0, currentReleaseIndex + 1);
   finalOptions = [
     ...finalOptions,
-    ...Object.keys(releases)
-      .sort(sortVersion)
-      .map((e: any) => ({
-        version: e,
-        info: releases[e],
-        series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-          e.split('.')[1] % 2 === 0 ? '(STS)' : '(Preview)'
-        }`
-      }))
+    ...versionsAboveCurrent.map((e: any) => ({
+      version: e,
+      info: releases[e],
+      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
+        e.split('.')[1] % 2 === 0 ? '(Standard Term Support)' : '(Preview)'
+      }`
+    }))
   ];
 
   const formMethods = useForm<DBUpgradeFormFields>({
@@ -213,7 +215,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     <YBModal
       open={open}
       titleSeparator
-      size="sm"
+      size="md"
       overrideHeight={universeHasXcluster ? '810px' : '720px'}
       overrideWidth="800px"
       onClose={onClose}

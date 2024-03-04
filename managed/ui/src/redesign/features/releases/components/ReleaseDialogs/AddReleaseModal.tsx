@@ -1,37 +1,49 @@
 import { useEffect, useState } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useSelector } from 'react-redux';
+import { useInterval } from 'react-use';
+import { toast } from 'react-toastify';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
+import { YBBanner } from '../YBBanner';
 import {
   YBModal,
   YBRadioGroupField,
   RadioGroupOrientation,
-  YBInput,
   YBInputField,
-  YBLabel,
-  YBButtonGroup,
-  YBAlert,
-  AlertVariant
+  YBButton
 } from '../../../../components';
 import { YBFileUpload } from '../../../../components/YBFileUpload/YBFileUpload';
+import { YBLoading } from '../../../../../components/common/indicators';
+import { ReviewReleaseMetadata } from './ReviewReleaseMetadata';
+import { AXIOS_INSTANCE, ReleasesAPI, releaseArtifactKey } from '../../api';
 import {
   ReleaseFormFields,
   AddReleaseImportMethod,
   ModalTitle,
   ReleasePlatform,
-  ReleasePlatformArchitecture
+  ReleasePlatformArchitecture,
+  ReleaseYBType,
+  ReleasePlatformButtonProps,
+  ReleaseArchitectureButtonProps,
+  Releases,
+  UrlArtifactStatus
 } from '../dtos';
-import { IMPORT_METHOD_OPTIONS } from '../../helpers/constants';
-import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import {
+  IMPORT_METHOD_OPTIONS,
+  FILE_SIZE_LIMIT,
+  REFETCH_URL_METADATA_MS
+} from '../../helpers/constants';
+import { isEmptyString, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 
 import Path from '../../../../../redesign/assets/path.svg';
 import PathDown from '../../../../../redesign/assets/path-down.svg';
 
-const FILE_SIZE_LIMIT = 1048576000; // 1000 MB
-
 interface AddReleaseModalProps {
   open: boolean;
+  data: Releases | null;
   onClose: () => void;
   onActionPerformed: () => void;
   modalTitle: string;
@@ -60,16 +72,6 @@ const useStyles = makeStyles((theme) => ({
     borderStyle: 'solid',
     marginTop: theme.spacing(2)
   },
-  reviewReleaseDetailsBox: {
-    border: '1px',
-    borderRadius: '8px',
-    padding: '8px 16px 8px 16px',
-    gap: theme.spacing(2),
-    borderColor: theme.palette.ybacolors.ybBorderGray,
-    borderStyle: 'solid',
-    backgroundColor: 'rgba(229, 229, 233, 0.2)',
-    marginTop: theme.spacing(2)
-  },
   instructionsLargeText: {
     color: theme.palette.ybacolors.ybDarkGray
   },
@@ -89,59 +91,29 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'column'
   },
-  smallerMetadata: {
-    fontWeight: 400,
-    fontFamily: 'Inter',
-    fontSize: '11.5px'
-  },
   largerMetaData: {
     fontWeight: 400,
     fontFamily: 'Inter',
     fontSize: '13px',
     alignSelf: 'center'
   },
-  labelWidth: {
-    width: 'fit-content'
-  },
-  smallInputTextBox: {
-    width: '50px'
-  },
   largeInputTextBox: {
     width: '384px'
   },
-  overrideMuiButtonGroup: {
-    '& .MuiButton-containedSecondary': {
-      backgroundColor: 'rgba(43, 89, 195, 0.1)',
-      color: theme.palette.primary[600],
-      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
-    },
-    '& .MuiButton-outlinedSecondary': {
-      backgroundColor: 'white',
-      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+  overrideMuiHelperText: {
+    '& .MuiFormHelperText-root': {
+      color: theme.palette.error[500]
     }
   },
-  warningBox: {
-    height: '40px',
-    padding: theme.spacing(1),
-    gap: '8px',
-    border: '1px',
-    borderRadius: '8px',
-    backgroundColor: theme.palette.warning[100]
+  bannerBox: {
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(6)
   }
 }));
 
-interface ReleasePlatformButtonProps {
-  label: string;
-  value: ReleasePlatform;
-}
-
-interface ReleaseArchitectureButtonProps {
-  label: string;
-  value: ReleasePlatformArchitecture;
-}
-
 export const AddReleaseModal = ({
   open,
+  data,
   onActionPerformed,
   onClose,
   modalTitle,
@@ -150,26 +122,47 @@ export const AddReleaseModal = ({
 }: AddReleaseModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
+  const queryClient = useQueryClient();
+  const formData = new FormData();
 
+  // Selector variable
+  const currentCustomerInfo = useSelector((state: any) => state.customer.currentCustomer.data);
+  const currentCustomerUuid = currentCustomerInfo?.uuid;
+
+  // State variables
+  const [isMetadataLoading, setIsMetadataLoading] = useState<boolean>(false);
+  const [urlMetadataStatus, setUrlMetadataStatus] = useState<UrlArtifactStatus>(
+    UrlArtifactStatus.EMPTY
+  );
+  const [progressValue, setProgressValue] = useState<number>(0);
+  const [isFileUploaded, setIsFileUploaded] = useState<boolean>(false);
+  const [fileId, setFileId] = useState<string | null>(null);
+  const [resourceUuid, setResourceUuid] = useState<string | null>(null);
+  const [urlMetadata, setUrlMetadata] = useState<any>(null);
+  const [errorHelperText, setErrorHelperText] = useState<string>('');
   const [viewTag, setViewTag] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [reviewReleaseDetails, setReviewReleaseDetails] = useState<boolean>(false);
   const [releaseMetadatFetchError, setReleaseMetadatFetchError] = useState<boolean>(false);
   const [releaseBasePart, setReleaseBasePart] = useState<string>('');
   const [releaseFirstPart, setReleaseFirstPart] = useState<string>('');
   const [releaseSecondPart, setReleaseSecondPart] = useState<string>('');
   const [releaseThirdPart, setReleaseThirdPart] = useState<string>('');
-  const [deploymentType, setDeploymentType] = useState<ReleasePlatform>(ReleasePlatform.LINUX);
-  const [architecture, setArchitecure] = useState<ReleasePlatformArchitecture>(
-    ReleasePlatformArchitecture.X86
+  const [deploymentType, setDeploymentType] = useState<ReleasePlatform | null>(null);
+  const [architecture, setArchitecure] = useState<ReleasePlatformArchitecture | null>(null);
+  const [installationPackageFile, setInstallationPackageFile] = useState<File | undefined>(
+    undefined
   );
 
+  // useForm hook definition
   const formMethods = useForm<ReleaseFormFields>({
     defaultValues: {
       importMethod: AddReleaseImportMethod.FILE_UPLOAD,
+      ybType: ReleaseYBType.YUGABYTEDB,
+      sha256: '',
       installationPackageUrl: '',
       signatureUrl: '',
-      installationPackageFile: undefined,
-      signatureFile: undefined,
+      installationPackageFile: installationPackageFile,
       releaseTag: '',
       version: '',
       architecture: '',
@@ -178,73 +171,309 @@ export const AddReleaseModal = ({
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const {
-    formState: { isValid, dirtyFields },
-    watch,
-    reset,
-    control,
-    handleSubmit,
-    setValue
-  } = formMethods;
-
-  useEffect(() => {
-    reset();
-  }, [open, reset]);
+  const { watch, control, handleSubmit, setValue } = formMethods;
 
   const hideModal = () => {
-    reset();
     onClose();
   };
 
   // Watchers
   const importMethodValue = watch('importMethod');
   const installationPackageUrlValue = watch('installationPackageUrl');
-  const signatureUrlValue = watch('signatureUrl');
-  const installationPackageFileValue = watch('installationPackageFile');
-  const signatureFileValue = watch('signatureFile');
+  const versionValue = watch('version');
+  const architectureValue = watch('architecture');
 
+  const clearFile = () => {
+    setFileId(null);
+    setIsFileUploaded(false);
+    setInstallationPackageFile(undefined);
+    setUrlMetadata(null);
+  };
+
+  const clearUrl = () => {
+    setValue('installationPackageUrl', '');
+    setUrlMetadata(null);
+  };
+
+  // componentDidUpdate that gets triggered when url value changes
   useEffect(() => {
+    // If the user currently is on URL import method ensure if the user
+    // previously uploaded any file when they were in File Upload, that state
+    // should be reset as they are no longer in File upload state
+    if (importMethodValue === AddReleaseImportMethod.URL) {
+      clearFile();
+    }
+
     if (
       importMethodValue === AddReleaseImportMethod.URL &&
-      isNonEmptyString(installationPackageUrlValue) &&
-      isNonEmptyString(signatureUrlValue)
+      (isEmptyString(installationPackageUrlValue) || !isValidUrl(installationPackageUrlValue!))
     ) {
-      // TODO: Make an API call to ensure it returns the list of releases - fetchUrlReleaseArtifact (GET) from api.ts
-      setReviewReleaseDetails(true);
-    } else {
       setReviewReleaseDetails(false);
     }
+  }, [installationPackageUrlValue, importMethodValue]);
 
-    if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD && signatureFileValue) {
-      // TODO: Make an API call to ensure it returns the list of releases - fetchFileReleaseArtifact (GET) from api.ts
+  // componentDidUpdate that gets triggered when file uploaded changes
+  useEffect(() => {
+    // If the user currently is on File Upload import method ensure if the user
+    // previously added any URL when they were in URL import, that state
+    // should be reset as they are no longer in URL import state
+    if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD) {
+      clearUrl();
     }
 
-    if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD && installationPackageFileValue) {
-      // TODO: Make an API call to ensure it returns the list of releases - uploadReleaseArtifact (POST) from api.ts
+    if (
+      importMethodValue === AddReleaseImportMethod.FILE_UPLOAD &&
+      !isValidFile(installationPackageFile!)
+    ) {
+      setReviewReleaseDetails(false);
+    } else if (
+      importMethodValue === AddReleaseImportMethod.FILE_UPLOAD &&
+      isValidFile(installationPackageFile!)
+    ) {
+      formData.append('file', installationPackageFile!, installationPackageFile!.name);
+      uploadInstallerFileMutation.mutate(formData);
+    }
+  }, [importMethodValue, installationPackageFile]);
+
+  // To extract the URL metadata we need to poll the API till it goes out of running state
+  useInterval(() => {
+    if (isNonEmptyString(resourceUuid) && urlMetadataStatus === UrlArtifactStatus.RUNNING) {
+      queryClient.invalidateQueries(releaseArtifactKey.resource(resourceUuid!));
+    }
+  }, REFETCH_URL_METADATA_MS);
+
+  // When user enters URL and clicks on "Fetch Metadata" button, will fetch metadata for artifact
+  const fetchReleaseMetadata = () => {
+    if (
+      importMethodValue === AddReleaseImportMethod.URL &&
+      isValidUrl(installationPackageUrlValue!)
+    ) {
+      setUrlMetadataStatus(UrlArtifactStatus.EMPTY);
+      setIsMetadataLoading(true);
+      setReviewReleaseDetails(true);
+      extractUrlMetadata.mutate(installationPackageUrlValue!);
     }
 
-    // TODO: Fetch API for release metadata and set error value appropriately
-    setReleaseMetadatFetchError(
-      isNonEmptyString(signatureUrlValue) && installationPackageUrlValue === 'ab'
-    );
-  }, [
-    installationPackageUrlValue,
-    signatureUrlValue,
-    signatureFileValue,
-    installationPackageFileValue,
-    importMethodValue
-  ]);
+    if (
+      importMethodValue === AddReleaseImportMethod.FILE_UPLOAD &&
+      isValidFile(installationPackageFile!)
+    ) {
+      setIsMetadataLoading(true);
+      setReviewReleaseDetails(true);
+      extractFileMetadata.mutate(fileId!);
+    }
+  };
+
+  // The file to be uploaded is large and can be as long as 1GB, hence using FormData to attach
+  // file, file name and pass multipart/form-data header exclusively
+  const uploadInstallerFileMutation = useMutation('fileUpload', (formDataSpec: FormData) => {
+    return AXIOS_INSTANCE.post(
+      `/customers/${currentCustomerUuid}/ybdb_release/upload`,
+      formDataSpec,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (data) => {
+          const progress = (data.loaded / data.total) * 100;
+          //Set the progress value to show the progress bar
+          setProgressValue(Math.round(progress));
+        }
+      }
+    )
+      .then((response: any) => {
+        setIsFileUploaded(true);
+        setFileId(response.data.resourceUUID);
+        toast.success('Uploaded file successully');
+      })
+      .catch((error) => {
+        setFileId(null);
+        setIsFileUploaded(false);
+        toast.error('Not able to upload file, please tru again');
+      });
+  });
+
+  // When adding new release make a POST API call
+  const addRelease = useMutation((payload: any) => ReleasesAPI.createRelease(payload), {
+    onSuccess: (data) => {
+      toast.success('Add release successfully');
+      onActionPerformed();
+      onClose();
+    },
+    onError: () => {
+      onActionPerformed();
+      toast.error('Failed to add release');
+    }
+  });
+
+  // When adding new architecture or when changing contents of artifact make a PUT API call
+  const updateReleaseMetadata = useMutation(
+    (payload: any) => ReleasesAPI.updateReleaseMetadata(payload, payload.release_uuid!),
+    {
+      onSuccess: (response: any) => {
+        toast.success('Updated release artifacts successfully');
+        onActionPerformed();
+        onClose();
+      },
+      onError: () => {
+        toast.error('Failed to update release artifacts');
+      }
+    }
+  );
+
+  // When fetching artifact metadata based on release url make a POST API call
+  const extractUrlMetadata = useMutation((url: string) => ReleasesAPI.extractReleaseArtifact(url), {
+    onSuccess: (response: any) => {
+      setResourceUuid(response.resourceUUID);
+    },
+    onError: () => {
+      setReleaseMetadatFetchError(true);
+      setIsMetadataLoading(false);
+      // When metadata fetch fails, we display a different view where we want
+      // the default selection of platform to be linux
+      setValue('platform', ReleasePlatform.LINUX);
+      setValue('architecture', '');
+      setValue('version', '');
+      toast.error('Failed to extract metadata from URL');
+    }
+  });
+
+  const setReleaseResponse = (response: any) => {
+    // Update the below values for both new release and new architecture
+    setValue('architecture', response.architecture);
+    setValue('platform', response.platform);
+    setValue('sha256', response.sha256);
+
+    if (isAddRelease) {
+      setValue('version', response.version);
+      setValue('ybType', response.yb_type);
+      setValue('releaseType', response.release_type);
+      setValue('releaseDate', response.release_date);
+      setValue('releaseNotes', response.release_notes);
+    }
+    setUrlMetadata({
+      version: response.version,
+      releaseType: response.release_type,
+      releaseDate: response.release_date,
+      platform: response.platform,
+      architecture: response.architecture
+    });
+  };
+
+  useQuery(
+    releaseArtifactKey.resource(resourceUuid!),
+    () => ReleasesAPI.getUrlReleaseArtifact(resourceUuid!),
+    {
+      enabled: isNonEmptyString(resourceUuid),
+      onSuccess: (response: any) => {
+        if (response.status === UrlArtifactStatus.SUCCESS) {
+          setUrlMetadataStatus(UrlArtifactStatus.SUCCESS);
+          setResourceUuid(null);
+          setIsMetadataLoading(false);
+          setReleaseResponse(response);
+          setReleaseMetadatFetchError(false);
+        } else if (
+          response.status === UrlArtifactStatus.RUNNING ||
+          response.status === UrlArtifactStatus.WAITING
+        ) {
+          setUrlMetadataStatus(UrlArtifactStatus.RUNNING);
+          setIsMetadataLoading(true);
+        } else if (response.status === UrlArtifactStatus.FAILURE) {
+          setUrlMetadataStatus(UrlArtifactStatus.FAILURE);
+          setIsMetadataLoading(false);
+          setReleaseMetadatFetchError(true);
+          setValue('version', response.version);
+          setValue('ybType', response.yb_type);
+          setValue('sha256', response.sha256);
+          toast.error('Failed to extract metadata from URL');
+        }
+      },
+      onError: () => {
+        setUrlMetadataStatus(UrlArtifactStatus.EMPTY);
+        setResourceUuid(null);
+        setIsMetadataLoading(false);
+        setReleaseMetadatFetchError(true);
+        // When metadata fetch fails, we display a different view where we want
+        // the default selection of platform to be linux
+        setValue('platform', ReleasePlatform.LINUX);
+        setValue('architecture', '');
+        setValue('version', '');
+        toast.error('Failed to extract metadata from URL');
+      }
+    }
+  );
+
+  // When fetching artifact metadata based on release url make a POST API call
+  const extractFileMetadata = useMutation(
+    (fileId: string) => ReleasesAPI.fetchFileReleaseArtifact(fileId!),
+    {
+      onSuccess: (response: any) => {
+        setReleaseMetadatFetchError(false);
+        setIsMetadataLoading(false);
+        setReleaseResponse(response);
+        toast.success('Extracted metadata from file successfully');
+      },
+      onError: () => {
+        setIsMetadataLoading(false);
+        setReleaseMetadatFetchError(true);
+        // When metadata fetch fails, we display a different view where we want
+        // the default selection of platform to be linux
+        setValue('platform', ReleasePlatform.LINUX);
+        setValue('architecture', '');
+        setValue('version', '');
+        toast.error('Failed to extract metadata from the file');
+      }
+    }
+  );
 
   const handleFormSubmit = handleSubmit((formValues) => {
-    if (importMethodValue === AddReleaseImportMethod.URL) {
-      setValue('version', `${releaseFirstPart}.${releaseSecondPart}.${releaseThirdPart}`);
+    // Create a new release
+    if (isAddRelease) {
+      const newReleasePayload: any = {
+        version: formValues.version,
+        release_tag: formValues.releaseTag,
+        yb_type: formValues.ybType,
+        artifacts: [
+          {
+            sha256: formValues.sha256,
+            platform: formValues.platform,
+            architecture: formValues.architecture
+          }
+        ],
+        release_type: formValues.releaseType,
+        release_date: formValues.releaseDate,
+        release_notes: formValues.releaseNotes
+      };
+      setIsSubmitting(true);
+      if (importMethodValue === AddReleaseImportMethod.URL) {
+        newReleasePayload.artifacts[0].package_url = formValues.installationPackageUrl;
+      } else if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD) {
+        newReleasePayload.artifacts[0].package_file_id = fileId;
+      }
+      addRelease.mutate(newReleasePayload, { onSettled: () => resetModal() });
+    } else {
+      // Create a new architecture for existing release
+      const newArchitecturePayload: any = {};
+      Object.assign(newArchitecturePayload, data);
+      newArchitecturePayload.artifacts.push({
+        sha256: formValues.sha256,
+        platform: formValues.platform,
+        architecture: formValues.architecture
+      });
+      setIsSubmitting(true);
+      const artifactsLength = newArchitecturePayload.artifacts.length;
+      if (importMethodValue === AddReleaseImportMethod.URL) {
+        newArchitecturePayload.artifacts[artifactsLength - 1].package_url =
+          formValues.installationPackageUrl;
+      } else if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD) {
+        newArchitecturePayload.artifacts[artifactsLength - 1].package_file_id = fileId;
+      }
+      updateReleaseMetadata.mutate(newArchitecturePayload, { onSettled: () => resetModal() });
     }
-    // TODO: Combine release version releaseFirstPart, releaseSecondPart, releaseThirdPart
-
-    // TODO: Write a mutation call on top Make to cxreate release - createRelease (POST) from api.ts
-    // TODO: onSuccess on above mutation call, ensure to call onActionPerformed() which will get fresh set of releasaes
-    // to be displayed in ReleaseList page
   });
+
+  // When adding new release or new architecture and when call is made, show loading indicator on dialog
+  const resetModal = () => {
+    setIsSubmitting(false);
+  };
 
   const handleReleaseFirstPart = (event: React.ChangeEvent<HTMLInputElement>) => {
     setReleaseFirstPart(event.target.value);
@@ -259,17 +488,23 @@ export const AddReleaseModal = ({
   };
 
   const handleReleaseThirdPart = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(
+      'version',
+      releaseBasePart + releaseFirstPart + releaseSecondPart + event.target.value
+    );
     setReleaseThirdPart(event.target.value);
   };
 
   const handlePlatformSelect = (val: ReleasePlatformButtonProps) => {
-    //TODO: call setvalue and add thsi field to form
+    // When metadata fetch fails for URL or file upload, we manually ask user
+    // to select the platform, hence we need to set it
     setDeploymentType(val.value);
     setValue('platform', val.value);
   };
 
   const handleArchitectureSelect = (val: ReleaseArchitectureButtonProps) => {
-    //TODO: call setvalue and add this field to form
+    // When metadata fetch fails for URL or file upload, we manually ask user
+    // to select the architecture, hence we need to set it
     setArchitecure(val.value);
     setValue('architecture', val.value);
   };
@@ -278,213 +513,50 @@ export const AddReleaseModal = ({
     setViewTag(!viewTag);
   };
 
-  const IntelArch = {
-    value: ReleasePlatformArchitecture.X86,
-    label: t(`releases.${ReleasePlatformArchitecture.X86}`)
-  };
-  const ArmArch = {
-    value: ReleasePlatformArchitecture.ARM,
-    label: t(`releases.${ReleasePlatformArchitecture.ARM}`)
-  };
-
-  const LinuxPlatform = {
-    value: ReleasePlatform.LINUX,
-    label: t(`releases.${ReleasePlatform.LINUX}`)
+  // Checks if a given url is valid
+  const isValidUrl = (installationUrl: string) => {
+    try {
+      new URL(installationUrl);
+    } catch (e) {
+      setErrorHelperText('Invalid Url');
+      return false;
+    }
+    setErrorHelperText('');
+    return true;
   };
 
-  const KubernetesPlatform = {
-    value: ReleasePlatform.KUBERNETES,
-    label: t(`releases.${ReleasePlatform.KUBERNETES}`)
+  // checks if given file is valid
+  const isValidFile = (file: File) => {
+    if (!isNonEmptyString(file?.name)) {
+      return false;
+    }
+    return true;
   };
 
-  const getArchLabel = (val: ReleasePlatformArchitecture) => {
-    return val === ReleasePlatformArchitecture.X86
-      ? t(`releases.${ReleasePlatformArchitecture.X86}`)
-      : t(`releases.${ReleasePlatformArchitecture.ARM}`);
-  };
+  const isButtonDisabled = () => {
+    // Disable if method is URL but user is in a mode where the URL entered is not valid
+    // or when URL metadata extract API fails
+    if (importMethodValue === AddReleaseImportMethod.URL) {
+      if (isNonEmptyString(errorHelperText)) {
+        return true;
+      } else if (!isNonEmptyString(versionValue) && !isNonEmptyString(architectureValue)) {
+        return true;
+      } else if (!isNonEmptyString(installationPackageUrlValue)) {
+        return true;
+      } else if (!urlMetadata) {
+        return true;
+      }
+    }
 
-  const getPlatformLabel = (val: ReleasePlatform) => {
-    return val === ReleasePlatform.LINUX
-      ? t(`releases.${ReleasePlatform.LINUX}`)
-      : t(`releases.${ReleasePlatform.KUBERNETES}`);
-  };
-
-  const platformList: ReleasePlatformButtonProps[] = [LinuxPlatform, KubernetesPlatform];
-  const supportedArchList: ReleaseArchitectureButtonProps[] = [IntelArch, ArmArch];
-
-  const reviewReleaseDetailsComponent = () => {
-    return (
-      <Box>
-        <Box mt={3}>
-          <Typography variant={'body1'}>
-            {t('releases.addReleaseModal.viewReleaseDetails')}
-          </Typography>
-          {!releaseMetadatFetchError ? (
-            <Box
-              className={helperClasses.reviewReleaseDetailsBox}
-              display="flex"
-              flexDirection={'column'}
-            >
-              <Box className={clsx(helperClasses.reviewReleaseMetadataRow)}>
-                <YBLabel className={helperClasses.smallerMetadata}>
-                  {t('releases.addReleaseModal.version')}
-                </YBLabel>
-                <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                  {'{VERSION FROM API}'}
-                </YBLabel>
-              </Box>
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.smallerMetadata}>
-                  {t('releases.addReleaseModal.deploymentType')}
-                </YBLabel>
-                <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                  {'DEPLOYMENT FROM API'}
-                </YBLabel>
-              </Box>
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.smallerMetadata}>
-                  {t('releases.addReleaseModal.architecture')}
-                </YBLabel>
-                <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                  {'ARCHITECTURE FROM API'}
-                </YBLabel>
-              </Box>
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.smallerMetadata}>
-                  {t('releases.addReleaseModal.releaseSupport')}
-                </YBLabel>
-                <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                  {'RELEASE SUPPORT FROM API'}
-                </YBLabel>
-              </Box>
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.smallerMetadata}>
-                  {t('releases.addReleaseModal.releaseDate')}
-                </YBLabel>
-                <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                  {'RELEASE DATE FROM API'}
-                </YBLabel>
-              </Box>
-            </Box>
-          ) : (
-            <Box className={helperClasses.marginTop}>
-              <Box
-                className={clsx(helperClasses.warningBox, helperClasses.reviewReleaseMetadataRow)}
-                mt={2}
-              >
-                <YBAlert
-                  text={t('releases.addReleaseModal.unableFetchRelease')}
-                  variant={AlertVariant.Warning}
-                  open={true}
-                />
-              </Box>
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.largerMetaData}>{t('releases.version')}</YBLabel>
-                <YBLabel className={helperClasses.labelWidth}>
-                  <YBInput
-                    className={helperClasses.smallInputTextBox}
-                    value={releaseBasePart}
-                    onChange={handleReleaseBasePart}
-                  />
-                  {t('common.dot')}
-                  <YBInput
-                    className={helperClasses.smallInputTextBox}
-                    value={releaseFirstPart}
-                    onChange={handleReleaseFirstPart}
-                  />
-                  {t('common.dot')}
-                  <YBInput
-                    className={helperClasses.smallInputTextBox}
-                    value={releaseSecondPart}
-                    onChange={handleReleaseSecondPart}
-                  />
-                  {t('common.dot')}
-                  <YBInput
-                    className={helperClasses.smallInputTextBox}
-                    value={releaseThirdPart}
-                    onChange={handleReleaseThirdPart}
-                  />
-                </YBLabel>
-              </Box>
-
-              <Box
-                className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-              >
-                <YBLabel className={helperClasses.largerMetaData}>
-                  {t('releases.deploymentType')}
-                </YBLabel>
-                <YBButtonGroup
-                  dataTestId={'AddReleaseModal-DeploymentTypeButtonGroup'}
-                  btnGroupClassName={helperClasses.overrideMuiButtonGroup}
-                  variant={'contained'}
-                  color={'secondary'}
-                  values={platformList}
-                  selectedNum={{ label: getPlatformLabel(deploymentType), value: deploymentType }}
-                  displayLabelFn={(platformButtonProps: ReleasePlatformButtonProps) => (
-                    <>{platformButtonProps.label}</>
-                  )}
-                  handleSelect={handlePlatformSelect}
-                />
-              </Box>
-
-              {deploymentType === ReleasePlatform.LINUX && (
-                <Box
-                  className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}
-                >
-                  <YBLabel className={helperClasses.largerMetaData}>
-                    {t('releases.architectureLabel')}
-                  </YBLabel>
-                  <YBButtonGroup
-                    dataTestId={'AddReleaseModal-ArchitectureButtonGroup'}
-                    btnGroupClassName={helperClasses.overrideMuiButtonGroup}
-                    variant={'contained'}
-                    color={'secondary'}
-                    values={supportedArchList}
-                    selectedNum={{ label: getArchLabel(architecture), value: architecture }}
-                    displayLabelFn={(architectureButtonProps: ReleaseArchitectureButtonProps) => (
-                      <>{architectureButtonProps.label}</>
-                    )}
-                    handleSelect={handleArchitectureSelect}
-                  />
-                </Box>
-              )}
-            </Box>
-          )}
-        </Box>
-        <Box className={helperClasses.reviewReleaseMetadataColumn}>
-          <Box
-            mt={4}
-            className={helperClasses.reviewReleaseMetadataRow}
-            style={{ cursor: 'pointer' }}
-          >
-            <img src={viewTag ? PathDown : Path} alt="path" onClick={handleViewTag} />
-            <span className={clsx(helperClasses.largerMetaData, helperClasses.marginLeft)}>
-              {t('releases.addReleaseModal.addReleaseTag')}
-            </span>
-          </Box>
-          {viewTag && (
-            <Box mt={2} className={helperClasses.reviewReleaseMetadataRow}>
-              <span className={helperClasses.largerMetaData}>{t('releases.version')}</span>
-              <YBInputField
-                name={'releaseTag'}
-                control={control}
-                className={clsx(helperClasses.marginLeft, helperClasses.largeInputTextBox)}
-              />
-            </Box>
-          )}
-        </Box>
-      </Box>
-    );
+    // Disable if method is File Upload but user is in a mode where the file uploaded is not valid
+    // or when file metadata extract API fails
+    if (
+      importMethodValue === AddReleaseImportMethod.FILE_UPLOAD &&
+      (!isValidFile(installationPackageFile!) || !isNonEmptyString(versionValue))
+    ) {
+      return true;
+    }
+    return false;
   };
 
   return (
@@ -498,6 +570,7 @@ export const AddReleaseModal = ({
       cancelLabel={t('common.cancel')}
       submitLabel={modalTitle === ModalTitle.ADD_RELEASE ? t('releases.addRelease') : modalTitle}
       overrideHeight="860px"
+      overrideWidth="800px"
       size="lg"
       titleSeparator
       enableBackdropDismiss
@@ -506,14 +579,18 @@ export const AddReleaseModal = ({
         dividers: true
       }}
       titleContentProps={helperClasses.modalTitle}
+      isSubmitting={isSubmitting}
       buttonProps={{
         primary: {
-          disabled: !isValid
+          disabled: isButtonDisabled()
         }
       }}
     >
       <FormProvider {...formMethods}>
         <Box>
+          <Box className={helperClasses.bannerBox}>
+            {isMetadataLoading && <YBBanner message={t('releases.bannerFileUploadMessage')} />}
+          </Box>
           <Box>
             <Typography variant={'body1'}>{t('releases.chooseImportMethod')}</Typography>
             <Box mt={2}>
@@ -538,31 +615,32 @@ export const AddReleaseModal = ({
                   <YBFileUpload
                     name={'installationPackageFile'}
                     className={helperClasses.upload}
-                    inputProps={{ accept: ['.tar.gz'] }}
+                    isUploaded={isFileUploaded}
+                    uploadedFileName={installationPackageFile?.name}
+                    progressValue={progressValue}
+                    inputProps={{ accept: ['.gz'] }}
                     label={t('releases.editArchitectureModal.upload')}
                     dataTestId={'AddReleaseModal-InstallerFileUploadButton'}
                     fileSizeLimit={FILE_SIZE_LIMIT}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {}}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      if (!e.target?.files?.[0]) {
+                        setFileId(null);
+                        setIsFileUploaded(false);
+                      }
+                      setInstallationPackageFile(e.target?.files?.[0]);
+                    }}
                   />
                 </Box>
-              </Box>
-              <Box ml={2} mt={4}>
-                <Typography variant={'body2'} className={helperClasses.instructionsLargeText}>
-                  {t('releases.editArchitectureModal.uploadSignatureFile')}
-                </Typography>
-                <Typography variant={'body2'} className={helperClasses.instructionsSmallText}>
-                  {t('releases.editArchitectureModal.supportedFileFormat')}
-                </Typography>
                 <Box mt={2}>
-                  <YBFileUpload
-                    name={'signatureFile'}
-                    className={helperClasses.upload}
-                    label={'Upload'}
-                    inputProps={{ accept: ['.tar.gz'] }}
-                    dataTestId={'AddReleaseModal-InstallerFileUploadButton'}
-                    fileSizeLimit={FILE_SIZE_LIMIT}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {}}
-                  />
+                  {isFileUploaded && (
+                    <YBButton
+                      variant="secondary"
+                      data-testid="AddReleaseModal-FileUploadMetadataButton"
+                      onClick={fetchReleaseMetadata}
+                    >
+                      {t('releases.fetchMetadata')}
+                    </YBButton>
+                  )}
                 </Box>
               </Box>
             </Box>
@@ -578,26 +656,72 @@ export const AddReleaseModal = ({
                     control={control}
                     placeholder={'https://'}
                     name="installationPackageUrl"
+                    helperText={errorHelperText}
+                    className={clsx(
+                      isNonEmptyString(errorHelperText) && helperClasses.overrideMuiHelperText
+                    )}
                     fullWidth
                   />
                 </Box>
               </Box>
-              <Box ml={2} mt={3}>
-                <Typography variant={'body2'} className={helperClasses.instructionsLargeText}>
-                  {t('releases.editArchitectureModal.signature')}
-                </Typography>
-                <Box mt={2}>
-                  <YBInputField
-                    control={control}
-                    placeholder={'https://'}
-                    name="signatureUrl"
-                    fullWidth
-                  />
-                </Box>
+
+              <Box mt={2} ml={2}>
+                <YBButton
+                  variant="secondary"
+                  data-testid="AddReleaseModal-URLMetadataButton"
+                  onClick={fetchReleaseMetadata}
+                  disabled={isEmptyString(installationPackageUrlValue)}
+                >
+                  {t('releases.fetchMetadata')}
+                </YBButton>
               </Box>
             </Box>
           )}
-          {reviewReleaseDetails && reviewReleaseDetailsComponent()}
+          {reviewReleaseDetails &&
+            (isMetadataLoading ? (
+              <YBLoading />
+            ) : (
+              <>
+                <ReviewReleaseMetadata
+                  urlMetadata={urlMetadata}
+                  releaseMetadatFetchError={releaseMetadatFetchError}
+                  deploymentType={deploymentType}
+                  architecture={architecture}
+                  releaseBasePart={releaseBasePart}
+                  releaseFirstPart={releaseFirstPart}
+                  releaseSecondPart={releaseSecondPart}
+                  releaseThirdPart={releaseThirdPart}
+                  handleReleaseBasePart={handleReleaseBasePart}
+                  handleReleaseSecondPart={handleReleaseSecondPart}
+                  handleReleaseThirdPart={handleReleaseThirdPart}
+                  handleReleaseFirstPart={handleReleaseFirstPart}
+                  handlePlatformSelect={handlePlatformSelect}
+                  handleArchitectureSelect={handleArchitectureSelect}
+                />
+                <Box className={helperClasses.reviewReleaseMetadataColumn}>
+                  <Box
+                    mt={4}
+                    className={helperClasses.reviewReleaseMetadataRow}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <img src={viewTag ? PathDown : Path} alt="path" onClick={handleViewTag} />
+                    <span className={clsx(helperClasses.largerMetaData, helperClasses.marginLeft)}>
+                      {t('releases.addReleaseModal.addReleaseTag')}
+                    </span>
+                  </Box>
+                  {viewTag && (
+                    <Box mt={2} className={helperClasses.reviewReleaseMetadataRow}>
+                      <span className={helperClasses.largerMetaData}>{t('releases.version')}</span>
+                      <YBInputField
+                        name={'releaseTag'}
+                        control={control}
+                        className={clsx(helperClasses.marginLeft, helperClasses.largeInputTextBox)}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </>
+            ))}
         </Box>
       </FormProvider>
     </YBModal>

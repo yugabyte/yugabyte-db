@@ -27,6 +27,7 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "replication/walsender.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
 #include "tcop/utility.h"
@@ -108,14 +109,29 @@ extern void YBCValidatePlacement(const char *placement_info);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
-extern void YBCCreateReplicationSlot(const char *slot_name);
+extern void YBCCreateReplicationSlot(const char *slot_name,
+									 CRSSnapshotAction snapshot_action,
+									 uint64_t *consistent_snapshot_time);
 
 extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
+
+extern void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot);
 
 extern void 
 YBCGetReplicationSlotStatus(const char *slot_name, 
 							bool *active);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
+
+extern void YBCInitVirtualWalForCDC(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCDestroyVirtualWalForCDC();
+
+extern void YBCGetCDCConsistentChanges(const char *stream_id,
+									   YBCPgChangeRecordBatch **record_batch);

@@ -789,10 +789,8 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithConsumerSetup) {
   ASSERT_NOK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id));
   // Should pass as we force it.
   ASSERT_OK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id, "force_delete"));
-  // Delete universe should fail as we've force deleted the stream.
-  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
-  ASSERT_OK(
-      RunAdminToolCommand("delete_universe_replication", kProducerClusterId, "ignore-errors"));
+  // Delete universe should NOT fail due to a deleted stream
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
 TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {

@@ -41,6 +41,8 @@ bool yb_enable_add_column_missing_default = true;
 
 bool yb_enable_replication_commands = false;
 
+bool yb_enable_replication_slot_consumption = false;
+
 bool yb_enable_alter_table_rewrite = true;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
@@ -59,4 +61,7 @@ int yb_locks_min_txn_age = 1000;
 
 int yb_locks_max_transactions = 16;
 
+int yb_locks_txn_locks_per_tablet = 200;
+
 uint64_t yb_read_time = 0;
+bool yb_is_read_time_ht = false;

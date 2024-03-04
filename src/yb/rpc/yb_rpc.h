@@ -204,6 +204,8 @@ class YBInboundCall : public InboundCall {
   // Serialize and queue the response.
   virtual void Respond(AnyMessageConstPtr response, bool is_success);
 
+  void UpdateWaitStateInfo();
+
  private:
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a

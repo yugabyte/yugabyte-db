@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -21,6 +20,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -100,6 +100,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final Map<String, String> universeDeletionReferenceMap;
   private final Map<String, UUID> universeTaskMap;
   private Customer customer;
+  private OperatorUtils operatorUtils;
 
   private final Integer reconcileExceptionBackoffMS = 5000;
 
@@ -115,7 +116,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       TaskExecutor taskExecutor,
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
-      CustomerTaskManager customerTaskManager) {
+      CustomerTaskManager customerTaskManager,
+      OperatorUtils operatorUtils) {
     this(
         client,
         informerFactory,
@@ -127,7 +129,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         taskExecutor,
         kubernetesStatusUpdater,
         confGetter,
-        customerTaskManager);
+        customerTaskManager,
+        operatorUtils);
   }
 
   @VisibleForTesting
@@ -142,7 +145,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       TaskExecutor taskExecutor,
       KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
       RuntimeConfGetter confGetter,
-      CustomerTaskManager customerTaskManager) {
+      CustomerTaskManager customerTaskManager,
+      OperatorUtils operatorUtils) {
+
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
     this.ybUniverseInformer = informerFactory.getSharedIndexInformer(YBUniverse.class, client);
@@ -160,6 +165,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.universeReadySet = ConcurrentHashMap.newKeySet();
     this.universeDeletionReferenceMap = new HashMap<>();
     this.universeTaskMap = new HashMap<>();
+    this.operatorUtils = operatorUtils;
   }
 
   private static String getWorkQueueKey(YBUniverse ybUniverse) {
@@ -278,17 +284,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private Customer getCustomer() throws Exception {
-    if (customer != null) {
-      return customer;
-    }
-    List<Customer> custList = Customer.getAll();
-    if (custList.size() != 1) {
-      throw new Exception("Customer list does not have exactly one customer.");
-    }
-    return customer = custList.get(0);
-  }
-
   /**
    * Tries to achieve the desired state for ybUniverse.
    *
@@ -305,7 +300,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         resourceNamespace);
 
     try {
-      Customer cust = getCustomer();
+      Customer cust = operatorUtils.getOperatorCustomer();
       // checking to see if the universe was deleted.
       if (action == OperatorWorkQueue.ResourceAction.DELETE
           || ybUniverse.getMetadata().getDeletionTimestamp() != null) {
@@ -351,7 +346,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           }
                         }
                         log.info("Removing finalizers...");
-                        if (ybUniverse.getStatus() != null) {
+                        if (ybUniverse.getMetadata() != null) {
                           objectMeta.setFinalizers(Collections.emptyList());
                           ybUniverseClient
                               .inNamespace(resourceNamespace)
@@ -602,7 +597,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     return (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides))
         || checkIfGFlagsChanged(u, currentUserIntent)
-        || currentUserIntent.numNodes != incomingIntent.numNodes
+        || shouldUpdateYbUniverse(currentUserIntent, incomingIntent)
         || !currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion);
   }
 
@@ -932,27 +927,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     userIntent.regionList =
         provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
     ;
-    // userIntent.preferredRegion = preferredRegion;
     if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
-      if (ybUniverse.getSpec().getMasterK8SNodeResourceSpec() != null) {
-        masterResourceSpec.setCpuCoreCount(
-            ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getCpuCoreCount());
-        masterResourceSpec.setMemoryGib(
-            ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getMemoryGib());
-      }
       userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
-
       K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
-      if (ybUniverse.getSpec().getTserverK8SNodeResourceSpec() != null) {
-        tserverResourceSpec.setCpuCoreCount(
-            ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getCpuCoreCount());
-        tserverResourceSpec.setMemoryGib(
-            ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getMemoryGib());
-      }
       userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
-    } else {
-      userIntent.instanceType = ybUniverse.getSpec().getInstanceType();
     }
     userIntent.numNodes =
         ybUniverse.getSpec().getNumNodes() != null
@@ -960,22 +939,20 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             : 0;
     userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
     userIntent.accessKeyCode = "";
-    userIntent.assignPublicIP = ybUniverse.getSpec().getAssignPublicIP();
 
     userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
     log.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
     log.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
 
-    userIntent.useTimeSync = ybUniverse.getSpec().getUseTimeSync();
     userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
     userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
-    userIntent.enableYEDIS = ybUniverse.getSpec().getEnableYEDIS();
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
     userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
-    if (ybUniverse.getSpec().getEnableExposingService() != null) {
-      userIntent.enableExposingService =
-          ExposingServiceState.valueOf(ybUniverse.getSpec().getEnableExposingService().name());
+    if (ybUniverse.getSpec().getEnableLoadBalancer()) {
+      userIntent.enableExposingService = ExposingServiceState.EXPOSED;
+    } else {
+      userIntent.enableExposingService = ExposingServiceState.UNEXPOSED;
     }
 
     // Handle Passwords
@@ -1221,27 +1198,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       di.numVolumes = numVols.intValue();
     }
 
-    Long diskIops = spec.getDiskIops();
-    if (diskIops != null) {
-      di.diskIops = diskIops.intValue();
-    }
-
-    Long throughput = spec.getThroughput();
-    if (throughput != null) {
-      di.throughput = throughput.intValue();
-    }
-
     Long volSize = spec.getVolumeSize();
     if (volSize != null) {
       di.volumeSize = volSize.intValue();
     }
 
-    io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo.StorageType st = spec.getStorageType();
-    if (st != null) {
-      di.storageType = StorageType.fromString(st.getValue());
-    }
-
-    di.mountPoints = spec.getMountPoints();
     di.storageClass = spec.getStorageClass();
 
     return di;

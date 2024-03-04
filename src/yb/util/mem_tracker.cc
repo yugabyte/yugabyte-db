@@ -44,6 +44,8 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/tserver/server_main_util.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -63,15 +65,22 @@
 
 using namespace std::literals;
 
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_int64(memory_limit_hard_bytes, 0,
-             "Maximum amount of memory this daemon should use, in bytes. "
-             "A value of 0 autosizes based on the total system memory. "
-             "A value of -1 disables all memory limiting.");
+    "Maximum amount of memory this daemon should use in bytes. "
+    "A value of 0 specifies to instead use a percentage of the total system memory; "
+    "see --default_memory_limit_to_ram_ratio for the percentage used. "
+    "A value of -1 disables all memory limiting.");
 TAG_FLAG(memory_limit_hard_bytes, stable);
+
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
-              "If memory_limit_hard_bytes is left unspecified, then it is "
-              "set to default_memory_limit_to_ram_ratio * Available RAM.");
-TAG_FLAG(default_memory_limit_to_ram_ratio, advanced);
+    "The percentage of available RAM to use if --memory_limit_hard_bytes is 0. "
+    "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
+    " means to instead use a recommended percentage determined "
+    "in part by the amount of RAM available.");
 
 DEFINE_NON_RUNTIME_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
@@ -235,6 +244,7 @@ void MemTracker::CreateRootTracker() {
     // - 10% of the RAM for masters.
     int64_t total_ram;
     CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
+    DCHECK(FLAGS_default_memory_limit_to_ram_ratio != USE_RECOMMENDED_MEMORY_VALUE);
     limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
   }
 
@@ -255,6 +265,7 @@ void MemTracker::CreateRootTracker() {
             << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
 #endif
 
+  LOG(INFO) << "Root memory limit is " << limit;
   root_tracker = std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
       CreateMetrics::kFalse);
@@ -290,14 +301,15 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   auto result = std::make_shared<MemTracker>(
       byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
           create_metrics, metric_name);
-  auto p = child_trackers_.emplace(id, result);
-  if (!p.second) {
-    auto existing = p.first->second.lock();
+  auto [iter, inserted] = child_trackers_.emplace(id, result);
+  if (!inserted) {
+    auto& tracker_weak_ptr = iter->second;
+    auto existing = tracker_weak_ptr.lock();
     if (existing) {
       LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
       return existing;
     }
-    p.first->second = result;
+    tracker_weak_ptr = result;
   }
 
   return result;
@@ -799,6 +811,24 @@ int64_t MemTracker::GetRootTrackerConsumption() {
 shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   InitRootTrackerOnce();
   return root_tracker;
+}
+
+uint64_t MemTracker::GetTrackedMemory() {
+  uint64_t tracked_memory = 0;
+  for (auto child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+      tracked_memory += child_tracker->consumption();
+    }
+  }
+  return tracked_memory;
+}
+
+uint64_t MemTracker::GetUntrackedMemory() {
+  #if YB_TCMALLOC_ENABLED
+  // generic.current_allocated_bytes = root - tcmalloc
+  return ::yb::GetTCMallocProperty("generic.current_allocated_bytes") - GetTrackedMemory();
+  #endif
+  return 0;
 }
 
 void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {

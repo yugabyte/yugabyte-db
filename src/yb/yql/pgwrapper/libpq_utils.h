@@ -46,6 +46,10 @@ struct PGResultClear {
 typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
 
+// FetchRow/GetValue<MonoDelta> return MonoDelta since POSTGRES_EPOCH_DATE
+// The PGPostgresEpoch function returns this moment as MonoTime
+const MonoTime& PGPostgresEpoch();
+
 struct PGOid {};
 
 template<class T>
@@ -76,7 +80,7 @@ template<class T>
 concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
-    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta>;
 
 template<class T>
 concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
@@ -113,22 +117,38 @@ using PGUint64 = PGNonNeg<int64_t>;
 template<AllowedPGType T>
 using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
 
+namespace libpq_utils::internal {
+
 template<BasePGType T>
-GetValueResult<T> GetValue(const PGresult* result, int row, int column);
+struct GetValueHelper {
+  static Status CheckType(const PGresult* result, int column);
+  static GetValueResult<T> Get(const PGresult* result, int row, int column);
+};
+
+} // namespace libpq_utils::internal
+
+template<BasePGType T>
+GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
+  using Helper = libpq_utils::internal::GetValueHelper<T>;
+  RETURN_NOT_OK(Helper::CheckType(result, column));
+  return Helper::Get(result, row, column);
+}
 
 template<OptionalPGType T>
 GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
+  using Helper = libpq_utils::internal::GetValueHelper<typename T::value_type>;
+  RETURN_NOT_OK(Helper::CheckType(result, column));
   if (PQgetisnull(result, row, column)) {
     return std::nullopt;
   }
-  return GetValue<typename T::value_type>(result, row, column);
+  return Helper::Get(result, row, column);
 }
 
 const std::string& DefaultColumnSeparator();
 const std::string& DefaultRowSeparator();
 
 // DEPRECATED: use FetchRows instead.
-Result<std::string> ToString(PGresult* result, int row, int column);
+Result<std::string> ToString(const PGresult* result, int row, int column);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);

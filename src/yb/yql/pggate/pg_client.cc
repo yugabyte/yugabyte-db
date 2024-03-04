@@ -13,6 +13,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
@@ -62,6 +63,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
+extern int yb_locks_txn_locks_per_tablet;
 
 using namespace std::literals;
 
@@ -221,8 +223,7 @@ class PgClient::Impl : public BigDataFetcher {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
                std::optional<uint64_t> session_id,
-               const YBCAshMetadata* ash_metadata,
-               bool* is_ash_metadata_set) {
+               const YBCPgAshConfig* ash_config) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -235,6 +236,8 @@ class PgClient::Impl : public BigDataFetcher {
     LOG(INFO) << "Using TServer host_port: " << host_port;
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
+    local_cdc_service_proxy_ = std::make_unique<cdc::CDCServiceProxy>(
+        proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
 
     if (!session_id) {
       auto future = create_session_promise_.get_future();
@@ -246,9 +249,8 @@ class PgClient::Impl : public BigDataFetcher {
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
-    ash_metadata_ = ash_metadata;
-    is_ash_metadata_set_ = is_ash_metadata_set;
-    memcpy(local_tserver_uuid_, tserver_shared_data_.tserver_uuid(), 16);
+    ash_config_ = *ash_config;
+    memcpy(ash_config_.yql_endpoint_tserver_uuid, tserver_shared_data_.tserver_uuid(), 16);
 
     return Status::OK();
   }
@@ -256,6 +258,7 @@ class PgClient::Impl : public BigDataFetcher {
   void Shutdown() {
     heartbeat_poller_.Shutdown();
     proxy_ = nullptr;
+    local_cdc_service_proxy_ = nullptr;
   }
 
   uint64_t SessionID() { return session_id_; }
@@ -521,18 +524,16 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgPerformOptionsPB* options, PgsqlOps* operations) {
     auto& arena = operations->front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
-
-    if (FLAGS_TEST_yb_enable_ash) {
+    if (*ash_config_.yb_enable_ash) {
       // Don't send ASH metadata if it's not set
       // ash_metadata_ can be null during tests which directly create the
       // pggate layer without the PG backend.
       // session_id is not set here as it's already set in PgPerformRequestPB
-      if (is_ash_metadata_set_ != nullptr && ash_metadata_ != nullptr &&
-          *is_ash_metadata_set_) {
+      if (*ash_config_.is_metadata_set) {
         auto* ash_metadata = options->mutable_ash_metadata();
-        ash_metadata->set_yql_endpoint_tserver_uuid(local_tserver_uuid_, 16);
-        ash_metadata->set_root_request_id(ash_metadata_->root_request_id, 16);
-        ash_metadata->set_query_id(ash_metadata_->query_id);
+        ash_metadata->set_yql_endpoint_tserver_uuid(ash_config_.yql_endpoint_tserver_uuid, 16);
+        ash_metadata->set_root_request_id(ash_config_.metadata->root_request_id, 16);
+        ash_metadata->set_query_id(ash_config_.metadata->query_id);
       }
     }
 
@@ -724,6 +725,7 @@ class PgClient::Impl : public BigDataFetcher {
     }
     req.set_min_txn_age_ms(yb_locks_min_txn_age);
     req.set_max_num_txns(yb_locks_max_transactions);
+    req.set_max_txn_locks_per_tablet(yb_locks_txn_locks_per_tablet);
 
     RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
@@ -905,11 +907,32 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgCreateReplicationSlotResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(proxy_->CreateReplicationSlot(*req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ListReplicationSlots(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
+      const ReplicationSlotName& slot_name) {
+    tserver::PgGetReplicationSlotRequestPB req;
+    req.set_replication_slot_name(slot_name.ToString());
+
+    tserver::PgGetReplicationSlotResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetReplicationSlot(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -922,6 +945,59 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgGetReplicationSlotStatusResponsePB resp;
 
     RETURN_NOT_OK(proxy_->GetReplicationSlotStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
+    tserver::PgActiveSessionHistoryRequestPB req;
+    req.set_fetch_tserver_states(true);
+    req.set_fetch_flush_and_compaction_states(true);
+    req.set_fetch_raft_log_appender_states(true);
+    req.set_fetch_cql_states(true);
+    req.set_ignore_ash_calls(true);
+    tserver::PgActiveSessionHistoryResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+    cdc::InitVirtualWALForCDCRequestPB req;
+
+    req.set_session_id(session_id_);
+    req.set_stream_id(stream_id);
+    for (const auto& table_id : table_ids) {
+      *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    cdc::InitVirtualWALForCDCResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC() {
+    cdc::DestroyVirtualWALForCDCRequestPB req;
+    req.set_session_id(session_id_);
+
+    cdc::DestroyVirtualWALForCDCResponsePB resp;
+    RETURN_NOT_OK(
+        local_cdc_service_proxy_->DestroyVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id) {
+    cdc::GetConsistentChangesRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_stream_id(stream_id);
+
+    cdc::GetConsistentChangesResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->GetConsistentChanges(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -953,6 +1029,8 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
+  std::unique_ptr<cdc::CDCServiceProxy> local_cdc_service_proxy_;
+
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;
 
@@ -965,9 +1043,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
-  const YBCAshMetadata* ash_metadata_;
-  bool* is_ash_metadata_set_;
-  unsigned char local_tserver_uuid_[16];
+  YBCPgAshConfig ash_config_;
 };
 
 std::string DdlMode::ToString() const {
@@ -989,10 +1065,9 @@ PgClient::~PgClient() = default;
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
     const tserver::TServerSharedObject& tserver_shared_object,
-    std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata,
-    bool* is_ash_metadata_set) {
+    std::optional<uint64_t> session_id, const YBCPgAshConfig* ash_config) {
   return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id,
-                      ash_metadata, is_ash_metadata_set);
+                      ash_config);
 }
 
 void PgClient::Shutdown() {
@@ -1196,13 +1271,41 @@ Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
 }
 
+Result<tserver::PgCreateReplicationSlotResponsePB> PgClient::CreateReplicationSlot(
+    tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->CreateReplicationSlot(req, deadline);
+}
+
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
   return impl_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
+    const ReplicationSlotName& slot_name) {
+  return impl_->GetReplicationSlot(slot_name);
 }
 
 Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlotStatus(slot_name);
+}
+
+Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {
+  return impl_->ActiveSessionHistory();
+}
+
+Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids);
+}
+
+Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC() {
+  return impl_->DestroyVirtualWALForCDC();
+}
+
+Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC(
+    const std::string& stream_id) {
+  return impl_->GetConsistentChangesForCDC(stream_id);
 }
 
 void PerformExchangeFuture::wait() const {
