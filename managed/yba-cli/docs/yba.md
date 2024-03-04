@@ -32,6 +32,7 @@ yba [flags]
 ### SEE ALSO
 
 * [yba auth](yba_auth.md)	 - Authenticate yba cli
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
 * [yba completion](yba_completion.md)	 - Generate the autocompletion script for the specified shell
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
