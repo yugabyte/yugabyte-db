@@ -198,6 +198,20 @@ class PgClient::Impl {
       }
       heartbeat_running_ = false;
       if (!status.ok()) {
+        if (status.IsInvalidArgument()) {
+          // Unknown session errors are handled as FATALs in the postgres layer. Since the error
+          // response of heartbeat RPCs is not propagated to postgres, we handle the error here by
+          // shutting down the heartbeat mechanism. Nothing further can be done in this session, and
+          // the next user activity will trigger a FATAL anyway. This is done specifically to avoid
+          // log spew of the warning message below in cases where the session is idle (ie. no other
+          // RPCs are being sent to the tserver).
+          LOG(ERROR) << "Heartbeat failed. Connection needs to be reset. "
+                     << "Shutting down heartbeating mechanism due to unknown session "
+                     << session_id_;
+          heartbeat_poller_.Shutdown();
+          return;
+        }
+
         LOG_WITH_PREFIX(WARNING) << "Heartbeat failed: " << status;
       }
     });
