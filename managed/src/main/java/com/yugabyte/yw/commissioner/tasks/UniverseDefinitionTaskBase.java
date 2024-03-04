@@ -622,7 +622,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopServerTasks(
-                Collections.singleton(currentNode), ServerType.MASTER, ignoreStopError)
+                Collections.singleton(stoppingNode), ServerType.MASTER, ignoreStopError)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         // TODO this may not be needed as change master config is already done.
         createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
