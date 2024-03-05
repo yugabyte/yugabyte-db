@@ -633,9 +633,9 @@ Status TabletServer::RegisterServices() {
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-      permanent_uuid(), &options(),
-      PgXClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
+      messenger(), permanent_uuid(), &options(),
+      XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
