@@ -690,21 +690,21 @@ typedef struct YbDdlModeOptional
 	YbDdlMode value;
 } YbDdlModeOptional;
 
-// typedef struct MyValue
-// {
-//     char *str;
-// 	TimestampTz ts;
-// } MyValue;
-
-
 typedef struct MyValue
 {
-	char *query;
-	TimestampTz start_time;
-	char *log_path;
-	// pgssEntry entry;
-	// ashEntry ash_entry;
+    char *str;
+	TimestampTz ts;
 } MyValue;
+
+
+// typedef struct MyValue
+// {
+// 	char *query;
+// 	TimestampTz start_time;
+// 	char *log_path;
+// 	// pgssEntry entry;
+// 	// ashEntry ash_entry;
+// } MyValue;
 
 
 YbDdlModeOptional YbGetDdlMode(

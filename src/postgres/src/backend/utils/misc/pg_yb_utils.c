@@ -4527,57 +4527,67 @@ int64_t bundleQueryIdptr = 0;
 bool debuggingBundle;
 bundlePgssPtr bundleptr;
 
-HTAB *create_hashtable() {
+static HTAB *map = NULL;
+typedef struct {
+    int64 key;
+    MyValue value;
+} HashEntry;
+/* Create a shared hash table */
+void
+create_shared_hashtable(void)
+{
     HASHCTL ctl;
-    HTAB *htab;
 
     /* Initialize the hash table control structure */
     memset(&ctl, 0, sizeof(ctl));
 
     /* Set the key size and entry size */
     ctl.keysize = sizeof(int64);
-    ctl.entrysize = sizeof(MyValue);
-
-    /* Create the hash table */
-    htab = hash_create("My Hash Table", 100, &ctl, HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
-
-    return htab;
+    ctl.entrysize = sizeof(HashEntry);
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+    /* Create the hash table in shared memory */
+    map = ShmemInitHash("My Shared Hash Table", 100, 100, &ctl, HASH_ELEM | HASH_BLOBS);
+	
+	LWLockRelease(AddinShmemInitLock);
 }
 
-void insert_into_hashtable(HTAB *htab, int64 key, MyValue value) {
+/* Insert a value into the shared hash table */
+void
+insert_into_shared_hashtable(HTAB *htab, int64 key, MyValue value)
+{
     bool found;
-    MyValue *existing_entry;
+    HashEntry *entry;
 
     /* Try to find the key in the hash table */
-    existing_entry = (MyValue *) hash_search(htab, &key, HASH_ENTER, &found);
+    entry = (HashEntry *) hash_search(htab, &key, HASH_ENTER, &found);
 
-    if (found) {
-        /* The key already exists in the hash table, so update its value */
-        *existing_entry = value;
-    } else {
-        /* The key does not exist in the hash table, so insert it */
-        *existing_entry = value;
-    }
+    /* Insert the value into the hash table */
+	entry->key = key;
+    entry->value = value;
 }
 
-MyValue lookup_in_hashtable(HTAB *htab, int64 key) {
-    bool found;
-    MyValue *value;
+/* Look up a value in the shared hash table */
+MyValue
+lookup_in_shared_hashtable(HTAB *htab, int64 key)
+{
+    // bool found;
+    HashEntry *entry;
 
+
+	// LWLockAcquire(pgss->lock, LW_SHARED);
     /* Try to find the key in the hash table */
-    value = (MyValue *) hash_search(htab, &key, HASH_FIND, &found);
+    entry = (HashEntry *) hash_search(htab, &key, HASH_FIND, NULL);
+	// LWLockRelease(pgss->lock);	
 
-    if (found) {
+    if (entry) {
         /* The key was found in the hash table */
-        return *value;
+        return entry->value;
     } else {
         /* The key was not found in the hash table */
         MyValue not_found = {"NOTFOUND", 0};
         return not_found;
     }
 }
-
-
 Datum
 yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
@@ -4594,21 +4604,20 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	bundleQueryIds[bundleQueryIdptr++] = queryid;
 
 
-	//Now create a hash table (queryid) => (query,MyPgssEntry,MyAshEntry,Path,Timestamp)
-	
-	// Create a hash table
-	HTAB *map = create_hashtable();
-	if(map)
-	;
-	// //Lets test the hash table
-	// MyValue value = {"All Good!!", 1000};
-	// insert_into_hashtable(map, 12, value);
-	// value.str = "Queryid changed!!";
-	// insert_into_hashtable(map, 56, value);
-	// MyValue result = lookup_in_hashtable(map, 1234);
-	// FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-	// fprintf(fptr, "str: %s\ntimestamp:%ld\n" , result.str , result.ts);
-	// fclose(fptr);
+	//create hash table
+	create_shared_hashtable();
+
+	//insert into hash table
+	MyValue value = {"Hare Krishna!!", 1234};
+	insert_into_shared_hashtable(map, 1234, value);
+	MyValue value1 = {"Hari Harii!!", 5678};
+	insert_into_shared_hashtable(map, 5678, value1);
+
+	//lookup in hash table
+	MyValue result = lookup_in_shared_hashtable(map, queryid);
+	FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
+	fprintf(fptr, "%s : %ld\n" , result.str, result.ts);
+	fclose(fptr);
 
 
     //assuming the hash table works.
@@ -4617,40 +4626,27 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	//create folder with name of queryid in home directory using mkdir
 
 	
-	char dir[1000] = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/tracing/";	
-	char queryidstr[21];
-	sprintf(queryidstr, "%lld/", queryid);
-	strcat(dir, queryidstr);
+	// char dir[1000] = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/tracing/";	
+	// char queryidstr[21];
+	// sprintf(queryidstr, "%lld/", queryid);
+	// strcat(dir, queryidstr);
 	
-	if(mkdir(dir, 0777) == -1)
-	{
-		if(errno != EEXIST)
-		{
-			ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
-			PG_RETURN_BOOL(false);
-		}
-	}	
-	char start_time[21];
-	sprintf(start_time, "%ld/", start);
-	strcat(dir,start_time);
-	if(mkdir(dir, 0777) == -1)
-	{
-		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
-		PG_RETURN_BOOL(false);
-	}
-
-
-	MyValue value = {
-		"",
-		start,
-		dir
-		// {}
-	};
-	if(value.start_time)
-	;
-
-
-	// insert_into_hashtable(map, queryid, value);
+	// if(mkdir(dir, 0777) == -1)
+	// {
+	// 	if(errno != EEXIST)
+	// 	{
+	// 		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+	// 		PG_RETURN_BOOL(false);
+	// 	}
+	// }	
+	// char start_time[21];
+	// sprintf(start_time, "%ld/", start);
+	// strcat(dir,start_time);
+	// if(mkdir(dir, 0777) == -1)
+	// {
+	// 	ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+	// 	PG_RETURN_BOOL(false);
+	// }
 
     PG_RETURN_BOOL(true);
 }
