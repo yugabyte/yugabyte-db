@@ -57,7 +57,15 @@ Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/
 
 ## Query-level metrics
 
-View live queries using the [pg_stat_activity](./pg-stat-activity) view, identify terminated queries with [yb_terminated_queries](./yb-pg-stat-get-queries/) view, get the status of a COPY command execution with [pg_stat_progress_copy](./pg-stat-progress-copy), and get query statistics (such as the _time spent by a query_) using the [pg_stat_statements](../query-1-performance/pg-stat-statements) view. Use these query-level metrics to tune query performance.
+The following table describes views in YSQL you can use to monitor and tune query performance.
+
+| View | Description |
+| :--- | :---------- |
+| [pg_stat_activity](./pg-stat-activity) | View live queries |
+| [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
+| [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
+| [pg_locks](./pg_locks) | Get information on locks held by a transaction  |
+| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 

@@ -2,7 +2,7 @@
 title: Get lock information insights with pg_locks
 linkTitle: Lock insights
 description: Using pg_locks to get insights into lock information specific to YugabyteDB's distributed SQL architecture.
-headerTitle: Get lock information insights with pg_locks
+headerTitle: Get insights on transaction locks with pg_locks
 menu:
   stable:
     identifier: pg-locks
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view, which provides information about the locks held and requested by the current active transactions in a database. The `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states. YugabyteDB also provides two additional fields, `waitend` and `ybdetails`, which provide insights into lock information specific to YugabyteDB's distributed architecture. 
+YugabyteDB supports the PostgreSQL [pg_locks](https://www.postgresql.org/docs/current/view-pg-locks.html) system view, which provides information about the locks held and requested by the current active transactions in a database. The `pg_locks` view is tailored to YugabyteDB's lock handling mechanisms, providing a comprehensive overview of database lock states. YugabyteDB also provides two additional fields, `waitend` and `ybdetails`, which provide insights into lock information specific to YugabyteDB's distributed architecture.
 
 ## Scenarios
 
@@ -24,15 +24,15 @@ The `pg_locks` view is used in diagnosing and resolving locking and contention i
 
 The following table describes the view columns:
 
-| Field | Type | Description |
+| Column | Type | Description |
 | :---- | :--- | :---------- |
 | locktype | text | The type of the lockable object. Valid types are relation, keyrange, key, and column. |
 | database | oid | Object identifier (OID) of the database to  where the lock target exists. |
 | relation | oid | OID of the relation targeted by the lock. |
 | pid | pid | Process identifier (PID) of the backend holding the lock. |
 | mode | text | The lock modes held or desired. Valid modes are WEAK_READ and WEAK_WRITE. |
-| granted | text | Indicates if the lock is held (true) or awaited (false). |
-| fastpath | text | Applicable for [single row operations](../../../architecture/transactions/single-row-transactions/) that operate on a single tablet, don't need a transaction, and do not take locks. (They take the _fast path_ by writing directly to the database.)  |
+| granted | boolean | Indicates if the lock is held (true) or awaited (false). |
+| fastpath | boolean | True for [single row operations](../../../architecture/transactions/single-row-transactions/) that operate on a single tablet, don't need a transaction, and do not take locks. (They take the _fast path_ by writing directly to the database.)  |
 | waitstart | timestampz | Time at which a YB-TServer starts waiting for this lock. |
 | waitend | timestampz | Time at which a lock gets acquired. |
 | ybdetails | JSONB | Field with details specific to YugabyteDB locks, including `node`, `transactionid`, and `blocked_by details`.|
@@ -57,7 +57,7 @@ JSONB type that encapsulates additional information about each lock, specific to
 - `is_explicit`: True when the lock was acquired explicitly, such as through FOR UPDATE, FOR NO KEY UPDATE, FOR SHARE, FOR KEY SHARE, and so on. This attribute helps distinguish between locks acquired automatically by the database system and those requested explicitly by you, aiding in lock analysis and optimization efforts.
 - `tablet_id`: The ID of the tablet containing this lock. In YugabyteDB, data is sharded into tablets, and this ID helps identify the specific shard where the lock exists, crucial for diagnosing sharding-related lock contention issues.
 - `blocked_by`: A list of transactions blocking the acquisition of this lock. This field is helpful in identifying deadlock scenarios, and determining which transaction is blocking other operations from moving forward.
-- `keyrangedetails`: Provides details about what keys the lock is held, including the following:
+- `keyrangedetails`: Provides details about keys that the locks hold, including the following:
 
   - `cols`: A list of column values from the PRIMARY KEY of the table, offering insight into the exact row(s) or key range that is locked.
   - `attnum`: The PostgreSQL attribute number indicating if the lock is a column-level lock, linking the lock to the specific table column.
@@ -94,9 +94,9 @@ SET session yb_locks_max_transactions = 10;
 
 ## Examples
 
-The following examples show how you can use the pg_locks view in YugabyteDB:
-
 {{% explore-setup-single %}}
+
+The following examples show how you can use the pg_locks view in YugabyteDB:
 
 - To display long-held locks, run the following command:
 

@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: query-tuning
     parent: explore
-    weight: 310
+    weight: 300
 type: indexpage
 ---
 
