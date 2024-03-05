@@ -821,7 +821,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
   // Namespace Id -> NamespaceInfoPB
   map<string, NamespaceInfoPB> namespace_infos = 1;
 
-  message TargetUniverseInfo {
+  message TargetUniverseInfoPB {
     required bytes universe_uuid = 1;
 
     enum State {
@@ -834,7 +834,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     optional AppStatusPB error_status = 3; // Set when status is FAILED
   }
 
-  optional TargetUniverseInfo target_universe_info = 2;
+  optional TargetUniverseInfoPB target_universe_info = 2;
 
   enum State {
     READY = 0;
