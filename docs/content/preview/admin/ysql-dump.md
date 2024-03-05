@@ -142,9 +142,9 @@ When `-t|--table` is specified, ysql_dump makes no attempt to dump any other dat
 
 #### -T *table*, --exclude-table=*table*
 
-Do not dump any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t-table). [`-T|--exclude-table`](#T-table-exclude-table-table) can be given more than once to exclude tables matching any of several patterns.
+Do not dump any tables matching the table pattern. The pattern is interpreted according to the same rules as for [`-t`](#t-table-table-table). `-T|--exclude-table` can be given more than once to exclude tables matching any of several patterns.
 
-When both [`-t|--table`](#t-table-table-table) and `-T|--exclude-table` are given, the behavior is to dump just the tables that match at least one [`-t|--table`](#t-table-table-table) option but no `-T|--exclude-table` options. If `-T|--exclude-table` appears without `-t|--table`, then tables matching `-T|--exclude-table` are excluded from what is otherwise a normal dump.
+When both `-t|--table` and `-T|--exclude-table` are given, the behavior is to dump just the tables that match at least one `-t|--table` option but no `-T|--exclude-table` options. If `-T|--exclude-table` appears without `-t|--table`, then tables matching `-T|--exclude-table` are excluded from what is otherwise a normal dump.
 
 #### -v, --verbose
 
@@ -288,7 +288,7 @@ This option is never essential, as ysql_dump automatically prompts for a passwor
 
 #### --role=*rolename*
 
-Specifies a role name to be used to create the dump. This option causes ysql_dump to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [`-U|--username`](#u-username)) lacks privileges needed by ysql_dump, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
+Specifies a role name to be used to create the dump. This option causes ysql_dump to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [`-U|--username`](#u-username-username-username)) lacks privileges needed by ysql_dump, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
 
 ## Environment
 
