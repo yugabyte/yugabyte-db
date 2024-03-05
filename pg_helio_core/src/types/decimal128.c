@@ -1167,8 +1167,8 @@ LogWith2Operands(const char *logMessage, const BID_UINT128 *op1, const BID_UINT1
 
 	appendStringInfo(logErrorMsg, " | Exception: %d", *flag);
 
-	/* Log */
-	ereport(LOG, (errmsg("%s", logErrorMsg->data)));
+	/* Add to debug logs */
+	ereport(DEBUG1, (errmsg("%s", logErrorMsg->data)));
 }
 
 
