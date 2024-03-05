@@ -314,6 +314,17 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
+PG_PARITY_FLAGS_DICT = {
+"allowed_preview_flags_csv": "yb_enable_read_committed_isolation=true,"
+                             "ysql_enable_read_request_caching=true",
+
+"ysql_pg_conf_csv":   "yb_enable_base_scans_cost_model=true,"
+                      "yb_enable_optimizer_statistics=true,"
+                      "yb_bnl_batch_size=1024,"
+                      "yb_fetch_row_limit=0,"
+                      "yb_fetch_size_limit=1MB,"
+                      "yb_use_hash_splitting_by_default=false"
+                    }
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -2613,7 +2624,70 @@ class ControlScript(object):
                 "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
             ]
 
-        tserver_flags = self.configs.saved_data.get("tserver_flags")
+        tserver_flags = self.configs.saved_data.get("tserver_flags","")
+
+        if self.configs.temp_data.get("enable_pg_parity"):
+            for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
+                # If pg_parity_flag present in tserver_flags
+                # Extract the value and append any default missing pg_parity_flag_values
+                pg_parity_flag_start_index = tserver_flags.find(pg_parity_flag)
+                tserver_pg_parity_flag_values = ""
+                if pg_parity_flag_start_index != -1:
+                    pg_parity_flag_end_index = \
+                        tserver_flags.find('}', pg_parity_flag_start_index) + 1
+                    tserver_pg_parity_flag = \
+                        tserver_flags[pg_parity_flag_start_index:pg_parity_flag_end_index]
+                    tserver_pg_parity_flag_values = \
+                        tserver_pg_parity_flag[tserver_pg_parity_flag.find("{")+1:-1]
+
+                    # Parse the tserver_pg_parity_flag_values into a dictionary
+                    tserver_pg_parity_flag_values_dict = {}
+                    for item in tserver_pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            tserver_pg_parity_flag_values_dict[key] = value
+
+                    # Parse the PG_PARITY_FLAGS_DICT values into a dictionary
+                    pg_parity_flag_values_dict = {}
+                    for item in pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            pg_parity_flag_values_dict[key] = value
+
+                    # Identify missing flags in tserver_pg_parity_flag_values
+                    missing_pg_parity_flag_values_dict = {}
+                    for key, value in pg_parity_flag_values_dict.items():
+                        if tserver_pg_parity_flag_values_dict.get(key) is None:
+                            missing_pg_parity_flag_values_dict[key] = value
+
+                    # If there are missing pg_parity_flag_values, append them to
+                    # tserver_pg_parity_flag_values
+                    if len(missing_pg_parity_flag_values_dict) > 0:
+                        missing_pg_parity_flag_values = ",".join("{}={}".format(k, v) \
+                                    for k, v in missing_pg_parity_flag_values_dict.items())
+                        if tserver_pg_parity_flag_values:
+                            updated_tserver_pg_parity_flag_values = tserver_pg_parity_flag_values \
+                                                            + "," + missing_pg_parity_flag_values
+                        else:
+                            updated_tserver_pg_parity_flag_values = missing_pg_parity_flag_values
+
+                        updated_tserver_pg_parity_flag = "{}={{{}}}".format(
+                                        pg_parity_flag, updated_tserver_pg_parity_flag_values)
+                        tserver_flags = tserver_flags[:pg_parity_flag_start_index] \
+                                        + updated_tserver_pg_parity_flag \
+                                        + tserver_flags[pg_parity_flag_end_index:]
+                    # No missing pg_parity_flag values found in tserver_flag
+                    else:
+                        pass
+                else:
+                    # If the pg_parity_flag is not present,
+                    # append the entire flag with its default values
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    tserver_flags += "{}={{{}}}".format(pg_parity_flag, pg_parity_flag_values)
+
+            # Update the tserver_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["tserver_flags"] = tserver_flags
 
         # If ysql_hba_conf_csv is present
         # Extract the value of ysql_hba_conf_csv
@@ -5380,6 +5454,10 @@ class ControlScript(object):
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
 
+            if args.enable_pg_parity:
+                self.configs.temp_data["enable_pg_parity"] = \
+                                args.enable_pg_parity
+
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
                 args.ui = self.parse_bool(args.ui)
@@ -5795,6 +5873,9 @@ class ControlScript(object):
             cur_parser.add_argument(
             "--config", help="{} user configuration file path".format(
                               SCRIPT_NAME), metavar="")
+            cur_parser.add_argument(
+                "--enable_pg_parity", help="Enable PostgreSQL compatibility features."
+                " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -5972,6 +6053,7 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
+            "enable_pg_parity": False,
             "admin_command": "",
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
