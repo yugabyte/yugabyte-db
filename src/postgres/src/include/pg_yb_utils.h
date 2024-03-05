@@ -690,21 +690,49 @@ typedef struct YbDdlModeOptional
 	YbDdlMode value;
 } YbDdlModeOptional;
 
+
 typedef struct MyValue
 {
-    char *str;
-	TimestampTz ts;
+	char *query;
+	TimestampTz start_time;
+	char *log_path;
+	// pgssEntry pgss_entry;
+	//for pg_stat_statements
+
+	Oid			userid;			/* user OID */
+	Oid			dbid;			/* database OID */
+	uint64		queryid;		/* query identifier */
+
+	Size	query_offset;	/* query text offset in external file */
+	int	query_len;		/* # of valid bytes in query string, or -1 */
+	int	encoding;		/* query text encoding */
+	slock_t	mutex;			/* protects the counters only */
+	size_t yb_slow_executions; /* # of executions >= yb_hdr_max_value * yb_hdr_latency_res_ms */
+	// hdr_histogram yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
+	
+	int64		calls;			/* # of times executed */
+	double		total_time;		/* total execution time, in msec */
+	double		min_time;		/* minimum execution time in msec */
+	double		max_time;		/* maximum execution time in msec */
+	double		mean_time;		/* mean execution time in msec */
+	double		sum_var_time;	/* sum of variances in execution time in msec */
+	int64		rows;			/* total # of retrieved or affected rows */
+	int64		shared_blks_hit;	/* # of shared buffer hits */
+	int64		shared_blks_read;	/* # of shared disk blocks read */
+	int64		shared_blks_dirtied;	/* # of shared disk blocks dirtied */
+	int64		shared_blks_written;	/* # of shared disk blocks written */
+	int64		local_blks_hit; /* # of local buffer hits */
+	int64		local_blks_read;	/* # of local disk blocks read */
+	int64		local_blks_dirtied; /* # of local disk blocks dirtied */
+	int64		local_blks_written; /* # of local disk blocks written */
+	int64		temp_blks_read; /* # of temp blocks read */
+	int64		temp_blks_written;	/* # of temp blocks written */
+	double		blk_read_time;	/* time spent reading, in msec */
+	double		blk_write_time; /* time spent writing, in msec */
+	double		usage;			/* usage factor */
+	// for Ash
+	
 } MyValue;
-
-
-// typedef struct MyValue
-// {
-// 	char *query;
-// 	TimestampTz start_time;
-// 	char *log_path;
-// 	// pgssEntry entry;
-// 	// ashEntry ash_entry;
-// } MyValue;
 
 
 YbDdlModeOptional YbGetDdlMode(
@@ -1114,9 +1142,12 @@ extern TimestampTz start;
 extern TimestampTz end;
 extern bool debuggingBundle;
 typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid);
+		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
 
 extern bundlePgssPtr bundleptr;
 extern int64_t bundleQueryIdptr;
-
+extern HTAB *map;
+extern void insert_into_shared_hashtable(HTAB *htab, int64 key, MyValue value);
+extern MyValue* lookup_in_shared_hashtable(HTAB *htab, int64 key);
+extern void remove_from_shared_hashtable(HTAB *htab, int64 key);
 #endif /* PG_YB_UTILS_H */

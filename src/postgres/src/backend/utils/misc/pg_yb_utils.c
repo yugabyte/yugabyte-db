@@ -4527,7 +4527,7 @@ int64_t bundleQueryIdptr = 0;
 bool debuggingBundle;
 bundlePgssPtr bundleptr;
 
-static HTAB *map = NULL;
+HTAB *map = NULL;
 typedef struct {
     int64 key;
     MyValue value;
@@ -4567,7 +4567,7 @@ insert_into_shared_hashtable(HTAB *htab, int64 key, MyValue value)
 }
 
 /* Look up a value in the shared hash table */
-MyValue
+MyValue*
 lookup_in_shared_hashtable(HTAB *htab, int64 key)
 {
     // bool found;
@@ -4581,13 +4581,19 @@ lookup_in_shared_hashtable(HTAB *htab, int64 key)
 
     if (entry) {
         /* The key was found in the hash table */
-        return entry->value;
+        return &entry->value;
     } else {
         /* The key was not found in the hash table */
-        MyValue not_found = {"NOTFOUND", 0};
-        return not_found;
+        return NULL;
     }
 }
+
+void remove_from_shared_hashtable(HTAB *htab, int64 key) {
+    /* Try to find the key in the hash table and remove it */
+    hash_search(htab, &key, HASH_REMOVE, NULL);
+}
+
+
 Datum
 yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
@@ -4605,19 +4611,27 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 
 
 	//create hash table
-	create_shared_hashtable();
+	if(map == NULL)
+		create_shared_hashtable();
 
 	//insert into hash table
-	MyValue value = {"Hare Krishna!!", 1234};
-	insert_into_shared_hashtable(map, 1234, value);
-	MyValue value1 = {"Hari Harii!!", 5678};
-	insert_into_shared_hashtable(map, 5678, value1);
+	//I am not handling the case when same queryid is called again.
+	MyValue value = {
+		"Hari Harii!!", 1234,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	};
+	value.start_time = start;
+	insert_into_shared_hashtable(map, queryid, value);
+
+	// MyValue value = {"Hare Krishna!!", 1234};
+	// insert_into_shared_hashtable(map, 1234, value);
+	// MyValue value1 = {"Hari Harii!!", 5678};
+	// insert_into_shared_hashtable(map, 5678, value1);
 
 	//lookup in hash table
-	MyValue result = lookup_in_shared_hashtable(map, queryid);
-	FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-	fprintf(fptr, "%s : %ld\n" , result.str, result.ts);
-	fclose(fptr);
+	// MyValue result = lookup_in_shared_hashtable(map, queryid);
+
+
+
 
 
     //assuming the hash table works.
@@ -4664,10 +4678,11 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 	
 
-	// if(bundleQueryId != PG_GETARG_INT64(0)){
-	// 	ereport(LOG, (errmsg("query id does not match the query id of the bundle" )));
-	// 	PG_RETURN_BOOL(false);
-	// }
+	MyValue* result = lookup_in_shared_hashtable(map, queryid);
+	if(!result){
+		ereport(LOG, (errmsg("Bundle has not been started for this query id")));
+		PG_RETURN_BOOL(false);
+	}
 	
 	if(!debuggingBundle){
 		ereport(LOG, (errmsg("bundle did not start yet")));
@@ -4676,16 +4691,18 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 
 
 	end = GetCurrentTimestamp();
-	if(queryid)
-	;
+	bundleptr(0,queryid,"-",0,0,NULL,0,0,result);
+	// dumpAshData(queryid ,result->start_time ,end);
 
-	bundleptr(0,0,"-",0,0,NULL,0,0);
-	// dumpAshData(queryid ,start ,end);
+
 
 	//resetting the values
-
+	remove_from_shared_hashtable(map, queryid);
+	bundleQueryIdptr--;//remove this
 	start =  INT64_MAX;
 	end = INT64_MIN;
-	debuggingBundle = false;
+	if(bundleQueryIdptr == 0){
+		debuggingBundle = false;
+	}
 	PG_RETURN_BOOL(true);
 }

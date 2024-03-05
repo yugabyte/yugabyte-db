@@ -164,7 +164,7 @@ typedef struct pgssHashKey
 	uint64		queryid;		/* query identifier */
 } pgssHashKey;
 
-char* bundleQuery;
+// char* bundleQuery;
 
 /*
  * The actual stats counters kept within pgssEntry.
@@ -223,7 +223,7 @@ typedef struct pgssEntry
 	hdr_histogram yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
 } pgssEntry;
 
-static pgssEntry myEntry = {};
+// static pgssEntry myEntry = {};
 typedef struct
 {
 	int32 num;
@@ -435,7 +435,10 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 static void enforce_bucket_factor(int * value);
 extern void
 bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid);
+		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
+
+
+void bundleExplain(QueryDesc *queryDesc);
 /*
  * Module load callback
  */
@@ -1309,35 +1312,14 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 	}
 
-	if(debuggingBundle && bundleQueryIds[0] == queryDesc->plannedstmt->queryId){
-		// querydescriptor = (*queryDesc);
+
 
 		//trying to print explain plan
-			ExplainState *es = NewExplainState();
-
-			es->analyze = false;
-			es->verbose = false;
-			es->buffers = false;
-			es->timing = false;
-			es->summary = false;
-			es->format =EXPLAIN_FORMAT_TEXT;
-			es->rpc = false;
-
-			ExplainBeginOutput(es);
-			ExplainQueryText(es, queryDesc);
-			ExplainPrintPlan(es, queryDesc);
-			if (es->costs)
-				ExplainPrintJITSummary(es, queryDesc);
-			ExplainEndOutput(es);
-
-				/* Remove last line break */
-			if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
-				es->str->data[--es->str->len] = '\0';
-
-			FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
-			fprintf(fptr, "QUERY PLAN:\n%s" ,es->str->data);
-			fclose(fptr);
-	}
+		
+		MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
+		if(result){
+			bundleExplain(queryDesc);
+		}
 
 }
 
@@ -1763,10 +1745,19 @@ pgss_store(const char *query, uint64 queryId,
 		SpinLockRelease(&e->mutex);
 
 
-		if(queryId == bundleQueryIds[0] && debuggingBundle){
-			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid);
-		}
+		// if(debuggingBundle){
+		// 	for (int i = 0; i<bundleQueryIdptr; i++) {
+		// 		if (bundleQueryIds[i] == queryId) {
+		// 			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid);
+		// 		}
+		// 	}
+		// }
 
+
+		MyValue* result = lookup_in_shared_hashtable(map, queryId);
+		if(result){
+			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid,result);
+		}
 
 	}
 
@@ -3846,12 +3837,14 @@ static void yb_hdr_reset(hdr_histogram *h)
 	memset(h, 0, sizeof(hdr_histogram) + (sizeof(count_t) * h->counts_len));
 }
 
+
+
 extern void
 bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid)
+		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result)
 {
 	if (flag == 0)
-	{ // stop bundle
+	{ // stop bundle and print everything
 
 		FILE *fptr = fopen("/Users/ishanchhangani/pgss.csv", "w");
 		fprintf(fptr, "userid,dbid,queryid,calls,total_time,min_time,"
@@ -3861,90 +3854,99 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 					  "dirtied,local_blks_written,temp_blks_read,temp_blks_"
 					  "written,blk_read_time,blk_write_time\n");
 
-
-		fprintf(fptr,
-					"%d,%d,%lld,%s,%ld,%f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n",
-					myEntry.key.userid, myEntry.key.dbid, (int64_t)myEntry.key.queryid,bundleQuery,
-					myEntry.counters.calls, myEntry.counters.total_time,
-					myEntry.counters.min_time, myEntry.counters.max_time,
-					myEntry.counters.mean_time,myEntry.counters.sum_var_time,
-					myEntry.counters.rows,
-					myEntry.counters.shared_blks_hit,
-					myEntry.counters.shared_blks_read,
-					myEntry.counters.shared_blks_dirtied,
-					myEntry.counters.shared_blks_written,
-					myEntry.counters.local_blks_hit,
-					myEntry.counters.local_blks_read,
-					myEntry.counters.local_blks_dirtied,
-					myEntry.counters.local_blks_written,
-					myEntry.counters.temp_blks_read,
-					myEntry.counters.temp_blks_written,
-					myEntry.counters.blk_read_time,
-					myEntry.counters.blk_write_time);
+		fprintf(fptr,"%d,%d,%lld,%s,%ld,%f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n",
+				result->userid, result->dbid, (int64_t)result->queryid,result->query,
+				result->calls, result->total_time,
+				result->min_time, result->max_time,
+				result->mean_time,result->sum_var_time,
+				result->rows,
+				result->shared_blks_hit,
+				result->shared_blks_read,
+				result->shared_blks_dirtied,
+				result->shared_blks_written,
+				result->local_blks_hit,
+				result->local_blks_read,
+				result->local_blks_dirtied,
+				result->local_blks_written,
+				result->temp_blks_read,
+				result->temp_blks_written,
+				result->blk_read_time,
+				result->blk_write_time);
 
 		fclose(fptr);
 
-		memset(&myEntry, 0, sizeof(myEntry));
-		bundleQuery = "";
 	}
 	else
 	{ // within bundle
-		if (queryId == bundleQueryIds[0])
+
+		result->dbid = dbid;
+		result->userid = userid;
+		result->queryid = queryId;
+		result->query = strdup(query);
+		result->calls += 1;
+		result->total_time += total_time;
+
+		if(result->calls == 1)
 		{
-			myEntry.key.dbid = dbid;
-			myEntry.key.userid = userid;
-			myEntry.key.queryid = queryId;
-			bundleQuery = strdup(query);
-			myEntry.counters.calls += 1;
-			myEntry.counters.total_time += total_time;
-
-			if (myEntry.counters.calls == 1)
-			{
-				myEntry.counters.min_time = total_time;
-				myEntry.counters.max_time = total_time;
-				myEntry.counters.mean_time = total_time;
-			}
-
-			else
-			{
-				/*
-				 * Welford's method for accurately computing variance. See
-				 * <http://www.johndcook.com/blog/standard_deviation/>
-				 */
-				double old_mean = myEntry.counters.mean_time;
-
-				myEntry.counters.mean_time +=
-					(total_time - old_mean) / myEntry.counters.calls;
-				myEntry.counters.sum_var_time +=
-					(total_time - old_mean) *
-					(total_time - myEntry.counters.mean_time);
-
-				/* calculate min and max time */
-				if (myEntry.counters.min_time > total_time)
-					myEntry.counters.min_time = total_time;
-				if (myEntry.counters.max_time < total_time)
-					myEntry.counters.max_time = total_time;
-			}
-
-			myEntry.counters.rows += rows;
-			myEntry.counters.shared_blks_hit += bufusage->shared_blks_hit;
-			myEntry.counters.shared_blks_read += bufusage->shared_blks_read;
-			myEntry.counters.shared_blks_dirtied +=
-				bufusage->shared_blks_dirtied;
-			myEntry.counters.shared_blks_written +=
-				bufusage->shared_blks_written;
-			myEntry.counters.local_blks_hit += bufusage->local_blks_hit;
-			myEntry.counters.local_blks_read += bufusage->local_blks_read;
-			myEntry.counters.local_blks_dirtied += bufusage->local_blks_dirtied;
-			myEntry.counters.local_blks_written += bufusage->local_blks_written;
-			myEntry.counters.temp_blks_read += bufusage->temp_blks_read;
-			myEntry.counters.temp_blks_written += bufusage->temp_blks_written;
-			myEntry.counters.blk_read_time +=
-				INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
-			myEntry.counters.blk_write_time +=
-				INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
-			myEntry.counters.usage += USAGE_EXEC(total_time);
-
+			result->min_time = total_time;
+			result->max_time = total_time;
+			result->mean_time = total_time;
 		}
+		else
+		{
+			double old_mean = result->mean_time;
+			result->mean_time += (total_time - old_mean) / result->calls;
+			result->sum_var_time += (total_time - old_mean) * (total_time - result->mean_time);
+			if(result->min_time > total_time)
+				result->min_time = total_time;
+			if(result->max_time < total_time)
+				result->max_time = total_time;
+		}
+
+		result->rows += rows;
+		result->shared_blks_hit += bufusage->shared_blks_hit;
+		result->shared_blks_read += bufusage->shared_blks_read;
+		result->shared_blks_dirtied += bufusage->shared_blks_dirtied;
+		result->shared_blks_written += bufusage->shared_blks_written;
+		result->local_blks_hit += bufusage->local_blks_hit;
+		result->local_blks_read += bufusage->local_blks_read;
+		result->local_blks_dirtied += bufusage->local_blks_dirtied;
+		result->local_blks_written += bufusage->local_blks_written;
+		result->temp_blks_read += bufusage->temp_blks_read;
+		result->temp_blks_written += bufusage->temp_blks_written;
+		result->blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
+		result->blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+		result->usage += USAGE_EXEC(total_time);
+		result->yb_slow_executions = 0;
+		result->encoding = 0;
+		// result->yb_hdr_histogram = myEntry.yb_hdr_histogram;
 	}
+}
+
+
+void bundleExplain(QueryDesc *queryDesc){
+	ExplainState *es = NewExplainState();
+
+	es->analyze = false;
+	es->verbose = false;
+	es->buffers = false;
+	es->timing = false;
+	es->summary = false;
+	es->format =EXPLAIN_FORMAT_TEXT;
+	es->rpc = false;
+
+	ExplainBeginOutput(es);
+	ExplainQueryText(es, queryDesc);
+	ExplainPrintPlan(es, queryDesc);
+	if (es->costs)
+		ExplainPrintJITSummary(es, queryDesc);
+	ExplainEndOutput(es);
+
+		/* Remove last line break */
+	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+		es->str->data[--es->str->len] = '\0';
+
+	FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
+	fprintf(fptr, "QUERY PLAN:\n%s" ,es->str->data);
+	fclose(fptr);
 }
