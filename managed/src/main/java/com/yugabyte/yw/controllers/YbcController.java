@@ -146,6 +146,7 @@ public class YbcController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
   @ApiOperation(
+      notes = "YbaApi Internal.",
       value = "YbaApi Internal. Upgrade YBC gflags on the universe nodes",
       nickname = "upgradeYbcGflags",
       response = YBPTask.class)

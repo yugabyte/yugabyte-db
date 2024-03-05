@@ -26672,50 +26672,6 @@
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc/upgrade/gflags" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "upgradeYbcGflags",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "YbaApi Internal. Upgrade YBC gflags on the universe nodes",
-        "tags" : [ "Ybc Management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc_throttle_params" : {
       "get" : {
         "description" : "",
@@ -28690,8 +28646,6 @@
     "name" : "UniverseClusterMutations"
   }, {
     "name" : "User management"
-  }, {
-    "name" : "Ybc Management"
   }, {
     "name" : "preview"
   } ]
