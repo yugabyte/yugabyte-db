@@ -1048,7 +1048,7 @@ class UniverseDetail extends Component {
                         >
                           <YBTooltip
                             title={
-                              hasAsymmetricPrimaryCluster
+                              hasAsymmetricAsyncCluster
                                 ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                                 : ''
                             }

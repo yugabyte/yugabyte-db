@@ -129,11 +129,18 @@ export interface UserIntent {
   enableIPV6?: boolean;
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
-  specificGFlags?: Record<string, any>;
+  specificGFlags?: {
+    inheritFromPrimary: boolean;
+    perProcessFlags: {};
+    perAZ?: {};
+  };
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
-  azOverrides?: Record<string, string>;
+  userIntentOverrides?: {
+    azOverrides?: Record<string, string>;
+  };
+  proxyConfig?: {};
   useSpotInstance?: boolean | null;
   imageBundleUUID?: string;
 }
@@ -538,6 +545,8 @@ export interface UniverseFormData {
   inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
+  proxyConfig?: {};
+  specificGFlagsAzOverrides?: {};
 }
 
 //Default data
@@ -815,30 +824,30 @@ export interface UniverseFormConfigurationProps {
 }
 
 export enum ImageBundleType {
-  YBA_ACTIVE = "YBA_ACTIVE",
-  YBA_DEPRECATED = "YBA_DEPRECATED",
-  CUSTOM = "CUSTOM"
+  YBA_ACTIVE = 'YBA_ACTIVE',
+  YBA_DEPRECATED = 'YBA_DEPRECATED',
+  CUSTOM = 'CUSTOM'
 }
 export interface ImageBundle {
-  uuid: string,
-  name: string,
+  uuid: string;
+  name: string;
   details: {
-    arch: ArchitectureType,
+    arch: ArchitectureType;
     globalYbImage: string;
     regions: {
       [key: string]: {
         ybImage: string;
         sshUserOverride: string;
         sshPortOverride: number;
-      }
-    }
-  },
-  useAsDefault: boolean,
+      };
+    };
+  };
+  useAsDefault: boolean;
   metadata: {
-    type: ImageBundleType,
-    version: string
-  },
-  active: true
+    type: ImageBundleType;
+    version: string;
+  };
+  active: true;
 }
 
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------
