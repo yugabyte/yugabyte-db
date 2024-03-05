@@ -57,6 +57,8 @@ DEFINE_test_flag(bool, block_wait_for_ysql_backends_catalog_version, false, // r
     "If true, enable toggleable busy-wait at the beginning of WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, true,
     "Take leader lock in WaitForYsqlBackendsCatalogVersion.");
+DEFINE_test_flag(bool, ysql_backends_catalog_version_disable_abort_all_jobs, false,
+    "Make YsqlBackendsManager::AbortAllJobs a no-op.");
 
 namespace yb {
 namespace master {
@@ -378,6 +380,11 @@ void YsqlBackendsManager::TerminateJob(
 }
 
 void YsqlBackendsManager::AbortAllJobs() {
+  if (FLAGS_TEST_ysql_backends_catalog_version_disable_abort_all_jobs) {
+    LOG(INFO) << "avoiding abort all jobs";
+    return;
+  }
+
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> jobs;
   {
     std::lock_guard l(mutex_);
