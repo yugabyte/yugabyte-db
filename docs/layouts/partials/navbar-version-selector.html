@@ -48,7 +48,7 @@
     {{ if or (fileExists $check_file_md) (fileExists $check_file_html) (fileExists $check_index_md) (fileExists $check_index_html) (in .url "https://") }}
       <a class="dropdown-item" href="{{ .url }}{{ $path }}"{{- if .newTab }} target="_blank" rel="noopener"{{- end }}>{{ $versionName | safeHTML }}</a>
     {{ else }}
-      <a class="dropdown-item" role="button" title="This is not available in {{ $versionName | safeHTML }}.">{{ $versionName | safeHTML }}</a>
+      <a class="dropdown-item" role="button">{{ $versionName | safeHTML }}</a>
     {{ end }}
   {{ end }}
 </div>
