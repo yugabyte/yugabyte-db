@@ -105,7 +105,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
-// #include "postgres/contrib/pg_stat_statements/pg_stat_statements.c"
+
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -4522,10 +4522,61 @@ YbGetRedactedQueryString(const char* query, int query_len,
 }
 
 TimestampTz start,end;
-int64_t bundleQueryId;
+int64_t bundleQueryIds[100];
+int64_t bundleQueryIdptr = 0;
 bool debuggingBundle;
 bundlePgssPtr bundleptr;
-QueryDesc querydescriptor;
+
+HTAB *create_hashtable() {
+    HASHCTL ctl;
+    HTAB *htab;
+
+    /* Initialize the hash table control structure */
+    memset(&ctl, 0, sizeof(ctl));
+
+    /* Set the key size and entry size */
+    ctl.keysize = sizeof(int64);
+    ctl.entrysize = sizeof(MyValue);
+
+    /* Create the hash table */
+    htab = hash_create("My Hash Table", 100, &ctl, HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
+    return htab;
+}
+
+void insert_into_hashtable(HTAB *htab, int64 key, MyValue value) {
+    bool found;
+    MyValue *existing_entry;
+
+    /* Try to find the key in the hash table */
+    existing_entry = (MyValue *) hash_search(htab, &key, HASH_ENTER, &found);
+
+    if (found) {
+        /* The key already exists in the hash table, so update its value */
+        *existing_entry = value;
+    } else {
+        /* The key does not exist in the hash table, so insert it */
+        *existing_entry = value;
+    }
+}
+
+MyValue lookup_in_hashtable(HTAB *htab, int64 key) {
+    bool found;
+    MyValue *value;
+
+    /* Try to find the key in the hash table */
+    value = (MyValue *) hash_search(htab, &key, HASH_FIND, &found);
+
+    if (found) {
+        /* The key was found in the hash table */
+        return *value;
+    } else {
+        /* The key was not found in the hash table */
+        MyValue not_found = {"NOTFOUND", 0};
+        return not_found;
+    }
+}
+
 
 Datum
 yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
@@ -4540,10 +4591,66 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	start = GetCurrentTimestamp();
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
-	bundleQueryId = queryid;
-	if(bundleQueryId)
+	bundleQueryIds[bundleQueryIdptr++] = queryid;
+
+
+	//Now create a hash table (queryid) => (query,MyPgssEntry,MyAshEntry,Path,Timestamp)
+	
+	// Create a hash table
+	HTAB *map = create_hashtable();
+	if(map)
+	;
+	// //Lets test the hash table
+	// MyValue value = {"All Good!!", 1000};
+	// insert_into_hashtable(map, 12, value);
+	// value.str = "Queryid changed!!";
+	// insert_into_hashtable(map, 56, value);
+	// MyValue result = lookup_in_hashtable(map, 1234);
+	// FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
+	// fprintf(fptr, "str: %s\ntimestamp:%ld\n" , result.str , result.ts);
+	// fclose(fptr);
+
+
+    //assuming the hash table works.
+
+
+	//create folder with name of queryid in home directory using mkdir
+
+	
+	char dir[1000] = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/tracing/";	
+	char queryidstr[21];
+	sprintf(queryidstr, "%lld/", queryid);
+	strcat(dir, queryidstr);
+	
+	if(mkdir(dir, 0777) == -1)
+	{
+		if(errno != EEXIST)
+		{
+			ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+			PG_RETURN_BOOL(false);
+		}
+	}	
+	char start_time[21];
+	sprintf(start_time, "%ld/", start);
+	strcat(dir,start_time);
+	if(mkdir(dir, 0777) == -1)
+	{
+		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+		PG_RETURN_BOOL(false);
+	}
+
+
+	MyValue value = {
+		"",
+		start,
+		dir
+		// {}
+	};
+	if(value.start_time)
 	;
 
+
+	// insert_into_hashtable(map, queryid, value);
 
     PG_RETURN_BOOL(true);
 }
@@ -4561,10 +4668,10 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 	
 
-	if(bundleQueryId != PG_GETARG_INT64(0)){
-		ereport(LOG, (errmsg("query id does not match the query id of the bundle" )));
-		PG_RETURN_BOOL(false);
-	}
+	// if(bundleQueryId != PG_GETARG_INT64(0)){
+	// 	ereport(LOG, (errmsg("query id does not match the query id of the bundle" )));
+	// 	PG_RETURN_BOOL(false);
+	// }
 	
 	if(!debuggingBundle){
 		ereport(LOG, (errmsg("bundle did not start yet")));

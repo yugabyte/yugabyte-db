@@ -35,6 +35,7 @@
 #include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+// #include "postgres/contrib/pg_stat_monitor/pg_stat_monitor.h"
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
@@ -689,6 +690,23 @@ typedef struct YbDdlModeOptional
 	YbDdlMode value;
 } YbDdlModeOptional;
 
+// typedef struct MyValue
+// {
+//     char *str;
+// 	TimestampTz ts;
+// } MyValue;
+
+
+typedef struct MyValue
+{
+	char *query;
+	TimestampTz start_time;
+	char *log_path;
+	// pgssEntry entry;
+	// ashEntry ash_entry;
+} MyValue;
+
+
 YbDdlModeOptional YbGetDdlMode(
 	PlannedStmt *pstmt, ProcessUtilityContext context);
 
@@ -1091,7 +1109,7 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
 
-extern int64_t bundleQueryId;
+extern int64_t bundleQueryIds[100];
 extern TimestampTz start;
 extern TimestampTz end;
 extern bool debuggingBundle;
@@ -1099,7 +1117,6 @@ typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, doub
 		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid);
 
 extern bundlePgssPtr bundleptr;
-extern QueryDesc querydescriptor;
-
+extern int64_t bundleQueryIdptr;
 
 #endif /* PG_YB_UTILS_H */

@@ -1309,7 +1309,7 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		}
 	}
 
-	if(debuggingBundle && bundleQueryId == queryDesc->plannedstmt->queryId){
+	if(debuggingBundle && bundleQueryIds[0] == queryDesc->plannedstmt->queryId){
 		// querydescriptor = (*queryDesc);
 
 		//trying to print explain plan
@@ -1763,7 +1763,7 @@ pgss_store(const char *query, uint64 queryId,
 		SpinLockRelease(&e->mutex);
 
 
-		if(queryId == bundleQueryId && debuggingBundle){
+		if(queryId == bundleQueryIds[0] && debuggingBundle){
 			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid);
 		}
 
@@ -3889,7 +3889,7 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 	}
 	else
 	{ // within bundle
-		if (queryId == bundleQueryId)
+		if (queryId == bundleQueryIds[0])
 		{
 			myEntry.key.dbid = dbid;
 			myEntry.key.userid = userid;
