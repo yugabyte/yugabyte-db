@@ -6,12 +6,13 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
-import com.yugabyte.yw.controllers.UpgradeUniverseController;
+import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Customer;
@@ -23,12 +24,11 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Http.Status;
-import play.mvc.Result;
 
 @Slf4j
 public class UniverseUpgradesManagementApiControllerImp
     extends UniverseUpgradesManagementApiControllerImpInterface {
-  @Inject private UpgradeUniverseController upgradeUniverseController;
+  @Inject private UpgradeUniverseHandler upgradeUniverseHandler;
 
   private Cluster getClusterByUuid(String clusterUuid, GFlagsUpgradeParams v1Params) {
     Optional<Cluster> cls =
@@ -49,7 +49,9 @@ public class UniverseUpgradesManagementApiControllerImp
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     // construct a GFlagsUpgradeParams that includes above universe details
     GFlagsUpgradeParams v1Params =
-        convert(universe.getUniverseDetails(), GFlagsUpgradeParams.class, null);
+        Util.isKubernetesBasedUniverse(universe)
+            ? convert(universe.getUniverseDetails(), KubernetesGFlagsUpgradeParams.class, null)
+            : convert(universe.getUniverseDetails(), GFlagsUpgradeParams.class, null);
     // fill in SpecificGFlags from universeGFlags params into v1Params
     if (upgradeGFlags.getUniverseGflags() != null) {
       upgradeGFlags
@@ -115,12 +117,10 @@ public class UniverseUpgradesManagementApiControllerImp
       krd.resourceType = upgradeGFlags.getKubernetesResourceDetails().getResourceType().name();
       v1Params.setKubernetesResourceDetails(krd);
     }
-    // invoke v1 upgrade api UpgradeUniverseController.upgradeGFlags
-    request = replaceRequestBody(request, v1Params);
-    Result result = upgradeUniverseController.upgradeGFlags(cUUID, uniUUID, request);
-    // extract the v1 Task from the result, and construct a v2 Task to return from here
-    PlatformResults.YBPTask v1Task = extractFromResult(result, PlatformResults.YBPTask.class);
-    YBPTask ybpTask = new YBPTask().taskUuid(v1Task.taskUUID).resourceUuid(v1Task.resourceUUID);
+    // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
+    UUID taskUuid = upgradeUniverseHandler.upgradeGFlags(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBPTask ybpTask = new YBPTask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
 
     log.info("Started gflags upgrade task {}", mapper.writeValueAsString(ybpTask));
     return ybpTask;
