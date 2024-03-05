@@ -1607,7 +1607,8 @@
           "nameRequired": "Name is required",
           "globalYBImagenameRequired": "Machine Image ID is required",
           "amiRequired": "Ami ID is Required",
-          "linuxVersionAlreadyExists": "Image bundle with same name exists"
+          "linuxVersionAlreadyExists": "Image bundle with same name exists",
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles"
         }
       },
       "upgradeModal": {
@@ -1619,7 +1620,8 @@
         "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
-        "successMsg": "Success. Click <0>here</0> for task details"
+        "successMsg": "Success. Click <0>here</0> for task details",
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
