@@ -135,6 +135,11 @@ public class UsersController extends AuthenticatedController {
       formData.setPassword(generatedPassword); // Password is not used.
     }
 
+    if (formData.getRole() == Users.Role.SuperAdmin) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot create an user as SuperAdmin");
+    }
+
+    // Validate password.
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     Users user =
         Users.create(
@@ -232,7 +237,21 @@ public class UsersController extends AuthenticatedController {
     if (Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
-    user.setRole(Role.valueOf(role));
+
+    Users.Role userRole = null;
+    try {
+      userRole = Users.Role.valueOf(role);
+    } catch (IllegalArgumentException ex) {
+      throw new PlatformServiceException(BAD_REQUEST, "Role name provided is not supported");
+    }
+
+    if (userRole == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Role name provided is not supported");
+    } else if (userRole == Users.Role.SuperAdmin) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot edit the user role to SuperAdmin");
+    }
+
+    user.setRole(userRole);
     user.save();
     auditService()
         .createAuditEntryWithReqBody(
