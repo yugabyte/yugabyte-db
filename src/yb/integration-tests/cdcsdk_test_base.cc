@@ -140,6 +140,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -296,6 +299,9 @@ Status CDCSDKTestBase::DropColumn(
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   return Status::OK();
 }
 

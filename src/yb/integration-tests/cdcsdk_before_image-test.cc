@@ -1224,6 +1224,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {3, 1, 2, 0, 0, 0};
@@ -1503,6 +1506,9 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 4 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN value_2"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 5 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 1"));
 

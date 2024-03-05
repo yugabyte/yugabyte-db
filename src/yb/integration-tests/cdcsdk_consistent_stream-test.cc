@@ -344,6 +344,9 @@ TEST_F(CDCSDKConsistentStreamTest,
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
@@ -424,6 +427,9 @@ TEST_F(CDCSDKConsistentStreamTest,
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
