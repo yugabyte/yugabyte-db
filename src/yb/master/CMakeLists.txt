@@ -108,6 +108,7 @@ set(MASTER_SRCS
   master_service_base.cc
   master_tablet_service.cc
   master_test_service.cc
+  master_types.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc

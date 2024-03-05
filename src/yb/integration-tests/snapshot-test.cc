@@ -454,7 +454,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
         &master_leader->catalog_manager_impl().snapshot_coordinator());
     for (const auto& tablet : tablets) {
-      if (!coordinator->IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
+      if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(
             IllegalState, "Covering snapshot for tablet $0 not found", tablet->id());
       }
