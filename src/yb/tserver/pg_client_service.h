@@ -28,7 +28,7 @@
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
-#include "yb/tserver/xcluster_context.h"
+#include "yb/tserver/pg_xcluster_context.h"
 
 namespace yb {
 
@@ -100,14 +100,11 @@ class PgClientServiceImpl : public PgClientServiceIf {
   explicit PgClientServiceImpl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock,
-      TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const scoped_refptr<MetricEntity>& entity,
-      rpc::Messenger* messenger,
-      const std::string& permanent_uuid,
-      const server::ServerBaseOptions* tablet_server_opts,
-      const std::optional<XClusterContext>& xcluster_context = std::nullopt,
+      const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
+      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const std::optional<PgXClusterContext>& xcluster_context = std::nullopt,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
   ~PgClientServiceImpl();

@@ -39,7 +39,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
-#include "yb/tserver/xcluster_context.h"
+#include "yb/tserver/pg_xcluster_context.h"
 
 #include "yb/util/coding_consts.h"
 #include "yb/util/enums.h"
@@ -118,9 +118,8 @@ class PgClientSession {
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
-      client::YBClient* client,
-      const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-      const std::optional<XClusterContext>& xcluster_context,
+      client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
+      const std::optional<PgXClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache);
 
@@ -250,7 +249,7 @@ class PgClientSession {
   scoped_refptr<ClockBase> clock_;
   const TransactionBuilder transaction_builder_;
   PgTableCache& table_cache_;
-  const std::optional<XClusterContext> xcluster_context_;
+  const std::optional<PgXClusterContext> xcluster_context_;
   PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;
