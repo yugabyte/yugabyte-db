@@ -7665,6 +7665,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   // Set the active window to a smaller value for faster test execution.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) =
       10000 * yb::kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table =
@@ -7673,16 +7674,8 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 3);
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStreamWithReplicationSlot("repl_slot_drop_with_active_invalid"));
-
-  // set checkpoint for each tablet.
-  for (int tablet_idx = 0; tablet_idx < tablets.size(); tablet_idx++) {
-    auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(
-        stream_id, tablets, OpId::Min(), /*cdc_sdk_safe_time=*/0, /*initial_checkpoint=*/true,
-        tablet_idx));
-    ASSERT_FALSE(set_resp.has_error());
-  }
+  xrepl::StreamId stream_id = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot("repl_slot_drop_with_active_invalid"));
 
   auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 

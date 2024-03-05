@@ -787,9 +787,6 @@ YBCStatus YBCPgListReplicationSlots(
 YBCStatus YBCPgGetReplicationSlot(
     const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active);
-
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);

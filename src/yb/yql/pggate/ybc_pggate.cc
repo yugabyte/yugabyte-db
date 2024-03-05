@@ -1961,6 +1961,9 @@ YBCStatus YBCPgListReplicationSlots(
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
           .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+          .confirmed_flush = info.confirmed_flush_lsn(),
+          .restart_lsn = info.restart_lsn(),
+          .xmin = info.xmin(),
       };
       ++dest;
     }
@@ -1985,20 +1988,11 @@ YBCStatus YBCPgGetReplicationSlot(
       .stream_id = YBCPAllocStdString(slot_info.stream_id()),
       .database_oid = slot_info.database_oid(),
       .active = slot_info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
+      .confirmed_flush = slot_info.confirmed_flush_lsn(),
+      .restart_lsn = slot_info.restart_lsn(),
+      .xmin = slot_info.xmin()
   };
 
-  return YBCStatusOK();
-}
-
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active) {
-  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
-  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
-  if (!result.ok()) {
-    return ToYBCStatus(result.status());
-  }
-
-  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
   return YBCStatusOK();
 }
 
