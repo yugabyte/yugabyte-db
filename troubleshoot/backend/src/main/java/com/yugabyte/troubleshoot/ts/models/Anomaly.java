@@ -1,5 +1,6 @@
 package com.yugabyte.troubleshoot.ts.models;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.time.Instant;
 import java.util.List;
@@ -14,10 +15,20 @@ public class Anomaly {
   private List<NodeInfo> affectedNodes;
   private List<TableInfo> affectedTables;
   private String summary;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   private Instant detectionTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   private Instant startTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   private Instant endTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   private Instant graphStartTime;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   private Instant graphEndTime;
 
   @Data

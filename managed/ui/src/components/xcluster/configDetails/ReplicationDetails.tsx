@@ -63,6 +63,7 @@ import {
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
 
 import { XClusterConfig } from '../dtos';
 import { MetricsQueryParams, TableType, YBTable } from '../../../redesign/helpers/dtos';
@@ -301,11 +302,11 @@ export function ReplicationDetails({
               customValidateFunction={() => {
                 return (
                   hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                    ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                     onResource: xClusterConfig.sourceUniverseUUID
                   }) &&
                   hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                    ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                     onResource: xClusterConfig.targetUniverseUUID
                   })
                 );
@@ -389,6 +390,7 @@ export function ReplicationDetails({
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
   const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
+  const isEditTableModalVisible = showModal && visibleModal === XClusterModalName.EDIT_TABLES;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
   const isSyncConfigModalVisible =
@@ -418,11 +420,11 @@ export function ReplicationDetails({
                   customValidateFunction={() => {
                     return (
                       hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                         onResource: xClusterConfig.sourceUniverseUUID
                       }) &&
                       hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                         onResource: xClusterConfig.targetUniverseUUID
                       })
                     );
@@ -463,11 +465,11 @@ export function ReplicationDetails({
                             customValidateFunction={() => {
                               return (
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.sourceUniverseUUID
                                 }) &&
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.targetUniverseUUID
                                 })
                               );
@@ -496,11 +498,41 @@ export function ReplicationDetails({
                             customValidateFunction={() => {
                               return (
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.sourceUniverseUUID
                                 }) &&
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                                  onResource: xClusterConfig.targetUniverseUUID
+                                })
+                              );
+                            }}
+                            isControl
+                          >
+                            <MenuItem
+                              onSelect={() => dispatch(openDialog(XClusterModalName.EDIT_TABLES))}
+                              disabled={
+                                !_.includes(enabledConfigActions, XClusterConfigAction.MANAGE_TABLE)
+                              }
+                            >
+                              <YBLabelWithIcon
+                                className="xCluster-dropdown-button"
+                                icon="fa fa-pencil"
+                              >
+                                Select Databases and Tables
+                              </YBLabelWithIcon>
+                            </MenuItem>
+                          </RbacValidator>
+
+                          <RbacValidator
+                            customValidateFunction={() => {
+                              return (
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                                  onResource: xClusterConfig.sourceUniverseUUID
+                                }) &&
+                                hasNecessaryPerm({
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.targetUniverseUUID
                                 })
                               );
@@ -726,6 +758,13 @@ export function ReplicationDetails({
             xClusterConfig={xClusterConfig}
             visible={isEditConfigModalVisible}
             onHide={hideModal}
+          />
+        )}
+        {isEditTableModalVisible && (
+          <EditTablesModal
+            xClusterConfig={xClusterConfig}
+            isDrInterface={false}
+            modalProps={{ open: isEditTableModalVisible, onClose: hideModal }}
           />
         )}
         {isDeleteConfigModalVisible && (

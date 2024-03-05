@@ -72,6 +72,8 @@ YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
 # 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
 # 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
 #    instead of old 'use_tablespaces'
+# 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
+#    with '--no-privileges' flag.
 ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
@@ -88,6 +90,7 @@ TABLET_DIR_GLOB = TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_TBSP_DUMP_FILE_NAME = 'YSQLDump_tablespaces'
+SQL_ROLES_DUMP_FILE_NAME = 'YSQLDump_roles'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
 SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
@@ -992,6 +995,7 @@ class YBManifest:
         if not ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
             properties['use-tablespaces'] = self.backup.args.use_tablespaces
         properties['backup-tablespaces'] = self.backup.args.backup_tablespaces
+        properties['backup-roles'] = self.backup.args.backup_roles
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
@@ -1343,11 +1347,26 @@ class YBBackup:
             help='Restore YSQL TABLESPACE objects from the backup.')
         parser.add_argument(
             '--ignore_existing_tablespaces', required=False, action='store_true', default=False,
-            help='Whether to skip tablespace creation if tablespace already exists.')
+            help='Ignore the tablespace creation if it already exists.')
         parser.add_argument(
             '--use_tablespaces', required=False, action='store_true', default=False,
             help="Use the restored YSQL TABLESPACE objects for the tables "
                  "via 'SET default_tablespace=...' syntax.")
+
+        parser.add_argument(
+            '--backup_roles', required=False, action='store_true', default=False,
+            help='Backup YSQL ROLE objects into the backup.')
+        parser.add_argument(
+            '--restore_roles', required=False, action='store_true', default=False,
+            help='Restore YSQL ROLE objects from the backup.')
+        parser.add_argument(
+            '--ignore_existing_roles', required=False, action='store_true', default=False,
+            help='Ignore the role creation if it already exists.')
+        parser.add_argument(
+            '--use_roles', required=False, action='store_true', default=False,
+            help="Use the restored YSQL ROLE objects for the tables "
+                 "via 'ALTER TABLE ... OWNER TO <role>' and "
+                 "'REVOKE/GRANT ... ON TABLE ... FROM/TO <role>' syntax.")
 
         parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
@@ -3051,6 +3070,9 @@ class YBBackup:
             if self.args.use_tablespaces:
                 raise BackupException("--use_tablespaces can be used in RESTORE mode only")
 
+        if self.args.use_roles:
+            raise BackupException("--use_roles can be used in RESTORE mode only")
+
         snapshot_id = None
         dump_files = []
         pg_based_backup = self.args.pg_based_backup
@@ -3074,6 +3096,17 @@ class YBBackup:
                 dump_files.append(sql_tbsp_dump_path)
             else:
                 ysql_dump_args.append('--no-tablespaces')
+
+            sql_roles_dump_path = os.path.join(self.get_tmp_dir(), SQL_ROLES_DUMP_FILE_NAME)\
+                if self.args.backup_roles else None
+            if sql_roles_dump_path:
+                logging.info("[app] Creating ysql dump for roles to {}".format(
+                    sql_roles_dump_path))
+                self.run_ysql_dumpall(['--roles-only', '--include-yb-metadata',
+                                       '--file=' + sql_roles_dump_path])
+                dump_files.append(sql_roles_dump_path)
+            elif ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+                ysql_dump_args.append('--no-privileges')
 
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
                 db_name, sql_dump_path))
@@ -3439,6 +3472,15 @@ class YBBackup:
         else:
             sql_tbsp_dump_path = None
 
+        if self.args.restore_roles:
+            src_sql_roles_dump_path = os.path.join(
+                self.args.backup_location, SQL_ROLES_DUMP_FILE_NAME)
+            sql_roles_dump_path = os.path.join(self.get_tmp_dir(), SQL_ROLES_DUMP_FILE_NAME)
+            self.download_file(src_sql_roles_dump_path, sql_roles_dump_path)
+            dump_files.append(sql_roles_dump_path)
+        else:
+            sql_roles_dump_path = None
+
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
         try:
@@ -3532,11 +3574,14 @@ class YBBackup:
         if self.args.ignore_existing_tablespaces:
             ysql_shell_args.append('--variable=ignore_existing_tablespaces=1')
 
-        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
-            if self.args.use_tablespaces:
-                ysql_shell_args.append('--variable=use_tablespaces=1')
-        else:  # Always enabled in old semantics
+        if self.args.use_tablespaces:
             ysql_shell_args.append('--variable=use_tablespaces=1')
+
+        if self.args.ignore_existing_roles:
+            ysql_shell_args.append('--variable=ignore_existing_roles=1')
+
+        if self.args.use_roles:
+            ysql_shell_args.append('--variable=use_roles=1')
 
         if on_error_stop:
             logging.info(
@@ -3812,7 +3857,10 @@ class YBBackup:
 
         for dump_file_path in dump_file_paths:
             dump_file = os.path.basename(dump_file_path)
-            if dump_file == SQL_TBSP_DUMP_FILE_NAME:
+            if dump_file == SQL_ROLES_DUMP_FILE_NAME:
+                logging.info('[app] Create roles from {}'.format(dump_file_path))
+                self.import_ysql_dump(dump_file_path)
+            elif dump_file == SQL_TBSP_DUMP_FILE_NAME:
                 logging.info('[app] Create tablespaces from {}'.format(dump_file_path))
                 self.import_ysql_dump(dump_file_path)
             elif dump_file == SQL_DUMP_FILE_NAME:

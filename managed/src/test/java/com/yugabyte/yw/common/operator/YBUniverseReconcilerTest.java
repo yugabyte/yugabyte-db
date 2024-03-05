@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -350,6 +351,27 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertFalse(newSoftwareVersion.equals(oldSoftwareVersion));
     // Verify old universe objct removed
     assertFalse(Universe.maybeGet(oldUniverse.getUniverseUUID()).isPresent());
+  }
+
+  @Test
+  public void testCreateAutoProviderFailStatusUpdate() throws Exception {
+    String universeName = "test-provider-create-fail";
+    YBUniverse ybUniverse = createYbUniverse(universeName);
+    ybUniverse.getSpec().setProviderName("");
+    KubernetesProviderFormData providerData = new KubernetesProviderFormData();
+    Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
+    Mockito.when(
+            cloudProviderHandler.createKubernetes(
+                any(Customer.class), any(KubernetesProviderFormData.class)))
+        .thenThrow(new RuntimeException());
+    try {
+      UniverseDefinitionTaskParams taskParams =
+          ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    } catch (Exception e) {
+    }
+    Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_CREATING));
   }
 
   private YBUniverse createYbUniverse() {

@@ -639,6 +639,8 @@ DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
     "If the leader lease in master's view has expired for this amount of seconds, "
     "treat the lease as expired for too long time.");
 
+DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
+                 "Whether to disable setting the catalog version table in perdb mode.");
 namespace yb {
 namespace master {
 
@@ -1033,6 +1035,7 @@ CatalogManager::CatalogManager(Master* master)
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 
+  clone_state_manager_ = CloneStateManager::Create(this, master, sys_catalog_.get());
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
 }
 
@@ -1551,6 +1554,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders());
+  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
 
   return Status::OK();
 }
@@ -3095,7 +3099,8 @@ Status CatalogManager::DoSplitTablet(
       if (!child_tablet_ids_sorted[i].empty()) {
         continue;
       }
-      auto new_child = CreateTabletInfo(table.get(), tablet_partitions[i]);
+      auto new_child =
+          CreateTabletInfo(table.get(), tablet_partitions[i], SysTabletsEntryPB::CREATING);
       child_tablet_ids_sorted[i] = new_child->id();
       new_tablets.push_back(std::move(new_child));
     }
@@ -4243,7 +4248,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Inserted new table and tablet info into CatalogManager maps");
   VLOG_WITH_PREFIX(1) << "Inserted new table and tablet info into CatalogManager maps";
 
-  if (!joining_colocation_group) {
+  // Clone will create its own tablets as part of repartitioning.
+  if (!joining_colocation_group && !req.is_clone()) {
     auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
     if (opt_wal_retention) {
       table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
@@ -4485,13 +4491,13 @@ Status CatalogManager::VerifyTablePgLayer(
 }
 
 Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partition>& partitions,
-                                                           const TableInfoPtr& table) {
+                                                           const TableInfoPtr& table,
+                                                           SysTabletsEntryPB::State state) {
   TabletInfos tablets;
-  // Create the TabletInfo objects in state PREPARING.
   for (const Partition& partition : partitions) {
     PartitionPB partition_pb;
     partition.ToPB(&partition_pb);
-    tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
+    tablets.push_back(CreateTabletInfo(table.get(), partition_pb, state));
   }
 
   // Add the table/tablets to the in-memory map for the assignment.
@@ -4644,7 +4650,18 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   }
 
   if (tablets) {
-    *tablets = VERIFY_RESULT(CreateTabletsFromTable(partitions, *table));
+    if (req.is_clone()) {
+      // If this is a cloned table, the tablets will be created by the source tablets when
+      // they apply the clone op.
+      *tablets = VERIFY_RESULT(
+          CreateTabletsFromTable(partitions, *table, SysTabletsEntryPB::CREATING));
+      for (auto& tablet : *tablets) {
+        tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
+      }
+    } else {
+      *tablets = VERIFY_RESULT(
+          CreateTabletsFromTable(partitions, *table, SysTabletsEntryPB::PREPARING));
+    }
   }
 
   if (resp != nullptr) {
@@ -5344,6 +5361,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::UDTYPE:
         if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
         break;
+      case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT:
         return id;
       case SysRowEntryType::CDC_STREAM:
@@ -5458,14 +5476,15 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 }
 
 TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
-                                               const PartitionPB& partition) {
+                                               const PartitionPB& partition,
+                                               SysTabletsEntryPB::State state) {
   auto tablet = make_scoped_refptr<TabletInfo>(table, GenerateIdUnlocked(SysRowEntryType::TABLET));
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
   tablet->mutable_metadata()->StartMutation();
   SysTabletsEntryPB *metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
-  metadata->set_state(SysTabletsEntryPB::PREPARING);
+  metadata->set_state(state);
   metadata->mutable_partition()->CopyFrom(partition);
   metadata->set_table_id(table->id());
   if (FLAGS_use_parent_table_id_field && !table->is_system()) {
@@ -5476,6 +5495,12 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
     // to be the id of the original table that creates the tablet.
     metadata->add_table_ids(table->id());
   }
+
+  ConsensusStatePB* cstate = metadata->mutable_committed_consensus_state();
+  cstate->set_current_term(kMinimumTerm);
+  consensus::RaftConfigPB* config = cstate->mutable_config();
+  config->set_opid_index(consensus::kInvalidOpIdIndex);
+
   return tablet;
 }
 
@@ -7347,7 +7372,6 @@ Status CatalogManager::RegisterNewTabletForSplit(
   const auto& source_tablet_meta = tablet_lock->pb;
 
   auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
-  new_tablet_meta.set_state(SysTabletsEntryPB::CREATING);
   new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
       source_tablet_meta.committed_consensus_state());
   const auto new_split_depth = source_tablet_meta.split_depth() + 1;
@@ -10401,9 +10425,36 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
-  if (versions->size() > 1) {
+  if (versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+    LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
     catalog_version_table_in_perdb_mode_ = true;
   }
+  return Status::OK();
+}
+
+// When a cluster is running in per-database catalog version mode, normally
+// catalog_version_table_in_perdb_mode_ is set to true as part of preparing for
+// tserver heartbeat response and once set to true it is never reset back to
+// false. In case a new leader master has not received any tserver heartbeat
+// request, then catalog_version_table_in_perdb_mode_ still has its initial
+// value false, but we cannot assume that the table pg_yb_catalog_version is
+// still in global mode. That's why this function does an on-demand reading of
+// pg_yb_catalog_version table to find out.
+Status CatalogManager::IsCatalogVersionTableInPerdbMode(bool* perdb_mode) {
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  if (!catalog_version_table_in_perdb_mode_) {
+    DbOidToCatalogVersionMap versions;
+    RETURN_NOT_OK(GetYsqlAllDBCatalogVersions(
+        false /* use_cache */, &versions, nullptr /* fingerprint */));
+    // If FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode is set, for
+    // unit test purpose, we return perdb_mode properly while leaving
+    // catalog_version_table_in_perdb_mode_ not set.
+    if (FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
+      *perdb_mode = versions.size() > 1;
+      return Status::OK();
+    }
+  }
+  *perdb_mode = catalog_version_table_in_perdb_mode_;
   return Status::OK();
 }
 
@@ -11324,6 +11375,13 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
     VLOG(2) << "Post-split tablet " << AsString(tablet) << " still being created.";
     return;
   }
+
+  if (tablet->LockForRead()->pb.created_by_clone()) {
+    // No need to recreate cloned tablets, since this is always done on source tablet replicas.
+    VLOG(2) << "Cloned tablet " << AsString(tablet) << " still being created.";
+    return;
+  }
+
   // Skip the tablet if the assignment timeout is not yet expired.
   if (remaining_timeout_ms > 0) {
     VLOG(2) << "Tablet " << tablet->ToString() << " still being created. "
@@ -11607,13 +11665,10 @@ Status CatalogManager::SelectReplicasForTablet(
     VERIFY_RESULT(GetTableReplicationInfo(table_guard->pb.replication_info(),
           tablet->table()->TablespaceIdForTableCreation()));
 
-  // Select the set of replicas for the tablet.
   ConsensusStatePB* cstate = tablet->mutable_metadata()->mutable_dirty()
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
-  cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB* config = cstate->mutable_config();
-  config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
       replication_info, ts_descs, config, per_table_state, global_state));

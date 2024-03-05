@@ -913,8 +913,22 @@ void TabletServer::SetYsqlDBCatalogVersions(
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1})));
     if (ysql_db_catalog_version_map_.size() > 1) {
-      catalog_version_table_in_perdb_mode_ = true;
-      shared_object().SetCatalogVersionTableInPerdbMode();
+      if (!catalog_version_table_in_perdb_mode_.has_value() ||
+          !catalog_version_table_in_perdb_mode_.value()) {
+        LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
+        catalog_version_table_in_perdb_mode_ = true;
+        shared_object().SetCatalogVersionTableInPerdbMode(true);
+      }
+    } else {
+      DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
+      if (!catalog_version_table_in_perdb_mode_.has_value()) {
+        // We can initialize to false at most one time. Once set,
+        // catalog_version_table_in_perdb_mode_ can only go from false to
+        // true (i.e., from global mode to perdb mode).
+        LOG(INFO) << "set pg_yb_catalog_version table in global mode";
+        catalog_version_table_in_perdb_mode_ = false;
+        shared_object().SetCatalogVersionTableInPerdbMode(false);
+      }
     }
     bool row_inserted = it.second;
     bool row_updated = false;

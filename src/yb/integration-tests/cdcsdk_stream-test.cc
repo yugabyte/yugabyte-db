@@ -11,60 +11,24 @@
 // under the License.
 
 #include <algorithm>
-#include <chrono>
-#include <utility>
 #include <boost/assign.hpp>
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
-
-#include "yb/client/client-test-util.h"
-#include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
-
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::vector;
 using std::string;

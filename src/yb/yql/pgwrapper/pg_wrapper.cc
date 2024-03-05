@@ -172,6 +172,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
     "Sets the maximum number of transactions for which to return rows in pg_locks.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 

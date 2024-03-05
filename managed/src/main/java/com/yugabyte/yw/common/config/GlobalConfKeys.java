@@ -1247,6 +1247,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " and returns a mock response with validation errors.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_tries",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result tries",
+          "YBC poll upgrade result tries count.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcUpgradePollResultSleepMs =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_sleep_ms",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result Sleep time",
+          "YBC poll upgrade result sleep time.",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Role> oidcDefaultRole =
       new ConfKeyInfo<>(
           "yb.security.oidc_default_role",

@@ -45,7 +45,8 @@
      "(^troubleshoot/backend/src/test/resources/query/.*)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
-     "(^yb_release_manifest.json$)"
+     "(^yb_release_manifest.json$)",
+     "(^managed/client/java/.*/pom.xml)"
   ],
   "linters": {
     "script-and-regex.script": {

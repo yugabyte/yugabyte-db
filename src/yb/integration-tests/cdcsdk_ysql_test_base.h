@@ -12,7 +12,6 @@
 
 #pragma once
 #include <algorithm>
-#include <chrono>
 #include <utility>
 #include <vector>
 
@@ -20,46 +19,25 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 
-#include "yb/cdc/cdc_types.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
-#include "yb/gutil/walltime.h"
-#include "yb/rocksdb/db.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.h"
-#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -70,25 +48,16 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/tablet/tablet_types.pb.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::map;
 using std::min;

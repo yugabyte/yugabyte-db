@@ -2781,7 +2781,6 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::IMPORT_SNAPSHOT);
 
-  ImportSnapshotMetaResponsePB import_resp;
   NamespaceMap namespace_map;
   UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
@@ -2790,7 +2789,8 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
   auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10 + 1 * tables_data.size());
   auto epoch = bootstrap_info->LockForRead()->epoch();
   RETURN_NOT_OK(DoImportSnapshotMeta(
-      snapshot, epoch, &import_resp, &namespace_map, &type_map, &tables_data, deadline));
+      snapshot, epoch, std::nullopt /* clone_target_namespace_name */, &namespace_map,
+      &type_map, &tables_data, deadline));
 
   // Update sys catalog with new information.
   {
@@ -2801,7 +2801,6 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
     const Status s = sys_catalog_->Upsert(leader_ready_term(), bootstrap_info);
     l.CommitOrWarn(s, "updating universe replication bootstrap info in sys-catalog");
   }
-  auto tables_meta = import_resp.tables_meta();
 
   ///////////////////////////
   // CreateConsumerSnapshot
@@ -2814,6 +2813,13 @@ Result<std::vector<TableMetaPB>> CatalogManager::DoReplicationBootstrapImportSna
 
   CreateSnapshotRequestPB snapshot_req;
   CreateSnapshotResponsePB snapshot_resp;
+
+  std::vector<TableMetaPB> tables_meta;
+  for (const auto& [table_id, table_data] : tables_data) {
+    if (table_data.table_meta) {
+      tables_meta.push_back(std::move(*table_data.table_meta));
+    }
+  }
 
   for (const auto& table_meta : tables_meta) {
     SCHECK(

@@ -754,17 +754,13 @@ class PgApiImpl {
   Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
 
-  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
-      const std::string& stream_id, const PgObjectId& table_id);
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
-  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint *checkpoint,
-      uint64_t safe_time, bool is_initial_checkpoint);
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
-  Result<cdc::GetChangesResponsePB> GetCDCChanges(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint *checkpoint);
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,

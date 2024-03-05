@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
-import { find } from 'lodash';
 import { toast } from 'react-toastify';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { AxiosError } from 'axios';
@@ -43,13 +42,11 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
-import { AddTableModal } from './addTable/AddTableModal';
 import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { Action, Resource } from '../../../redesign/features/rbac';
 import { getTableName } from '../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../actions/universe';
 
@@ -206,9 +203,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
-  const showAddTablesToClusterModal = () => {
-    dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
-  };
   const hideModal = () => {
     dispatch(closeDialog());
   };
@@ -219,38 +213,12 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data
   );
   const sourceUniverse = sourceUniverseQuery.data;
-  const isAddTableModalVisible =
-    showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   return (
     <div className={styles.rootContainer}>
       {!props.isDrInterface && (
+        // TODO: Ask Yu-Shen if we can remove this line so both xCluster and xCluster DR are consistent.
         <div className={styles.headerSection}>
           <span className={styles.infoText}>Tables selected for Replication</span>
-          <div className={styles.actionBar}>
-            <RbacValidator
-              customValidateFunction={(userPerm) => {
-                return (
-                  find(userPerm, {
-                    resourceUUID: xClusterConfig.sourceUniverseUUID,
-                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
-                    resourceType: Resource.UNIVERSE
-                  }) !== undefined &&
-                  find(userPerm, {
-                    resourceUUID: xClusterConfig.targetUniverseUUID,
-                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
-                    resourceType: Resource.UNIVERSE
-                  }) !== undefined
-                );
-              }}
-              isControl
-            >
-              <YBButton
-                onClick={showAddTablesToClusterModal}
-                btnIcon="fa fa-plus"
-                btnText="Add Tables"
-              />
-            </RbacValidator>
-          </div>
         </div>
       )}
       <div className={styles.replicationTable}>
@@ -372,11 +340,11 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                       customValidateFunction={() => {
                         return (
                           hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                             onResource: xClusterConfig.sourceUniverseUUID
                           }) &&
                           hasNecessaryPerm({
-                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                             onResource: xClusterConfig.targetUniverseUUID
                           })
                         );
@@ -402,14 +370,6 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           ></TableHeaderColumn>
         </BootstrapTable>
       </div>
-      {isAddTableModalVisible && (
-        <AddTableModal
-          isDrInterface={props.isDrInterface}
-          isVisible={isAddTableModalVisible}
-          onHide={hideModal}
-          xClusterConfig={xClusterConfig}
-        />
-      )}
       {openTableLagGraphDetails && (
         <ReplicationLagGraphModal
           tableDetails={openTableLagGraphDetails}

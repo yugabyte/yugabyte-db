@@ -1673,7 +1673,8 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+      UUID imageBundleUUID =
+          Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
       if (imageBundleUUID != null) {
         Region region = nodeTaskParam.getRegion();
         ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1824,7 +1825,8 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+            UUID imageBundleUUID =
+                Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
             if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
               Region region = taskParam.getRegion();
               ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1920,7 +1922,8 @@ public class NodeManager extends DevopsBase {
               userIntent);
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+          UUID imageBundleUUID =
+              Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
           if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
             Region region = taskParam.getRegion();
             ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -2710,25 +2713,6 @@ public class NodeManager extends DevopsBase {
       }
     }
     return ybServerPackage;
-  }
-
-  public UUID getImageBundleUUID(
-      Architecture arch, UserIntent userIntent, NodeTaskParams nodeTaskParam) {
-    UUID imageBundleUUID = null;
-    if (userIntent.imageBundleUUID != null) {
-      imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (nodeTaskParam.getProvider().getUuid() != null) {
-      List<ImageBundle> bundles =
-          ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
-      if (bundles.size() > 0) {
-        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-        if (bundle != null) {
-          imageBundleUUID = bundle.getUuid();
-        }
-      }
-    }
-
-    return imageBundleUUID;
   }
 
   private void addOtelColArgs(

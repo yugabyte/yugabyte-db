@@ -146,6 +146,11 @@ extern int yb_locks_min_txn_age;
  */
 extern int yb_locks_max_transactions;
 
+/*
+ * GUC flag: Maximum number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
