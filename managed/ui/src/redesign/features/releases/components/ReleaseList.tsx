@@ -245,9 +245,9 @@ export const NewReleaseList = () => {
     return (
       <Box className={helperClasses.flexRow}>
         <span className={helperClasses.biggerReleaseText}>
-          {row.in_use ? 'In Use' : 'Not in Use'}
+          {row.universes?.length > 0 ? 'In Use' : 'Not in Use'}
         </span>
-        {row.in_use && (
+        {row.universes?.length > 0 && (
           <Box className={helperClasses.releaseNumUniversesBox}>
             <span className={helperClasses.smallerReleaseText}>{row.universes.length}</span>
           </Box>
