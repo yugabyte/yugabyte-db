@@ -4045,7 +4045,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_ash_sampling_interval", PGC_SIGHUP, STATS_MONITORING,
+		{"yb_ash_sampling_interval_ms", PGC_SIGHUP, STATS_MONITORING,
 			gettext_noop("Time (in milliseconds) between two consecutive sampling events"),
 			NULL,
 			GUC_UNIT_MS
