@@ -306,7 +306,7 @@ import algoliasearch from 'algoliasearch';
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
-          document.getElementById('doc-hit').innerHTML = `<li class="no-result">No results found.</b></li>`;
+          document.getElementById('doc-hit').innerHTML = '<li class="no-result">No results found.</b></li>';
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
