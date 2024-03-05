@@ -1283,6 +1283,7 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://js.driftt.com/
         ;
 
         style-src 'self' 'unsafe-inline'
