@@ -222,7 +222,6 @@ set(TSERVER_SRCS
   pg_sequence_cache.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
-  pg_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_client_base.cc

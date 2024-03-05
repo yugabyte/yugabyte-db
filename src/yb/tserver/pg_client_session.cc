@@ -46,6 +46,7 @@
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -562,7 +563,7 @@ Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
     client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
-    const std::optional<PgXClusterContext>& xcluster_context,
+    const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
     PgSequenceCache* sequence_cache)
     : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
@@ -1021,19 +1022,15 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
-  if (!ddl_mode && xcluster_context_ &&
-      xcluster_context_->IsXClusterReadOnlyMode(options.namespace_id())) {
+  if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.
         return STATUS(
-            IllegalState,
-            "Data modification is forbidden on database that is the target of a transactional "
-            "xCluster replication");
+            InvalidArgument, "Data modification by DML is forbidden with STANDBY xCluster role");
       }
     }
   }
-
   if (options.has_caching_info()) {
     data->cache_setter = VERIFY_RESULT(response_cache_.Get(
         options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
@@ -1130,7 +1127,8 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     return Status::OK();
   }
 
-  auto xcluster_safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
+  auto xcluster_safe_time =
+      VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
   if (!xcluster_safe_time) {
     // No xCluster safe time for this namespace.
       return Status::OK();
@@ -1152,7 +1150,8 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   // If read_point is set to a time ahead of the xcluster safe time then we wait.
   return WaitFor(
       [&requested_read_time, &namespace_id, this]() -> Result<bool> {
-        auto safe_time = VERIFY_RESULT(xcluster_context_->GetSafeTime(namespace_id));
+        auto safe_time =
+            VERIFY_RESULT(xcluster_context_->safe_time_map().GetSafeTime(namespace_id));
         if (!safe_time) {
           // We dont have a safe time anymore so no need to wait.
           return true;

@@ -1,4 +1,4 @@
-// Copyright (c) YugabyteDB, Inc.
+// Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,25 +15,23 @@
 
 #include <atomic>
 #include <functional>
-#include <optional>
 
-#include "yb/common/entity_ids_types.h"
-#include "yb/util/status_fwd.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 namespace yb {
-class HybridTime;
-class XClusterSafeTimeMap;
 
-class PgXClusterContext {
+class XClusterContext {
  public:
-  PgXClusterContext(
+  XClusterContext(
       std::reference_wrapper<const XClusterSafeTimeMap> safe_time_map,
       std::reference_wrapper<const std::atomic<bool>> is_xcluster_read_only_mode)
       : safe_time_map_(safe_time_map), is_xcluster_read_only_mode_(is_xcluster_read_only_mode) {}
 
-  Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const;
+  [[nodiscard]] const XClusterSafeTimeMap& safe_time_map() const { return safe_time_map_; }
 
-  bool IsXClusterReadOnlyMode(const NamespaceId namespace_id) const;
+  [[nodiscard]] bool is_xcluster_read_only_mode() const {
+    return is_xcluster_read_only_mode_.load(std::memory_order_acquire);
+  }
 
  private:
   const XClusterSafeTimeMap& safe_time_map_;
