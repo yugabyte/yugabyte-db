@@ -1,6 +1,6 @@
 ---
 title: View COPY status with pg_stat_progress_copy
-linkTitle: Get COPY progress report
+linkTitle: Data transfer status
 description: Use pg_stat_progress_copy to get the COPY command status, number of tuples processed, and other COPY progress reports.
 headerTitle: View COPY status with pg_stat_progress_copy
 aliases:
