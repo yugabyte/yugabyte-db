@@ -184,11 +184,6 @@ DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "of the server's schema, but is determined to be compatible with the current version.");
 TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
 
-DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
-    "A safety switch to disable the changes from D8710 which makes a schema "
-    "operation take an exclusive lock making all write operations wait for it.");
-TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
-
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
 
@@ -1925,18 +1920,6 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
     query->Cancel(
         STATUS(NotSupported, "Transaction status table does not support write"));
     return;
-  }
-
-  if (!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) {
-    auto write_permit = GetPermitToWrite(query->deadline());
-    if (!write_permit.ok()) {
-      TRACE("Could not get the write permit.");
-      WriteQuery::StartSynchronization(std::move(query), MoveStatus(write_permit));
-      return;
-    }
-    // Save the write permit to be released after the operation is submitted
-    // to Raft queue.
-    query->UseSubmitToken(std::move(write_permit));
   }
 
   WriteQuery::Execute(std::move(query));
