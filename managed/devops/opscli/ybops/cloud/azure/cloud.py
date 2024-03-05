@@ -133,6 +133,7 @@ class AzureCloud(AbstractCloud):
         disk_throughput = args.disk_throughput
         spot_price = args.spot_price
         use_spot_instance = args.use_spot_instance
+        use_plan = not args.ignore_plan
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         vm_params = json.loads(args.custom_vm_params).get(region) \
             if args.custom_vm_params is not None else {}
@@ -152,7 +153,7 @@ class AzureCloud(AbstractCloud):
             .create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
                                  instanceType, adminSSH, image, volType, args.type, region,
                                  nicId, tags, disk_iops, disk_throughput, spot_price,
-                                 use_spot_instance, vm_params, disk_params,
+                                 use_spot_instance, vm_params, disk_params, use_plan,
                                  cloud_instance_types=args.cloud_instance_types)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
