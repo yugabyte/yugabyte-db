@@ -61,7 +61,7 @@ The following table describes views in YSQL you can use to monitor and tune quer
 
 | View | Description |
 | :--- | :---------- |
-| [pg_stat_activity](./pg-stat-activity) | View live queries |
+| [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg_locks) | Get information on locks held by a transaction  |
