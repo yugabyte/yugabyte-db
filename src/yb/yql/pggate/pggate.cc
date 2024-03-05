@@ -2260,11 +2260,6 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
   return pg_session_->GetReplicationSlot(slot_name);
 }
 
-Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
-    const ReplicationSlotName& slot_name) {
-  return pg_session_->GetReplicationSlotStatus(slot_name);
-}
-
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);

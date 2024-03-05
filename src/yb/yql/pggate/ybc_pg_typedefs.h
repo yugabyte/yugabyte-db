@@ -549,6 +549,9 @@ typedef struct PgReplicationSlotDescriptor {
   const char *stream_id;
   YBCPgOid database_oid;
   bool active;
+  uint64_t confirmed_flush;
+  uint64_t restart_lsn;
+  uint32_t xmin;
 } YBCReplicationSlotDescriptor;
 
 typedef struct PgDatumMessage {

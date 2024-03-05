@@ -81,7 +81,6 @@ static const char* const kCheckpointType = "checkpoint_type";
 static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
-static const char* const kCDCSDKSlotEntryTabletId = "dummy_id_for_replication_slot";
 
 struct TabletCheckpoint {
   OpId op_id;

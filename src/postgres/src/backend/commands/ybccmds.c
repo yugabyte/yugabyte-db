@@ -1899,18 +1899,6 @@ YBCGetReplicationSlot(const char *slot_name,
 }
 
 void
-YBCGetReplicationSlotStatus(const char *slot_name,
-							bool *active)
-{
-	char error_message[NAMEDATALEN + 64] = "";
-	snprintf(error_message, sizeof(error_message),
-			 "replication slot \"%s\" does not exist", slot_name);
-
-	HandleYBStatusWithCustomErrorForNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active), error_message);
-}
-
-void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;

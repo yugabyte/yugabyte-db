@@ -121,10 +121,6 @@ extern void
 YBCGetReplicationSlot(const char *slot_name,
 					  YBCReplicationSlotDescriptor **replication_slot);
 
-extern void 
-YBCGetReplicationSlotStatus(const char *slot_name, 
-							bool *active);
-
 extern void YBCDropReplicationSlot(const char *slot_name);
 
 extern void YBCInitVirtualWalForCDC(const char *stream_id,

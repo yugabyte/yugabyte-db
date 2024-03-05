@@ -417,6 +417,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    const std::string& slot_name,
     CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 
@@ -430,7 +431,6 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       break;
   }
 
-  auto slot_name = GenerateRandomReplicationSlotName();
   auto result = VERIFY_RESULT(repl_conn.FetchFormat(
       "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput $1", slot_name, snapshot_action));
   auto snapshot_name =
@@ -458,6 +458,13 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
   }
 
   return xrepl_stream_id;
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateConsistentSnapshotStreamWithReplicationSlot(
+      slot_name, snapshot_option, verify_snapshot_name);
 }
 
 // This creates a Consistent Snapshot stream on the database kNamespaceName by default.
