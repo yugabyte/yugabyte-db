@@ -29,7 +29,33 @@ if (typeof detectExternalLink === 'function') {
   <script src="/js/search.js"></script>
 {{- end -}}
 
-{{- with .Site.Params.kapa_ai -}}
+<script>
+  !function () {
+    var t = window.driftt = window.drift = window.driftt || [];
+    if (!t.init) {
+      if (t.invoked) return void (window.console && console.error && console.error("Drift snippet included twice."));
+      t.invoked = !0, t.methods = ["identify", "config", "track", "reset", "debug", "show", "ping", "page", "hide", "off", "on"],
+        t.factory = function (e) {
+          return function () {
+            var n = Array.prototype.slice.call(arguments);
+            return n.unshift(e), t.push(n), t;
+          };
+        }, t.methods.forEach(function (e) {
+          t[e] = t.factory(e);
+        }), t.load = function (t) {
+          var e = 3e5, n = Math.ceil(new Date() / e) * e, o = document.createElement("script");
+          o.type = "text/javascript", o.async = !0, o.crossorigin = "anonymous", o.src = "https://js.driftt.com/include/" + n + "/" + t + ".js";
+          var i = document.getElementsByTagName("script")[0];
+          i.parentNode.insertBefore(o, i);
+        };
+    }
+  }();
+
+  drift.SNIPPET_VERSION = '0.3.1';
+  drift.load('9fp5c8x3476g');
+</script>
+
+{{- if .Site.Params.kapa_ai -}}
 {{- $questions := `
   How do I create an index?,
   Follower Reads vs Read Replicas?,
@@ -59,4 +85,17 @@ if (typeof detectExternalLink === 'function') {
     data-website-id="7669d105-58f8-41b7-b3f1-4799ac938657"
     data-search-include-source-names='["Documentation"]'
 ></script>
+<script>
+  (function() {
+    window.addEventListener('load', function () {
+      const askAiTopSpan = document.querySelector('.ask-ai-top > span');
+      const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
+      if ( askAiTopSpan && kapaWidgetButton ) {
+        askAiTopSpan.addEventListener('click', function () {
+          kapaWidgetButton.click();
+        });
+      }
+    });
+  })();
+</script>
 {{- end -}}
