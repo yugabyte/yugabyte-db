@@ -127,6 +127,24 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateSuperAdminUserWithValidToken() throws IOException {
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    ObjectNode params = Json.newObject();
+    params.put("email", "foo@bar.com");
+    params.put("password", "new-Password1");
+    params.put("confirmPassword", "new-Password1");
+    params.put("role", "SuperAdmin");
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest("POST", String.format(baseRoute, customer1.getUuid()))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
   public void testDeleteUserWithValidToken() throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
@@ -172,6 +190,24 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s?role=ReadOnly",
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                        .cookie(validCookie)));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testRoleChangeToSuperAdmin() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    assertEquals(testUser1.getRole(), Role.Admin);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s?role=SuperAdmin",
                                 String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)));
     assertEquals(result.status(), BAD_REQUEST);
