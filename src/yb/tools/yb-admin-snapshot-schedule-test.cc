@@ -81,7 +81,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
