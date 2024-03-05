@@ -2870,52 +2870,41 @@ void CatalogManager::CleanupHiddenObjects(
     const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
 
-  std::vector<TabletInfoPtr> hidden_tablets;
-  std::vector<TableInfoPtr> tables;
-  {
-    SharedLock lock(mutex_);
-    hidden_tablets = hidden_tablets_;
-    tables.reserve(tables_->Size());
-    for (const auto& p : tables_->GetAllTables()) {
-      if (!p->is_system()) {
-        tables.push_back(p);
-      }
-    }
-  }
-  CleanupHiddenTablets(hidden_tablets, schedule_min_restore_time, epoch);
-  CleanupHiddenTables(std::move(tables), schedule_min_restore_time, epoch);
+  CleanupHiddenTablets(schedule_min_restore_time, epoch);
+  CleanupHiddenTables(schedule_min_restore_time, epoch);
 }
 
 void CatalogManager::CleanupHiddenTablets(
-    const std::vector<TabletInfoPtr>& hidden_tablets,
-    const ScheduleMinRestoreTime& schedule_min_restore_time,
-    const LeaderEpoch& epoch) {
-  if (hidden_tablets.empty()) {
-    return;
+    const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
+  std::vector<TabletInfoPtr> hidden_tablets;
+  {
+    SharedLock lock(mutex_);
+    if (hidden_tablets_.empty()) {
+      return;
+    }
+    hidden_tablets = hidden_tablets_;
   }
-  std::vector<TabletInfoPtr> tablets_to_delete;
+
   std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
+  TabletInfos tablets_to_delete;
 
   for (const auto& tablet : hidden_tablets) {
-    auto lock = tablet->LockForRead();
-    if (!lock->ListedAsHidden()) {
+    if (!tablet->LockForRead()->ListedAsHidden()) {
       tablets_to_remove_from_hidden.push_back(tablet);
       continue;
     }
-    auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-    bool cleanup = !CatalogManagerUtil::RetainTablet(
-        lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
-        hide_hybrid_time, tablet->tablet_id()) && !RetainedByXRepl(tablet->id()) &&
-        !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->id());
-    if (cleanup) {
+
+    if (!ShouldRetainHiddenTablet(*tablet, schedule_min_restore_time)) {
       tablets_to_delete.push_back(tablet);
     }
   }
+
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
-    WARN_NOT_OK(DeleteTabletListAndSendRequests(
-        tablets_to_delete, "Cleanup hidden tablets", {} /* retaining_snapshot_schedules */,
-        false /* transaction_status_tablets */, epoch, false /* active_snapshots */),
+    WARN_NOT_OK(
+        DeleteOrHideTabletsAndSendRequests(
+            tablets_to_delete, TabletDeleteRetainerInfo::AlwaysDelete(), "Cleanup hidden tablets",
+            epoch),
         "Failed to cleanup hidden tablets");
   }
 
@@ -2939,20 +2928,15 @@ void CatalogManager::CleanupHiddenTablets(
 void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
-  auto lock = table->LockForRead();
-  if (!lock->is_hidden_but_not_deleting()) {
+  if (!table->LockForRead()->is_hidden_but_not_deleting()) {
     return;
   }
   auto tablet_info = table->GetColocatedUserTablet();
   if (!tablet_info) {
     return;
   }
-  auto tablet_lock = tablet_info->LockForRead();
-  auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-  if (CatalogManagerUtil::RetainTablet(
-          tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
-          hide_hybrid_time, tablet_info->tablet_id()) ||
-      snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id())) {
+  if (snapshot_coordinator_.ShouldRetainHiddenColocatedTable(
+          *table, *tablet_info, schedule_min_restore_time)) {
     return;
   }
   LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
@@ -2964,8 +2948,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
 }
 
 void CatalogManager::CleanupHiddenTables(
-    std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
-    const LeaderEpoch& epoch) {
+    const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
+  std::vector<TableInfoPtr> tables;
+  {
+    SharedLock lock(mutex_);
+    tables.reserve(tables_->Size());
+    for (const auto& p : tables_->GetAllTables()) {
+      if (!p->is_system()) {
+        tables.push_back(p);
+      }
+    }
+  }
+
   std::vector<TableInfoPtr> expired_tables;
   for (auto& table : tables) {
     if (table->GetColocatedUserTablet() != nullptr) {
@@ -2973,10 +2967,9 @@ void CatalogManager::CleanupHiddenTables(
       // tablet's metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
-    if (!table->IsHiddenButNotDeleting() || !table->AreAllTabletsDeleted()) {
-      continue;
+    if (table->IsHiddenButNotDeleting() && table->AreAllTabletsDeleted()) {
+      expired_tables.push_back(std::move(table));
     }
-    expired_tables.push_back(std::move(table));
   }
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
@@ -3492,11 +3485,6 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
     return STATUS(NotFound, "Tablet leader not found for tablet", tablet->tablet_id());
   }
   return ts;
-}
-
-Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
-    SysRowEntryType type) {
-  return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {

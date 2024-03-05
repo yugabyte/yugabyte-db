@@ -804,18 +804,6 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
-void FillRetainedBySnapshotSchedules(
-      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
-      const TableId& table_id,
-      RepeatedBytes* retained_by_snapshot_schedules) {
-  for (const auto& entry : schedules_to_tables_map) {
-    if (std::binary_search(entry.second.begin(), entry.second.end(), table_id)) {
-      retained_by_snapshot_schedules->Add()->assign(
-          entry.first.AsSlice().cdata(), entry.first.size());
-    }
-  }
-}
-
 int GetTransactionTableNumShardsPerTServer() {
   int value = 8;
   if (IsTsan()) {
@@ -3296,6 +3284,11 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
       *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
 }
 
+std::string CatalogManager::DeletingTableData::ToString() const {
+  return Format(
+      "table: $0($1), $2", table_info->name(), table_info->id(), delete_retainer.ToString());
+}
+
 Status CatalogManager::DeleteNotServingTablet(
     const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
@@ -3322,15 +3315,12 @@ Status CatalogManager::DeleteNotServingTablet(
 
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
-  auto schedules_to_tables_map = VERIFY_RESULT(
-      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
-  RepeatedBytes retaining_snapshot_schedules;
-  FillRetainedBySnapshotSchedules(
-      schedules_to_tables_map, table_info->id(), &retaining_snapshot_schedules);
-  return DeleteTabletListAndSendRequests(
-      {tablet_info}, "Not serving tablet deleted upon request at " + LocalTimeAsString(),
-      retaining_snapshot_schedules, table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE,
-      epoch, snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_id));
+  const auto delete_retainer =
+      VERIFY_RESULT(GetTabletDeleteRetainerInfo(*table_info, {tablet_info}));
+
+  return DeleteOrHideTabletsAndSendRequests(
+      {tablet_info}, delete_retainer,
+      "Not serving tablet deleted upon request at " + LocalTimeAsString(), epoch);
 }
 
 Status CatalogManager::DdlLog(
@@ -5776,16 +5766,16 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   if (!FLAGS_enable_truncate_on_pitr_table) {
       // Disallow deleting tables with snapshot schedules.
-      auto covering_schedule_id = VERIFY_RESULT(
-          FindCoveringScheduleForObject(
+      auto covering_schedules = VERIFY_RESULT(
+          snapshot_coordinator_.GetSnapshotSchedules(
               SysRowEntryType::TABLE, table_id));
-      if (!covering_schedule_id.IsNil()) {
+      if (!covering_schedules.empty()) {
         return STATUS_EC_FORMAT(
             NotSupported,
             MasterError(MasterErrorPB::INVALID_REQUEST),
             "Cannot truncate table $0 which has schedule: $1",
             table->name(),
-            covering_schedule_id);
+            AsString(covering_schedules));
       }
   }
 
@@ -6400,7 +6390,7 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   auto schedules_to_tables_map = VERIFY_RESULT(
-      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
+      snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 
   vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
@@ -6413,12 +6403,12 @@ Status CatalogManager::DeleteTableInternal(
   std::unordered_set<TableId> deleted_table_ids;
   std::vector<TableId> deleted_index_ids;
   for (auto& table : tables) {
-    deleted_table_ids.insert(table.info->id());
-    if(table.info->is_index()) {
-      deleted_index_ids.emplace_back(table.info->id());
+    deleted_table_ids.insert(table.table_info->id());
+    if (table.table_info->is_index()) {
+      deleted_index_ids.emplace_back(table.table_info->id());
     }
-    if (IsSystemTable(*table.info)) {
-      sys_table_ids.insert(table.info->id());
+    if (IsSystemTable(*table.table_info)) {
+      sys_table_ids.insert(table.table_info->id());
     }
     table.write_lock.Commit();
   }
@@ -6447,14 +6437,15 @@ Status CatalogManager::DeleteTableInternal(
       LockGuard lock(mutex_);
       for (const auto& table : tables) {
         if (table.remove_from_name_map) {
-          TableInfoByNameMap::key_type key = {table.info->namespace_id(), table.info->name()};
+          TableInfoByNameMap::key_type key = {
+              table.table_info->namespace_id(), table.table_info->name()};
           if (table_names_map_.erase(key) != 1) {
             LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
           }
 
           // Keep track of deleted ycql tables.
-          if (IsYcqlTable(*table.info)) {
-            removed_ycql_tables.push_back(table.info->id());
+          if (IsYcqlTable(*table.table_info)) {
+            removed_ycql_tables.push_back(table.table_info->id());
           }
         }
       }
@@ -6469,41 +6460,40 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   for (const auto& table : tables) {
-    LOG(INFO) << "Deleting table: " << table.info->name() << ", retained by: "
-              << AsString(table.retained_by_snapshot_schedules, &Uuid::TryFullyDecode)
-              << ", has active snapshots " << table.active_snapshot;
+    LOG(INFO) << "Deleting table: " << table.ToString();
 
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, epoch));
-    auto colocated_tablet = table.info->GetColocatedUserTablet();
+    RETURN_NOT_OK(DeleteOrHideTabletsOfTable(table.table_info, table.delete_retainer, epoch));
+    auto colocated_tablet = table.table_info->GetColocatedUserTablet();
     if (colocated_tablet) {
       // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
       // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
+      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info->id()));
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
-      if (table.retained_by_snapshot_schedules.empty() && !table.active_snapshot) {
-        LOG(INFO) << "Notifying tablet with id "
-                  << colocated_tablet->tablet_id()
-                  << " to remove this colocated table " << table.info->name()
+      if (!table.delete_retainer.IsHideOnly()) {
+        LOG(INFO) << "Notifying tablet with id " << colocated_tablet->tablet_id()
+                  << " to remove this colocated table " << table.table_info->name()
                   << " from its metadata.";
         auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), colocated_tablet, table.info, epoch);
-        table.info->AddTask(call);
+            master_, AsyncTaskPool(), colocated_tablet, table.table_info, epoch);
+        table.table_info->AddTask(call);
         WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
       } else {
         // Set the snapshot schedules that prevented the table from getting deleted.
-        if (!table.retained_by_snapshot_schedules.empty()) {
+        const auto retained_by_snapshot_schedules =
+            table.delete_retainer.RetainedBySnapshotSchedules();
+        if (!retained_by_snapshot_schedules.empty()) {
           auto tablet_lock = colocated_tablet->LockForWrite();
 
           *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-              table.retained_by_snapshot_schedules;
+              retained_by_snapshot_schedules;
 
           // Upsert to sys catalog and commit to memory.
           RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
           tablet_lock.Commit();
         }
-        CheckTableDeleted(table.info, epoch);
+        CheckTableDeleted(table.table_info, epoch);
       }
     }
   }
@@ -6586,13 +6576,11 @@ Status CatalogManager::DeleteTableInMemory(
   }
 
   TRACE(Substitute("Locking $0", object_type));
-  auto data = DeletingTableData {
-    .info = table,
-    .write_lock = table->LockForWrite(),
-    .retained_by_snapshot_schedules = RepeatedBytes(),
-    .remove_from_name_map = false,
-    .active_snapshot = false
+  auto data = DeletingTableData{
+      .table_info = table,
+      .write_lock = table->LockForWrite(),
   };
+
   auto& l = data.write_lock;
   // table_id for the requested table will be added to the end of the response.
   *resp->add_deleted_table_ids() = table->id();
@@ -6602,33 +6590,21 @@ Status CatalogManager::DeleteTableInMemory(
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  FillRetainedBySnapshotSchedules(
-      schedules_to_tables_map, table->id(), &data.retained_by_snapshot_schedules);
-  // If even one tablet has an active snapshot then hide the table.
-  // Potential optimization opportunity:
-  // For colocated tables, the following scenario could happen.
-  // 1. Snapshot has colocated tables t1, t2 and t3.
-  // 2. User created t4 after snaphsot is complete.
-  // 3. User dropped t4, ideally we can delete this table (instead of hiding)
-  // but the below logic will hide it instead. This is ok from a correctness
-  // standpoint but can be a potential optimization worth considering especially
-  // if the table occupies a lot of space on disk and/or snapshot is long lived.
-  auto tablets = table->GetTablets(IncludeInactive::kFalse);
-  data.active_snapshot = std::any_of(tablets.begin(), tablets.end(),
-    [this](const auto& tablet) {
-      return snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->tablet_id());
-  });
-  bool hide_only = !data.retained_by_snapshot_schedules.empty() || data.active_snapshot;
+  data.delete_retainer = VERIFY_RESULT(GetTabletDeleteRetainerInfo(
+      *table, table->GetTablets(IncludeInactive::kFalse), &schedules_to_tables_map));
+
+  bool hide_only = data.delete_retainer.IsHideOnly();
 
   if (l->started_deleting() || (hide_only && l->started_hiding())) {
     if (cascade_delete_index) {
       LOG(WARNING) << "Index " << table_identifier.ShortDebugString() << " was "
                    << (l->started_deleting() ? "deleted" : "hidden");
       return Status::OK();
-    } else {
-      Status s = STATUS(NotFound, "The object was deleted", l->pb.state_msg());
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
     }
+
+    return STATUS_EC_FORMAT(
+        NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND), "The object was deleted",
+        l->pb.state_msg());
   }
 
   // Determine if we have to remove from the name map here before we change the table state.
@@ -9356,19 +9332,6 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   return status;
 }
 
-Result<SnapshotScheduleId> CatalogManager::FindCoveringScheduleForObject(
-    SysRowEntryType type, const std::string& object_id) {
-  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(type));
-  for (const auto& schedule_and_objects : map) {
-    for (const auto& id : schedule_and_objects.second) {
-      if (id == object_id) {
-        return schedule_and_objects.first;
-      }
-    }
-  }
-  return StronglyTypedUuid<SnapshotScheduleId_Tag>::Nil();
-}
-
 Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database) {
   SharedLock lock(mutex_);
   for (const auto& table : tables_->GetAllTables()) {
@@ -9464,14 +9427,14 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto covering_schedule_id = VERIFY_RESULT(
-      FindCoveringScheduleForObject(
+  auto covering_schedules = VERIFY_RESULT(
+      snapshot_coordinator_.GetSnapshotSchedules(
           SysRowEntryType::NAMESPACE, ns->id()));
-  if (!covering_schedule_id.IsNil()) {
+  if (!covering_schedules.empty()) {
     return STATUS_EC_FORMAT(
         InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
         "Cannot delete keyspace which has schedule: $0, request: $1",
-        covering_schedule_id, req->ShortDebugString());
+        AsString(covering_schedules), req->ShortDebugString());
   }
 
   // [Delete]. Skip the DELETING->DELETED state, since no tables are present in this namespace.
@@ -9530,14 +9493,14 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto covering_schedule_id = VERIFY_RESULT(
-      FindCoveringScheduleForObject(
+  auto covering_schedules = VERIFY_RESULT(
+      snapshot_coordinator_.GetSnapshotSchedules(
           SysRowEntryType::NAMESPACE, database->id()));
-  if (!covering_schedule_id.IsNil()) {
+  if (!covering_schedules.empty()) {
     return STATUS_EC_FORMAT(
         InvalidArgument, MasterError(MasterErrorPB::NAMESPACE_IS_NOT_EMPTY),
         "Cannot delete database which has schedule: $0, request: $1",
-        covering_schedule_id, req->ShortDebugString());
+        AsString(covering_schedules), req->ShortDebugString());
   }
 
   // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
@@ -9645,7 +9608,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 Status CatalogManager::DeleteYsqlDBTables(
     const scoped_refptr<NamespaceInfo>& database, const LeaderEpoch& epoch) {
   TabletInfoPtr sys_tablet_info;
-  vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables;
+  vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables_and_locks;
   std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
@@ -9680,15 +9643,15 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->IsColocationParentTable()) {
         colocation_parents.push_back({table, std::move(l)});
       } else if (IsTable(l->pb)) {
-        tables.insert(tables.begin(), {table, std::move(l)});
+        tables_and_locks.insert(tables_and_locks.begin(), {table, std::move(l)});
       } else {
-        tables.push_back({table, std::move(l)});
+        tables_and_locks.push_back({table, std::move(l)});
       }
     }
 
-    tables.insert(tables.end(),
-                  std::make_move_iterator(colocation_parents.begin()),
-                  std::make_move_iterator(colocation_parents.end()));
+    tables_and_locks.insert(
+        tables_and_locks.end(), std::make_move_iterator(colocation_parents.begin()),
+        std::make_move_iterator(colocation_parents.end()));
   }
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
@@ -9700,17 +9663,16 @@ Status CatalogManager::DeleteYsqlDBTables(
 
   // Set all table states to DELETING as one batch RPC call.
   TRACE("Sending delete table batch RPC to sys catalog");
-  vector<TableInfo *> tables_rpc;
-  tables_rpc.reserve(tables.size());
-  for (auto &table_and_lock : tables) {
-    tables_rpc.push_back(table_and_lock.first.get());
-    auto &l = table_and_lock.second;
+  std::vector<TableInfo*> table_infos;
+  table_infos.reserve(tables_and_locks.size());
+  for (auto& [table, l] : tables_and_locks) {
+    table_infos.push_back(table.get());
     // Mark the table state as DELETING tablets.
     l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
         Substitute("Started deleting at $0", LocalTimeAsString()));
   }
   // Update all the table states in raft in bulk.
-  Status s = sys_catalog_->Upsert(epoch, tables_rpc);
+  Status s = sys_catalog_->Upsert(epoch, table_infos);
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
     s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
@@ -9718,10 +9680,7 @@ Status CatalogManager::DeleteYsqlDBTables(
     LOG(WARNING) << s.ToString();
     return CheckIfNoLongerLeader(s);
   }
-  for (auto &table_and_lock : tables) {
-    auto &table = table_and_lock.first;
-    auto &l = table_and_lock.second;
-
+  for (auto& [table, l] : tables_and_locks) {
     if (l->pb.colocated() && !IsColocationParentTableId(table->id())) {
       RETURN_NOT_OK(TryRemoveFromTablegroup(table->id()));
     }
@@ -9735,7 +9694,7 @@ Status CatalogManager::DeleteYsqlDBTables(
   TRACE("Deleting CDC streams on table");
   std::unordered_set<TableId> table_ids;
   vector<TableId> index_list;
-  for (auto &[table, lock] : tables) {
+  for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
     if (table->is_index()) {
       index_list.push_back(table->id());
@@ -9746,18 +9705,12 @@ Status CatalogManager::DeleteYsqlDBTables(
   RETURN_NOT_OK(DeleteXReplStatesForIndexTables(index_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
-  for (auto &[table, lock] : tables) {
+  for (auto& [table, _] : tables_and_locks) {
     // TODO(pitr) undelete for YSQL tables
     // We don't retain tables dropped due to a drop database even if there are
-    // active snapshots covering it.
-    DeletingTableData table_data = {
-      .info = table,
-      .write_lock = table->LockForWrite(),
-      .retained_by_snapshot_schedules = {},
-      .remove_from_name_map = false,
-      .active_snapshot = false
-    };
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table_data, epoch));
+    // active snapshots or snapshot schedules covering it.
+    RETURN_NOT_OK(
+        DeleteOrHideTabletsOfTable(table, TabletDeleteRetainerInfo::AlwaysDelete(), epoch));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -11002,173 +10955,117 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTabletsAndSendRequests(
-    const DeletingTableData& table_data, const LeaderEpoch& epoch) {
-  TableInfoPtr table = table_data.info;
+Status CatalogManager::DeleteOrHideTabletsOfTable(
+    const TableInfoPtr& table_info, const TabletDeleteRetainerInfo& delete_retainer,
+    const LeaderEpoch& epoch) {
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
-  if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
+  if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
     return Status::OK();
   }
 
-  auto tablets = table->GetTablets(IncludeInactive::kTrue);
+  auto tablets = table_info->GetTablets(IncludeInactive::kTrue);
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
   });
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
-  RETURN_NOT_OK(DeleteTabletListAndSendRequests(
-      tablets, deletion_msg, table_data.retained_by_snapshot_schedules,
-      table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE, epoch, table_data.active_snapshot));
 
-  if (table->IsColocatedDbParentTable()) {
+  RETURN_NOT_OK(DeleteOrHideTabletsAndSendRequests(tablets, delete_retainer, deletion_msg, epoch));
+
+  if (table_info->IsColocatedDbParentTable()) {
     LockGuard lock(mutex_);
-    colocated_db_tablets_map_.erase(table->namespace_id());
-  } else if (table->IsTablegroupParentTable()) {
+    colocated_db_tablets_map_.erase(table_info->namespace_id());
+  } else if (table_info->IsTablegroupParentTable()) {
     // In the case of dropped tablegroup parent table, need to delete tablegroup info.
     LockGuard lock(mutex_);
-    TablegroupId tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    TablegroupId tablegroup_id = GetTablegroupIdFromParentTableId(table_info->id());
     RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
   }
   return Status::OK();
 }
 
-Status CatalogManager::DeleteTabletListAndSendRequests(
-    const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-    const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
-    bool transaction_status_tablets, const LeaderEpoch& epoch, const bool active_snapshot) {
+Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
+    const TabletInfos& tablets, const TabletDeleteRetainerInfo& delete_retainer,
+    const std::string& reason, const LeaderEpoch& epoch) {
+  const auto hide_only = HideOnly(delete_retainer.IsHideOnly());
+
   struct TabletData {
     TabletInfoPtr tablet;
     TabletInfo::WriteLock lock;
-    HideOnly hide_only;
+    bool transaction_status_tablet;
   };
 
   std::vector<TabletInfoPtr> marked_as_hidden;
-  {
-    std::vector<TabletData> tablets_data;
-    tablets_data.reserve(tablets.size());
-    std::vector<TabletInfo*> tablet_infos;
-    tablet_infos.reserve(tablets_data.size());
 
-    // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
-    {
-      SharedLock read_lock(mutex_);
-      for (const auto& tablet : tablets) {
-        tablets_data.push_back(TabletData {
+  std::vector<TabletData> tablets_data;
+  tablets_data.reserve(tablets.size());
+  std::vector<TabletInfo*> tablet_infos;
+  tablet_infos.reserve(tablets_data.size());
+
+  // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
+  {
+    SharedLock read_lock(mutex_);
+
+    for (const auto& tablet : tablets) {
+      auto tablet_data = TabletData{
           .tablet = tablet,
           .lock = tablet->LockForWrite(),
-          .hide_only = HideOnly(!retaining_snapshot_schedules.empty() || active_snapshot),
-        });
+          .transaction_status_tablet =
+              (tablet->table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE),
+      };
 
-        if (!tablets_data.back().hide_only &&
-            (IsTableXClusterProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
-          // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
-          // active stream is during tablet splitting, where we need to keep the parent tablet
-          // around until we have replicated its SPLIT_OP record.
-
-          // There are a few cases to handle here:
-          // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
-          //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
-          //    it stays hidden.
-          // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
-          //    this tablet hidden.
-          // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
-          //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
-          //    that all streams for this tablet have replicated the split record. We can now delete
-          //    it as long as it isn't being kept by a snapshot schedule.
-          if (!tablets_data.back().lock->ListedAsHidden() ||
-              retained_by_xcluster_.contains(tablet->id()) ||
-              retained_by_cdcsdk_.contains(tablet->id())) {
-            tablets_data.back().hide_only = HideOnly(true);
-          }
-        }
-
-        tablet_infos.emplace_back(tablet.get());
-      }
+      tablets_data.emplace_back(std::move(tablet_data));
+      tablet_infos.emplace_back(tablet.get());
     }
+  }
 
-    // Use the same hybrid time for all hidden tablets.
-    HybridTime hide_hybrid_time = master_->clock()->Now();
+  // Use the same hybrid time for all hidden tablets.
+  HybridTime hide_hybrid_time = master_->clock()->Now();
 
-    // Mark the tablets as deleted.
-    for (auto& tablet_data : tablets_data) {
-      auto& tablet = tablet_data.tablet;
-      auto& tablet_lock = tablet_data.lock;
+  // Mark the tablets as deleted.
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    auto& tablet_lock = tablet_data.lock;
 
-      bool was_hidden = tablet_lock->ListedAsHidden();
-      // Inactive tablet now, so remove it from partitions_.
-      // After all the tablets have been deleted from the tservers, we remove it from tablets_.
-      tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+    // Inactive tablet now, so remove it from partitions_.
+    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
 
-      if (tablet_data.hide_only) {
-        LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
-        tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
-        if (!retaining_snapshot_schedules.empty()) {
-          *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-              retaining_snapshot_schedules;
-        }
-      } else {
-        LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
-        if (!transaction_status_tablets) {
-          tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-        }
-      }
-      if (tablet_lock->ListedAsHidden() && !was_hidden) {
+    if (hide_only) {
+      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+      if (!tablet_lock->ListedAsHidden()) {
         marked_as_hidden.push_back(tablet);
       }
-    }
 
-    // Update all the tablet states in raft in bulk.
-    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
-
-    // Commit the change.
-    for (auto& tablet_data : tablets_data) {
-      auto& tablet = tablet_data.tablet;
-      auto& tablet_lock = tablet_data.lock;
-
-      tablet_lock.Commit();
-
-      LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
-
-      if (transaction_status_tablets) {
-        auto leader = VERIFY_RESULT(tablet->GetLeader());
-        RETURN_NOT_OK(SendPrepareDeleteTransactionTabletRequest(
-            tablet, leader->permanent_uuid(), deletion_msg, tablet_data.hide_only, epoch));
-      } else {
-        DeleteTabletReplicas(
-            tablet.get(), deletion_msg, tablet_data.hide_only, KeepData::kFalse, epoch);
+      MarkTabletAsHidden(tablet_lock.mutable_data()->pb, hide_hybrid_time, delete_retainer);
+    } else {
+      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
+      if (!tablet_data.transaction_status_tablet) {
+        tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, reason);
       }
     }
   }
 
-  if (!marked_as_hidden.empty()) {
-    LockGuard lock(mutex_);
-    hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
-    // Also keep track of all tablets that were hid due to xCluster.
-    for (const auto& tablet : marked_as_hidden) {
-      bool is_table_cdc_producer = IsTableXClusterProducer(*tablet->table());
-      bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
-      if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
-        auto tablet_lock = tablet->LockForRead();
-        const auto& children = tablet_lock->pb.split_tablet_ids();
-        if (children.size() < 2) {
-          // We are hiding this tablet for PITR/Snapshots and not for xCluster.
-          continue;
-        }
-        HiddenReplicationParentTabletInfo info {
-          .table_id_ = tablet->table()->id(),
-          .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
-                             ? tablet_lock->pb.split_parent_tablet_id()
-                             : "",
-          .split_tablets_ = {children.Get(0), children.Get(1)}
-        };
-        if (is_table_cdc_producer) {
-          retained_by_xcluster_.emplace(tablet->id(), info);
-        }
-        if (is_table_part_of_cdcsdk) {
-          retained_by_cdcsdk_.emplace(tablet->id(), info);
-        }
-      }
+  // Update all the tablet states in raft in bulk.
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet_infos));
+
+  RecordHiddenTablets(marked_as_hidden, delete_retainer);
+
+  for (auto& tablet_data : tablets_data) {
+    LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
+    tablet_data.lock.Commit();
+  }
+
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    if (tablet_data.transaction_status_tablet) {
+      // Transaction status table tablets need to be prepared before deletion.
+      auto leader = VERIFY_RESULT(tablet->GetLeader());
+      RETURN_NOT_OK(SendPrepareDeleteTransactionTabletRequest(
+          tablet, leader->permanent_uuid(), reason, hide_only, epoch));
+    } else {
+      DeleteTabletReplicas(tablet.get(), reason, hide_only, KeepData::kFalse, epoch);
     }
   }
 
@@ -11827,8 +11724,8 @@ Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacemen
 
 Status CatalogManager::SendCreateTabletRequests(
     const vector<TabletInfo*>& tablets, const LeaderEpoch& epoch) {
-  auto schedules_to_tablets_map =
-      VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLET));
+  auto schedules_to_tablets_map = VERIFY_RESULT(
+      snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLET));
   for (TabletInfo* tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
@@ -13892,6 +13789,62 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
   ScheduleRefreshPgCatalogVersionsTask();
+}
+
+Result<TabletDeleteRetainerInfo> CatalogManager::GetTabletDeleteRetainerInfo(
+    const TableInfo& table_info, const TabletInfos& tablets_to_check,
+    const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map) {
+  TabletDeleteRetainerInfo retainer;
+  RETURN_NOT_OK(snapshot_coordinator_.PopulateTabletDeleteRetainerInfo(
+      table_info, tablets_to_check, schedules_to_tables_map, retainer));
+
+  {
+    SharedLock lock(mutex_);
+    XReplPopulateTabletDeleteRetainerInfo(table_info, tablets_to_check, retainer);
+  }
+
+  return retainer;
+}
+
+void CatalogManager::MarkTabletAsHidden(
+    SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
+    const TabletDeleteRetainerInfo& delete_retainer) const {
+  tablet_pb.set_hide_hybrid_time(hide_ht.ToUint64());
+  const auto retained_by_snapshot_schedules = delete_retainer.RetainedBySnapshotSchedules();
+  if (!retained_by_snapshot_schedules.empty()) {
+    *tablet_pb.mutable_retained_by_snapshot_schedules() = retained_by_snapshot_schedules;
+  }
+}
+
+void CatalogManager::RecordHiddenTablets(
+    const TabletInfos& new_hidden_tablets, const TabletDeleteRetainerInfo& delete_retainer) {
+  if (new_hidden_tablets.empty()) {
+    return;
+  }
+
+  // Update hidden_tablets_ first.
+  {
+    LockGuard lock(mutex_);
+    hidden_tablets_.insert(
+        hidden_tablets_.end(), new_hidden_tablets.begin(), new_hidden_tablets.end());
+
+    LoadXReplRetainedTablets(new_hidden_tablets, delete_retainer);
+  }
+}
+
+bool CatalogManager::ShouldRetainHiddenTablet(
+    const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time) {
+  const auto& tablet_id = tablet.tablet_id();
+  if (snapshot_coordinator_.ShouldRetainHiddenTablet(tablet, schedule_to_min_restore_time)) {
+    VLOG(1) << Format("Tablet $0 retained by snapshots", tablet_id);
+    return true;
+  }
+  if (RetainedByXRepl(tablet_id)) {
+    VLOG(1) << Format("Tablet $0 retained by xrepl", tablet_id);
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace master

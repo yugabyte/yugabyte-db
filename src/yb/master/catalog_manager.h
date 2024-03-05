@@ -70,6 +70,7 @@
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/master_types.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
@@ -1508,13 +1509,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void ReenableTabletSplitting(const std::string& feature) override;
 
-  void RunXClusterBgTasks(const LeaderEpoch& epoch);
+  void RunXReplBgTasks(const LeaderEpoch& epoch);
 
   Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
 
-  void StartCDCParentTabletDeletionTaskIfStopped();
+  void StartXReplParentTabletDeletionTaskIfStopped();
 
-  void ScheduleCDCParentTabletDeletionTask();
+  void ScheduleXReplParentTabletDeletionTask();
 
   void ScheduleXClusterNSReplicationAddTableTask();
 
@@ -1907,11 +1908,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                        const LeaderEpoch& epoch);
 
   struct DeletingTableData {
-    TableInfoPtr info;
+    TableInfoPtr table_info;
     TableInfo::WriteLock write_lock;
-    RepeatedBytes retained_by_snapshot_schedules;
-    bool remove_from_name_map;
-    bool active_snapshot;
+
+    bool remove_from_name_map = false;
+    TabletDeleteRetainerInfo delete_retainer = TabletDeleteRetainerInfo::AlwaysDelete();
+
+    std::string ToString() const;
   };
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
@@ -1935,19 +1938,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
   // 2) Delete the whole table.
-  // This is used for pre-checks in both `DeleteTablet` and `DeleteTabletsAndSendRequests`.
+  // This is used for pre-checks in both `DeleteTablet` and `DeleteOrHideTabletsAndSendRequests`.
   Status CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table);
 
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
-  Status DeleteTabletsAndSendRequests(
-      const DeletingTableData& table_data, const LeaderEpoch& epoch);
+  Status DeleteOrHideTabletsOfTable(
+      const TableInfoPtr& table_info, const TabletDeleteRetainerInfo& delete_retainer,
+      const LeaderEpoch& epoch);
 
-  // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
-  Status DeleteTabletListAndSendRequests(
-      const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-      const RepeatedBytes& retaining_snapshot_schedules, bool transaction_status_tablets,
-      const LeaderEpoch& epoch, const bool active_snapshot);
+  // Marks each of the given tablets as deleted and triggers requests to the tablet
+  // servers to delete them.
+  // Tablets should be sorted by tablet_id to avoid deadlocks.
+  Status DeleteOrHideTabletsAndSendRequests(
+      const TabletInfos& tablets, const TabletDeleteRetainerInfo& delete_retainer,
+      const std::string& reason, const LeaderEpoch& epoch);
 
   // Sends a prepare delete transaction tablet request to the leader of the status tablet.
   // This will be followed by delete tablet requests to each replica.
@@ -2118,12 +2123,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ResumeXClusterConsumerAfterNewSchema(
       const TableInfo& table_info, SchemaVersion last_compatible_consumer_schema_version);
 
-  Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type);
-
   bool IsPitrActive();
-
-  Result<SnapshotScheduleId> FindCoveringScheduleForObject(
-      SysRowEntryType type, const std::string& object_id);
 
   // Checks if the database being deleted contains any replicated tables.
   Status CheckIfDatabaseHasReplication(const scoped_refptr<NamespaceInfo>& database);
@@ -2252,7 +2252,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
-  std::atomic<bool> cdc_parent_tablet_deletion_task_running_{false};
+  std::atomic<bool> xrepl_parent_tablet_deletion_task_running_{false};
   rpc::ScheduledTaskTracker cdc_parent_tablet_deletion_task_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
@@ -2743,13 +2743,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void CleanupHiddenObjects(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) override;
   void CleanupHiddenTablets(
-      const std::vector<TabletInfoPtr>& hidden_tablets,
-      const ScheduleMinRestoreTime& schedule_min_restore_time,
-      const LeaderEpoch& epoch);
+      const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
   // Will filter tables content, so pass it by value here.
   void CleanupHiddenTables(
-      std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
-      const LeaderEpoch& epoch);
+      const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
   // Checks the colocated table is hidden and is not within the retention of any snapshot schedule
   // or covered by any live snapshot. If the checks pass sends a request to the relevant tserver
@@ -3002,12 +3001,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
       const LeaderEpoch& epoch, bool transactional);
 
-  void ProcessCDCParentTabletDeletionPeriodically();
+  void ProcessXReplParentTabletDeletionPeriodically();
 
   Status DoProcessXClusterTabletDeletion();
   Status DoProcessCDCSDKTabletDeletion();
 
-  void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
+  void LoadXReplRetainedTablets(
+      const std::vector<TabletInfoPtr>& tablets, const TabletDeleteRetainerInfo& delete_retainer)
+      REQUIRES(mutex_);
 
   // Populate the response with the errors for the given replication group.
   Status PopulateReplicationGroupErrors(
@@ -3053,7 +3054,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
   // Check if this tablet is being kept for xcluster replication or cdcsdk.
-  bool RetainedByXRepl(const TabletId& tablet_id);
+  bool RetainedByXRepl(const TabletId& tablet_id) EXCLUDES(mutex_);
+
+  void XReplPopulateTabletDeleteRetainerInfo(
+      const TableInfo& table_info, const TabletInfos& tablets_to_check,
+      TabletDeleteRetainerInfo& delete_retainer) const REQUIRES_SHARED(mutex_);
 
   using SysCatalogPostLoadTasks = std::vector<std::pair<std::function<void()>, std::string>>;
   void StartPostLoadTasks(SysCatalogPostLoadTasks&& post_load_tasks);
@@ -3115,6 +3120,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // is required to have more effective validation performance.
   void ValidateIndexTablesPostLoad(std::unordered_map<TableId, TableIdSet>&& indexes_map,
                                    TableIdSet* tables_to_persist) EXCLUDES(mutex_);
+
+  // GetTabletDeleteRetainerInfo, MarkTabletAsHidden, RecordHiddenTablets and
+  // ShouldRetainHiddenTablet control the workflow of hiding tablets on drop and eventually deleting
+  // them.
+  // Any manager that needs to retain deleted tablets as hidden must hook into these methods.
+  Result<TabletDeleteRetainerInfo> GetTabletDeleteRetainerInfo(
+      const TableInfo& table_info, const TabletInfos& tablets_to_check,
+      const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map = nullptr) EXCLUDES(mutex_);
+
+  void MarkTabletAsHidden(
+      SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
+      const TabletDeleteRetainerInfo& delete_retainer) const;
+
+  void RecordHiddenTablets(
+      const TabletInfos& new_hidden_tablets, const TabletDeleteRetainerInfo& delete_retainer)
+      EXCLUDES(mutex_);
+
+  bool ShouldRetainHiddenTablet(
+      const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
+      EXCLUDES(mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
