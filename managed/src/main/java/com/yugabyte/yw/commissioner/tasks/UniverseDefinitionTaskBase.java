@@ -1361,6 +1361,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.placementUuid = node.placementUuid;
       // Add the node name.
       params.nodeName = node.nodeName;
+      // Set the node UUID.
+      params.nodeUuid = node.nodeUuid;
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
       // Create the Ansible task to get the server info.
