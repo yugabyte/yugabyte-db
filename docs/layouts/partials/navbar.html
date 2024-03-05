@@ -47,6 +47,10 @@
 			</form>
 		</div>
 
+    {{- if .Site.Params.kapa_ai -}}
+      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Ask AI"><img width="16" height="16" src="/icons/yugabyte.svg" alt="Ask YugabyteDB AI"><span>Ask AI</span></span></div>
+    {{- end -}}
+
     <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
       <ul class="navbar-nav right-nav">
         {{- range .Site.Menus.top_nav -}}
