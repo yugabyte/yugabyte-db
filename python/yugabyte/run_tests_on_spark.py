@@ -91,6 +91,10 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
 DEFAULT_MAX_NUM_TEST_FAILURES = 100
+# YB_TODO: BEGIN temporary modifications
+DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 500
+DEFAULT_MAX_NUM_TEST_FAILURES = 500
+# YB_TODO: END temporary modifications
 
 # Default for test artifact size limit to copy back to the build host, in bytes.
 MAX_ARTIFACT_SIZE_BYTES = 100 * 1024 * 1024
@@ -1065,22 +1069,6 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
         java_test_descriptors = get_java_test_descriptors()
 
     test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
-
-    # YB_TODO: BEGIN temporary modifications
-    # For pg15, run only tests that we expect to pass.  To run more in addition to that, pass
-    # jenkins DSL "test regex", and that will be combined with the expected-pass tests.
-    src_root = yb_dist_tests.get_global_conf().yb_src_root
-    pg15_test_descriptors = subprocess.run(['cut', '-f', '2',
-                                            f'{src_root}/pg15_tests/flaky_tests.tsv',
-                                            f'{src_root}/pg15_tests/passing_tests.tsv'],
-                                           stdout=subprocess.PIPE,
-                                           text=True,
-                                           check=True).stdout.rstrip().split('\n')
-    if args.test_filter_re:
-        args.test_filter_re += '|' + '|'.join(pg15_test_descriptors)
-    else:
-        args.test_filter_re = '|'.join(pg15_test_descriptors)
-    # YB_TODO: END temporary modifications
 
     if args.test_filter_re:
         test_filter_re_compiled = re.compile(args.test_filter_re)
