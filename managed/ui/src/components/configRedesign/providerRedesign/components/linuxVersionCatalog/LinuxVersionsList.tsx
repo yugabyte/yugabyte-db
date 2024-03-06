@@ -7,10 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Control, useFieldArray, useWatch } from 'react-hook-form';
-import { findIndex } from 'lodash';
+import { find, findIndex } from 'lodash';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 
@@ -53,7 +53,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
     name: 'imageBundles'
   });
 
-  const imageBundles = useWatch({ name: 'imageBundles' });
+  const imageBundles: ImageBundle[] = useWatch({ name: 'imageBundles' });
 
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
 
@@ -105,6 +105,16 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
   const AarchImages = imageBundles.filter(
     (i: ImageBundle) => i.details.arch === ArchitectureType.ARM64
   );
+
+  //if the img bundle with useAsDefault as true is deleted, select the first image as default
+  useEffect(() => {
+    if (X86Images.length > 0 && !find(X86Images, { useAsDefault: true })) {
+      setImageAsDefault(X86Images[0]);
+    }
+    if (AarchImages.length > 0 && !find(AarchImages, { useAsDefault: true })) {
+      setImageAsDefault(AarchImages[0]);
+    }
+  }, [X86Images, AarchImages]);
 
   const [editImageBundleDetails, setEditImageBundleDetails] = useState<ImageBundle | undefined>();
   const [deleteImageBundleDetails, setDeleteImageBundleDetails] = useState<
