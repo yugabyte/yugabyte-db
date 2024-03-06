@@ -610,3 +610,30 @@ select * from tab1;
 
 drop procedure single_Row_insert;
 drop table tab1;
+create table test(id text);
+insert into test(id) values ('1'), (null);
+-- should not to crash
+do $$
+declare
+  cursor int;
+  id text;
+  row_counter int := 0;
+begin
+  cursor := dbms_sql.open_cursor();
+  call dbms_sql.parse(cursor, 'select id from test');
+  call dbms_sql.define_column(cursor, 1, 'id');
+  perform dbms_sql.execute(cursor);
+  while dbms_sql.fetch_rows(cursor) > 0 loop
+    row_counter = row_counter + 1;
+    raise notice 'process row #%', row_counter;
+    call dbms_sql.column_value(cursor, 1, id);
+    raise notice 'row id: `%`', id;
+  end loop;
+  call dbms_sql.close_cursor(cursor);
+end;
+$$;
+NOTICE:  process row #1
+NOTICE:  row id: `1`
+NOTICE:  process row #2
+NOTICE:  row id: `<NULL>`
+drop table test;

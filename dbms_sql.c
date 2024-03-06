@@ -1689,7 +1689,10 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 		value = cast_value(ccast, value, *isnull);
 	}
 
-	if (1)//spi_transfer)
+	if (*isnull)
+		return (Datum) 0;
+
+	if (spi_transfer)
 		value = SPI_datumTransfer(value, ccast->typbyval, ccast->typlen);
 
 	return value;
