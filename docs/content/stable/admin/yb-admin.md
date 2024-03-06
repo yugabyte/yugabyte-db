@@ -2443,7 +2443,7 @@ yb-admin \
 
 ### Upgrade
 
-Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a Yugabyte cluster.
+Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
 #### promote_auto_flags
 
