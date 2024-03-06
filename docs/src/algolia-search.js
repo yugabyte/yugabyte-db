@@ -68,7 +68,7 @@ import algoliasearch from 'algoliasearch';
   function emptySearch() {
     setTimeout(() => {
       if (document.querySelector('body').classList.contains('td-searchpage--')) {
-        document.querySelector('#doc-hit').innerHTML = '<li class="no-result">Search data related to <b>YugabyteDB</b> in our Documentation</li>';
+        document.querySelector('#search-summary').innerHTML = 'Search data related to <b>YugabyteDB</b> in our Documentation.';
         document.querySelector('#pagination-docs').style.display = 'none';
       } else {
         document.querySelector('.search-result').style.display = 'none';
@@ -258,7 +258,9 @@ import algoliasearch from 'algoliasearch';
    * Add queries with filters selected by user and call search algolia function.
    */
   function searchAlgolia() {
-    let searchValue = searchInput.value.trim();
+    const searchedTerm = searchInput.value.trim();
+
+    let searchValue = searchedTerm;
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
       setTimeout(() => {
@@ -305,8 +307,9 @@ import algoliasearch from 'algoliasearch';
         sectionHTML += docsSection(hits);
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
+          document.getElementById('search-summary').innerHTML = `${nbHits} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
         } else {
-          document.getElementById('doc-hit').innerHTML = '<li class="no-result">No results found.</b></li>';
+          document.getElementById('search-summary').innerHTML = `No results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
