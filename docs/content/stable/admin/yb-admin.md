@@ -647,7 +647,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* table_id: The unique UUID associated with the table.
+* *table_id*: The unique UUID associated with the table.
 * *timeout_in_seconds*: Specifies duration (in seconds) when the CLI timeouts waiting for flushing to end. Default value is `20`.
 * *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
 
@@ -2192,7 +2192,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the table. (`table_id`).
+* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the table (`table_id`).
 
 **Example**
 
