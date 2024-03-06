@@ -411,8 +411,7 @@ public class GFlagsValidation {
         String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
     File file = new File(filePath);
     if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
-      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream,
             version,
