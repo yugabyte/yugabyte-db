@@ -70,8 +70,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
 
   @Mock Environment environment;
 
-  @Mock ReleaseContainerFactory releaseContainerFactory;
-
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
@@ -91,7 +89,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
     when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
         .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
-    when(confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)).thenReturn(false);
   }
 
   @After
@@ -560,21 +557,14 @@ public class ReleaseManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata =
         ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(ImmutableMap.of("0.0.1", metadata));
-    when(releaseContainerFactory.newReleaseContainer(any(ReleaseManager.ReleaseMetadata.class)))
-        .thenAnswer(
-            i ->
-                new ReleaseContainer(
-                    (ReleaseManager.ReleaseMetadata) i.getArguments()[0], mockCloudUtilFactory));
-    ReleaseContainer release = releaseManager.getReleaseByVersion("0.0.1");
-    assertThat(
-        release.getMetadata().filePath,
-        allOf(notNullValue(), equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
+    assertThat(release.filePath, allOf(notNullValue(), equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
   }
 
   @Test
   public void testGetReleaseByVersionWithoutConfig() {
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(Collections.emptyMap());
-    ReleaseContainer release = releaseManager.getReleaseByVersion("0.0.1");
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
     assertNull(release);
   }
 
@@ -583,15 +573,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
     HashMap releases = new HashMap();
     releases.put("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(releases);
-    when(releaseContainerFactory.newReleaseContainer(any(ReleaseManager.ReleaseMetadata.class)))
-        .thenAnswer(
-            i ->
-                new ReleaseContainer(
-                    (ReleaseManager.ReleaseMetadata) i.getArguments()[0], mockCloudUtilFactory));
-    ReleaseContainer release = releaseManager.getReleaseByVersion("0.0.1");
-    assertThat(
-        release.getMetadata().filePath,
-        allOf(notNullValue(), equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
+    ReleaseManager.ReleaseMetadata release = releaseManager.getReleaseByVersion("0.0.1");
+    assertThat(release.filePath, allOf(notNullValue(), equalTo("/path/to/yugabyte-0.0.1.tar.gz")));
   }
 
   @Test

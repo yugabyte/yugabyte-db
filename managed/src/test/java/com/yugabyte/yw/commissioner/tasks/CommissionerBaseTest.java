@@ -36,7 +36,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
@@ -50,7 +49,6 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
-import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -167,7 +165,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected YbcManager mockYbcManager;
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
-  protected CloudUtilFactory mockCloudUtilFactory;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -185,7 +182,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
-  protected ReleaseContainer releaseContainer;
 
   @Before
   public void setUp() {
@@ -206,7 +202,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
-    mockCloudUtilFactory = mock(CloudUtilFactory.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -237,8 +232,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
-    releaseContainer = new ReleaseContainer(releaseMetadata, mockCloudUtilFactory);
-    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
+    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseMetadata);
   }
 
   @Override

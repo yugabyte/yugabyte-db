@@ -217,16 +217,17 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("--keyspace");
         commandArgs.add(taskParams.getKeyspace());
         BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
-        ReleaseContainer release = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
-        if (release == null) {
+        ReleaseManager.ReleaseMetadata metadata =
+            releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+        if (metadata == null) {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
         String ybServerPackage;
         if (arch != null) {
-          ybServerPackage = release.getFilePath(arch);
+          ybServerPackage = metadata.getFilePath(arch);
         } else {
-          ybServerPackage = release.getFilePath(region);
+          ybServerPackage = metadata.getFilePath(region);
         }
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;

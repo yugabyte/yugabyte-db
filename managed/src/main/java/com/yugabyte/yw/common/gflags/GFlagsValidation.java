@@ -107,7 +107,8 @@ public class GFlagsValidation {
         flagStream = FileUtils.getInputStreamOrFail(file);
       } else if (CommonUtils.isReleaseEqualOrAfter(DB_BUILD_WITH_FLAG_FILES, version)) {
         // Fetch gFlags files from DB package if it does not exist
-        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+        ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
           String gFlagFileName =
               serverType.equals(ServerType.MASTER.name())
                   ? MASTER_GFLAG_FILE_NAME
@@ -260,7 +261,8 @@ public class GFlagsValidation {
     }
     LOG.info("Adding {} files for version: {}", missingFiles, version);
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
-    try (InputStream tarGZIPInputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+    try (InputStream tarGZIPInputStream =
+        releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
       fetchGFlagFilesFromTarGZipInputStream(
           tarGZIPInputStream, version, missingFiles, releasesPath);
     } catch (Exception e) {
@@ -303,7 +305,8 @@ public class GFlagsValidation {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
     if (!Files.exists(Paths.get(autoFlagFile.getAbsolutePath()))) {
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream, version, Collections.singletonList(Util.AUTO_FLAG_FILENAME), releasesPath);
       } catch (Exception e) {
@@ -385,7 +388,8 @@ public class GFlagsValidation {
         String.format("%s/%s/%s", releasesPath, version, YSQL_MIGRATION_FILES_LIST_FILE_NAME);
     File file = new File(filePath);
     if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream,
             version,
@@ -411,7 +415,8 @@ public class GFlagsValidation {
         String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
     File file = new File(filePath);
     if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream,
             version,

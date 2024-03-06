@@ -838,23 +838,26 @@ public class NodeManager extends DevopsBase {
     String ybServerPackage = null, ybcPackage = null, ybcDir = null;
     Map<String, String> ybcFlags = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseContainer release = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (release != null) {
+      ReleaseManager.ReleaseMetadata releaseMetadata =
+          releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      if (releaseMetadata != null) {
         if (arch != null) {
-          ybServerPackage = release.getFilePath(arch);
+          ybServerPackage = releaseMetadata.getFilePath(arch);
         } else {
           // Fallback to region in case arch is not present
-          ybServerPackage = release.getFilePath(taskParam.getRegion());
+          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
         }
-        if (release.isS3Download(ybServerPackage)) {
+        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
-        } else if (release.isGcsDownload(ybcPackage)) {
+        } else if (releaseMetadata.gcs != null
+            && releaseMetadata.gcs.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--gcs_remote_download");
-        } else if (release.isHttpDownload(ybServerPackage)) {
+        } else if (releaseMetadata.http != null
+            && releaseMetadata.http.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--http_remote_download");
-          if (StringUtils.isNotBlank(release.getHttpChecksum())) {
+          if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
             subcommand.add("--http_package_checksum");
-            subcommand.add(release.getHttpChecksum());
+            subcommand.add(releaseMetadata.http.paths.x86_64_checksum.toLowerCase());
           }
         }
       }
@@ -2039,7 +2042,7 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          sensitiveData.putAll(getReleaseSensitiveData(taskParam, arch));
+          sensitiveData.putAll(getReleaseSensitiveData(taskParam));
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
@@ -2631,18 +2634,17 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  private Map<String, String> getReleaseSensitiveData(
-      AnsibleConfigureServers.Params taskParam, Architecture arch) {
+  private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
     Map<String, String> data = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseContainer releaseContainer =
+      ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (releaseContainer != null) {
-        if (releaseContainer.isAws(arch)) {
-          data.put("--aws_access_key", releaseContainer.getAwsAccessKey(arch));
-          data.put("--aws_secret_key", releaseContainer.getAwsSecretKey(arch));
-        } else if (releaseContainer.isGcs(arch)) {
-          data.put("--gcs_credentials_json", releaseContainer.getGcsCredentials(arch));
+      if (releaseMetadata != null) {
+        if (releaseMetadata.s3 != null) {
+          data.put("--aws_access_key", releaseMetadata.s3.accessKeyId);
+          data.put("--aws_secret_key", releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.gcs != null) {
+          data.put("--gcs_credentials_json", releaseMetadata.gcs.credentialsJson);
         }
       }
     }
@@ -2705,12 +2707,13 @@ public class NodeManager extends DevopsBase {
 
   public String getYbServerPackageName(String ybSoftwareVersion, Region region, Architecture arch) {
     String ybServerPackage = null;
-    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    if (release != null) {
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (releaseMetadata != null) {
       if (arch != null) {
-        ybServerPackage = release.getFilePath(arch);
+        ybServerPackage = releaseMetadata.getFilePath(arch);
       } else {
-        ybServerPackage = release.getFilePath(region);
+        ybServerPackage = releaseMetadata.getFilePath(region);
       }
     }
     return ybServerPackage;
