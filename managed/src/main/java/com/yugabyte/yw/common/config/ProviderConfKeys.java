@@ -443,4 +443,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable YBC for universes created with this provider",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> otelCollectorMetricsPort =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_metrics_port",
+          ScopeType.PROVIDER,
+          "Configure OpenTelemetry metrics port",
+          "OpenTelemetry metrics port",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -2750,7 +2750,13 @@ public class NodeManager extends DevopsBase {
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
-              .generateConfigFile(taskParams, provider, userIntent, config, logLinePrefix)
+              .generateConfigFile(
+                  taskParams,
+                  provider,
+                  userIntent,
+                  config,
+                  logLinePrefix,
+                  getOtelColMetricsPort(taskParams))
               .toAbsolutePath()
               .toString());
 
@@ -2790,5 +2796,11 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  public static int getOtelColMetricsPort(NodeTaskParams nodeTaskParam) {
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
+    NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+    return nodeDetails.otelCollectorMetricsPort;
   }
 }
