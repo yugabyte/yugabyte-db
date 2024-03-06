@@ -601,9 +601,6 @@ public class UniverseCRUDHandler {
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
-      taskParams.otelCollectorEnabled =
-          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
-
       if (c.userIntent.specificGFlags != null) {
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
@@ -762,6 +759,18 @@ public class UniverseCRUDHandler {
       }
       for (Cluster readOnlyCluster : taskParams.getReadOnlyClusters()) {
         validateConsistency(taskParams.getPrimaryCluster(), readOnlyCluster);
+      }
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorEnabled);
+
+      // update otel port
+      int otelPort = confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorMetricsPort);
+      taskParams.communicationPorts.otelCollectorMetricsPort = otelPort;
+      if (taskParams.nodeDetailsSet != null) {
+        for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+          nodeDetails.otelCollectorMetricsPort = otelPort;
+        }
       }
     }
 

@@ -3771,6 +3771,11 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "otelCollectorMetricsPort" : {
+          "description" : "Otel Collector metrics port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "redisServerHttpPort" : {
           "description" : "Redis HTTP port",
           "format" : "int32",
