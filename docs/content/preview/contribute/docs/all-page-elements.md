@@ -91,7 +91,7 @@ To build and run the application, do the following:
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
-    - Set the following configuration parameters:
+    - Set the following connection parameters:
 
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).

@@ -101,7 +101,7 @@ Verify by running the following:
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Confirm that the output looks similar to the following, with `min_num_replicas` set to `1` for each AZ:
+Confirm that the output looks similar to the following, with `min_num_replicas` set to 1 for each AZ:
 
 ```output.json
 replication_info {
