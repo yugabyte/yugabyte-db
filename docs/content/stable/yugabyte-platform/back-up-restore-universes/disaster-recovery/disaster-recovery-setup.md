@@ -1,6 +1,6 @@
 ---
 title: Set up Disaster Recovery for a universe
-headerTitle: Set up Disaster Recovery
+headerTitle: Set up xCluster Disaster Recovery
 linkTitle: Setup
 description: Setting up Disaster Recovery for a universe
 headContent: Start replication from your primary to your replica
@@ -22,6 +22,7 @@ Ensure the universes have the following characteristics:
 - Both universes have the same encryption in transit settings.
 - They can be backed up and restored using the same backup configuration.
 - They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
+- Neither universe is already being used for xCluster replication.
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
 
@@ -53,7 +54,7 @@ Note that switchover operations can potentially fail if the DR primary and repli
 
 To set up disaster recovery for a universe, do the following:
 
-1. Navigate to your DR primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
 
 1. Click **Configure & Enable Disaster Recovery**.
 
@@ -67,7 +68,7 @@ To set up disaster recovery for a universe, do the following:
 
     YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
-1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
+1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
 
     The storage is used to transfer the data to the DR replica database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
 
@@ -81,7 +82,7 @@ YugabyteDB Anywhere proceeds to set up DR for the universe. How long this takes 
 
 ## Monitor replication
 
-After DR is set up, the **Disaster Recovery** tab displays the DR status.
+After DR is set up, the **xCluster Disaster Recovery** tab displays the DR status.
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-status.png)
 
@@ -121,7 +122,7 @@ In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1
 
 ### Tables
 
-The **Disaster Recovery** tab also lists all the tables in replication and their status on the **Tables** tab.
+The **xCluster Disaster Recovery** tab also lists all the tables in replication and their status on the **Tables** tab.
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery-tables.png)
 
@@ -164,7 +165,7 @@ Note that, although you don't need to create objects on the DR replica during in
 
 To add a database to DR, do the following:
 
-1. Navigate to your DR primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
 
 1. Click **Actions > Select Databases and Tables**.
 
@@ -190,7 +191,7 @@ You can assign a different universe to act as the DR replica.
 
 To change the universe that is used as a DR replica, do the following:
 
-1. Navigate to your DR primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
 
 1. Click **Actions** and choose **Change DR Replica Universe**.
 
@@ -208,7 +209,7 @@ Some situations, such as extended network partitions between the DR primary and 
 
 In these cases, restart replication as follows:
 
-1. Navigate to the universe **Disaster Recovery** tab.
+1. Navigate to the universe **xCluster Disaster Recovery** tab.
 
 1. Click **Actions** and choose **Advanced** and **Full Copy DR Primary**.
 

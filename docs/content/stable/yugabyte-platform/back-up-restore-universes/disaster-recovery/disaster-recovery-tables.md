@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
+When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
 
 - performed at the SQL level on both the DR primary and replica, and then
 - updated at the YBA level in the DR configuration.
@@ -39,7 +39,9 @@ Use the following guidance when managing tables and indexes in universes with DR
 
 If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
 
-## Add a table to DR
+## Tables
+
+### Add a table to DR
 
 To ensure that data is protected at all times, set up DR on a new table _before_ starting any workload.
 
@@ -49,7 +51,7 @@ Add tables to DR in the following sequence:
 
 1. Create the table on the DR primary (if it doesn't already exist).
 1. Create the table on the DR replica.
-1. Navigate to your DR primary and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
@@ -70,18 +72,20 @@ Note the following:
 
 - If using colocation, colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
 
-## Remove a table from DR
+### Remove a table from DR
 
 When dropping a table, remove the table from DR before dropping the table in the DR primary and replica databases.
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your DR primary and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Drop the table from both DR primary and replica databases separately.
 
-## Add an index to DR
+## Indexes
+
+### Add an index to DR
 
 Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You don't need to stop the writes on the DR primary.
 
@@ -101,7 +105,7 @@ Add indexes to replication in the following sequence:
 
 1. [Resynchronize YBA](#resynchronize-yba).
 
-## Remove an index from DR
+### Remove an index from DR
 
 When an index is dropped it is automatically removed from DR.
 
@@ -113,7 +117,9 @@ Remove indexes from replication in the following sequence:
 
 1. [Resynchronize YBA](#resynchronize-yba).
 
-## Add a table partition to DR
+## Table partitions
+
+### Add a table partition to DR
 
 Adding a table partition is similar to adding a table.
 
@@ -145,7 +151,7 @@ Assume the parent table and default partition are included in the replication st
 
 To add a table partition to DR, follow the same steps for [Add a table to DR](#add-a-table-to-dr).
 
-## Remove table partitions from DR
+### Remove table partitions from DR
 
 To remove a table partition from DR, follow the same steps as [Remove a table from DR](#remove-a-table-from-dr).
 
@@ -153,5 +159,5 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI as follows:
 
-1. Navigate to your DR primary and select **Disaster Recovery**.
+1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
