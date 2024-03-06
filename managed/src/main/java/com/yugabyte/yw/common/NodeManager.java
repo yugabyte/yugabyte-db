@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -200,10 +201,10 @@ public class NodeManager extends DevopsBase {
     return getUserIntentFromParams(universe, nodeTaskParam);
   }
 
-  private boolean imdsv2required(CloudType cloudType, Provider provider) {
-    return (cloudType.equals(CloudType.aws)
-        && provider.getDetails().getCloudInfo() != null
-        && provider.getDetails().getCloudInfo().getAws().useIMDSv2);
+  private boolean imdsv2required(Architecture arch, UserIntent userIntent, Provider provider) {
+    UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
+    ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
+    return (userIntent.providerType.equals(CloudType.aws) && imageBundle.getDetails().useIMDSv2);
   }
 
   private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
@@ -1632,6 +1633,7 @@ public class NodeManager extends DevopsBase {
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     Provider provider = nodeTaskParam.getProvider();
+    Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
@@ -1727,7 +1729,8 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            if (imdsv2required(userIntent.providerType, provider)) {
+            if (confGetter.getConfForScope(customer, CustomerConfKeys.enableIMDSv2)
+                && imdsv2required(arch, userIntent, provider)) {
               commandArgs.add("--imdsv2required");
             }
 
@@ -1926,7 +1929,8 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          if (imdsv2required(userIntent.providerType, provider)) {
+          if (confGetter.getConfForScope(customer, CustomerConfKeys.enableIMDSv2)
+              && imdsv2required(arch, userIntent, provider)) {
             commandArgs.add("--imdsv2required");
           }
 
