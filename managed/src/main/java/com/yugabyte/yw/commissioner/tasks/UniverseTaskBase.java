@@ -1658,7 +1658,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             com.yugabyte.yw.commissioner.Common.CloudType.onprem.name())) {
           try {
             NodeInstance providerNode = NodeInstance.getByName(node.nodeName);
-            providerNode.clearNodeDetails();
+            providerNode.setToFailedCleanup(universe, node);
           } catch (Exception ex) {
             log.warn("On-prem node {} doesn't have a linked instance ", node.nodeName);
           }
