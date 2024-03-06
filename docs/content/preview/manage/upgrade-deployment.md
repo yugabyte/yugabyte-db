@@ -12,15 +12,42 @@ menu:
 type: docs
 ---
 
+{{< tip title="Tip" >}}
+Make sure that you are on the latest version of the software so that you get the best performance and the new features.
+{{< /tip >}}
+
+YugabyteDB is a distributed database that can be installed on multiple nodes. The upgrade process is designed to be non-disruptive to the running cluster and involves minimum impact to the workload. This involves a rolling upgrade, where each node\process is upgraded one at a time.
+
+Your `data/log/conf` directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
+
 The basic flow is to upgrade each YB-Master and YB-TServer one at a time, verifying after each step from the YB-Master Admin UI that the cluster is healthy and the upgraded process is back online.
 
 If you plan to script this in a loop, then a pause of approximately 60 seconds is recommended before moving from one process or node to another.
 
-Your `data/log/conf` directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
 
-## Install new version of YugabyteDB
+## Upgrade YugabyteDB
 
-Install the new version of YugabyteDB in a new location. For CentOS, this would use commands similar to the following:
+{{< warning title="Important" >}}
+You can only upgrade to the latest minor version of every release. For example if you are on version 2.18.3, and there is already a 2.20.2 release, then you must go to 2.20.2 and not 2.20.1 or 2.20.0.
+
+You can check and download the latest version of YugabyteDB from the [releases overview](../../releases/) page.
+{{< /warning >}}
+
+When upgrading to versions above `2.20.2` you have the ability to Rollback the upgrade.
+
+{{< note title="Note" >}}
+- Upgrades are not supported between preview and stable versions.
+
+- Make sure you are following the instructions for the version that you are upgrading from. You can select the doc version from the upper right corner of the page.
+
+- If you are upgrading from `2.20.0` and `2.20.1` follow the instructions for [2.18](../../../v2.18/manage/upgrade-deployment/).
+
+- Rollback is only supported when you are upgrading a cluster that is already on version `2.20.2` or higher.
+{{< /note >}}
+
+### Download and install the new version
+
+Install the new version of YugabyteDB in a new location on every node. For CentOS, this would use commands similar to the following:
 
 ```sh
 wget https://downloads.yugabyte.com/yugabyte-$VER.tar.gz
@@ -31,7 +58,7 @@ cd /home/yugabyte/softwareyb-$VER/
 
 If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading the servers. For more information, see [Installing extensions](../../explore/ysql-language-features/pg-extensions/#installing-extensions).
 
-## Upgrade YB-Masters
+### Upgrade YB-Masters
 
 Use the following procedure to upgrade a YB-Master:
 
