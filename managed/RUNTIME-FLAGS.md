@@ -104,6 +104,7 @@
 | "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
 | "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
+| "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
 | "Prometheus auth enabled" | "yb.metrics.auth" | "GLOBAL" | "Enables basic authentication for Prometheus web UI/APIs access" | "Boolean" |
 | "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
