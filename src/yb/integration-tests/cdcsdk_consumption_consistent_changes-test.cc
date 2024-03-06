@@ -1029,7 +1029,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTab
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   // Split two tablets.
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table, 4);
