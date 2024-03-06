@@ -208,5 +208,8 @@ In these cases, restart replication as follows:
 1. Navigate to the universe **xCluster Disaster Recovery** tab.
 
 1. Click **Actions** and choose **Advanced** and **Resync DR Replica**.
+1. Select the databases to be copied to the DR replica.
+1. Click **Next: Confirm Full Copy**.
+1. Click **Create a New Full Copy**.
 
 This performs a full copy of the databases involved from the DR primary to the DR replica.
