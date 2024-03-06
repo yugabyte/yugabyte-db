@@ -71,6 +71,7 @@ service CDCService {
   rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
   rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
       returns (DestroyVirtualWALForCDCResponsePB);
+  rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
 }
 
 message CDCErrorPB {
@@ -180,6 +181,17 @@ message DestroyVirtualWALForCDCRequestPB {
 }
 
 message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message UpdateAndPersistLSNRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  optional uint64 confirmed_flush_lsn = 3;
+  optional uint64 restart_lsn = 4;
+}
+
+message UpdateAndPersistLSNResponsePB {
   optional CDCErrorPB error = 1;
 }
 

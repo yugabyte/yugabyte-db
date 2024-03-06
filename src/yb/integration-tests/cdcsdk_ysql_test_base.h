@@ -109,6 +109,7 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
+DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
 
 namespace yb {
 
@@ -450,9 +451,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status DestroyVirtualWAL(const uint64_t session_id = 1);
 
-  Result<GetAllPendingChangesResponse> GetAllPendingChangesFromCdc(
+  Status UpdateAndPersistLSN(
+      const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
+      const uint64_t restart_lsn, const uint64_t session_id = 1);
+
+  // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
+  // the last txn. This indicates that even though we might have received the expecpted DML records,
+  // we might still continue calling GetConsistentChanges until we receive the COMMIT record.
+  Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id = 1);
+      bool init_virtual_wal, const uint64_t session_id = 1, bool allow_sending_feedback = true);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -587,6 +595,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   // Read the cdc_state table
   Result<CdcStateTableRow> ReadFromCdcStateTable(
       const xrepl::StreamId stream_id, const std::string& tablet_id);
+
+  void VerifyExplicitCheckpointingOnTablets(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_map<TabletId, CdcStateTableRow>& initial_tablet_checkpoint,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
+      const std::unordered_set<TabletId>& expected_tablet_ids_with_progress);
+
+  void VerifyLastRecordAndProgressOnSlot(
+      const xrepl::StreamId& stream_id, const CDCSDKProtoRecordPB& last_record);
 
   void UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count);
 
