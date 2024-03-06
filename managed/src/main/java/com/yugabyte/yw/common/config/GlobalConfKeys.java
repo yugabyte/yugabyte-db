@@ -1064,6 +1064,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> destroyServerCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_ops.destroy_server_timeout",
+          ScopeType.GLOBAL,
+          "Node destroy command timeout",
+          "Timeout for node destroy command before failing.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
