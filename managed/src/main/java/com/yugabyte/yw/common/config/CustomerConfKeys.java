@@ -163,4 +163,13 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
           ConfDataType.KeyValuesSetMultimapType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enableIMDSv2 =
+      new ConfKeyInfo<>(
+          "yb.aws.enable_imdsv2_support",
+          ScopeType.CUSTOMER,
+          "Enable IMDSv2",
+          "Enable IMDSv2 support for AWS providers",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
