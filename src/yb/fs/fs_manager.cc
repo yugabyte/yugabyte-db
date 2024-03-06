@@ -790,23 +790,27 @@ bool IsValidTabletId(const std::string& fname) {
 
 Result<std::vector<std::string>> FsManager::ListTabletIds() {
   std::lock_guard lock(data_mutex_);
-  std::vector<std::string> tablet_ids;
+  std::unordered_set<std::string> tablet_ids;
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
-    vector<string> children;
-    RETURN_NOT_OK_PREPEND(ListDir(dir, &children),
-                          Substitute("Couldn't list tablets in metadata directory $0", dir));
+    std::vector<std::string> children = VERIFY_RESULT_PREPEND(ListDir(dir),
+        Substitute("Couldn't list tablets in metadata directory $0", dir));
 
-    for (const string& child : children) {
+    for (const auto& child : children) {
       if (!IsValidTabletId(child)) {
         continue;
       }
       auto tablet_dirname = DirName(dir);
       LOG(INFO) << "Found tablet " << child << " metadata at " << tablet_dirname;
+      auto [_, inserted] = tablet_ids.emplace(child);
+      if (!inserted) {
+        return STATUS_FORMAT(IllegalState,
+            "Found two tablet metadata folders $0 and $1 with the same tablet_id $2. Remove the "
+            "duplicate one to avoid the error.", tablet_dirname, tablet_id_to_path_[child], child);
+      }
       tablet_id_to_path_.emplace(child, tablet_dirname);
-      tablet_ids.push_back(child);
     }
   }
-  return tablet_ids;
+  return std::vector<std::string>(tablet_ids.begin(), tablet_ids.end());
 }
 
 Result<std::string> FsManager::GetExistingInstanceMetadataPath() const {
