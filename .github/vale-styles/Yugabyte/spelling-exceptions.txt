@@ -59,6 +59,7 @@ backport
 backported
 backporting
 backports
+backquote
 backtrace
 backtraced
 backtraces
@@ -138,6 +139,7 @@ crosslinked
 crosslinking
 crosslinks
 Crossplane
+crosstab
 CrowdIn
 CSV
 Cutover
@@ -878,6 +880,8 @@ YBase
 ycqlsh
 YouTrack
 ysqlsh
+ysql_dump
+ysql_dumpall
 ytt
 Yubico
 Yugabyte
