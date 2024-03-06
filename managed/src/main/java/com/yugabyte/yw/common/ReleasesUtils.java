@@ -1,8 +1,5 @@
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -20,7 +17,11 @@ import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -35,6 +36,24 @@ public class ReleasesUtils {
   @Inject private Config appConfig;
 
   public final String RELEASE_PATH_CONFKEY = "yb.releases.artifacts.upload_path";
+
+  public final String YB_PACKAGE_REGEX =
+      "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
+  public final String YB_HELM_PACKAGE_REGEX = "(.*)yugabyte-(?:ee-)?(.*)-(helm)(.*).tar.gz";
+  // Match release form 2.16.1.2 and return 2.16 or 2024.1.0.0 and return 2024
+  public final String YB_VERSION_TYPE_REGEX = "(2\\.\\d+|\\d\\d\\d\\d)";
+
+  // Should fallback to preview if a version is not in the map
+  public final Map<String, String> releaseTypeMap =
+      new HashMap<String, String>() {
+        {
+          put("2.14", "LTS");
+          put("2.16", "STS");
+          put("2.18", "STS");
+          put("2.20", "LTS");
+          put("2024", "STS");
+        }
+      };
 
   public static class ExtractedMetadata {
     public String version;
@@ -60,18 +79,27 @@ public class ReleasesUtils {
               new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
       em.sha256 = sha256;
       return em;
+    } catch (RuntimeException e) {
+      // Fallback to file name validation
+      ExtractedMetadata em = metadataFromName(releaseFilePath.getFileName().toString());
+      em.sha256 = sha256;
+      return em;
     } catch (IOException e) {
       log.error("failed to open file " + releaseFilePath.toString(), e);
-      return null;
+      throw new RuntimeException("failed to open file", e);
     }
   }
 
   public ExtractedMetadata versionMetadataFromURL(URL url) {
     try {
       return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
+    } catch (RuntimeException e) {
+      // Fallback to file name validation
+      ExtractedMetadata em = metadataFromName(url.getFile());
+      return em;
     } catch (IOException e) {
-      log.error("failed to open url " + url.toString(), e);
-      return null;
+      log.error("failed to open url " + url.toString());
+      throw new RuntimeException("failed to open url", e);
     }
   }
 
@@ -100,14 +128,13 @@ public class ReleasesUtils {
                     "%s-b%s",
                     node.get("version_number").asText(), node.get("build_number").asText());
           } else {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "no version_number or build_number found");
+            throw new RuntimeException("no version_number or build_number found");
           }
           if (node.has("platform")) {
             metadata.platform =
                 ReleaseArtifact.Platform.valueOf(node.get("platform").asText().toUpperCase());
           } else {
-            throw new PlatformServiceException(BAD_REQUEST, "no platform found");
+            throw new RuntimeException("no platform found");
           }
           // TODO: release type should be mandatory
           if (node.has("release_type")) {
@@ -121,8 +148,7 @@ public class ReleasesUtils {
             if (node.has("architecture")) {
               metadata.architecture = Architecture.valueOf(node.get("architecture").asText());
             } else {
-              throw new PlatformServiceException(
-                  BAD_REQUEST, "no 'architecture' for linux platform");
+              throw new RuntimeException("no 'architecture' for linux platform");
             }
           }
 
@@ -143,10 +169,10 @@ public class ReleasesUtils {
         }
       } // end of while loop
       log.error("No verison_metadata found in given input stream");
-      throw new PlatformServiceException(BAD_REQUEST, "no version_metadata found");
+      throw new RuntimeException("no version_metadata found");
     } catch (java.io.IOException e) {
       log.error("failed reading the local file", e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "failed to read metadata");
+      throw new RuntimeException("failed to read metadata");
     }
   }
 
@@ -187,5 +213,40 @@ public class ReleasesUtils {
         continue;
       }
     }
+  }
+
+  private ExtractedMetadata metadataFromName(String fileName) {
+    Pattern ybPackagePattern = Pattern.compile(YB_PACKAGE_REGEX);
+    Pattern ybHelmChartPattern = Pattern.compile(YB_HELM_PACKAGE_REGEX);
+
+    Matcher ybPackage = ybPackagePattern.matcher(fileName);
+    Matcher helmPackage = ybHelmChartPattern.matcher(fileName);
+
+    ExtractedMetadata em = new ExtractedMetadata();
+    em.yb_type = Release.YbType.YBDB;
+    if (ybPackage.find()) {
+      em.platform = ReleaseArtifact.Platform.LINUX;
+      em.version = ybPackage.group(1);
+      if (fileName.contains("x86_64")) {
+        em.architecture = Architecture.x86_64;
+      } else if (fileName.contains("aarch64")) {
+        em.architecture = Architecture.aarch64;
+      } else {
+        throw new RuntimeException("could not determine architecture from name" + fileName);
+      }
+    } else if (helmPackage.find()) {
+      em.platform = ReleaseArtifact.Platform.KUBERNETES;
+      em.version = helmPackage.group(2);
+      em.architecture = null;
+    } else {
+      throw new RuntimeException("failed to parse package " + fileName);
+    }
+    Pattern versionPattern = Pattern.compile(YB_VERSION_TYPE_REGEX);
+    Matcher versionMatcher = versionPattern.matcher(em.version);
+    if (!versionMatcher.find()) {
+      throw new RuntimeException("Could not parse version");
+    }
+    em.release_type = releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
+    return em;
   }
 }
