@@ -23,4 +23,11 @@ func init() {
 	CreateProviderCmd.AddCommand(createAWSProviderCmd)
 	CreateProviderCmd.AddCommand(createGCPProviderCmd)
 	CreateProviderCmd.AddCommand(createAzureProviderCmd)
+	// CreateProviderCmd.AddCommand(createK8sProviderCmd)
+	CreateProviderCmd.AddCommand(createOnpremProviderCmd)
+
+	CreateProviderCmd.PersistentFlags().StringP("provider-name", "n", "",
+		"[Required] The name of the provider to be created.")
+	CreateProviderCmd.MarkPersistentFlagRequired("provider-name")
+
 }
