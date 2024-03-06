@@ -309,12 +309,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           int numVolumes = value.size();
 
           if (!taskParams().forceVMImageUpgrade) {
-            String existingMachineImage = node.machineImage;
-            if (StringUtils.isBlank(node.machineImage)) {
-              existingMachineImage = retreiveMachineImageForNode(node);
-            }
-            final String mImage = existingMachineImage;
-            numVolumes = (int) value.stream().filter(n -> !machineImage.equals(mImage)).count();
+            numVolumes =
+                (int)
+                    value.stream()
+                        .filter(
+                            n -> {
+                              String existingMachineImage = n.machineImage;
+                              if (StringUtils.isBlank(existingMachineImage)) {
+                                existingMachineImage = retreiveMachineImageForNode(n);
+                              }
+                              return !machineImage.equals(existingMachineImage);
+                            })
+                        .count();
           }
 
           if (numVolumes == 0) {
@@ -379,9 +385,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private String retreiveMachineImageForNode(NodeDetails node) {
     UUID clusterUuid = node.placementUuid;
     UniverseDefinitionTaskParams.Cluster cluster = getUniverse().getCluster(clusterUuid);
-    ImageBundle.NodeProperties imageBundleProperties =
-        imageBundleUtil.getNodePropertiesOrFail(
-            cluster.userIntent.imageBundleUUID, node.getRegion(), node.cloudInfo.cloud);
-    return imageBundleProperties.getMachineImage();
+    if (cluster.userIntent.imageBundleUUID != null) {
+      ImageBundle.NodeProperties imageBundleProperties =
+          imageBundleUtil.getNodePropertiesOrFail(
+              cluster.userIntent.imageBundleUUID, node.getRegion(), node.cloudInfo.cloud);
+      return imageBundleProperties.getMachineImage();
+    }
+    return null;
   }
 }
