@@ -679,6 +679,109 @@ CREATE TABLE tbl_no_colocation (k INT, v INT) WITH (colocation = false);
  k      | integer |           |          |
  v      | integer |           |          |
 
+-- Test table rewrite operations with legacy colocation.
+-- Suppress NOTICE messages during table rewrite operations.
+SET client_min_messages TO WARNING;
+CREATE TABLE base (col int, col2 int);
+CREATE INDEX base_idx ON base(col2);
+INSERT INTO base VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base ADD PRIMARY KEY (col HASH); -- should fail.
+ERROR:  cannot colocate hash partitioned index
+ALTER TABLE base
+    ADD PRIMARY KEY (col), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+SELECT col, col2, col4 FROM base WHERE col2 = 1;
+ col | col2 | col4 
+-----+------+------
+   3 |    1 |    3
+(1 row)
+
+ALTER TABLE base DROP CONSTRAINT base_pkey;
+SELECT col, col2, col4 FROM base ORDER BY col;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+\d+ base;
+                                                     Table "public.base"
+ Column |       Type       | Collation | Nullable |              Default               | Storage | Stats target | Description 
+--------+------------------+-----------+----------+------------------------------------+---------+--------------+-------------
+ col    | integer          |           | not null |                                    | plain   |              | 
+ col2   | smallint         |           |          |                                    | plain   |              | 
+ col3   | double precision |           |          | random()                           | plain   |              | 
+ col4   | integer          |           | not null | nextval('base_col4_seq'::regclass) | plain   |              | 
+Indexes:
+    "base_idx" lsm (col2 ASC), colocation: true
+Colocation: true
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated 
+-------------+----------------------+--------------
+           1 |                    0 | t
+(1 row)
+
+CREATE TABLE base2 (col int, col2 int) WITH (COLOCATION=false);
+CREATE INDEX base2_idx ON base2(col2);
+INSERT INTO base2 VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base2
+    ADD PRIMARY KEY (col ASC), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base2 ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base2 ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base2;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+SELECT col, col2, col4 FROM base2 WHERE col2 = 1;
+ col | col2 | col4 
+-----+------+------
+   3 |    1 |    3
+(1 row)
+
+ALTER TABLE base2 DROP CONSTRAINT base2_pkey;
+SELECT col, col2, col4 FROM base2 ORDER BY col;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+\d+ base2;
+                                                     Table "public.base2"
+ Column |       Type       | Collation | Nullable |               Default               | Storage | Stats target | Description 
+--------+------------------+-----------+----------+-------------------------------------+---------+--------------+-------------
+ col    | integer          |           | not null |                                     | plain   |              | 
+ col2   | smallint         |           |          |                                     | plain   |              | 
+ col3   | double precision |           |          | random()                            | plain   |              | 
+ col4   | integer          |           | not null | nextval('base2_col4_seq'::regclass) | plain   |              | 
+Indexes:
+    "base2_idx" lsm (col2 HASH)
+Options: colocation=false
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base2_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated 
+-------------+----------------------+--------------
+           3 |                    1 | f
+(1 row)
+
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;

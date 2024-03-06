@@ -7566,7 +7566,7 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
-      "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
   res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
