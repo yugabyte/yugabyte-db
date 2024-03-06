@@ -243,6 +243,7 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 		prev_ExecutorEnd(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
+	
 	/*
 	 * Unset ASH metadata. Utility statements do not go through this
 	 * code path.
@@ -571,6 +572,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	YbAshAcquireBufferLock(false /* exclusive */);
+	
 	for (i = 0; i < yb_ash->max_entries; ++i)
 	{
 		Datum		values[ACTIVE_SESSION_HISTORY_COLS];

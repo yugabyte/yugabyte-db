@@ -106,7 +106,6 @@
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
 
-
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
@@ -4619,70 +4618,10 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 		"", 0,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,""
 	};
 	
-	
-	// char pwd[1024];
-	// if(getcwd(pwd, 1024) == NULL)
-	// {
-	// 	FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
-	// 	fprintf(fptr, "getcwd phata...\n" );
-	// 	fclose(fptr);
-	// 	PG_RETURN_BOOL(false);
-	// }
 
-	// if (chdir("..") == -1) {
-    //     perror("Error changing directory");
-    //     return 1;
-    // }
-
-	// char dir[1024];
-	// if(getcwd(dir, 1024) == NULL)
-	// {
-	// 	FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
-	// 	fprintf(fptr, "getcwd phata...\n" );
-	// 	fclose(fptr);
-	// 	PG_RETURN_BOOL(false);
-	// }
-
-
-	// if (chdir(pwd) == -1) {
-    //     perror("Error changing back to original directory");
-    //     return 1;
-    // }	
-
-	// //create folder with name of queryid in home directory using mkdir
-	// strcat(dir, "/query-diagnostics/");
-	// if(mkdir(dir, 0777) == -1)
-	// {
-	// 	if(errno != EEXIST)
-	// 	{
-	// 		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
-	// 		PG_RETURN_BOOL(false);
-	// 	}
-	// }
-	// // char queryidstr[50];
-	// sprintf(dir, "%s/%lld/",dir, queryid);
-	// // strcat(dir, queryidstr);
-	
-	// if(mkdir(dir, 0777) == -1)
-	// {
-	// 	if(errno != EEXIST)
-	// 	{
-	// 		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
-	// 		PG_RETURN_BOOL(false);
-	// 	}
-	// }	
-	// sprintf(dir, "%s/%ld/", dir,start);
-	// if(mkdir(dir, 0777) == -1)
-	// {
-	// 	ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
-	// 	PG_RETURN_BOOL(false);
-	// }
 
 	value.start_time = start;
 	// value.log_path = dir;
-	// FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
-	// fprintf(fptr, "log_path: %s\n" , value.log_path);
-	// fclose(fptr);
 	insert_into_shared_hashtable(map, queryid, value);
 
     PG_RETURN_BOOL(true);

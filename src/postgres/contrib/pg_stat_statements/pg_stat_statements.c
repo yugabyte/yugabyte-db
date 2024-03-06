@@ -164,8 +164,6 @@ typedef struct pgssHashKey
 	uint64		queryid;		/* query identifier */
 } pgssHashKey;
 
-// char* bundleQuery;
-
 /*
  * The actual stats counters kept within pgssEntry.
  */
@@ -193,10 +191,6 @@ typedef struct Counters
 	double		usage;			/* usage factor */
 } Counters;
 
-
-
-
-
 /*
  * hdr_histogram
  * defined in third party hdr_histogram.h
@@ -223,7 +217,6 @@ typedef struct pgssEntry
 	hdr_histogram yb_hdr_histogram; /* flexible array member at end - MUST BE LAST */
 } pgssEntry;
 
-// static pgssEntry myEntry = {};
 typedef struct
 {
 	int32 num;
@@ -2013,9 +2006,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 
 		if (is_allowed_role || entry->key.userid == userid)
 		{
-			if (api_version >= PGSS_V1_2){
+			if (api_version >= PGSS_V1_2)
 				values[i++] = Int64GetDatumFast(queryid);
-			}
 
 			if (showtext)
 			{
@@ -2079,7 +2071,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			continue;
 
 		values[i++] = Int64GetDatumFast(tmp.calls);
-
 		values[i++] = Float8GetDatumFast(tmp.total_time);
 		if (api_version >= PGSS_V1_3)
 		{
@@ -2102,15 +2093,13 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.rows);
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_hit);
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_read);
-		if (api_version >= PGSS_V1_1){
+		if (api_version >= PGSS_V1_1)
 			values[i++] = Int64GetDatumFast(tmp.shared_blks_dirtied);
-		}
 		values[i++] = Int64GetDatumFast(tmp.shared_blks_written);
 		values[i++] = Int64GetDatumFast(tmp.local_blks_hit);
 		values[i++] = Int64GetDatumFast(tmp.local_blks_read);
-		if (api_version >= PGSS_V1_1){
+		if (api_version >= PGSS_V1_1)
 			values[i++] = Int64GetDatumFast(tmp.local_blks_dirtied);
-		}
 		values[i++] = Int64GetDatumFast(tmp.local_blks_written);
 		values[i++] = Int64GetDatumFast(tmp.temp_blks_read);
 		values[i++] = Int64GetDatumFast(tmp.temp_blks_written);
@@ -2124,8 +2113,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid, entry->key.userid, entry->key.dbid);
 		}
-		
-			Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
+		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
 					 api_version == PGSS_V1_1 ? PG_STAT_STATEMENTS_COLS_V1_1 :
 					 api_version == PGSS_V1_2 ? PG_STAT_STATEMENTS_COLS_V1_2 :
 					 api_version == PGSS_V1_3 ? PG_STAT_STATEMENTS_COLS_V1_3 :

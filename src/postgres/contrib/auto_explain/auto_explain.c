@@ -18,7 +18,6 @@
 #include "executor/instrument.h"
 #include "jit/jit.h"
 #include "utils/guc.h"
-#include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
 
@@ -80,7 +79,7 @@ _PG_init(void)
 							"Sets the minimum execution time above which plans will be logged.",
 							"Zero prints all plans. -1 turns this feature off.",
 							&auto_explain_log_min_duration,
-							0,
+							-1,
 							-1, INT_MAX,
 							PGC_SUSET,
 							GUC_UNIT_MS,
@@ -378,13 +377,10 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			 * reported.  This isn't ideal but trying to do it here would
 			 * often result in duplication.
 			 */
-
-
 			ereport(LOG,
 					(errmsg("duration: %.3f ms  plan:\n%s",
 							msec, es->str->data),
 					 errhidestmt(true)));
-			
 		}
 
 		MemoryContextSwitchTo(oldcxt);

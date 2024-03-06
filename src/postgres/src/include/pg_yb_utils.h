@@ -35,7 +35,6 @@
 #include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
-// #include "postgres/contrib/pg_stat_monitor/pg_stat_monitor.h"
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
