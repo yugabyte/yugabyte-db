@@ -497,9 +497,10 @@ public abstract class KubernetesManager {
     String helmPackagePath = null;
 
     // Get helm package filename from release metadata.
-    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    if (release != null) {
-      helmPackagePath = release.getHelmChart();
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (releaseMetadata != null) {
+      helmPackagePath = releaseMetadata.chartPath;
     }
 
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {

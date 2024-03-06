@@ -1,6 +1,5 @@
 package com.yugabyte.yw.common.operator;
 
-import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -104,11 +103,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       String version = releasePair.getFirst();
       ReleaseMetadata metadata = releasePair.getSecond();
       // copy chartPath because it already exists.
-      ReleaseContainer existing_rm = releaseManager.getReleaseByVersion(version);
+      ReleaseMetadata existing_rm = releaseManager.getReleaseByVersion(version);
       if (existing_rm != null) {
-        if (existing_rm.getHelmChart() != null) {
+        if (existing_rm.chartPath != null) {
           log.info("Updating the chartPath because existing metadata has chart path");
-          metadata.chartPath = existing_rm.getHelmChart();
+          metadata.chartPath = existing_rm.chartPath;
         } else {
           log.info("No existing chart path found, downloading chart");
           releaseManager.downloadYbHelmChart(version, metadata);

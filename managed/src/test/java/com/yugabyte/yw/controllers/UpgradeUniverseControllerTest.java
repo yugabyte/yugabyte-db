@@ -41,7 +41,6 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -50,7 +49,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -134,7 +132,6 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private CertificateHelper certificateHelper;
   private AutoFlagUtil mockAutoFlagUtil;
   private XClusterUniverseService mockXClusterUniverseService;
-  private CloudUtilFactory mockCloudUtilFactory;
 
   private Universe defaultUniverse;
   private Universe k8sUniverse;
@@ -194,16 +191,14 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     mockConfig = mock(Config.class);
     mockAutoFlagUtil = mock(AutoFlagUtil.class);
     mockXClusterUniverseService = mock(XClusterUniverseService.class);
-    mockCloudUtilFactory = mock(CloudUtilFactory.class);
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
 
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockConfig.getString("yb.storage.path")).thenReturn("/tmp/" + getClass().getSimpleName());
-    ReleaseManager.ReleaseMetadata rm =
-        ReleaseManager.ReleaseMetadata.create("1.0.0")
-            .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz");
     when(mockReleaseManager.getReleaseByVersion(any()))
-        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory));
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create("1.0.0")
+                .withChartPath(TMP_CHART_PATH + "/uuct_yugabyte-1.0.0-helm.tar.gz"));
     when(mockConfig.getString("yb.security.type")).thenReturn("");
     when(mockConfig.getString("yb.security.clientID")).thenReturn("");
     when(mockConfig.getString("yb.security.secret")).thenReturn("");

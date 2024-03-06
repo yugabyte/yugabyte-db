@@ -3,7 +3,6 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -217,14 +216,6 @@ public class ReleaseArtifact extends Model {
 
   public static List<ReleaseArtifact> getForRelease(UUID releaseUUID) {
     return find.query().where().eq("release", releaseUUID).findList();
-  }
-
-  public static ReleaseArtifact getForReleaseArchitecture(UUID releaseUUID, Architecture arch) {
-    return find.query()
-        .where()
-        .eq("release", releaseUUID)
-        .eq("architecture", arch.toString())
-        .findOne();
   }
 
   public void setReleaseUUID(UUID releaseUuid) {

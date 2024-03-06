@@ -34,7 +34,6 @@ import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -686,14 +685,14 @@ public class UniverseCRUDHandler {
           }
         } else {
           for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
-            ReleaseContainer release =
+            ReleaseManager.ReleaseMetadata ybReleaseMetadata =
                 releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
             AvailabilityZone az = AvailabilityZone.getOrBadRequest(nodeDetails.azUuid);
             String ybServerPackage;
             if (taskParams.arch != null) {
-              ybServerPackage = release.getFilePath(taskParams.arch);
+              ybServerPackage = ybReleaseMetadata.getFilePath(taskParams.arch);
             } else {
-              ybServerPackage = release.getFilePath(az.getRegion());
+              ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
             }
             Pair<String, String> ybcPackageDetails =
                 Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
