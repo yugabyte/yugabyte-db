@@ -322,7 +322,7 @@ import algoliasearch from 'algoliasearch';
           if (searchSummary) {
             searchSummary.innerHTML = noResultMessage;
           } else {
-            document.getElementById('doc-hit').innerHTML = noResultMessage;
+            document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
           }
         }
 
