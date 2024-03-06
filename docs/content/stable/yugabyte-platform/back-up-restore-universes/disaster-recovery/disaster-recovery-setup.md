@@ -64,8 +64,6 @@ To set up disaster recovery for a universe, do the following:
 
     You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
-1. Click **Validate Selection**.
-
     YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
 1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
@@ -177,9 +175,7 @@ To add a database to DR, do the following:
 
     YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
-1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
-
-    The storage is used to transfer the data to the DR replica database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
+1. If data needs to be copied, click **Next: Confirm Full Copy**.
 
 1. Click **Apply Changes**.
 
@@ -195,7 +191,7 @@ To change the universe that is used as a DR replica, do the following:
 
 1. Click **Actions** and choose **Change DR Replica Universe**.
 
-1. Enter the name of the DR replica and click **Next: Configure Full Copy**.
+1. Enter the name of the DR replica and click **Next: Confirm Full Copy**.
 
 1. Select a storage configuration to be used for backup and restore in case a full copy needs to be transferred to the new DR replica.
 
@@ -211,6 +207,6 @@ In these cases, restart replication as follows:
 
 1. Navigate to the universe **xCluster Disaster Recovery** tab.
 
-1. Click **Actions** and choose **Advanced** and **Full Copy DR Primary**.
+1. Click **Actions** and choose **Advanced** and **Resync DR Replica**.
 
 This performs a full copy of the databases involved from the DR primary to the DR replica.

@@ -60,8 +60,6 @@ To repair DR, do the following:
 
     To use a new universe as the DR replica, choose **Select a new universe as DR replica** and select the universe.
 
-1. Select a storage configuration.
-
 1. Click **Initiate Repair**.
 
 If your eventual desired configuration is for the other universe (that is, the one you have added to DR to act as DR replica) to be the DR primary, follow the steps for [Planned switchover](../disaster-recovery-switchover/).

@@ -55,11 +55,10 @@ Add tables to DR in the following sequence:
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and DR replica should be created with the same colocation ID if they already exist on both the DR primary and DR replica prior to DR setup.
+    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 1. Click **Validate Selection**.
-1. If the validation is successful, click **Next: Configure Full Copy**.
-1. Select a storage configuration to be used for backup and restore in case a full copy needs to be transferred to the DR replica database.
+1. If data needs to be copied, click **Next: Confirm Full Copy**.
 1. Click **Apply Changes**.
 
 Note the following:
@@ -81,6 +80,8 @@ Remove tables from DR in the following sequence:
 1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
+1. Click **Next: Confirm Full Copy**.
+1. Click **Apply Changes**.
 1. Drop the table from both DR primary and replica databases separately.
 
 ## Indexes
@@ -97,7 +98,7 @@ Add indexes to replication in the following sequence:
 
 1. Wait for index backfill to finish.
 
-1. Create the same index on DR replica.
+1. Create the same index on the DR replica.
 
 1. Wait for index backfill to finish.
 
