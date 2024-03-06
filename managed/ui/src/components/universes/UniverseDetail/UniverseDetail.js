@@ -64,7 +64,7 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
-import { VM_PATCHING_RUNTIME_CONFIG } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { VM_PATCHING_RUNTIME_CONFIG, isImgBundleSupportedByProvider } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 //icons
@@ -777,7 +777,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused && isOsPatchingEnabled && (
+                      {!universePaused && isOsPatchingEnabled && isImgBundleSupportedByProvider(provider) && (
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
