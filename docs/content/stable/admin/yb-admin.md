@@ -456,34 +456,60 @@ Waiting for compaction...
 Compaction complete: SUCCESS
 ```
 
-#### compact_table_by_id
+#### compact_table
 
 Triggers manual compaction on a table.
 
-**Syntax**
+**Syntax 1: Using table name**
 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    compact_table_by_id <table_id> \
-    [timeout_in_seconds] [ADD_INDEXES]
+    compact_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The unique UUID associated with the table to be compacted.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql and ycql.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to compact.
 * *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
-* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+* *ADD_INDEXES*: Whether to compact the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    compact_table_by_id 000033f100003000800000000000410a
+    -master_addresses $MASTER_RPC_ADDRS \
+    compact_table ysql.yugabyte table_name
 ```
 
 ```output
-Compacted [000033f100003000800000000000410a] tables.
+Compacted [yugabyte.table_name] tables.
+```
+
+**Syntax 2: Using table ID**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compact_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the secondary indexes associated with the table. Default is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    compact_table tableid.000033eb000030008000000000004002
+```
+
+```output
+Compacted [000033eb000030008000000000004002] tables.
 ```
 
 #### modify_table_placement_info
@@ -614,7 +640,7 @@ Flush the memstores of the specified table on all tablet servers to disk.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <master_addresses> \
     flush_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
@@ -622,8 +648,8 @@ yb-admin \
 * *db_type*: The type of database. Valid values include ysql and ycql.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
-* *timeout_in_seconds*: Specifies duration (in seconds) when the CLI timeouts waiting for flushing to end. Default value is `20`.
-* *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to flush the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
@@ -642,14 +668,14 @@ Flushed [yugabyte.table_name] tables.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <master_addresses> \
     flush_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *table_id*: The unique UUID associated with the table.
-* *timeout_in_seconds*: Specifies duration (in seconds) when the CLI timeouts waiting for flushing to end. Default value is `20`.
-* *ADD_INDEXES*: If the database should also flush the secondary indexes associated with the table. Default is `false`.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to flush the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
@@ -660,7 +686,7 @@ yb-admin \
 ```
 
 ```output
-Flushed [yugabyte.table_name] tables.
+Flushed [000033eb000030008000000000004002] tables.
 ```
 
 ---
