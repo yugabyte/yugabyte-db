@@ -307,7 +307,12 @@ import algoliasearch from 'algoliasearch';
         sectionHTML += docsSection(hits);
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
-          document.getElementById('search-summary').innerHTML = `${nbHits} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
+          let totalResults = nbHits;
+          if (nbPages === 100) {
+            totalResults = 1000;
+          }
+
+          document.getElementById('search-summary').innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
         } else {
           document.getElementById('search-summary').innerHTML = `No results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
         }
