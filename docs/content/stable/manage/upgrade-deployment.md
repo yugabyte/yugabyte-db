@@ -76,7 +76,6 @@ Use the following procedure to upgrade a YB-TServer:
 1. Pause for approximately 60 seconds before upgrading the next YB-TServer.
 
 ## Promote AutoFlags
-
 New YugabyteDB features may require changes to the format of data that is sent over the wire or stored on disk. During the upgrade process, these features have to be turned off to prevent sending the new data formats to nodes that are still running the older version. After all YugabyteDB processes have been upgraded to the new version, these features can be safely enabled.
 
 [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) simplify this process so that you don't need to identify these features, find their corresponding flags, or determine what values to set them to. All new AutoFlags can be promoted to their desired target value using a single command.
@@ -105,19 +104,17 @@ Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster 
     promote_auto_flags
 ```
 
-If the operation is successful you should see output similar to the following:
+If the operation is successful you will receive a output similar to the following:
 
 ```output
 PromoteAutoFlags status: 
 New AutoFlags were promoted. Config version: 2
-```
-
+``````
 OR
-
 ```output
 PromoteAutoFlags status: 
 No new AutoFlags to promote
-```
+``````
 
 ## Upgrade the YSQL system catalog
 
