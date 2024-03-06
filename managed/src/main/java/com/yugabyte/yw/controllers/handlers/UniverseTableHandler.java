@@ -201,14 +201,15 @@ public class UniverseTableHandler {
     }
 
     Map<String, String> indexTableMainTableMap = new HashMap<>();
+    Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
     // For xCluster table list, we need to also include the main table uuid for each index table.
     if (xClusterSupportedOnly) {
-      XClusterConfigTaskBase.getMainTableIndexTablesMap(
-              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList))
-          .forEach(
-              (mainTable, indexTables) ->
-                  indexTables.forEach(
-                      indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
+      mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList));
+      mainTableIndexTablesMap.forEach(
+          (mainTable, indexTables) ->
+              indexTables.forEach(indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
     }
 
     for (TableInfo table : tableInfoList) {
@@ -238,6 +239,7 @@ public class UniverseTableHandler {
                   table,
                   partitionInfo,
                   parentPartitionInfo,
+                  mainTableIndexTablesMap.get(XClusterConfigTaskBase.getTableId(table)),
                   indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table)),
                   tableSizes,
                   hasColocationInfo)
@@ -581,6 +583,7 @@ public class UniverseTableHandler {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
+      List<String> indexTableIds,
       String mainTableUuid,
       Map<String, TableSizes> tableSizeMap,
       boolean hasColocationInfo) {
@@ -605,6 +608,9 @@ public class UniverseTableHandler {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (indexTableIds != null) {
+      builder.indexTableIDs(indexTableIds);
     }
     if (mainTableUuid != null) {
       builder.mainTableUUID(getUUIDRepresentation(mainTableUuid));

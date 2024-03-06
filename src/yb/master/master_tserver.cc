@@ -148,10 +148,6 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
   }
 }
 
-bool MasterTabletServer::catalog_version_table_in_perdb_mode() const {
-  return master_->catalog_manager()->catalog_version_table_in_perdb_mode();
-}
-
 tserver::TServerSharedData& MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }

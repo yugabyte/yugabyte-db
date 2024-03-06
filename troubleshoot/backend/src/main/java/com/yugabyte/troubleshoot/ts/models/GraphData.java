@@ -1,0 +1,44 @@
+package com.yugabyte.troubleshoot.ts.models;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import lombok.Data;
+import lombok.experimental.Accessors;
+import org.apache.commons.lang3.StringUtils;
+
+@Data
+@Accessors(chain = true)
+public class GraphData {
+  private String name;
+  private String instanceName;
+  private String tableName;
+  private String tableId;
+  private String namespaceName;
+  private String namespaceId;
+  private String type;
+  private Map<String, String> labels;
+  @JsonIgnore private List<GraphPoint> points = new ArrayList<>();
+
+  @JsonProperty("x")
+  public List<Long> getX() {
+    return points.stream().map(GraphPoint::getX).toList();
+  }
+
+  @JsonProperty("y")
+  public List<String> getY() {
+    return points.stream().map(GraphPoint::getY).map(String::valueOf).toList();
+  }
+
+  @JsonIgnore
+  public String getInstanceNameOrEmpty() {
+    return instanceName != null ? instanceName : StringUtils.EMPTY;
+  }
+
+  @JsonIgnore
+  public String getNameOrEmpty() {
+    return name != null ? name : StringUtils.EMPTY;
+  }
+}

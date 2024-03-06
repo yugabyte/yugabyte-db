@@ -592,26 +592,20 @@ void RetryingTSRpcTask::DoRpcCallback() {
           << "TS " << target_ts_desc_->permanent_uuid() << " is on an older version that doesn't"
           << " support backends catalog version RPC. Ignoring.";
       TransitionToCompleteState();
-    } else if (!target_ts_desc_->IsLive()) {
-      switch (type()) {
-        case MonitoredTaskType::kBackendsCatalogVersionTs:
-          // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
-          // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
-          // and tserver is dead.
-          LOG_WITH_PREFIX(WARNING)
-              << "TS " << target_ts_desc_->permanent_uuid() << " is DEAD. Assume backends on that"
-              << " TS will be resolved to sufficient catalog version";
-          TransitionToCompleteState();
-          break;
-        case MonitoredTaskType::kDeleteReplica:
-          LOG_WITH_PREFIX(WARNING)
-              << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
-              << tablet_id() << ". TS is DEAD. No further retry.";
-          TransitionToCompleteState();
-          break;
-        default:
-          break;
-      }
+    } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts_desc_->IsLive()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+          << tablet_id() << ". TS is DEAD. No further retry.";
+      TransitionToCompleteState();
+    } else if (type() == MonitoredTaskType::kBackendsCatalogVersionTs &&
+               !target_ts_desc_->HasYsqlCatalogLease()) {
+      // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
+      // when this RPC failed and tserver's lease expired.  That check is hit when this RPC
+      // succeeded and tserver's lease is expired.
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << " catalog lease expired. Assume backends"
+          << " on that TS will be resolved to sufficient catalog version";
+      TransitionToCompleteState();
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.

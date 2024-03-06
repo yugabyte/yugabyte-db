@@ -1925,30 +1925,24 @@ YBCDropReplicationSlot(const char *slot_name)
 }
 
 void
-YBCGetTabletListToPollForStreamAndTable(const char *stream_id,
-										Oid relation_id,
-										YBCPgTabletCheckpoint **tablet_checkpoints,
-										size_t *numtablets)
+YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
+						size_t numrelations)
 {
-	HandleYBStatus(YBCPgGetTabletListToPollForStreamAndTable(
-		stream_id, MyDatabaseId, relation_id, tablet_checkpoints, numtablets));
+	Assert(MyDatabaseId);
+
+	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
+											 numrelations));
 }
 
 void
-YBCSetCDCTabletCheckpoint(const char *stream_id, const char *tablet_id,
-						  const YBCPgCDCSDKCheckpoint *checkpoint,
-						  uint64_t safe_time, bool is_initial_checkpoint)
+YBCDestroyVirtualWalForCDC()
 {
-	HandleYBStatus(YBCPgSetCDCTabletCheckpoint(
-		stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint));
+	HandleYBStatus(YBCPgDestroyVirtualWalForCDC());
 }
 
 void
-YBCGetCDCChanges(const char *stream_id,
-				 const char *tablet_id,
-				 const YBCPgCDCSDKCheckpoint *checkpoint,
-				 YBCPgChangeRecordBatch **record_batch)
+YBCGetCDCConsistentChanges(const char *stream_id,
+						   YBCPgChangeRecordBatch **record_batch)
 {
-	HandleYBStatus(
-		YBCPgGetCDCChanges(stream_id, tablet_id, checkpoint, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
 }

@@ -14,7 +14,7 @@ type: docs
 
 ### xCluster
 
-YugabyteDB allows you to asynchronously replicate data between independent YugabyteDB clusters.
+YugabyteDB allows you to asynchronously replicate data between independent YugabyteDB universes.
 
 The replication lag metrics are computed at a tablet level as the difference between Hybrid Logical Clock (HLC) time on the source's tablet server, and the hybrid clock timestamp of the latest record pulled from the source.
 

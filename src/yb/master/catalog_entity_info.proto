@@ -283,6 +283,10 @@ message SysTabletsEntryPB {
   // tables hosted on this tablet is computed at load time by finding all child tables of the
   // parent table of this tablet.
   optional bool hosted_tables_mapped_by_parent_id = 18;
+
+  // Whether this tablet was created by DB cloning. If true, we should not try to send
+  // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
+  optional bool created_by_clone = 19 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.

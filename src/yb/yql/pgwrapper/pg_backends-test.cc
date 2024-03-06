@@ -41,6 +41,7 @@ class PgBackendsTest : public LibPqTestBase {
   void SetUp() override {
     LibPqTestBase::SetUp();
 
+    start_time_ = MonoTime::Now();
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB("yugabyte")));
 
@@ -62,14 +63,21 @@ class PgBackendsTest : public LibPqTestBase {
     options->extra_master_flags.insert(
         options->extra_master_flags.end(),
         {
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
+          Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           Format("--catalog_manager_bg_task_wait_ms=$0", kCatalogManagerBgTaskWaitMs),
           Format("--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
-                 kMasterTserverRpcTimeoutMs * 1000),
+                 kMasterTserverRpcTimeoutSec * 1000),
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
+          Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
+          "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+        });
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(
           options->extra_master_flags.end(),
@@ -90,7 +98,12 @@ class PgBackendsTest : public LibPqTestBase {
   }
 
  protected:
-  PgOid catalog_version_db_oid_ = kPgInvalidOid;
+  void WaitOutInitialCatalogLeasePeriod() {
+    const auto sleep_time =
+        MonoDelta::FromSeconds(kCatalogLeaseSec) - (MonoTime::Now() - start_time_);
+    LOG(INFO) << "Sleep " << sleep_time << " to wait out lease period of master in fresh cluster";
+    SleepFor(sleep_time);
+  }
 
   void BumpCatalogVersion(int num_versions) {
     LibPqTestBase::BumpCatalogVersion(num_versions, conn_.get());
@@ -139,10 +152,17 @@ class PgBackendsTest : public LibPqTestBase {
     ASSERT_EQ(expected_num_jobs, num_jobs);
   }
 
+  // Cluster started at least since this time.  Useful for tests that need to wait out the catalog
+  // lease period since master is freshly created and therefore became leader recently at the start
+  // of the test.
+  MonoTime start_time_;
+
   std::unique_ptr<client::YBClient> client_;
   std::unique_ptr<PGConn> conn_;
+  PgOid catalog_version_db_oid_ = kPgInvalidOid;
+  static constexpr int kCatalogLeaseSec = 10;
   static constexpr int kCatalogManagerBgTaskWaitMs = 1000;
-  static constexpr int kMasterTserverRpcTimeoutMs = 30;
+  static constexpr int kMasterTserverRpcTimeoutSec = 30;
 };
 
 // Requests on already-satisfied versions should create jobs that finish quickly.
@@ -182,10 +202,11 @@ TEST_F(PgBackendsTest, CachedVersion) {
 // Requests on a future version should be rejected.  If they were accepted, master would be
 // busy-waiting, and it would not be easy to cancel the job.
 TEST_F(PgBackendsTest, FutureVersion) {
+  WaitOutInitialCatalogLeasePeriod();
   // Use timeout of zero because invalid argument should return immediately.
   auto res = client_->WaitForYsqlBackendsCatalogVersion(
       "yugabyte", 999, MonoDelta::kZero /* timeout */);
-  ASSERT_NOK(res);
+  ASSERT_NOK(res) << res.get();
   const Status& s = res.status();
   ASSERT_TRUE(s.IsInvalidArgument()) << s;
   auto msg = s.message().ToBuffer();
@@ -306,6 +327,8 @@ TEST_F(PgBackendsTest, MultipleWaiters) {
   const auto cat_ver = ASSERT_RESULT(GetCatalogVersion());
   LOG(INFO) << "Got catalog version " << cat_ver;
 
+  WaitOutInitialCatalogLeasePeriod();
+
   TestThreadHolder thread_holder;
   constexpr int kNumThreads = 5;
   CountDownLatch latch(kNumThreads + 1);
@@ -361,6 +384,7 @@ class PgBackendsTestConnLimit : public PgBackendsTest {
 };
 
 TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
+  WaitOutInitialCatalogLeasePeriod();
   LOG_WITH_FUNC(INFO) << "Beginning test";
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
   // zero is initially cached by the YsqlBackendsManager, so a version of zero means the following
@@ -380,8 +404,8 @@ TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
     Result<int> res = client_->WaitForYsqlBackendsCatalogVersion(
         "yugabyte",
         cat_ver,
-        MonoDelta::FromSeconds(kMasterTserverRpcTimeoutMs) + 5s /* timeout */);
-    ASSERT_NOK(res);
+        MonoDelta::FromSeconds(kMasterTserverRpcTimeoutSec) + 5s /* timeout */);
+    ASSERT_NOK(res) << res.get();
     Status s = res.status();
     ASSERT_TRUE(s.IsCombined()) << s;
     ASSERT_STR_CONTAINS(s.message().ToBuffer(), "job is failed");
@@ -426,6 +450,8 @@ TEST_F_EX(PgBackendsTest,
   PGConn conn_index = ASSERT_RESULT(Connect());
   ASSERT_OK(conn_index.Execute("CREATE TABLE t (i int)"));
 
+  WaitOutInitialCatalogLeasePeriod();
+
   LOG(INFO) << "Do create index";
   const auto start = MonoTime::Now();
   Status s = conn_index.Execute("CREATE INDEX ON t (i)");
@@ -462,6 +488,7 @@ class PgBackendsTestRf3 : public PgBackendsTest {
  protected:
   Status TestConcurrentAlterFunc(
       std::function<Status(uint64_t)> wait_for_backends_cat_ver_func, bool should_fail);
+  Status TestTserverUnresponsive(bool keep_alive);
 };
 
 // Cached version and jobs are lost when master loses leadership.
@@ -636,6 +663,7 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
   latch.Wait();
   LOG(INFO) << "Spawn write threads done";
 
+  WaitOutInitialCatalogLeasePeriod();
   LOG(INFO) << "Start DDLs";
   constexpr int kNumBumps = RegularBuildVsDebugVsSanitizers(10, 5, 5);
   for (int i = 0; i < kNumBumps; ++i) {
@@ -841,18 +869,7 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(Stress), PgBackendsTest
   thread_holder.Stop();
 }
 
-class PgBackendsTestRf3DeadFast : public PgBackendsTestRf3 {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgBackendsTestRf3::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        Format("--tserver_unresponsive_timeout_ms=$0", kTsDeadSec * 1000));
-  }
- protected:
-  static constexpr int kTsDeadSec = 30;
-};
-
-TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3DeadFast) {
+TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
   constexpr auto kUser = "eve";
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0tab (i int)", kUser));
@@ -863,6 +880,8 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3DeadFast) {
   const int num_ts = narrow_cast<int>(cluster_->num_tablet_servers());
   const int ts_idx = RandomUniformInt(1, num_ts - 1);
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
+
+  WaitOutInitialCatalogLeasePeriod();
 
   LOG(INFO) << "Stop heartbeating for ts " << ts_idx << " (zero-indexed)";
   ASSERT_OK(cluster_->SetFlag(ts, "TEST_tserver_disable_heartbeat", "true"));
@@ -876,7 +895,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3DeadFast) {
   // version.
   LOG(INFO) << "Ensure that that tserver is not considered resolved";
   auto num_backends = ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver + 1, MonoDelta::FromSeconds(kTsDeadSec / 2) /* timeout */));
+      "yugabyte", cat_ver + 1, MonoDelta::FromSeconds(kCatalogLeaseSec / 2) /* timeout */));
   ASSERT_EQ(-1, num_backends);
 
   PGConn conn_user = ASSERT_RESULT(PGConnBuilder({
@@ -885,30 +904,15 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3DeadFast) {
         .user = kUser,
       }).Connect());
 
-  // TODO(#13369): check that conn_user becomes blocked when ts is marked dead, and check that that
-  // happens after kTsDeadSec time has passed since disabling heartbeat.
+  // TODO(#13369): check that conn_user becomes blocked when ts lease expires, and check that that
+  // happens after kCatalogLeaseSec time has passed since disabling heartbeat.
 }
 
-class PgBackendsTestRf3DeadFaster : public PgBackendsTestRf3 {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgBackendsTestRf3::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        Format("--tserver_unresponsive_timeout_ms=$0", kTsDeadSec * 1000));
-  }
- protected:
-  Status TestTserverUnresponsive(bool keep_alive);
-
-  static constexpr int kTsDeadSec = 10;
-};
-
-// An unresponsive tserver that expires lease should be considered resolved.  Currently, lease
-// expiration is interpreted by liveness of the tserver according to master, which is computed using
-// gflag tserver_unresponsive_timeout_ms and how long it has been since tserver last heartbeated.
+// An unresponsive tserver that expires lease should be considered resolved.
 // TODO(#13369): a lease expiration should cause that tserver to block its backends, but that is
 // currently not done, so the test asserts the opposite of correctness (the user whose permission
 // was revoked is able to select).
-Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
+Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   constexpr auto kUser = "eve";
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0tab (i int)", kUser));
@@ -956,6 +960,7 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
     return s;
   }
 
+  WaitOutInitialCatalogLeasePeriod();
   if (keep_alive) {
     LOG(INFO) << "Stop heartbeating for that ts";
     RETURN_NOT_OK(cluster_->SetFlag(ts, "TEST_tserver_disable_heartbeat", "true"));
@@ -966,7 +971,7 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
 
   LOG(INFO) << "Verify that the disconnect does not immediately result in resolution for that ts";
   num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
-      "yugabyte", cat_ver, MonoDelta::FromSeconds(kTsDeadSec / 2) /* timeout */));
+      "yugabyte", cat_ver, MonoDelta::FromSeconds(kCatalogLeaseSec / 2) /* timeout */));
   // Still waiting on the "BEGIN" backend.
   SCHECK_EQ(1, num_backends, IllegalState, "unexpected num backends");
 
@@ -976,8 +981,8 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
       client_->WaitForYsqlBackendsCatalogVersion(
         "yugabyte",
         cat_ver,
-        MonoDelta::FromSeconds(kTsDeadSec / 2 + kMarginSec
-                               + kMasterTserverRpcTimeoutMs) /* timeout */));
+        MonoDelta::FromSeconds(kCatalogLeaseSec / 2 + kMarginSec
+                               + kMasterTserverRpcTimeoutSec) /* timeout */));
   SCHECK_EQ(0, num_backends, IllegalState, "unexpected num backends");
 
   if (keep_alive) {
@@ -995,27 +1000,21 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
   PGConn conn = VERIFY_RESULT(ConnectToTs(*ts));
   LibPqTestBase::BumpCatalogVersion(1, &conn);
 
-  LOG(INFO) << "Verify that new wait requests when ts is already dead are immediate";
+  LOG(INFO) << "Verify that new wait requests when ts is expired are immediate";
   num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver + 1));
   SCHECK_EQ(0, num_backends, IllegalState, "unexpected num backends");
   return Status::OK();
 }
 
-TEST_F_EX(
-    PgBackendsTest,
-    TserverUnresponsiveShutdown,
-    PgBackendsTestRf3DeadFaster) {
+TEST_F_EX(PgBackendsTest, TserverUnresponsiveShutdown, PgBackendsTestRf3) {
   ASSERT_OK(TestTserverUnresponsive(false /* keep_alive */));
 }
 
-TEST_F_EX(
-    PgBackendsTest,
-    TserverUnresponsiveNoShutdown,
-    PgBackendsTestRf3DeadFaster) {
+TEST_F_EX(PgBackendsTest, TserverUnresponsiveNoShutdown, PgBackendsTestRf3) {
   ASSERT_OK(TestTserverUnresponsive(true /* keep_alive */));
 }
 
-class PgBackendsTestRf3Block : public PgBackendsTestRf3, public testing::WithParamInterface<int> {
+class PgBackendsTestRf3Block : public PgBackendsTestRf3 {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3::UpdateMiniClusterOptions(options);
@@ -1027,14 +1026,25 @@ class PgBackendsTestRf3Block : public PgBackendsTestRf3, public testing::WithPar
   Result<int> AccessYsqlBackendsManagerTestRegister(std::optional<int> value = std::nullopt,
                                                     const ExternalMaster* master = nullptr);
   Status LoggedWaitForTestRegister(int target_value, const ExternalMaster* master = nullptr);
-
-  Result<int> TestLeaderChangeInFlight(bool expect_retry);
 };
 
-class PgBackendsTestRf3BlockNoLeaderLock : public PgBackendsTestRf3Block {
+class PgBackendsTestRf3BlockAvoidAbort : public PgBackendsTestRf3Block,
+                                         public testing::WithParamInterface<int> {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3Block::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_ysql_backends_catalog_version_disable_abort_all_jobs=true");
+  }
+
+ protected:
+  Result<int> TestLeaderChangeInFlight(bool expect_retry);
+};
+
+class PgBackendsTestRf3BlockAvoidAbortNoLeaderLock : public PgBackendsTestRf3BlockAvoidAbort {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTestRf3BlockAvoidAbort::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_wait_for_ysql_backends_catalog_version_take_leader_lock=false");
   }
@@ -1084,7 +1094,7 @@ Status PgBackendsTestRf3Block::LoggedWaitForTestRegister(
 // 1. Deactivate blocking.
 // 1. If expect_retry=true, expect a retry request to show up on the new leader; otherwise, don't
 //    expect that.
-Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) {
+Result<int> PgBackendsTestRf3BlockAvoidAbort::TestLeaderChangeInFlight(bool expect_retry) {
   const auto block_id = GetParam();
   LOG(INFO) << "Block id is " << block_id;
 
@@ -1099,6 +1109,8 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
   SCHECK_EQ(
       0, VERIFY_RESULT(AccessYsqlBackendsManagerTestRegister(block_id)),
       IllegalState, "unexpected test register");
+
+  WaitOutInitialCatalogLeasePeriod();
 
   CountDownLatch latch(1);
   TestThreadHolder thread_holder;
@@ -1138,7 +1150,8 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
 
   LOG(INFO) << "Launching wait query";
   auto start = MonoTime::Now();
-  auto res = client_->WaitForYsqlBackendsCatalogVersion("yugabyte", master_catalog_version);
+  auto res = client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", master_catalog_version, 1min /* timeout */);
   const auto time_taken = MonoTime::Now() - start;
   LOG(INFO) << "Time taken: " << time_taken;
 
@@ -1147,22 +1160,22 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
   return res;
 }
 
-TEST_P(PgBackendsTestRf3Block, LeaderChangeInFlight) {
+TEST_P(PgBackendsTestRf3BlockAvoidAbort, LeaderChangeInFlight) {
   auto num_lagging_backends = ASSERT_RESULT(TestLeaderChangeInFlight(true /* expect_retry */));
   ASSERT_EQ(0, num_lagging_backends);
 }
 
 // Negative test for the above LeaderChangeInFlight test where leadership loss handling is disabled.
 // This proves that the above test is showing something meaningful.
-TEST_P(PgBackendsTestRf3BlockNoLeaderLock, LeaderChangeInFlightNegative) {
+TEST_P(PgBackendsTestRf3BlockAvoidAbortNoLeaderLock, LeaderChangeInFlightNegative) {
   auto res = TestLeaderChangeInFlight(false /* expect_retry */);
   // It is possible (but rare as of D19621) for there to be an issue for processing the request on a
   // master that lost leadership.
   WARN_NOT_OK(res, "Failed processing request on follower");
 }
 
-INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3Block, ::testing::Range(1, 4));
-INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockNoLeaderLock, ::testing::Range(1, 4));
+INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockAvoidAbort, ::testing::Range(1, 4));
+INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockAvoidAbortNoLeaderLock, ::testing::Range(1, 4));
 
 // Test:
 // 1. Prep a lagging backend.

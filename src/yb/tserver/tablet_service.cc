@@ -1977,8 +1977,18 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_ysql_enable_db_catalog_version_mode &&
-            server_->catalog_version_table_in_perdb_mode()) {
+        bool perdb_mode = false;
+        if (FLAGS_ysql_enable_db_catalog_version_mode) {
+          const std::optional<bool> catalog_version_table_in_perdb_mode =
+            server_->catalog_version_table_in_perdb_mode();
+          if (!catalog_version_table_in_perdb_mode.has_value()) {
+            // This is a temporary known case when this tserver hasn't get the answer
+            // from master yet via heartbeat response.
+            return false;
+          }
+          perdb_mode = catalog_version_table_in_perdb_mode.value();
+        }
+        if (perdb_mode) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {

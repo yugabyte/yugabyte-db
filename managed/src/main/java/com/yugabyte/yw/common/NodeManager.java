@@ -838,26 +838,23 @@ public class NodeManager extends DevopsBase {
     String ybServerPackage = null, ybcPackage = null, ybcDir = null;
     Map<String, String> ybcFlags = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseManager.ReleaseMetadata releaseMetadata =
-          releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (releaseMetadata != null) {
+      ReleaseContainer release = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      if (release != null) {
         if (arch != null) {
-          ybServerPackage = releaseMetadata.getFilePath(arch);
+          ybServerPackage = release.getFilePath(arch);
         } else {
           // Fallback to region in case arch is not present
-          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+          ybServerPackage = release.getFilePath(taskParam.getRegion());
         }
-        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
+        if (release.isS3Download(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
-        } else if (releaseMetadata.gcs != null
-            && releaseMetadata.gcs.paths.x86_64.equals(ybServerPackage)) {
+        } else if (release.isGcsDownload(ybcPackage)) {
           subcommand.add("--gcs_remote_download");
-        } else if (releaseMetadata.http != null
-            && releaseMetadata.http.paths.x86_64.equals(ybServerPackage)) {
+        } else if (release.isHttpDownload(ybServerPackage)) {
           subcommand.add("--http_remote_download");
-          if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
+          if (StringUtils.isNotBlank(release.getHttpChecksum())) {
             subcommand.add("--http_package_checksum");
-            subcommand.add(releaseMetadata.http.paths.x86_64_checksum.toLowerCase());
+            subcommand.add(release.getHttpChecksum());
           }
         }
       }
@@ -1673,7 +1670,8 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+      UUID imageBundleUUID =
+          Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
       if (imageBundleUUID != null) {
         Region region = nodeTaskParam.getRegion();
         ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1776,6 +1774,7 @@ public class NodeManager extends DevopsBase {
               }
             }
 
+            // Azure specific create parameters
             if (Common.CloudType.azu.equals(userIntent.providerType)) {
               AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
               String vnetName = a.getVnet();
@@ -1818,13 +1817,17 @@ public class NodeManager extends DevopsBase {
                   throw new RuntimeException("Could not convert custom network params to JSON");
                 }
               }
+              if (confGetter.getConfForScope(provider, ProviderConfKeys.azureIgnorePlan)) {
+                commandArgs.add("--ignore_plan");
+              }
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+            UUID imageBundleUUID =
+                Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
             if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
               Region region = taskParam.getRegion();
               ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1920,7 +1923,8 @@ public class NodeManager extends DevopsBase {
               userIntent);
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
+          UUID imageBundleUUID =
+              Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
           if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
             Region region = taskParam.getRegion();
             ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -2035,7 +2039,7 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          sensitiveData.putAll(getReleaseSensitiveData(taskParam));
+          sensitiveData.putAll(getReleaseSensitiveData(taskParam, arch));
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
@@ -2627,17 +2631,18 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
+  private Map<String, String> getReleaseSensitiveData(
+      AnsibleConfigureServers.Params taskParam, Architecture arch) {
     Map<String, String> data = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseManager.ReleaseMetadata releaseMetadata =
+      ReleaseContainer releaseContainer =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (releaseMetadata != null) {
-        if (releaseMetadata.s3 != null) {
-          data.put("--aws_access_key", releaseMetadata.s3.accessKeyId);
-          data.put("--aws_secret_key", releaseMetadata.s3.secretAccessKey);
-        } else if (releaseMetadata.gcs != null) {
-          data.put("--gcs_credentials_json", releaseMetadata.gcs.credentialsJson);
+      if (releaseContainer != null) {
+        if (releaseContainer.isAws(arch)) {
+          data.put("--aws_access_key", releaseContainer.getAwsAccessKey(arch));
+          data.put("--aws_secret_key", releaseContainer.getAwsSecretKey(arch));
+        } else if (releaseContainer.isGcs(arch)) {
+          data.put("--gcs_credentials_json", releaseContainer.getGcsCredentials(arch));
         }
       }
     }
@@ -2700,35 +2705,15 @@ public class NodeManager extends DevopsBase {
 
   public String getYbServerPackageName(String ybSoftwareVersion, Region region, Architecture arch) {
     String ybServerPackage = null;
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    if (releaseMetadata != null) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (release != null) {
       if (arch != null) {
-        ybServerPackage = releaseMetadata.getFilePath(arch);
+        ybServerPackage = release.getFilePath(arch);
       } else {
-        ybServerPackage = releaseMetadata.getFilePath(region);
+        ybServerPackage = release.getFilePath(region);
       }
     }
     return ybServerPackage;
-  }
-
-  public UUID getImageBundleUUID(
-      Architecture arch, UserIntent userIntent, NodeTaskParams nodeTaskParam) {
-    UUID imageBundleUUID = null;
-    if (userIntent.imageBundleUUID != null) {
-      imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (nodeTaskParam.getProvider().getUuid() != null) {
-      List<ImageBundle> bundles =
-          ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
-      if (bundles.size() > 0) {
-        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-        if (bundle != null) {
-          imageBundleUUID = bundle.getUuid();
-        }
-      }
-    }
-
-    return imageBundleUUID;
   }
 
   private void addOtelColArgs(

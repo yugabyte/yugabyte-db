@@ -30,6 +30,6 @@ export const DURATION_UNIT_TO_MS = {
 export const DR_DROPDOWN_SELECT_INPUT_WIDTH_PX = 350;
 
 export const DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER =
-  'https://docs.yugabyte.com/preview/develop/build-global-apps/active-active-single-master/';
+  'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/';
 export const DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS =
-  'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/#limitations';
+  'https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/disaster-recovery/disaster-recovery-setup/#prerequisites';

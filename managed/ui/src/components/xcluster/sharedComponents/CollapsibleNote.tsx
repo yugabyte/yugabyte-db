@@ -1,5 +1,8 @@
+import { Typography } from '@material-ui/core';
 import { ReactNode, useState } from 'react';
 import { Collapse } from 'react-bootstrap';
+
+import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 
 import styles from './CollapsibleNote.module.scss';
 
@@ -11,9 +14,8 @@ interface CollapsibleNoteProps {
 export const CollapsibleNote = ({ noteContent, expandContent }: CollapsibleNoteProps) => {
   const [isNoteDetailsExpanded, setIsNoteDetailsExpanded] = useState(false);
   return (
-    <div className={styles.note}>
-      <i className="fa fa-exclamation-circle" aria-hidden="true" />
-      <div className={styles.noteText}>
+    <YBBanner variant={YBBannerVariant.INFO}>
+      <Typography variant="body2">
         {noteContent}
         <button
           className={styles.toggleNoteDetailsBtn}
@@ -35,7 +37,7 @@ export const CollapsibleNote = ({ noteContent, expandContent }: CollapsibleNoteP
         <Collapse in={isNoteDetailsExpanded}>
           <div className={styles.expandContent}>{expandContent}</div>
         </Collapse>
-      </div>
-    </div>
+      </Typography>
+    </YBBanner>
   );
 };
