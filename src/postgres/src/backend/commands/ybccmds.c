@@ -562,6 +562,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
 			   Oid oldRelfileNodeId)
 {
+	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
 	{
@@ -688,7 +689,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			if (OidIsValid(tablegroupId))
+			/*
+			 * If this is a table rewrite we don't need to emit this error as
+			 * this isn't a user supplied TABLEGROUP clause.
+			 */
+			if (!is_internal_rewrite && OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
@@ -721,7 +726,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	/*
 	 * Lazily create an underlying tablegroup in a colocated database if needed.
 	 */
-	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy
+		&& !is_internal_rewrite)
 	{
 		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
 		/* Default tablegroup doesn't exist, so create it. */
