@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -581,6 +582,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
         .thenReturn(true);
+    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.enableIMDSv2)))
+        .thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
