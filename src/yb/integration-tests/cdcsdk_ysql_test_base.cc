@@ -334,7 +334,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           "INSERT INTO $0($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName, i,
           i + 1));
     }
-    RETURN_NOT_OK(test_client()->FlushTables(
+    RETURN_NOT_OK(WaitForFlushTables(
         {table_id}, /* add_indexes = */ false,
         /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -346,7 +346,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kValueColumnName,
           col_value_pair.second, kKeyColumnName, col_value_pair.first));
     }
-    RETURN_NOT_OK(test_client()->FlushTables(
+    RETURN_NOT_OK(WaitForFlushTables(
         {table_id}, /* add_indexes = */ false,
         /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -2173,7 +2173,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // After time expired insert few more records
     if (set_flag_to_a_smaller_value && extend_expiration) {
       ASSERT_OK(WriteRowsHelper(10, 20, &test_cluster_, true));
-      ASSERT_OK(test_client()->FlushTables(
+      ASSERT_OK(WaitForFlushTables(
           {table.table_id()}, /* add_indexes = */ false,
           /* timeout_secs = */ 30, /* is_compaction = */ false));
 
@@ -2722,7 +2722,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(WriteRowsHelper(
         0 /* start */, 11 /* end */, &test_cluster_, true, 4, kTableName,
         {kValue2ColumnName, kValue3ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
 
@@ -2748,7 +2748,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(WriteRowsHelper(
         11 /* start */, 21 /* end */, &test_cluster_, true, 5, kTableName,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     change_resp =
@@ -2910,7 +2910,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(WriteRowsHelper(
         1 /* start */, 11 /* end */, &test_cluster_, true, 4, kTableName,
         {kValue2ColumnName, kValue3ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
@@ -2935,7 +2935,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(tablets.size(), num_tablets);
     ASSERT_OK(WriteRowsHelper(
         11 /* start */, 21 /* end */, &test_cluster_, true, 3, kTableName, {kValue3ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     change_resp =
@@ -3045,7 +3045,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // Insert some records in transaction.
     ASSERT_OK(WriteRowsHelper(
         1 /* start */, 10 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     ASSERT_OK(RenameColumn(
@@ -3071,7 +3071,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_EQ(tablets.size(), num_tablets);
     ASSERT_OK(WriteRowsHelper(
         11 /* start */, 21 /* end */, &test_cluster_, true, 3, kTableName, {kValue3ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     change_resp =
@@ -3206,7 +3206,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true));
     // Call Getchanges
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3238,7 +3238,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
     ASSERT_OK(WriteRowsHelper(
         21 /* start */, 31 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     change_resp =
@@ -3365,7 +3365,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
     // Call Getchanges
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3375,7 +3375,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
     ASSERT_OK(WriteRowsHelper(
         101 /* start */, 201 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
-    ASSERT_OK(test_client()->FlushTables(
+    ASSERT_OK(WaitForFlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
     change_resp =
@@ -3923,6 +3923,27 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status CDCSDKYsqlTest::WaitForFlushTables(
+      const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs,
+      bool is_compaction) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto status = test_client()->FlushTables(
+              table_ids, /* add_indexes = */ add_indexes,
+              /* timeout_secs = */ timeout_secs, /* is_compaction = */ is_compaction);
+          if (!status.ok()) {
+            if (status.IsInternalError()) {
+              return false;
+            } else {
+              RETURN_NOT_OK(status);
+            }
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(timeout_secs), "Waiting for flush operation to complete"));
+    return Status::OK();
   }
 
   Status CDCSDKYsqlTest::XreplValidateSplitCandidateTable(const TableId& table_id) {

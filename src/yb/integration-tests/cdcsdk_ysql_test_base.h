@@ -653,6 +653,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr, const int64& safe_hybrid_time = -1,
       const int& wal_segment_index = 0, const double& timeout_secs = 5);
 
+  Status WaitForFlushTables(
+      const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs,
+      bool is_compaction);
+
   Status XreplValidateSplitCandidateTable(const TableId& table);
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,

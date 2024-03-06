@@ -94,9 +94,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention))
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
   SleepFor(MonoDelta::FromSeconds(2));
 
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, kCompactionTimeoutSec, true));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
@@ -1504,7 +1502,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWith
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
   constexpr int kCompactionTimeoutSec = 60;
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false,
       /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
 
