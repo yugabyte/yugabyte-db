@@ -1,13 +1,15 @@
 ---
 title: View terminated queries with yb_terminated_queries
-linkTitle: View terminated queries
+linkTitle: Terminated queries
 description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
+aliases:
+  - /explore/query-1-performance/yb-pg-stat-get-queries/
 menu:
   preview:
     identifier: yb-terminated-queries
-    parent: query-tuning
+    parent: explore-observability
     weight: 350
 type: docs
 ---

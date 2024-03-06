@@ -4,7 +4,7 @@ linkTitle: Lock insights
 description: Using pg_locks to get insights into lock information specific to YugabyteDB's distributed SQL architecture.
 headerTitle: Get insights on transaction locks with pg_locks
 menu:
-  stable:
+  preview:
     identifier: pg-locks
     parent: explore-observability
     weight: 410
