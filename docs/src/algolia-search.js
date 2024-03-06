@@ -284,6 +284,7 @@ import algoliasearch from 'algoliasearch';
       hitsPerPage: perPageCount,
       page: 0,
     };
+    const searchSummary = document.getElementById('search-summary');
 
     if (searchValue.includes('_')) {
       const searchScript = document.getElementById('algolia-search-script');
@@ -304,17 +305,25 @@ import algoliasearch from 'algoliasearch';
       }) => {
         let pagerDetails = {};
         let sectionHTML = '';
+        let totalResults = nbHits;
         sectionHTML += docsSection(hits);
+
+        if (totalResults > 1000) {
+          totalResults = 1000;
+        }
+
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
-          let totalResults = nbHits;
-          if (nbPages === 100 && nbHits > 1000) {
-            totalResults = 1000;
+          if (searchSummary !== null) {
+            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
           }
-
-          document.getElementById('search-summary').innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
         } else {
-          document.getElementById('search-summary').innerHTML = `No results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
+          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
+          if (searchSummary) {
+            searchSummary.innerHTML = noResultMessage;
+          } else {
+            document.getElementById('doc-hit').innerHTML = noResultMessage;
+          }
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
@@ -322,14 +331,14 @@ import algoliasearch from 'algoliasearch';
             currentPage: page + 1,
             pagerId: 'pagination-docs',
             pagerType: 'docs',
-            totalHits: nbHits,
+            totalHits: totalResults,
             totalPages: nbPages,
           };
 
           searchPagination(pagerDetails);
-          searchpagerparent.className = `pager results-${nbHits}`;
+          searchpagerparent.className = `pager results-${totalResults}`;
         } else {
-          searchpagerparent.className = `pager results-${nbHits}`;
+          searchpagerparent.className = `pager results-${totalResults}`;
           let viewAll = '';
           if (nbPages > 1) {
             viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
@@ -337,7 +346,7 @@ import algoliasearch from 'algoliasearch';
 
           document.getElementById('pagination-docs').innerHTML = `<nav class="pager-area">
             <div class="pager-area">
-              <span class="total-result">${nbHits} Results</span>
+              <span class="total-result">${totalResults} Results</span>
             </div>
             ${viewAll}
           </nav>`;
