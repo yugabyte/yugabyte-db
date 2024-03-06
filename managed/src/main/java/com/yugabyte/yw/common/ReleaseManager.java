@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -23,7 +24,6 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -77,6 +77,7 @@ public class ReleaseManager {
   private final RuntimeConfGetter confGetter;
   private final Environment environment;
   private final CloudUtilFactory cloudUtilFactory;
+  private final ReleaseContainerFactory releaseContainerFactory;
 
   @Inject
   public ReleaseManager(
@@ -86,7 +87,8 @@ public class ReleaseManager {
       GCPUtil gcpUtil,
       RuntimeConfGetter confGetter,
       Environment environment,
-      CloudUtilFactory cloudUtilFactory) {
+      CloudUtilFactory cloudUtilFactory,
+      ReleaseContainerFactory releaseContainerFactory) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.awsUtil = awsUtil;
@@ -94,6 +96,7 @@ public class ReleaseManager {
     this.confGetter = confGetter;
     this.environment = environment;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.releaseContainerFactory = releaseContainerFactory;
   }
 
   public enum ReleaseState {
@@ -999,33 +1002,9 @@ public class ReleaseManager {
     configHelper.loadConfigToDB(CONFIG_TYPE, updatedReleases);
   }
 
-  public synchronized InputStream getTarGZipDBPackageInputStream(
-      String version, ReleaseMetadata releaseMetadata) throws Exception {
-    if (releaseMetadata.s3 != null) {
-      CustomerConfigStorageS3Data configData = new CustomerConfigStorageS3Data();
-      configData.awsAccessKeyId = releaseMetadata.s3.getAccessKeyId();
-      configData.awsSecretAccessKey = releaseMetadata.s3.secretAccessKey;
-      return cloudUtilFactory
-          .getCloudUtil(Util.S3)
-          .getCloudFileInputStream(configData, releaseMetadata.s3.paths.getX86_64());
-    } else if (releaseMetadata.gcs != null) {
-      CustomerConfigStorageGCSData configData = new CustomerConfigStorageGCSData();
-      configData.gcsCredentialsJson = releaseMetadata.gcs.credentialsJson;
-      return cloudUtilFactory
-          .getCloudUtil(Util.GCS)
-          .getCloudFileInputStream(configData, releaseMetadata.gcs.paths.getX86_64());
-    } else if (releaseMetadata.http != null) {
-      return new URL(releaseMetadata.http.getPaths().getX86_64()).openStream();
-    } else {
-      if (!Files.exists(Paths.get(releaseMetadata.filePath))) {
-        throw new RuntimeException(
-            "Cannot add gFlags metadata for version: "
-                + version
-                + " as no file was present at location: "
-                + releaseMetadata.filePath);
-      }
-      return new FileInputStream(releaseMetadata.filePath);
-    }
+  public synchronized InputStream getTarGZipDBPackageInputStream(String version) throws Exception {
+    ReleaseContainer rc = getReleaseByVersion(version);
+    return rc.getTarGZipDBPackageInputStream();
   }
 
   // Adds metadata to releases is version does not exist. Updates existing value if key present.
@@ -1086,12 +1065,20 @@ public class ReleaseManager {
     }
   }
 
-  public ReleaseMetadata getReleaseByVersion(String version) {
-    Object metadata = getReleaseMetadata().get(version);
-    if (metadata == null) {
-      return null;
+  public ReleaseContainer getReleaseByVersion(String version) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      Release release = Release.getByVersion(version);
+      if (release == null) {
+        return null;
+      }
+      return releaseContainerFactory.newReleaseContainer(Release.getByVersion(version));
+    } else {
+      Object metadata = getReleaseMetadata().get(version);
+      if (metadata == null) {
+        return null;
+      }
+      return releaseContainerFactory.newReleaseContainer(metadataFromObject(metadata));
     }
-    return metadataFromObject(metadata);
   }
 
   public ReleaseMetadata getYbcReleaseByVersion(String version, String osType, String archType) {

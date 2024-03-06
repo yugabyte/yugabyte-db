@@ -9,8 +9,11 @@ import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
 import com.yugabyte.troubleshoot.ts.models.GraphQuery;
 import com.yugabyte.troubleshoot.ts.models.GraphResponse;
+import com.yugabyte.troubleshoot.ts.service.BeanValidator;
 import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.TroubleshootingService;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.*;
@@ -21,14 +24,17 @@ public class TroubleshootingController {
   private final TroubleshootingService troubleshootingService;
   private final GraphService graphService;
   private final ObjectMapper objectMapper;
+  private final BeanValidator beanValidator;
 
   public TroubleshootingController(
       TroubleshootingService troubleshootingService,
       GraphService graphService,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      BeanValidator beanValidator) {
     this.troubleshootingService = troubleshootingService;
     this.graphService = graphService;
     this.objectMapper = objectMapper;
+    this.beanValidator = beanValidator;
   }
 
   @GetMapping("/anomalies_metadata")
@@ -46,6 +52,8 @@ public class TroubleshootingController {
   @GetMapping("/anomalies")
   public List<Anomaly> findAnomalies(
       @RequestParam("universe_uuid") UUID universeUuid,
+      @RequestParam(name = "startTime", required = false) Instant startTime,
+      @RequestParam(name = "endTime", required = false) Instant endTime,
       @RequestParam(name = "mocked", required = false, defaultValue = "false") boolean mocked) {
     if (mocked) {
       ObjectReader anomaliesReader = objectMapper.readerFor(new TypeReference<List<Anomaly>>() {});
@@ -56,7 +64,17 @@ public class TroubleshootingController {
         throw new RuntimeException("Failed to parse mocked response", e);
       }
     }
-    return troubleshootingService.findAnomalies(universeUuid);
+    Instant now = Instant.now();
+    if (endTime == null) {
+      endTime = now;
+    }
+    if (startTime == null) {
+      startTime = now.minus(2, ChronoUnit.WEEKS);
+    }
+    if (endTime.isBefore(startTime)) {
+      beanValidator.error().global("startTime should be before endTime");
+    }
+    return troubleshootingService.findAnomalies(universeUuid, startTime, endTime);
   }
 
   @PostMapping("/graphs")

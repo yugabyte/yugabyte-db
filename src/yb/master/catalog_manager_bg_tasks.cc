@@ -309,11 +309,8 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->StartPgCatalogVersionsBgTaskIfStopped();
       }
 
-      // Restart CDCSDK parent tablet deletion bg task.
-      catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
-
       // Run background tasks related to XCluster & CDC Schema.
-      catalog_manager_->RunXClusterBgTasks(l.epoch());
+      catalog_manager_->RunXReplBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();

@@ -27,7 +27,7 @@ const NOTE_CONTENT = (
     <b> backup storage config can be accessed from both source and target universe </b>
     for bootstrapping. Particularly, <b>Network File System (NFS)</b> based storage configs may not
     be accessible from universes in different regions. In that case, refer to the{' '}
-    <a href={YB_ADMIN_XCLUSTER_DOCUMENTATION_URL}>
+    <a href={YB_ADMIN_XCLUSTER_DOCUMENTATION_URL} target="_blank" rel="noopener noreferrer">
       {'documentation for creating replication using yb-admin.'}
     </a>
   </p>
@@ -87,7 +87,10 @@ export const SelectTargetUniverseStep = ({
               (universe) =>
                 universe.universeUUID !== currentUniverseUUID &&
                 !UnavailableUniverseStates.includes(getUniverseStatus(universe).state) &&
-                hasNecessaryPerm({ ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION, onResource: universe.universeUUID})
+                hasNecessaryPerm({
+                  ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
+                  onResource: universe.universeUUID
+                })
             )
             .map((universe) => {
               return {

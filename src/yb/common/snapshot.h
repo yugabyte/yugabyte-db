@@ -34,4 +34,6 @@ using SnapshotSchedulesToObjectIdsMap =
 using RestorationCompleteTimeMap = std::unordered_map<
     TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
 
+using ScheduleMinRestoreTime =
+    std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>;
 } // namespace yb

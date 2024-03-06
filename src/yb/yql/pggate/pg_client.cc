@@ -63,6 +63,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
+extern int yb_locks_txn_locks_per_tablet;
 
 using namespace std::literals;
 
@@ -291,6 +292,20 @@ class PgClient::Impl : public BigDataFetcher {
       }
       heartbeat_running_ = false;
       if (!status.ok()) {
+        if (status.IsInvalidArgument()) {
+          // Unknown session errors are handled as FATALs in the postgres layer. Since the error
+          // response of heartbeat RPCs is not propagated to postgres, we handle the error here by
+          // shutting down the heartbeat mechanism. Nothing further can be done in this session, and
+          // the next user activity will trigger a FATAL anyway. This is done specifically to avoid
+          // log spew of the warning message below in cases where the session is idle (ie. no other
+          // RPCs are being sent to the tserver).
+          LOG(ERROR) << "Heartbeat failed. Connection needs to be reset. "
+                     << "Shutting down heartbeating mechanism due to unknown session "
+                     << session_id_;
+          heartbeat_poller_.Shutdown();
+          return;
+        }
+
         LOG_WITH_PREFIX(WARNING) << "Heartbeat failed: " << status;
       }
     });
@@ -724,6 +739,7 @@ class PgClient::Impl : public BigDataFetcher {
     }
     req.set_min_txn_age_ms(yb_locks_min_txn_age);
     req.set_max_num_txns(yb_locks_max_transactions);
+    req.set_max_txn_locks_per_tablet(yb_locks_txn_locks_per_tablet);
 
     RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
@@ -961,68 +977,41 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
-  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
-      const PgObjectId& table_id, const std::string& stream_id) {
-    cdc::GetTabletListToPollForCDCRequestPB req;
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+    cdc::InitVirtualWALForCDCRequestPB req;
 
-    auto table_info = req.mutable_table_info();
-    table_info->set_stream_id(stream_id);
-    table_info->set_table_id(table_id.GetYbTableId());
-
-    cdc::GetTabletListToPollForCDCResponsePB resp;
-    RETURN_NOT_OK(
-        local_cdc_service_proxy_->GetTabletListToPollForCDC(req, &resp, PrepareController()));
-    RETURN_NOT_OK(ResponseStatus(resp));
-    return resp;
-  }
-
-  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint* checkpoint,
-      uint64_t safe_time, bool is_initial_checkpoint) {
-    cdc::SetCDCCheckpointRequestPB req;
-
+    req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
-    req.set_tablet_id(tablet_id);
-    req.set_initial_checkpoint(is_initial_checkpoint);
-    req.set_cdc_sdk_safe_time(safe_time);
-    req.mutable_checkpoint()->mutable_op_id()->set_term(checkpoint->term);
-    req.mutable_checkpoint()->mutable_op_id()->set_index(checkpoint->index);
-
-    cdc::SetCDCCheckpointResponsePB resp;
-    RETURN_NOT_OK(
-        local_cdc_service_proxy_->SetCDCCheckpoint(req, &resp, PrepareController()));
-    RETURN_NOT_OK(ResponseStatus(resp));
-    return resp;
-  }
-
-  Result<cdc::GetChangesResponsePB> GetCDCChanges(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint* checkpoint) {
-    cdc::GetChangesRequestPB req;
-
-    req.set_stream_id(stream_id);
-    req.set_tablet_id(tablet_id);
-    req.set_cdcsdk_request_source(cdc::CDCSDKRequestSource::WALSENDER);
-
-    // TODO: Revisit. The else clause isn't needed very likely.
-    auto req_checkpoint = req.mutable_from_cdc_sdk_checkpoint();
-    if (checkpoint) {
-      req_checkpoint->set_index(checkpoint->index);
-      req_checkpoint->set_term(checkpoint->term);
-      req_checkpoint->set_key(checkpoint->key);
-      req_checkpoint->set_write_id(checkpoint->write_id);
-    } else {
-      req_checkpoint->set_index(0);
-      req_checkpoint->set_term(0);
-      req_checkpoint->set_key("");
-      req_checkpoint->set_write_id(0);
-      req_checkpoint->set_snapshot_time(0);
+    for (const auto& table_id : table_ids) {
+      *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    cdc::GetChangesResponsePB resp;
+    cdc::InitVirtualWALForCDCResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC() {
+    cdc::DestroyVirtualWALForCDCRequestPB req;
+    req.set_session_id(session_id_);
+
+    cdc::DestroyVirtualWALForCDCResponsePB resp;
     RETURN_NOT_OK(
-        local_cdc_service_proxy_->GetChanges(req, &resp, PrepareController()));
+        local_cdc_service_proxy_->DestroyVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id) {
+    cdc::GetConsistentChangesRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_stream_id(stream_id);
+
+    cdc::GetConsistentChangesResponsePB resp;
+    RETURN_NOT_OK(local_cdc_service_proxy_->GetConsistentChanges(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1319,23 +1308,18 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory
   return impl_->ActiveSessionHistory();
 }
 
-Result<cdc::GetTabletListToPollForCDCResponsePB> PgClient::GetTabletListToPollForCDC(
-    const PgObjectId& table_id, const std::string& stream_id) {
-  return impl_->GetTabletListToPollForCDC(table_id, stream_id);
+Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+  return impl_->InitVirtualWALForCDC(stream_id, table_ids);
 }
 
-Result<cdc::SetCDCCheckpointResponsePB> PgClient::SetCDCTabletCheckpoint(
-    const std::string& stream_id, const std::string& tablet_id,
-    const YBCPgCDCSDKCheckpoint* checkpoint,
-    uint64_t safe_time, bool is_initial_checkpoint) {
-  return impl_->SetCDCTabletCheckpoint(
-      stream_id, tablet_id, checkpoint, safe_time, is_initial_checkpoint);
+Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC() {
+  return impl_->DestroyVirtualWALForCDC();
 }
 
-Result<cdc::GetChangesResponsePB> PgClient::GetCDCChanges(
-    const std::string& stream_id, const std::string& tablet_id,
-    const YBCPgCDCSDKCheckpoint* checkpoint) {
-  return impl_->GetCDCChanges(stream_id, tablet_id, checkpoint);
+Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC(
+    const std::string& stream_id) {
+  return impl_->GetConsistentChangesForCDC(stream_id);
 }
 
 void PerformExchangeFuture::wait() const {

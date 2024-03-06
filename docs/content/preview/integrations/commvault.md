@@ -21,3 +21,7 @@ Commvault is a data protection and data management platform that provides an age
 To use Commvault with YugabyteDB, you need to configure YBA on the Commvault Command Center.
 
 For more information, refer to [Getting Started with YugabyteDB](https://documentation.commvault.com/2024/essential/getting_started_with_yugabytedb.html) in the Commvault documentation.
+
+## Learn more
+
+- [Back up and Restore Your Business-Critical Apps with YugabyteDB and Commvault](https://www.yugabyte.com/blog/backup-restore-commvault/)

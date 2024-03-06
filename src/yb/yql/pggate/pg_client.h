@@ -238,17 +238,13 @@ class PgClient {
 
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<cdc::GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
-      const PgObjectId& table_id, const std::string& stream_id);
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
 
-  Result<cdc::SetCDCCheckpointResponsePB> SetCDCTabletCheckpoint(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint* checkpoint,
-      uint64_t safe_time, bool is_initial_checkpoint);
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
-  Result<cdc::GetChangesResponsePB> GetCDCChanges(
-      const std::string& stream_id, const std::string& tablet_id,
-      const YBCPgCDCSDKCheckpoint* checkpoint);
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

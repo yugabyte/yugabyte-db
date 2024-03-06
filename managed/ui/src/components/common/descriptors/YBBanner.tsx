@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { cloneElement, ReactElement, ReactNode } from 'react';
 import clsx from 'clsx';
 import { InfoOutlined } from '@material-ui/icons';
 
@@ -14,7 +14,8 @@ export enum YBBannerVariant {
 interface YBBannerProps {
   children: ReactNode;
 
-  bannerIcon?: ReactNode;
+  // The className prop in bannerIcon will be overridden
+  bannerIcon?: ReactElement;
   className?: string;
   iconClassName?: string;
   // feature banner is used to distinguish the top level banners primarily
@@ -38,13 +39,13 @@ export const YBBanner = ({
 
   if (variant === YBBannerVariant.INFO) {
     variantClassName = styles.info;
-    defaultBannerIcon = <InfoOutlined />;
+    defaultBannerIcon = <InfoOutlined className={clsx(styles.icon, iconClassName)} />;
   } else if (variant === YBBannerVariant.WARNING) {
     variantClassName = styles.warning;
-    defaultBannerIcon = <i className="fa fa-warning" />;
+    defaultBannerIcon = <i className={clsx('fa fa-warning', styles.icon, iconClassName)} />;
   } else if (variant === YBBannerVariant.DANGER) {
     variantClassName = styles.danger;
-    defaultBannerIcon = <i className="fa fa-warning" />;
+    defaultBannerIcon = <i className={clsx('fa fa-warning', styles.icon, iconClassName)} />;
   }
 
   return (
@@ -56,9 +57,10 @@ export const YBBanner = ({
         className
       )}
     >
-      {showBannerIcon && (
-        <div className={clsx(styles.icon, iconClassName)}>{bannerIcon ?? defaultBannerIcon}</div>
-      )}
+      {showBannerIcon &&
+        (bannerIcon
+          ? cloneElement(bannerIcon, { className: clsx(styles.icon, iconClassName) })
+          : defaultBannerIcon)}
       <div className={styles.childrenContainer}>{children}</div>
     </div>
   );

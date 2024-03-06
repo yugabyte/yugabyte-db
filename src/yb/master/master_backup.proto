@@ -155,10 +155,6 @@ message AbortSnapshotRestoreResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message ImportSnapshotMetaRequestPB {
-  optional SnapshotInfoPB snapshot = 1;
-}
-
 message ListSnapshotRestorationsRequestPB {
   optional bytes snapshot_id = 1; // 16 bytes UUID
   optional bytes restoration_id = 2; // 16 bytes UUID
@@ -175,6 +171,10 @@ message ListSnapshotRestorationsResponsePB {
 message IdPairPB {
   optional bytes old_id = 1;
   optional bytes new_id = 2;
+}
+
+message ImportSnapshotMetaRequestPB {
+  optional SnapshotInfoPB snapshot = 1;
 }
 
 message ImportSnapshotMetaResponsePB {
