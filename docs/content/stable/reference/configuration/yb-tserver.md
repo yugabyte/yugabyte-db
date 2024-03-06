@@ -1265,7 +1265,7 @@ You can modify these parameters in the following ways:
     SET LOCAL temp_file_limit=-1;
     ```
 
-- To specify the minimum age of a transaction (in seconds) before its locks gets included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
 
     ```sql
     --- To change the minimum transaction age to 5 seconds:

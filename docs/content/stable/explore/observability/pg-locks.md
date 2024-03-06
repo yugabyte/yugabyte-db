@@ -37,11 +37,11 @@ The following table describes the view columns:
 | waitend | timestampz | Time at which a lock gets acquired. |
 | ybdetails | JSONB | Field with details specific to YugabyteDB locks, including `node`, `transactionid`, and `blocked_by details`.|
 
-Note that certain PostgreSQL-specific fields such as `page`, `tuple`, `virtualxid`, `transactionid`, `classid`, `objid`, `objsubid`, and `virtualtransaction` are not applicable in YugabyteDB and are always NULL.
+PostgreSQL-specific fields, including `page`, `tuple`, `virtualxid`, `transactionid`, `classid`, `objid`, `objsubid`, and `virtualtransaction`, are not applicable in YugabyteDB and are always NULL.
 
 ## YugabyteDB-specific changes
 
-The `pg_locks` view includes the following new YugabyteDB-specific fields:
+The `pg_locks` view includes the following YugabyteDB-specific fields.
 
 ### waitend
 
