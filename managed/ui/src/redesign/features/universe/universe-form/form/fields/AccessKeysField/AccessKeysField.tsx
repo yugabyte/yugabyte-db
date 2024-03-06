@@ -50,7 +50,7 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   //only first time
   useEffectOnce(() => {
-    if (accessKeysList?.length && provider?.uuid && !fieldVal)
+    if (accessKeysList?.length && provider?.uuid)
       setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
   });
 
