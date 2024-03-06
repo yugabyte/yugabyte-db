@@ -11,7 +11,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -20,13 +19,15 @@ import (
 
 // createAzureProviderCmd represents the provider command
 var createAzureProviderCmd = &cobra.Command{
-	Use:   "azure [provider-name]",
+	Use:   "azure",
 	Short: "Create an Azure YugabyteDB Anywhere provider",
 	Long:  "Create an Azure provider in YugabyteDB Anywhere",
-	Args:  cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		if !(len(args) > 0 || len(providerNameFlag) > 0) {
+		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if !(len(providerNameFlag) > 0) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to create\n", formatter.RedColor))
@@ -38,12 +39,9 @@ var createAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		var providerName string
-		if len(args) > 0 {
-			providerName = args[0]
-		} else if len(providerNameFlag) > 0 {
-			providerName = providerNameFlag
+		providerName, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		providerCode := "azu"
@@ -111,7 +109,7 @@ var createAzureProviderCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Create Azure")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Azure", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -124,10 +122,6 @@ var createAzureProviderCmd = &cobra.Command{
 
 func init() {
 	createAzureProviderCmd.Flags().SortFlags = false
-
-	createAzureProviderCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the provider to be created.")
-
 	// Flags needed for Azure
 	createAzureProviderCmd.Flags().String("az-client-id", "",
 		fmt.Sprintf("Azure Client ID. "+
@@ -162,7 +156,8 @@ func init() {
 			formatter.Colorize("Region name and Virtual network are required key-values.",
 				formatter.GreenColor)+
 			" Security Group ID and YB Image (AMI) are optional. "+
-			"Each region needs to be added using a separate --region flag.")
+			"Each region needs to be added using a separate --region flag. "+
+			"Example: --region region-name=westus2,vnet=<vent-id>")
 	createAzureProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the Azure Region defined. "+
 			"Provide the following comma separated fields as key-value pairs:"+
@@ -172,32 +167,27 @@ func init() {
 			"Secondary subnet ID is optional. Each --region definition "+
 			"must have atleast one corresponding --zone definition. Multiple --zone definitions "+
 			"can be provided per region."+
-			"Each zone needs to be added using a separate --zone flag.")
+			"Each zone needs to be added using a separate --zone flag. "+
+			"Example: --zone zone-name=westus2-1,region-name=westus2,subnet=<subnet-id>")
 
 	createAzureProviderCmd.Flags().String("ssh-user", "",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes, defaults to 22.")
+		"[Optional] SSH Port to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-name", "",
-		"[Optional] Provider custom key pair name to access YugabyteDB nodes. "+
+		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-file-path", "",
-		"[Optional] Provider custom key pair file path to access YugabyteDB nodes. "+
+		"[Optional] Provide custom key pair file path to access YugabyteDB nodes. "+
 			formatter.Colorize("Required with --custom-ssh-keypair-name.",
 				formatter.GreenColor))
 	createAzureProviderCmd.MarkFlagsRequiredTogether("custom-ssh-keypair-name",
 		"custom-ssh-keypair-file-path")
 
 	createAzureProviderCmd.Flags().Bool("airgap-install", false,
-		"[Optional] Do YugabyteDB nodes have access to public internet to download packages.")
-
-	setAzureDefaults()
-
-}
-
-func setAzureDefaults() {
-	viper.SetDefault("ssh-port", 22)
-	viper.SetDefault("airgap-install", false)
+		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment, "+
+			" lacking access to the public internet for package downloads, "+
+			"defaults to false.")
 }
 
 func buildAzureConfig(cmd *cobra.Command) (map[string]interface{}, error) {

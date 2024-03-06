@@ -17,24 +17,24 @@ import (
 
 // deleteProviderCmd represents the provider command
 var deleteProviderCmd = &cobra.Command{
-	Use:   "delete [provider-name]",
+	Use:   "delete",
 	Short: "Delete a YugabyteDB Anywhere provider",
 	Long:  "Delete a provider in YugabyteDB Anywhere",
-	Args:  cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		providerNameFlag, _ := cmd.Flags().GetString("name")
+		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		var providerName string
-		if len(args) > 0 {
-			providerName = args[0]
-		} else if len(providerNameFlag) > 0 {
+		if len(providerNameFlag) > 0 {
 			providerName = providerNameFlag
 		} else {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to delete\n", formatter.RedColor))
 		}
-		err := util.ConfirmCommand(
+		err = util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to delete %s: %s", util.ProviderType, providerName),
 			viper.GetBool("force"))
 		if err != nil {
@@ -47,13 +47,11 @@ var deleteProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		var providerName string
-		if len(args) > 0 {
-			providerName = args[0]
-		} else if len(providerNameFlag) > 0 {
-			providerName = providerNameFlag
+		providerName, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+
 		providerListRequest := authAPI.GetListOfProviders()
 		providerListRequest = providerListRequest.Name(providerName)
 
@@ -102,8 +100,9 @@ var deleteProviderCmd = &cobra.Command{
 
 func init() {
 	deleteProviderCmd.Flags().SortFlags = false
-	deleteProviderCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the provider to be deleted.")
+	deleteProviderCmd.Flags().StringP("provider-name", "n", "",
+		"[Required] The name of the provider to be deleted.")
+	deleteProviderCmd.MarkFlagRequired("provider-name")
 	deleteProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }

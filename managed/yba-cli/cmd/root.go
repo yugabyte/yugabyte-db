@@ -76,7 +76,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("wait", true,
 		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
-		"wait command timeout, example: 5m, 1h.")
+		"Wait command timeout, example: 5m, 1h.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
