@@ -730,8 +730,8 @@ typedef struct MyValue
 	double		blk_read_time;	/* time spent reading, in msec */
 	double		blk_write_time; /* time spent writing, in msec */
 	double		usage;			/* usage factor */
-	// for Ash
-	
+	//for explain
+	char        explain_str[1024];
 } MyValue;
 
 
@@ -1145,6 +1145,12 @@ typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, doub
 		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
 
 extern bundlePgssPtr bundleptr;
+
+typedef void (*bundleExplainPtr)(int flag , QueryDesc *queryDesc,MyValue *result);
+
+extern bundleExplainPtr explainptr;
+
+
 extern int64_t bundleQueryIdptr;
 extern HTAB *map;
 extern void insert_into_shared_hashtable(HTAB *htab, int64 key, MyValue value);

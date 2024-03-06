@@ -433,12 +433,14 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	Size *query_offset, int encoding, Counters *counters,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
+
+//this may work without extern.
 extern void
 bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
 
 
-void bundleExplain(QueryDesc *queryDesc);
+void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result);
 /*
  * Module load callback
  */
@@ -574,6 +576,8 @@ _PG_init(void)
 
 
 	bundleptr = &bundlePgss;
+	explainptr = &bundleExplain;
+
 
 	/*
 	 * Install hooks.
@@ -1315,10 +1319,11 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 
 		//trying to print explain plan
-		
-		MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
-		if(result){
-			bundleExplain(queryDesc);
+		if(debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
+			if(result){
+				bundleExplain(1 , queryDesc , result);
+			}
 		}
 
 }
@@ -1745,20 +1750,12 @@ pgss_store(const char *query, uint64 queryId,
 		SpinLockRelease(&e->mutex);
 
 
-		// if(debuggingBundle){
-		// 	for (int i = 0; i<bundleQueryIdptr; i++) {
-		// 		if (bundleQueryIds[i] == queryId) {
-		// 			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid);
-		// 		}
-		// 	}
-		// }
-
-
-		MyValue* result = lookup_in_shared_hashtable(map, queryId);
-		if(result){
-			bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid,result);
+		if(debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, queryId);
+			if(result){
+				bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid,result);
+			}
 		}
-
 	}
 
 done:
@@ -3924,29 +3921,41 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 }
 
 
-void bundleExplain(QueryDesc *queryDesc){
-	ExplainState *es = NewExplainState();
+void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
 
-	es->analyze = false;
-	es->verbose = false;
-	es->buffers = false;
-	es->timing = false;
-	es->summary = false;
-	es->format =EXPLAIN_FORMAT_TEXT;
-	es->rpc = false;
+	if(flag == 0){
+		FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
+		fprintf(fptr, "QUERY PLAN:\n%s" ,result->explain_str);
+		fclose(fptr);
+	}
+	else{
+		ExplainState *es = NewExplainState();
 
-	ExplainBeginOutput(es);
-	ExplainQueryText(es, queryDesc);
-	ExplainPrintPlan(es, queryDesc);
-	if (es->costs)
-		ExplainPrintJITSummary(es, queryDesc);
-	ExplainEndOutput(es);
+		es->analyze = false;
+		es->verbose = false;
+		es->buffers = false;
+		es->timing = false;
+		es->summary = false;
+		es->format =EXPLAIN_FORMAT_TEXT;
+		es->rpc = false;
 
-		/* Remove last line break */
-	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
-		es->str->data[--es->str->len] = '\0';
+		ExplainBeginOutput(es);
+		ExplainQueryText(es, queryDesc);
+		ExplainPrintPlan(es, queryDesc);
+		if (es->costs)
+			ExplainPrintJITSummary(es, queryDesc);
+		ExplainEndOutput(es);
 
-	FILE* fptr = fopen("/Users/ishanchhangani/explain.txt","w");
-	fprintf(fptr, "QUERY PLAN:\n%s" ,es->str->data);
-	fclose(fptr);
+			/* Remove last line break */
+		if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+			es->str->data[--es->str->len] = '\0';
+
+
+		if(strlen(result->explain_str) + strlen(es->str->data) >=1024) return;
+
+		int len = strlen(result->explain_str);
+		result->explain_str[len] = '\n';
+		result->explain_str[len+1] = '\0';
+		strcat(result->explain_str, es->str->data);
+	}
 }

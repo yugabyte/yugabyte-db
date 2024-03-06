@@ -4526,7 +4526,7 @@ int64_t bundleQueryIds[100];
 int64_t bundleQueryIdptr = 0;
 bool debuggingBundle;
 bundlePgssPtr bundleptr;
-
+bundleExplainPtr explainptr;
 HTAB *map = NULL;
 typedef struct {
     int64 key;
@@ -4614,36 +4614,54 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	if(map == NULL)
 		create_shared_hashtable();
 
-	//insert into hash table
 	//I am not handling the case when same queryid is called again.
 	MyValue value = {
-		"Hari Harii!!", 1234,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		"", 0,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,""
 	};
-	value.start_time = start;
-	insert_into_shared_hashtable(map, queryid, value);
-
-	// MyValue value = {"Hare Krishna!!", 1234};
-	// insert_into_shared_hashtable(map, 1234, value);
-	// MyValue value1 = {"Hari Harii!!", 5678};
-	// insert_into_shared_hashtable(map, 5678, value1);
-
-	//lookup in hash table
-	// MyValue result = lookup_in_shared_hashtable(map, queryid);
-
-
-
-
-
-    //assuming the hash table works.
-
-
-	//create folder with name of queryid in home directory using mkdir
-
 	
-	// char dir[1000] = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/tracing/";	
-	// char queryidstr[21];
-	// sprintf(queryidstr, "%lld/", queryid);
-	// strcat(dir, queryidstr);
+	
+	// char pwd[1024];
+	// if(getcwd(pwd, 1024) == NULL)
+	// {
+	// 	FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
+	// 	fprintf(fptr, "getcwd phata...\n" );
+	// 	fclose(fptr);
+	// 	PG_RETURN_BOOL(false);
+	// }
+
+	// if (chdir("..") == -1) {
+    //     perror("Error changing directory");
+    //     return 1;
+    // }
+
+	// char dir[1024];
+	// if(getcwd(dir, 1024) == NULL)
+	// {
+	// 	FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
+	// 	fprintf(fptr, "getcwd phata...\n" );
+	// 	fclose(fptr);
+	// 	PG_RETURN_BOOL(false);
+	// }
+
+
+	// if (chdir(pwd) == -1) {
+    //     perror("Error changing back to original directory");
+    //     return 1;
+    // }	
+
+	// //create folder with name of queryid in home directory using mkdir
+	// strcat(dir, "/query-diagnostics/");
+	// if(mkdir(dir, 0777) == -1)
+	// {
+	// 	if(errno != EEXIST)
+	// 	{
+	// 		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+	// 		PG_RETURN_BOOL(false);
+	// 	}
+	// }
+	// // char queryidstr[50];
+	// sprintf(dir, "%s/%lld/",dir, queryid);
+	// // strcat(dir, queryidstr);
 	
 	// if(mkdir(dir, 0777) == -1)
 	// {
@@ -4653,14 +4671,19 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	// 		PG_RETURN_BOOL(false);
 	// 	}
 	// }	
-	// char start_time[21];
-	// sprintf(start_time, "%ld/", start);
-	// strcat(dir,start_time);
+	// sprintf(dir, "%s/%ld/", dir,start);
 	// if(mkdir(dir, 0777) == -1)
 	// {
 	// 	ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
 	// 	PG_RETURN_BOOL(false);
 	// }
+
+	value.start_time = start;
+	// value.log_path = dir;
+	// FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
+	// fprintf(fptr, "log_path: %s\n" , value.log_path);
+	// fclose(fptr);
+	insert_into_shared_hashtable(map, queryid, value);
 
     PG_RETURN_BOOL(true);
 }
@@ -4693,7 +4716,7 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 	end = GetCurrentTimestamp();
 	bundleptr(0,queryid,"-",0,0,NULL,0,0,result);
 	// dumpAshData(queryid ,result->start_time ,end);
-
+	explainptr(0,NULL,result);
 
 
 	//resetting the values
