@@ -136,7 +136,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
@@ -447,17 +447,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             String ybSoftwareVersion =
                 universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion;
-            ReleaseManager.ReleaseMetadata releaseMetadata =
-                releaseManager.getReleaseByVersion(ybSoftwareVersion);
-            if (releaseMetadata == null) {
+            ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+            if (release == null) {
               String msg =
                   String.format(
                       "Universe %s does not have valid metadata.", universe.getUniverseUUID());
               log.error(msg);
               throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
             }
-            if (releaseMetadata.hasLocalRelease()) {
-              Set<String> localFilePaths = releaseMetadata.getLocalReleases();
+            if (release.hasLocalRelease()) {
+              Set<String> localFilePaths = release.getLocalReleasePathStrings();
               localFilePaths.forEach(
                   path -> {
                     Path localPath = Paths.get(path);
