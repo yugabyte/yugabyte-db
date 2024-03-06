@@ -308,7 +308,7 @@ import algoliasearch from 'algoliasearch';
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
           let totalResults = nbHits;
-          if (nbPages === 100) {
+          if (nbPages === 100 && nbHits > 1000) {
             totalResults = 1000;
           }
 
