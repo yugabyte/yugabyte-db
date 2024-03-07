@@ -42,6 +42,7 @@ struct CallsiteProfileEntry {
   const char* code_line;
 };
 
+// An internal namespace for call site profiling utility code.
 namespace callsite_profiling {
 
 class Callsite {
@@ -58,6 +59,14 @@ class Callsite {
 
   void Reset();
   CallsiteProfileEntry GetProfileEntry() const;
+  const char* file_path() const { return file_; }
+  int line_number() const { return line_; }
+  const char* function_name() const { return function_name_; }
+
+  double AvgMicros() const;
+
+  // A string representation of this call site (file/line/function, no code snippet or stats).
+  std::string ToString() const;
 
  private:
   const char* file_;
@@ -85,11 +94,7 @@ struct ProfilingHelper {
         start_cycles(CycleClock::Now()) {
   }
 
-  ~ProfilingHelper() {
-    int64_t elapsed_cycles = ::CycleClock::Now() - start_cycles;
-    int64_t elapsed_usec = use_time ? (MonoTime::Now() - start_time).ToMicroseconds() : 0;
-    callsite->Increment(elapsed_cycles, elapsed_usec);
-  }
+  ~ProfilingHelper();
 };
 
 }  // namespace callsite_profiling
