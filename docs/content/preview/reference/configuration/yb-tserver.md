@@ -1326,6 +1326,22 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+## Catalog flags
+
+##### ysql_catalog_preload_additional_table_list
+
+Specifies the names of catalog tables (such as pg_operator,pg_proc, and pg_amop) to be preloaded by PostgreSQL backend processes.
+
+Default: `""`
+
+If [ysql_catalog_preload_additional_tables] is also specified, the union of the specified tables and pg_am, pg_amproc, pg_cast, pg_tablespace will be preloaded.
+
+##### ysql_catalog_preload_additional_tables
+
+When enabled, specifies the names of the tables PG backend processes will preload.
+
+Default: false
+
 ## Advanced flags
 
 ##### backfill_index_client_rpc_timeout_ms
