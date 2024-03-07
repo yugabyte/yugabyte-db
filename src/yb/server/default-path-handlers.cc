@@ -71,7 +71,7 @@
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -746,10 +746,10 @@ static void CertificateHandler(server::RpcServerBase* server,
   (*output) << tags.pre_tag;
 
   (*output) << "Node to node encryption enabled: "
-      << (yb::server::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
+      << (yb::rpc::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
 
   (*output) << tags.line_break << "Client to server encryption enabled: "
-      << (yb::server::IsClientToServerEncryptionEnabled() ? "true" : "false");
+      << (yb::rpc::IsClientToServerEncryptionEnabled() ? "true" : "false");
 
   (*output) << tags.line_break << "Allow insecure connections: "
       << (yb::rpc::AllowInsecureConnections() ? "on" : "off");

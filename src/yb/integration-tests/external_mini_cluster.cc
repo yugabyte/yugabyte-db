@@ -76,7 +76,7 @@
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -3023,8 +3023,8 @@ void StartSecure(
     std::unique_ptr<rpc::Messenger>* messenger,
     const std::vector<std::string>& master_flags) {
   rpc::MessengerBuilder messenger_builder("test_client");
-  *secure_context = ASSERT_RESULT(server::SetupSecureContext(
-      "", "127.0.0.100", server::SecureContextType::kInternal, &messenger_builder));
+  *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
+      /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
   (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 
