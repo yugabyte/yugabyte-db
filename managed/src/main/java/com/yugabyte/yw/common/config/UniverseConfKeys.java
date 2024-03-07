@@ -978,4 +978,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Wait time for xcluster/DR replication setup and edit RPCs.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockSyncCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clock Sync check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
