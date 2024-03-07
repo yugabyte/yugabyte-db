@@ -61,7 +61,7 @@ body {
       background-color: #fff;
       border-color: #d7dee4;
       transition: color 250ms ease, backgound 250ms ease;
-      transform: translateX(-150px);
+      transform: translateX(-230px);
       animation: ask-ai-btn 500ms 3.8s ease forwards;
       position: relative;
       z-index: -1;
@@ -124,7 +124,7 @@ body {
 
 @keyframes ask-ai-btn {
   from {
-    transform: translateX(-150px)
+    transform: translateX(-230px)
   }
 
   to {
