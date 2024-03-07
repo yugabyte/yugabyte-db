@@ -208,7 +208,10 @@ THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 # Check for available YBC
-ybc_tar=$(find /opt/yb-build/ybc/ -type f | sort -V | tail -1)
+ybc_tar=""
+if [[ -d /opt/yb-build/ybc ]]; then
+  ybc_tar=$(find /opt/yb-build/ybc/ -type f | sort -V | tail -1)
+fi
 ybc_dest="$YB_SRC_ROOT/build/ybc"
 if [[ -n ${ybc_tar} ]]; then
   log "Unpacking ${ybc_tar} binaries to ${ybc_dest}/"
