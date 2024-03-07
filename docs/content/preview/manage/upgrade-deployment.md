@@ -25,7 +25,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 
 - Make sure you are following the instructions for the version that you are upgrading from. You can select the doc version from the upper right corner of the page.
 
-- If you are upgrading from `2.20.0.0`, or `2.20.1.0` follow the instructions for [v2.18](../../../v2.18/manage/upgrade-deployment/).
+- Rollback is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 {{< /note >}}
 
 ## Upgrade YugabyteDB cluster
@@ -33,11 +33,11 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 {{< warning title="Important" >}}
 You can only upgrade to the latest minor version of every release.
 
-For example, if you are on version `2.18.3.0`, and there is already a `2.20.2.0` release, then you must upgrade to `2.20.2.0` and not `2.20.1.0`, or `2.20.0.0`.
-Please visit the [Releases](../../releases/) page to check and download the latest releases.
+For example, if you are on version v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 and not v2.20.1.0 or v2.20.0.0.
+To view and download releases, refer to [Releases](../../releases/).
 {{< /warning >}}
 
-The [Upgrade Phase](#upgrade-phase) deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until the [Finalize Phase](#a-finalize-phase) completes. This gives you the capability to evaluate the majority of the changes before committing to the new version. If you encounter any issues before finalizing the upgrade, you have the option to initiate the [Rollback Phase](#b-rollback-phase), which will restore the cluster to its state before the upgrade.
+The [Upgrade Phase](#upgrade-phase) deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until the [Finalize Phase](#a-finalize-phase) completes. This gives you the capability to evaluate the majority of the changes before committing to the new version. If you encounter any issues before finalizing the upgrade, you have the option to initiate the [Rollback Phase](#b-roll-back-phase), which will restore the cluster to its state before the upgrade.
 
 ### Upgrade Phase
 
@@ -86,7 +86,7 @@ Upgrade the YB-Masters one node at a time:
 
 1. Start the new version of the YB-Master process. Follow the instructions in [Start YB-Masters](../../deploy/manual-deployment/start-masters/).
 
-1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-rollback-phase).
+1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
 
 1. Pause for at least 60 seconds before upgrading the next YB-Master.
 
@@ -108,7 +108,7 @@ Upgrade the YB-TServers one node at a time:
 
 1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-1. Make sure that all YB-Tserver processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-rollback-phase).
+1. Make sure that all YB-Tserver processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
 
 1. Pause for at least 60 seconds before upgrading the next YB-TServer.
 
@@ -119,7 +119,7 @@ Once all the YB-Master and YB-Tserver processes have been upgraded, monitor the 
 
 You can remain in this phase for as long as you need, but it is recommended to finalize the upgrade sooner in order to avoid operator errors that can arise from having to maintain two versions. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
-If you are satisfied with the new version, proceed to the [Finalize Phase](#a-finalize-phase). If you encounter any issues, you can proceed to [Rollback Phase](#b-rollback-phase).
+If you are satisfied with the new version, proceed to the [Finalize Phase](#a-finalize-phase). If you encounter any issues, you can proceed to [Rollback Phase](#b-roll-back-phase).
 
 ### A. Finalize Phase
 
@@ -191,18 +191,18 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 - Concurrent YSQL operations in a cluster can lead to transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by retrying the operation. If `upgrade_ysql` encounters these errors, then it should also be retried.
 {{< /note >}}
 
-### B. Rollback Phase
+### B. Roll back Phase
 
 {{< warning title="Important" >}}
-- Rollback is only supported when you are upgrading a cluster that is already on version `2.20.2.0` or higher.
-- You cannot rollback after finalizing the upgrade. If you still want to go back to the old version, you can [Export and import](../backup-restore/export-import-data/) the data to another cluster that is running the old version. You may have to manually modify the SQL script to make it match the old version's format.
+- Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 or higher.
+- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you can [Export and import](../backup-restore/export-import-data/) the data to another cluster that is running the old version. You may have to manually modify the SQL script to make it match the old version's format.
 {{< /warning >}}
 
-In order to rollback to the version that you were on before the upgrade, you need to restart all YB-Master and YB-Tservers on the old version. All YB-Tservers have to be rolled back before you rollback YB-Masters.
+In order to roll back to the version that you were on before the upgrade, you need to restart all YB-Master and YB-Tservers on the old version. All YB-Tservers have to be rolled back before you roll back YB-Masters.
 
-#### 1. Rollback YB-Tservers
+#### 1. Roll back YB-Tservers
 
-Rollback the YB-Tservers one node at a time:
+Roll back the YB-Tservers one node at a time:
 
 1. Stop the `yb-tserver` process.
 
@@ -222,7 +222,7 @@ Rollback the YB-Tservers one node at a time:
 
 1. Pause for at least 60 seconds before rolling back the next YB-TServer.
 
-#### 2. Rollback YB-Masters
+#### 2. Roll back YB-Masters
 
 Use the following procedure to rollback all YB-Masters:
 
@@ -251,7 +251,7 @@ When you have unidirectional xCluster replication, it is recommended to upgrade 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, rollback both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
 
 {{< note title="Note" >}}
-xCluster replication requires the target cluster version to be equal to or higher
+xCluster replication requires the target cluster version to the same or later
  than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
