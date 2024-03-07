@@ -61,7 +61,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
-    flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4");
+    flagMap.put("vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4");
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
     return flagMap;
   }
@@ -222,6 +222,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
       stmt.execute("INSERT INTO t1 VALUES(2, 'defg')");
       stmt.execute("INSERT INTO t1 VALUES(3, 'hijk')");
+      stmt.execute("DELETE FROM t1 WHERE a = 2");
     }
 
     PGReplicationStream stream = replConnection.replicationStream()
@@ -233,8 +234,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 1 Relation, 3 * 3 (begin, insert and commit).
-    result.addAll(receiveMessage(stream, 10));
+    // 1 Relation, 3 * 3 (begin, insert and commit), 1 * 3 (begin, delete, commit).
+    result.addAll(receiveMessage(stream, 13));
     for (PgOutputMessage res : result) {
       LOG.info("Row = {}", res);
     }
@@ -270,6 +271,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("hijk")))));
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/D"), 5));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+            new PgOutputMessageTuple((short) 2,
+                Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                    new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/D"), LogSequenceNumber.valueOf("0/E")));
       }
     };
     assertEquals(expectedResult, result);

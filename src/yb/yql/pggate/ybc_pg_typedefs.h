@@ -556,8 +556,10 @@ typedef struct PgReplicationSlotDescriptor {
 
 typedef struct PgDatumMessage {
   const char* column_name;
-  uint64_t datum;
-  bool is_null;
+  uint64_t after_op_datum;
+  bool after_op_is_null;
+  uint64_t before_op_datum;
+  bool before_op_is_null;
 } YBCPgDatumMessage;
 
 typedef enum PgRowMessageAction {
