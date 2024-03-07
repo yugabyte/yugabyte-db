@@ -23,7 +23,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 {{< note title="Note" >}}
 - Upgrades are not supported between preview and stable versions.
 
-- Make sure you are following the instructions for the version that you are upgrading from. You can select the doc version from the upper right corner of the page.
+- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
 - If you are upgrading from `2.20.0.0`, or `2.20.1.0` follow the instructions for [v2.18](../../../v2.18/manage/upgrade-deployment/).
 {{< /note >}}
