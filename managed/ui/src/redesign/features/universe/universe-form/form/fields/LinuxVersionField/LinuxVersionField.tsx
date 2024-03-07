@@ -11,7 +11,7 @@ import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box, MenuItem, makeStyles } from '@material-ui/core';
-import { YBLabel, YBSelect } from '../../../../../../components';
+import { YBLabel, YBSelectField } from '../../../../../../components';
 import {
   ImageBundleDefaultTag,
   ImageBundleYBActiveTag
@@ -35,7 +35,12 @@ const menuStyles = makeStyles(() => ({
 }));
 
 export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
-  const { control, setValue, getValues } = useFormContext<UniverseFormData>();
+  const {
+    control,
+    setValue,
+    getValues,
+    formState: { errors }
+  } = useFormContext<UniverseFormData>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
   const classes = useFormFieldStyles();
   const linuxMenuStyles = menuStyles();
@@ -57,7 +62,7 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
       control={control}
       rules={{
         required: t('validation.required', {
-          field: t('advancedConfig.dbVersion'),
+          field: t('linuxVersion'),
           keyPrefix: 'universeForm'
         }) as string
       }}
@@ -66,8 +71,9 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
           <Box display="flex" width="100%" data-testid="linuxVersion-Container">
             <YBLabel dataTestId="linuxVersion-Label">{t('linuxVersion')}</YBLabel>
             <Box flex={1} className={classes.defaultTextBox}>
-              <YBSelect
+              <YBSelectField
                 fullWidth
+                name={LINUX_VERSION_FIELD}
                 value={field.value}
                 inputProps={{
                   'data-testid': `linuxVersion`
@@ -93,7 +99,7 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
                     )}
                   </MenuItem>
                 ))}
-              </YBSelect>
+              </YBSelectField>
             </Box>
           </Box>
         );

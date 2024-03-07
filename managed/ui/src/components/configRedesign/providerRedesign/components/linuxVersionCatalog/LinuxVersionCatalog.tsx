@@ -25,7 +25,7 @@ import {
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
-import { ProviderCode, ProviderStatus } from '../../constants';
+import { ArchitectureType, ProviderCode, ProviderStatus } from '../../constants';
 import { Add } from '@material-ui/icons';
 
 interface LinuxVersionCatalogProps {
@@ -98,7 +98,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...sampleX86Image.details,
             regions: Object.assign({}, ...regions.map((r) => ({ [r.code]: {} })))
           },
-          useAsDefault: images.length === 0
+          useAsDefault:
+            images.filter(
+              (i) => i.details.arch === ArchitectureType.X86_64 && i.useAsDefault === true
+            ).length === 0
         });
       }
       if (ybImageOptions.useArm && providerType === ProviderCode.AWS) {
@@ -108,7 +111,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...sampleAarchImage.details,
             regions: Object.assign({}, ...regions.map((r) => ({ [r.code]: {} })))
           },
-          useAsDefault: images.length === 0
+          useAsDefault:
+            images.filter(
+              (i) => i.details.arch === ArchitectureType.ARM64 && i.useAsDefault === true
+            ).length === 0
         });
       }
 
