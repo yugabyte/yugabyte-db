@@ -568,14 +568,14 @@ SELECT helio_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$se
 
 -- -- Function that extracts date / timestamp value of a given key in a json obj, and returns the equivalent epoch in ms
 CREATE OR REPLACE FUNCTION get_epochms_from_key(obj json, qkey text, is_date bool)
-RETURNS numeric
+RETURNS bigint
 AS $$
 DECLARE
     k text;
     qarr text[];
-    epoch_seconds numeric;
-    nanoseconds_in_second numeric;
-    epoch_milliseconds numeric;
+    epoch_seconds bigint;
+    nanoseconds_in_second bigint;
+    epoch_milliseconds bigint;
     tmp bool;
 BEGIN
     SELECT string_to_array(qkey, '.') into qarr;    -- convert the nested keys in keys array (e.g. "a.b.c" to [a,b,c] )
@@ -598,7 +598,7 @@ BEGIN
         END IF;
         SELECT obj->'$timestamp'->>'t' into epoch_seconds;
         SELECT obj->'$timestamp'->>'i' into nanoseconds_in_second;
-        epoch_milliseconds := epoch_seconds * 1000 + ROUND(nanoseconds_in_second / (1000 * 1000));
+        epoch_milliseconds := (epoch_seconds * 1000) + ROUND(nanoseconds_in_second::float8 / (1000 * 1000));
     END IF;
 
     RETURN epoch_milliseconds;
@@ -612,35 +612,28 @@ RETURNS text
 AS $$
 DECLARE
     obj             json;
-    epoch_bgn       text;
-    epoch_end       text;
+    bgn_epoch       numeric;
+    end_epoch       numeric;
     qKey            text;
-    epoch_msec      numeric;
-    bgn_epoch_sec   numeric;
-    bgn_usec        numeric;
-    bgn_epoch_msec  numeric;
-    end_epoch_sec   numeric;
-    end_usec        numeric;
-    end_epoch_msec  numeric;
+    epoch_msec      bigint;
+    bgn_epoch_msec  bigint;
+    end_epoch_msec  bigint;
 BEGIN
-    SELECT extract(epoch from clock_timestamp()) into epoch_bgn;    -- get a time just before the $currentDate execution
+    SELECT extract(epoch from clock_timestamp()) into bgn_epoch;    -- get time just before the $currentDate execution. (e.g 1709721220.205436)
     SELECT newDocument FROM helio_api_internal.bson_update_document(doc, updateSpec, querySpec) into obj;
-    SELECT extract(epoch from clock_timestamp()) into epoch_end;    -- get a time just after the $currentDate execution
+    SELECT extract(epoch from clock_timestamp()) into end_epoch;    -- get time just after the $currentDate execution.
 
-    SELECT split_part(epoch_bgn, '.', 1)::numeric into bgn_epoch_sec;
-    SELECT split_part(epoch_bgn, '.', 2)::numeric into bgn_usec;
-    bgn_epoch_msec := bgn_epoch_sec * 1000 + ROUND(bgn_usec / 1000);
-
-    SELECT split_part(epoch_end, '.', 1)::numeric into end_epoch_sec;
-    SELECT split_part(epoch_end, '.', 2)::numeric into end_usec;
-    end_epoch_msec := end_epoch_sec * 1000 + ROUND(end_usec / 1000);
+    -- convert the epoch to milliseconds (e.g. 1709721220.205436 -> 1709721220205)
+    -- Also adjust begin and end epochs by 1 ms to eliminate any rounding error and reduce flakyness.
+    bgn_epoch_msec := FLOOR(bgn_epoch * 1000) - 1;
+    end_epoch_msec := CEIL(end_epoch * 1000) + 1;
 
     IF array_length(qDates, 1) != 0 THEN
         FOREACH qKey IN ARRAY qDates
         LOOP
             SELECT get_epochms_from_key(obj, qKey, true) into epoch_msec;
             IF epoch_msec NOT BETWEEN bgn_epoch_msec AND end_epoch_msec THEN
-                RETURN 'TEST FAILED : Stored Date for "' || qkey || '" may not be a valid value ' || epoch_msec;
+                RETURN 'TEST FAILED : Updated date "' || qkey || '" : ' || epoch_msec || ' should be between ' || bgn_epoch_msec || ' and ' || end_epoch_msec;
             END IF;
         END LOOP;
     END IF;
@@ -650,7 +643,7 @@ BEGIN
         LOOP
             SELECT get_epochms_from_key(obj, qKey, false) into epoch_msec;
             IF epoch_msec NOT BETWEEN bgn_epoch_msec AND end_epoch_msec THEN
-                RETURN 'TEST FAILED : Stored Timestamp for "' || qkey || '" may not be a valid value ' || epoch_msec;
+                RETURN 'TEST FAILED : Updated timestamp "' || qkey || '" : ' || epoch_msec || ' should be between ' || bgn_epoch_msec || ' and ' || end_epoch_msec;
             END IF;
         END LOOP;
     END IF;
