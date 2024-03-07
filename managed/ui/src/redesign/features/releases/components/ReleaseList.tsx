@@ -345,6 +345,7 @@ export const NewReleaseList = () => {
             value={value}
             onClick={(e: any) => {
               onActionClick(value, row);
+              e.stopPropagation();
             }}
           >
             {value}
@@ -364,6 +365,7 @@ export const NewReleaseList = () => {
           value={action}
           onClick={(e: any) => {
             onActionClick(action, row);
+            e.stopPropagation();
           }}
         >
           {action}
@@ -389,6 +391,7 @@ export const NewReleaseList = () => {
           value={value}
           onClick={(e: any) => {
             onActionClick(value, row);
+            e.stopPropagation();
           }}
         >
           {value}
@@ -401,7 +404,12 @@ export const NewReleaseList = () => {
 
   const formatActionButtons = (cell: any, row: any) => {
     return (
-      <DropdownButton title="Actions" id="release-list-actions" pullRight={false}>
+      <DropdownButton
+        title="Actions"
+        id="release-list-actions"
+        pullRight={false}
+        onClick={(e) => e.stopPropagation()}
+      >
         {getMenuItemsActions(row)}
       </DropdownButton>
     );
@@ -451,7 +459,7 @@ export const NewReleaseList = () => {
     setOpenSidePanel(false);
   };
 
-  const onRowDoubleClick = (row: any, event: any) => {
+  const onRowClick = (row: any, event: any) => {
     setSelectedReleaseDetails(row);
     setOpenSidePanel(true);
   };
@@ -597,7 +605,7 @@ export const NewReleaseList = () => {
               data={filteredReleaseList}
               pagination={true}
               options={{
-                onRowDoubleClick: onRowDoubleClick
+                onRowClick: onRowClick
               }}
             >
               <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
