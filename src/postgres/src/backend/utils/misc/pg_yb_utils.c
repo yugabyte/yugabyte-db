@@ -4521,11 +4521,10 @@ YbGetRedactedQueryString(const char* query, int query_len,
 }
 
 TimestampTz start,end;
-int64_t bundleQueryIds[100];
-int64_t bundleQueryIdptr = 0;
-bool debuggingBundle;
 bundlePgssPtr bundleptr;
 bundleExplainPtr explainptr;
+bundleSchemaPtr schemaptr;
+SharedStruct *sharedBundleStruct = NULL;
 HTAB *map = NULL;
 typedef struct {
     int64 key;
@@ -4593,35 +4592,146 @@ void remove_from_shared_hashtable(HTAB *htab, int64 key) {
 }
 
 
+char* getPath(int64_t queryid, const char* timeStr)
+{
+	char pwd[1024];
+	if(getcwd(pwd, 1024) == NULL)
+	{
+		FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
+		fprintf(fptr, "getcwd phata...\n" );
+		fclose(fptr);
+		return NULL;
+	}
+	if (chdir("..") == -1) {
+		perror("Error changing directory");
+		return NULL;
+	}
+	char dir[1024];
+	if(getcwd(dir, 1024) == NULL)
+	{
+		FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
+		fprintf(fptr, "getcwd phata...\n" );
+		fclose(fptr);
+		return NULL;
+	}
+	if (chdir(pwd) == -1) {
+		perror("Error changing back to original directory");
+		return NULL;
+	}	
+	//create folder with name of queryid in home directory using mkdir
+	strcat(dir, "/query-diagnostics");
+	if(mkdir(dir, 0777) == -1)
+	{
+		if(errno != EEXIST)
+		{
+			ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+			return NULL;
+		}
+	}
+	sprintf(dir, "%s/%lld",dir, queryid);
+	if(mkdir(dir, 0777) == -1)
+	{
+		if(errno != EEXIST)
+		{
+			ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+			return NULL;
+		}
+	}	
+	sprintf(dir, "%s/%s/", dir,timeStr);
+	if(mkdir(dir, 0777) == -1)
+	{
+		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
+		return NULL;
+	}
+	char* result = malloc(strlen(dir) + 1);
+	strcpy(result, dir);
+	return result;
+}
+
+
+const char *
+my_timestamptz_to_str(TimestampTz dt)
+{
+	static char buf[MAXDATELEN + 1];
+	char		ts[MAXDATELEN + 1];
+	// char		zone[MAXDATELEN + 1];
+	time_t		result = (time_t) timestamptz_to_time_t(dt);
+	struct tm  *ltime = localtime(&result);
+
+	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", ltime);
+	// strftime(zone, sizeof(zone), "%Z", ltime);
+
+	// snprintf(buf, sizeof(buf), "%s.%06d %s",
+			//  ts, (int) (dt % USECS_PER_SEC), zone);
+		
+	snprintf(buf, sizeof(buf), "%s", ts);
+
+	return buf;
+}
+
+
+void
+InitSharedStruct(void)
+{
+    bool found;
+
+    sharedBundleStruct = (SharedStruct *) ShmemInitStruct("Shared Bundle Struct",
+                                                    sizeof(SharedStruct),
+                                                    &found);
+    if (!found)
+    {
+        /* We're the first - initialize */
+        sharedBundleStruct->debuggingBundle = false;
+		sharedBundleStruct->totalBundleStarted = 0;
+        // memset(sharedBundleStruct->data, 0, sizeof(sharedBundleStruct->data));
+    }
+}
+
+
 Datum
 yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
 	//This function is mainly for setting variables.
+	//do we want this superuser thing?
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 (errmsg("only superusers can generate bundles"))));
 
-	debuggingBundle = true;
 	start = GetCurrentTimestamp();
+	const char* timeStr = my_timestamptz_to_str(start);
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
-	bundleQueryIds[bundleQueryIdptr++] = queryid;
 
+	//create shared variables struct
+	if(sharedBundleStruct == NULL)
+		InitSharedStruct();
+	sharedBundleStruct->debuggingBundle = true;
+	sharedBundleStruct->totalBundleStarted++;
 
-	//create hash table
+	//create shared hash table
 	if(map == NULL)
 		create_shared_hashtable();
 
+
+	//check if a bundle is already started for this queryid
+	MyValue* result = lookup_in_shared_hashtable(map, queryid);
+	if(result){
+		ereport(LOG, (errmsg("Cannot start the bundle for the queryid[ %lld ] as it is already running", queryid)));
+		PG_RETURN_BOOL(false);
+	}
+
+
 	//I am not handling the case when same queryid is called again.
-	MyValue value = {
-		"", 0,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,""
-	};
+	MyValue value = {"", 0,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,""};
 	
-
-
+	char *log_path_ptr = getPath(queryid,timeStr);
+	if(log_path_ptr == NULL) {
+		ereport(LOG, (errmsg("Error creating directory")));
+		PG_RETURN_BOOL(false);
+	}
+	strcpy(value.log_path,log_path_ptr);
 	value.start_time = start;
-	// value.log_path = dir;
 	insert_into_shared_hashtable(map, queryid, value);
 
     PG_RETURN_BOOL(true);
@@ -4640,13 +4750,20 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 	
 
+
+	if(map == NULL)
+		create_shared_hashtable();
+
+	if(sharedBundleStruct == NULL)
+		InitSharedStruct();
+
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(!result){
 		ereport(LOG, (errmsg("Bundle has not been started for this query id")));
 		PG_RETURN_BOOL(false);
 	}
 	
-	if(!debuggingBundle){
+	if(!sharedBundleStruct->debuggingBundle){
 		ereport(LOG, (errmsg("bundle did not start yet")));
 		PG_RETURN_BOOL(false);
 	}
@@ -4654,17 +4771,17 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 
 	end = GetCurrentTimestamp();
 	bundleptr(0,queryid,"-",0,0,NULL,0,0,result);
-	// dumpAshData(queryid ,result->start_time ,end);
+	dumpAshData(queryid ,result->start_time ,end,result->log_path);
 	explainptr(0,NULL,result);
-
-
+	schemaptr(0,NULL,result);
+	dumpFullAshData(result->start_time ,end,result->log_path);
 	//resetting the values
 	remove_from_shared_hashtable(map, queryid);
-	bundleQueryIdptr--;//remove this
+	sharedBundleStruct->totalBundleStarted--;
 	start =  INT64_MAX;
 	end = INT64_MIN;
-	if(bundleQueryIdptr == 0){
-		debuggingBundle = false;
+	if(sharedBundleStruct->totalBundleStarted == 0){
+		sharedBundleStruct->debuggingBundle = false;
 	}
 	PG_RETURN_BOOL(true);
 }
