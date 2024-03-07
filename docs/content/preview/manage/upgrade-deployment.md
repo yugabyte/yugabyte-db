@@ -265,15 +265,15 @@ xCluster replication requires the target cluster version to the same or later
  than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
-## Advanced user feature
-
-### Enabling Volatile AutoFlags during monitoring phase
+## Advanced - enable volatile AutoFlags during monitoring
 
 {{< warning title="Important" >}}
-The instructions in the previous section are sufficient for most users. The following instructions are for advanced users who want more coverage of new features during the monitoring phase. It involves a few more steps and can be error prone if not performed correctly.
+The instructions in the previous sections are sufficient for most users. The following instructions are for advanced users who want more coverage of new features during the monitoring phase. It involves a few more steps and can be error prone if not performed correctly.
 {{< /warning >}}
 
-The process described above keeps all new AutoFlags in the default non-promoted state during the monitoring phase. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. These features can be enabled during the monitoring phase to get the highest possible level of coverage of the incoming changes. In the case of a roll back, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
+During the standard Monitor phase, all new AutoFlags are kept in the default non-promoted state. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. However, for the highest possible level of coverage of the incoming changes, you can enable these features during the monitoring phase. In the case of a rollback, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
+
+During the Monitor phase, do the following:
 
 1. Enable the volatile AutoFlags after the upgrade phase has completed:
 
@@ -283,24 +283,30 @@ The process described above keeps all new AutoFlags in the default non-promoted 
         promote_auto_flags kLocalVolatile
     ```
 
-    Copy the output and store it in a safe place.
+1. Copy the output and store it in a safe place.
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
 
-1. In the case of a roll back, you need to *first roll back the AutoFlags that were promoted* before proceeding with the rollback phase.
+### Rollback
 
-    If the output of `promote_auto_flags kLocalVolatile` contained the following message then you can skip this step:
+If you need to roll back an upgrade where volatile AutoFlags were enabled, depending on the output of `promote_auto_flags`, you will need to *first roll back the AutoFlags that were promoted* before proceeding with the rollback phase.
+
+- If the output of `promote_auto_flags kLocalVolatile` contained the following message:
 
     ```output
     No new AutoFlags eligible to promote
     ```
 
-    However, if the output contained the following message, then get the config version from it and roll back the AutoFlags to the previous version:
+    You don't need to roll back the AutoFlags and you can proceed immediately with the regular rollback procedure.
+
+- If the output of `promote_auto_flags kLocalVolatile` contained the following message:
 
     ```output
     New AutoFlags were promoted
     New config version: <new_config_version>
     ```
+
+    Then you need to roll back the AutoFlags to the previous version as follows:
 
     ```sh
     ./bin/yb-admin \
@@ -308,7 +314,9 @@ The process described above keeps all new AutoFlags in the default non-promoted 
         rollback_auto_flags <previous_config_version>
     ```
 
-    **Example**
+    Where `previous_config_version` is `new_config_version` - 1.
+
+    For example, if the output is as follows:
 
     ```output
     PromoteAutoFlags completed successfully
@@ -316,14 +324,18 @@ The process described above keeps all new AutoFlags in the default non-promoted 
     New config version: 3
     ```
 
+    Enter the following command to roll back the flags:
+
     ```sh
     ./bin/yb-admin \
         -master_addresses ip1:7100,ip2:7100,ip3:7100 \
         rollback_auto_flags 2
+    ```
 
+    ```output
     RollbackAutoFlags completed successfully
     AutoFlags that were promoted after config version 2 were successfully rolled back
     New config version: 4
     ```
 
-1. In the case of finalize, no extra steps are required. Proceed with the finalize phase which will promote *all* the AutoFlags and upgrade the YSQL system catalog.
+For the Finalize phase, no extra steps are required. The Finalize phase will promote *all* the AutoFlags and upgrade the YSQL system catalog.
