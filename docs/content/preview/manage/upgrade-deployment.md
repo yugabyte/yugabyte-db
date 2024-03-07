@@ -256,7 +256,7 @@ xCluster replication requires the target cluster version to the same or later
 {{< /note >}}
 
 ## Advanced user feature
-### Enabling Volatile Flags during monitoring phase
+### Enabling Volatile AutoFlags during monitoring phase
 
 {{< warning title="Important" >}}
 The instructions in the previous section are sufficient for most users. The following instructions are for advanced users who want more coverage of new features during the monitoring phase. It involves a few more steps and can be error prone if not performed correctly.
