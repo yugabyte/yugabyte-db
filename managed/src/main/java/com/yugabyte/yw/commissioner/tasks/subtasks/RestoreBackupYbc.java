@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -268,32 +269,53 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (backupConfig == null) {
         return;
       }
-      // Restore universe DB version should be greater or equal to the backup universe DB current
-      // version or
-      // version to which it can rollback.
-      if (backupConfig.ybdbVersion != null
-          && Util.compareYbVersions(
-                  restoreUniverseDBVersion, backupConfig.ybdbVersion, true /*suppressFormatError*/)
-              < 0) {
-        if (backupConfig.rollbackYbdbVersion == null) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Unable to restore backup as it was taken on higher DB version.");
+      // Skip all DB version checks if the runtime flag "yb.skip_version_checks" is true. User must
+      // take care of downgrades and restores.
+      if (!confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
+        // Do the following DB version checks only if both the source universe version or target
+        // universe version are part of stable or preview. Restoring a backup can now only happen
+        // from stable to stable and preview to preview.
+        boolean isPreviousVersionStable = Util.isStableVersion(backupConfig.ybdbVersion, false);
+        boolean isCurrentVersionStable = Util.isStableVersion(restoreUniverseDBVersion, false);
+        // Skip version checks if runtime flag enabled. User must take care of downgrades
+        if (isPreviousVersionStable ^ isCurrentVersionStable) {
+          String msg =
+              String.format(
+                  "Cannot restore backup from preview to stable version or stable to preview. If"
+                      + " required, set runtime flag 'yb.skip_version_checks' to true. Tried to"
+                      + " restore a backup from '%s' to '%s'.",
+                  backupConfig.ybdbVersion, restoreUniverseDBVersion);
+          throw new PlatformServiceException(BAD_REQUEST, msg);
         }
-        if (backupConfig.rollbackYbdbVersion != null
+        // Restore universe DB version should be greater or equal to the backup universe DB
+        // current
+        // version or version to which it can rollback.
+        if (backupConfig.ybdbVersion != null
             && Util.compareYbVersions(
                     restoreUniverseDBVersion,
-                    backupConfig.rollbackYbdbVersion,
+                    backupConfig.ybdbVersion,
                     true /*suppressFormatError*/)
                 < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Unable to restore as the current universe is at an older DB version %s but the"
-                      + " backup was taken on a universe with DB version %s that can rollback only"
-                      + " to %s",
-                  restoreUniverseDBVersion,
-                  backupConfig.ybdbVersion,
-                  backupConfig.rollbackYbdbVersion));
+          if (backupConfig.rollbackYbdbVersion == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Unable to restore backup as it was taken on higher DB version.");
+          }
+          if (backupConfig.rollbackYbdbVersion != null
+              && Util.compareYbVersions(
+                      restoreUniverseDBVersion,
+                      backupConfig.rollbackYbdbVersion,
+                      true /*suppressFormatError*/)
+                  < 0) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Unable to restore as the current universe is at an older DB version %s but"
+                        + " the backup was taken on a universe with DB version %s that can"
+                        + " rollback only to %s",
+                    restoreUniverseDBVersion,
+                    backupConfig.ybdbVersion,
+                    backupConfig.rollbackYbdbVersion));
+          }
         }
       }
       // Validate that all master and tserver auto flags present during backup
