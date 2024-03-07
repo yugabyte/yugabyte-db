@@ -101,7 +101,6 @@ set(SERVER_PROCESS_SRCS
   webserver_options.cc
   webui_util.cc
   random_error_clock.cc
-  secure.cc
 )
 
 add_library(server_process ${SERVER_PROCESS_SRCS})

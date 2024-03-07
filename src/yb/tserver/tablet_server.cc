@@ -67,7 +67,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/rpc_server.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
 
@@ -206,7 +206,6 @@ DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
-DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
 DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
@@ -462,7 +461,8 @@ Status TabletServer::Init() {
     encryption::UniverseKeyRegistryPB universe_key_registry;
     while (true) {
       auto res = client::UniverseKeyClient::GetFullUniverseKeyRegistry(
-          options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager());
+          options_.HostsString(), JoinStrings(master_addresses, ","),
+          fs_manager()->GetDefaultRootDir());
       if (res.ok()) {
         universe_key_registry = *res;
         break;
@@ -1173,8 +1173,8 @@ void TabletServer::InvalidatePgTableCache() {
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
@@ -1326,10 +1326,8 @@ Status TabletServer::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(),
-      fs_manager_->GetDefaultRootDir(),
-      server::SecureContextType::kInternal,
+  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
       options_.HostsString()));
 
   std::lock_guard l(xcluster_consumer_mutex_);

@@ -70,7 +70,7 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/rpc_server.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/hybrid_clock.h"
 
 
@@ -103,7 +103,6 @@ DEFINE_NON_RUNTIME_int32(master_backup_svc_queue_length, 50,
              "RPC queue length for master backup service");
 TAG_FLAG(master_backup_svc_queue_length, advanced);
 
-DECLARE_string(cert_node_filename);
 DECLARE_bool(master_join_existing_universe);
 
 METRIC_DEFINE_entity(cluster);
@@ -685,8 +684,8 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
-  secure_context_ = VERIFY_RESULT(
-      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+  secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
+      options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
@@ -696,11 +695,9 @@ Status Master::ReloadKeysAndCertificates() {
     return Status::OK();
   }
 
-  return server::ReloadSecureContextKeysAndCertificates(
-        secure_context_.get(),
-        fs_manager_->GetDefaultRootDir(),
-        server::SecureContextType::kInternal,
-        options_.HostsString());
+  return rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+      options_.HostsString());
 }
 
 std::string Master::GetCertificateDetails() {
