@@ -8,7 +8,6 @@ diff <(find . -name '*.sh' | grep -v '^./test_' | sort) - <<EOT
 ./common.sh
 ./get_flaky_test_specs.sh
 ./get_shell_test_specs.sh
-./run_test_n_times.sh
 ./run_tests.sh
 EOT
 

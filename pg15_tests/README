@@ -4,10 +4,6 @@ Run individual tests like
 
     pg15_tests/test_D29226.sh
 
-Run a test n times like
-
-    pg15_tests/run_test_n_times.sh pg15_tests/test_D29226.sh 10
-
 Run all tests once like
 
     pg15_tests/run_tests.sh
@@ -23,6 +19,8 @@ of the form <program><tab><descriptor>[<tab><flaky>]:
     pg15_tests/get_shell_test_specs.sh | pg15_tests/run_tests.sh
     # Run the first flaky test:
     pg15_tests/get_flaky_test_specs.sh | head -1 | pg15_tests/run_tests.sh
+    # Run the first flaky test n times:
+    for _ in {1..10}; do pg15_tests/get_flaky_test_specs.sh | head -1; done | pg15_tests/run_tests.sh
     # Run any tests that historically failed:
     grep -v '^0' build/latest/pg15_test/results.tsv | cut -f 3,4,5 | pg15_tests/run_tests.sh
     # Same thing but deduplicated:
