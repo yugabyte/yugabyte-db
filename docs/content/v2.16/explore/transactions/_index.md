@@ -22,12 +22,6 @@ The following table summarizes the support for transactions across the YSQL and 
 | [Isolation levels](isolation-levels/) | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
 | Set `AUTOCOMMIT = false` | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
-<!--
-| [Explicit locking](explicit-locking/) | Yes | No | Ability to perform row- and table-level locking |
-| [DDL statements](ddl-operations/) | Transaction per DDL statement  | Transaction per DDL statement | Each DDL statement is a transaction in both YSQL and YCQL, even if other DDL statements are in a transaction block in YSQL. |
-| [Non-transactional tables](non-transactional-tables/) | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
--->
-
 The various features are explained in the following sections.
 
 <div class="row">

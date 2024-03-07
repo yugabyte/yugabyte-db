@@ -15,9 +15,10 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus_types.pb.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/status.h"
 
 namespace yb {

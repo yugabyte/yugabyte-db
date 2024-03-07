@@ -107,6 +107,11 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * Guc variable that enables replication slot consumption.
+ */
+extern bool yb_enable_replication_slot_consumption;
+
+/*
  * GUC variable that enables ALTER TABLE rewrite operations.
  */
 extern bool yb_enable_alter_table_rewrite;
@@ -124,6 +129,7 @@ extern bool yb_enable_alter_table_rewrite;
 extern int yb_xcluster_consistency_level;
 
 extern uint64_t yb_read_time;
+extern bool yb_is_read_time_ht;
 /*
  * Allows for customizing the number of rows to be prefetched.
  */
@@ -139,6 +145,11 @@ extern int yb_locks_min_txn_age;
  * GUC flag: Maximum number of transactions to return results for in yb_lock_status().
  */
 extern int yb_locks_max_transactions;
+
+/*
+ * GUC flag: Maximum number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
 
 #ifdef __cplusplus
 } // extern "C"

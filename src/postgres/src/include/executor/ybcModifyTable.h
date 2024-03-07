@@ -61,12 +61,8 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
                          HeapTuple tuple,
+                         YBCPgStatement blockInsertStmt,
                          EState *estate);
-extern Oid YBCHeapInsertForDb(Oid dboid,
-                              TupleTableSlot *slot,
-                              HeapTuple tuple,
-                              EState *estate,
-                              Datum *ybctid);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
@@ -87,6 +83,8 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  OnConflictAction onConflictAction,
                                  Datum *ybctid,
                                  YBCPgTransactionSetting transaction_setting);
+
+extern void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation);
 
 /*
  * Execute the insert outside of a transaction.

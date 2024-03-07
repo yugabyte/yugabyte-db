@@ -5836,8 +5836,8 @@ PostgresMain(int argc, char *argv[],
 					// HARD Code connection type between client and ysql_conn_mgr to AF_INET (only supported)
 					// for authentication
 					MyProcPort->raddr.addr.ss_family = AF_INET;
-					// TODO(mkumar) GH #20097 Add support for connection type hostssl/hostnossl
-					// in  ysql conn mgr
+					MyProcPort->yb_is_ssl_enabled_in_logical_conn = 
+						pq_getmsgbyte(&input_message) == 'E' ? true : false;
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -5854,6 +5854,7 @@ PostgresMain(int argc, char *argv[],
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;

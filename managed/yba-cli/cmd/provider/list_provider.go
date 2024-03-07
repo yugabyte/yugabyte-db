@@ -31,7 +31,7 @@ var listProviderCmd = &cobra.Command{
 		authAPI.GetCustomerUUID()
 		providerListRequest := authAPI.GetListOfProviders()
 		// filter by name and/or by provider code
-		providerName, err := cmd.Flags().GetString("name")
+		providerName, err := cmd.Flags().GetString("provider-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -41,7 +41,7 @@ var listProviderCmd = &cobra.Command{
 
 		var r []ybaclient.Provider
 		var response *http.Response
-		providerCode, err := cmd.Flags().GetString("code")
+		providerCode, err := cmd.Flags().GetString("provider-code")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -81,8 +81,8 @@ var listProviderCmd = &cobra.Command{
 func init() {
 	listProviderCmd.Flags().SortFlags = false
 
-	listProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
-	listProviderCmd.Flags().StringP("code", "c", "",
+	listProviderCmd.Flags().StringP("provider-name", "n", "", "[Optional] Name of the provider.")
+	listProviderCmd.Flags().StringP("provider-code", "c", "",
 		"[Optional] Code of the provider, defaults to list all providers. "+
 			"Allowed values: aws, gcp, azu, onprem, kubernetes.")
 }

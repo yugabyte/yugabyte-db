@@ -20,6 +20,8 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -29,6 +31,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.ha.PlatformInstanceClient;
+import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -41,12 +45,24 @@ import java.util.function.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
+import play.inject.Bindings;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
 public class PlatformInstanceControllerTest extends FakeDBApplication {
   Customer customer;
   Users user;
+  private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
+      mock(PlatformInstanceClientFactory.class);
+
+  @Override
+  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
+    return super.configureApplication(
+        builder.overrides(
+            Bindings.bind(PlatformInstanceClientFactory.class)
+                .toInstance(mockPlatformInstanceClientFactory)));
+  }
 
   @Before
   public void setup() {
@@ -144,10 +160,32 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreatePlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
     createResult = createPlatformInstance(configUUID, "http://abcdef.com/", false, false);
     assertOk(createResult);
+  }
+
+  @Test
+  public void testCreateRemotePlatformInstanceNoConnection() {
+    JsonNode haConfigJson = createHAConfig();
+    UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
+    assertOk(createResult);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(false);
+    createResult =
+        assertPlatformException(
+            () -> createPlatformInstance(configUUID, "http://abcdef.com/", false, false));
+    assertBadRequest(
+        createResult, "Standby YBA instance is unreachable or hasn't been configured yet");
   }
 
   @Test
@@ -191,6 +229,10 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testDeleteRemotePlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
     createResult = createPlatformInstance(configUUID, "http://abcdef.com/", false, false);
@@ -302,6 +344,10 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
 
     when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
         .thenReturn(new ShellResponse());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
 
     PlatformReplicationManager platformReplicationManager =
         app.injector().instanceOf(PlatformReplicationManager.class);

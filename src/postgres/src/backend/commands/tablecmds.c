@@ -209,6 +209,8 @@ typedef struct AlteredTableInfo
 	List	   *changedConstraintDefs;	/* string definitions of same */
 	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
 	List	   *changedIndexDefs;	/* string definitions of same */
+	bool		yb_skip_copy_split_options;
+	/* true if we need to skip copying split options during table rewrite */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -430,7 +432,7 @@ static ObjectAddress ATExecDropColumn(List **wqueue, Relation rel, const char *c
 				 DropBehavior behavior,
 				 bool recurse, bool recursing,
 				 bool missing_ok, LOCKMODE lockmode);
-static ObjectAddress ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
+static ObjectAddress ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			   IndexStmt *stmt, bool is_rebuild, LOCKMODE lockmode);
 static ObjectAddress ATExecAddConstraint(List **wqueue,
 					AlteredTableInfo *tab, Relation rel,
@@ -449,7 +451,7 @@ static ObjectAddress ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *
 						  LOCKMODE lockmode);
 static void CloneFkReferencing(Relation pg_constraint, Relation parentRel,
 				   Relation partRel, List *clone, List **cloned);
-static void ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
+static void ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,  Relation *mutable_rel,
 					 const char *constrName, DropBehavior behavior,
 					 bool recurse, bool recursing,
 					 bool missing_ok, LOCKMODE lockmode);
@@ -543,7 +545,11 @@ static Relation YbATCloneRelationSetColumnType(Relation old_rel,
 											   Oid altered_collation_id,
 											   TypeName *altered_type_name,
 											   List *new_column_values);
-
+static bool YbATIsRangePk(IndexStmt *stmt,
+						  bool is_colocated, bool is_tablegroup);
+static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
+											AlteredTableInfo *tab,
+											bool skip_copy_split_options);
 /* ----------------------------------------------------------------
  *		DefineRelation
  *				Creates a new relation.
@@ -4535,11 +4541,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 									   cmd->missing_ok, lockmode);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
-			address = ATExecAddIndex(tab, mutable_rel, (IndexStmt *) cmd->def, false,
+			address = ATExecAddIndex(wqueue, tab, mutable_rel,
+									 (IndexStmt *) cmd->def, false,
 									 lockmode);
 			break;
 		case AT_ReAddIndex:		/* ADD INDEX */
-			address = ATExecAddIndex(tab, mutable_rel, (IndexStmt *) cmd->def, true,
+			address = ATExecAddIndex(wqueue, tab, mutable_rel, (IndexStmt *) cmd->def, true,
 									 lockmode);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
@@ -4584,12 +4591,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 											   lockmode);
 			break;
 		case AT_DropConstraint: /* DROP CONSTRAINT */
-			ATExecDropConstraint(tab, mutable_rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(wqueue, tab, mutable_rel, cmd->name, cmd->behavior,
 								 false, false,
 								 cmd->missing_ok, lockmode);
 			break;
 		case AT_DropConstraintRecurse:	/* DROP CONSTRAINT with recursion */
-			ATExecDropConstraint(tab, mutable_rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(wqueue, tab, mutable_rel, cmd->name, cmd->behavior,
 								 true, false,
 								 cmd->missing_ok, lockmode);
 			break;
@@ -4949,7 +4956,26 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 			 */
 			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, persistence,
 									   lockmode,
-									   true /* yb_copy_split_options */);
+									   !tab->yb_skip_copy_split_options
+									   /* yb_copy_split_options */);
+
+			if (IsYBRelation(OldHeap))
+			{
+				/*
+				 * Increment the schema version for the old DocDB table so that
+				 * we abort any concurrent writes that happen during the
+				 * table rewrite.
+				 */
+				YBCPgStatement alter_cmd_handle = NULL;
+				HandleYBStatus(
+					YBCPgNewAlterTable(
+						YBCGetDatabaseOidByRelid(tab->relid),
+						YbGetRelfileNodeId(OldHeap),
+						&alter_cmd_handle));
+				HandleYBStatus(
+					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				YBCExecAlterTable(alter_cmd_handle, tab->relid);
+			}
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -5320,7 +5346,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 								 * for CHECK constraint.
 								 */
 								Relation oldrel_prev PG_USED_FOR_ASSERTS_ONLY = oldrel;
-								ATExecDropConstraint(tab, &oldrel, con->name, DROP_RESTRICT, true,
+								ATExecDropConstraint(NULL, tab, &oldrel, con->name, DROP_RESTRICT, true,
 													 false, false, lockmode);
 								Assert(oldrel == oldrel_prev);
 							}
@@ -7501,7 +7527,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
  * YB NOTE: Will replace passed relation with another one in case it was re-created.
  */
 static ObjectAddress
-ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
+ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			   IndexStmt *stmt, bool is_rebuild, LOCKMODE lockmode)
 {
 	bool		check_rights;
@@ -7539,14 +7565,45 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
-	if (IsYBRelation(*mutable_rel) && stmt->primary && !skip_build)
+	if (IsYBRelation(*mutable_rel) && stmt->primary)
 	{
-		/* Table will be re-created, along with the dummy PK index. */
-		*mutable_rel =
-			YbATCloneRelationSetPrimaryKey(*mutable_rel, stmt, &address);
-
-		/* Update the table relid so that further passes will operate on the new table. */
-		tab->relid = (*mutable_rel)->rd_id;
+		/*
+		 * Use old rewrite approach for ADD/DROP PRIMARY KEY if
+		 * yb_enable_alter_table_rewrite is false.
+		 */
+		if (!skip_build && !yb_enable_alter_table_rewrite)
+		{
+			/* Table will be re-created, along with the dummy PK index. */
+			*mutable_rel =
+				YbATCloneRelationSetPrimaryKey(*mutable_rel, stmt, &address);
+			/*
+			 * Update the table relid so that further passes will operate on
+			 * the new table.
+			 */
+			tab->relid = (*mutable_rel)->rd_id;
+		}
+		else
+		{
+			YbGetTableProperties(*mutable_rel);
+			/* Don't copy split options if we are creating a range key. */
+			bool skip_copy_split_options = YbATIsRangePk(stmt,
+				(*mutable_rel)->yb_table_properties->is_colocated, OidIsValid(
+					(*mutable_rel)->yb_table_properties->tablegroup_oid));
+			if (!skip_build)
+			{
+				/*
+				 * In YB, the ADD/DROP primary key operation involves a table
+				 * rewrite. So if this is partitioned table, we need to add
+				 * its children to the work queue as well.
+				 */
+				if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+					YbATSetPKRewriteChildPartitions(yb_wqueue,
+						tab, skip_copy_split_options);
+				tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+			}
+			tab->yb_skip_copy_split_options = tab->yb_skip_copy_split_options
+				|| skip_copy_split_options;
+		}
 	}
 
 	/*
@@ -9948,7 +10005,8 @@ createForeignKeyTriggers(Relation rel, Oid refRelOid, Constraint *fkconstraint,
  * Like DROP COLUMN, we can't use the normal ALTER TABLE recursion mechanism.
  */
 static void
-ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
+ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
+					 Relation *mutable_rel,
 					 const char *constrName, DropBehavior behavior,
 					 bool recurse, bool recursing,
 					 bool missing_ok, LOCKMODE lockmode)
@@ -10058,13 +10116,31 @@ ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
 
 	if (IsYBRelation(*mutable_rel) && contype == CONSTRAINT_PRIMARY)
 	{
-		/* Table will be re-created without a dummy PK index. */
-		*mutable_rel = YbATCloneRelationSetPrimaryKey(
-			*mutable_rel, NULL /* stmt */, NULL /* result */);
+		if (!yb_enable_alter_table_rewrite)
+		{
+			/* Table will be re-created without a dummy PK index. */
+			*mutable_rel = YbATCloneRelationSetPrimaryKey(
+				*mutable_rel, NULL /* stmt */, NULL /* result */);
 
-		/* Update the table relid so that further passes will operate on the new table. */
-		if (tab)
-			tab->relid = RelationGetRelid(*mutable_rel);
+			/*
+			 * Update the table relid so that further passes will operate on
+			 * the new table.
+			 */
+			if (tab)
+				tab->relid = RelationGetRelid(*mutable_rel);
+		}
+		else
+		{
+			/*
+			 * In YB, the ADD/DROP primary key operation involves a table
+			 * rewrite. So if this is partitioned table, we need to add
+			 * its children to the work queue as well.
+			 */
+			if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+				YbATSetPKRewriteChildPartitions(yb_wqueue,
+					tab, false /* skip_copy_split_options */);
+			tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+		}
 	}
 
 	/*
@@ -10160,7 +10236,7 @@ ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
 				 * YB note:
 				 * We don't want to update AlteredTableInfo for child constraints.
 				 */
-				ATExecDropConstraint(NULL /* tab */, &childrel, constrName,
+				ATExecDropConstraint(NULL /* yb_wqueue */, NULL /* tab */, &childrel, constrName,
 									 behavior, true, true,
 									 false, lockmode);
 			}
@@ -18864,4 +18940,31 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 	YbATDropTable(namespace_name, temp_old_table_name);
 
 	return new_rel;
+}
+
+/*
+ * Used in YB during the ADD/DROP primary key operation to add the children of
+ * a partitioned table to the ALTER TABLE work queue.
+ * The children will be rewritten in Phase 3 (ATRewriteTables).
+ */
+static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
+											AlteredTableInfo *tab,
+											bool skip_copy_split_options)
+{
+	Assert(yb_wqueue);
+	List *children = find_all_inheritors(tab->relid, NoLock, NULL);
+	ListCell *child;
+	foreach(child, children)
+	{
+		Oid			childrelid = lfirst_oid(child);
+		Relation	partition = heap_open(childrelid, NoLock);
+		AlteredTableInfo *childtab;
+		/* Find or create work queue entry for this partition */
+		childtab = ATGetQueueEntry(yb_wqueue, partition);
+		childtab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+		heap_close(partition, NoLock);
+		childtab->yb_skip_copy_split_options =
+			childtab->yb_skip_copy_split_options
+			|| skip_copy_split_options;
+	}
 }

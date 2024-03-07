@@ -77,6 +77,13 @@ public class PlatformInstanceController extends AuthenticatedController {
       // Cannot create multiple leader platform instances.
     } else if (formData.get().is_leader && config.get().isLocalLeader()) {
       throw new PlatformServiceException(BAD_REQUEST, "Leader platform instance already exists");
+    } else if (!formData.get().is_local
+        && !replicationManager.testConnection(
+            config.get(),
+            formData.get().getCleanAddress(),
+            config.get().getAcceptAnyCertificate())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Standby YBA instance is unreachable or hasn't been configured yet");
     }
 
     PlatformInstance instance =
@@ -90,6 +97,10 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instance.getIsLeader()) {
       config.get().updateLastFailover();
     }
+
+    // Sync instances immediately after being added
+    replicationManager.oneOffSync();
+
     auditService()
         .createAuditEntry(
             request,
@@ -235,6 +246,19 @@ public class PlatformInstanceController extends AuthenticatedController {
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);
+
+    // Background thread to restart YBA
+    Thread shutdownThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(5000);
+                System.exit(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during restart.");
+              }
+            });
+    shutdownThread.start();
     return ok();
   }
 }

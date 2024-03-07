@@ -69,7 +69,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
 
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();

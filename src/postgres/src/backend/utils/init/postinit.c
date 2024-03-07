@@ -587,7 +587,7 @@ BaseInit(void)
  * already have a PGPROC struct ... but it's not completely filled in yet.
  *
  * YB extension: session_id. If greater than zero, connect local YbSession
- * to existing YbClientSession instance in TServer, rather than requesting new.
+ * to existing YBClientSession instance in TServer, rather than requesting new.
  * Helpful to initialize background worker backends that need to share state.
  *
  * Note:
@@ -704,7 +704,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * constant throughout the session. We don't want to do this during
 	 * bootstrap because it won't have client address anyway.
 	 */
-	if (IsYugaByteEnabled() && YBEnableAsh() && !bootstrap)
+	if (IsYugaByteEnabled() && yb_ash_enable_infra && !bootstrap)
 		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)

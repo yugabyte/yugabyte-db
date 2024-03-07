@@ -39,6 +39,7 @@ namespace yb {
 namespace master {
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterAdminService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeMasterBackupService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterClientService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterClusterService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterDclService(Master* master);

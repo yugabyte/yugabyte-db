@@ -183,9 +183,9 @@ DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres us
 
 DECLARE_int32(num_concurrent_backfills_allowed);
 
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+constexpr int kTServerYBClientDefaultTimeoutMs = 60 * 1000;
 
-DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYBClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
@@ -912,6 +912,24 @@ void TabletServer::SetYsqlDBCatalogVersions(
       std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1})));
+    if (ysql_db_catalog_version_map_.size() > 1) {
+      if (!catalog_version_table_in_perdb_mode_.has_value() ||
+          !catalog_version_table_in_perdb_mode_.value()) {
+        LOG(INFO) << "set pg_yb_catalog_version table in perdb mode";
+        catalog_version_table_in_perdb_mode_ = true;
+        shared_object().SetCatalogVersionTableInPerdbMode(true);
+      }
+    } else {
+      DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
+      if (!catalog_version_table_in_perdb_mode_.has_value()) {
+        // We can initialize to false at most one time. Once set,
+        // catalog_version_table_in_perdb_mode_ can only go from false to
+        // true (i.e., from global mode to perdb mode).
+        LOG(INFO) << "set pg_yb_catalog_version table in global mode";
+        catalog_version_table_in_perdb_mode_ = false;
+        shared_object().SetCatalogVersionTableInPerdbMode(false);
+      }
+    }
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;
@@ -1354,15 +1372,18 @@ void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
   cql_server_.store(server);
 }
 
-rpc::Messenger* TabletServer::GetMessenger(ServerType server_type) const {
-  switch (server_type) {
-    case ServerType::TServer:
+rpc::Messenger* TabletServer::GetMessenger(ash::Component component) const {
+  switch (component) {
+    case ash::Component::kYSQL:
+    case ash::Component::kMaster:
+      return nullptr;
+    case ash::Component::kTServer:
       return messenger();
-    case ServerType::CQLServer:
+    case ash::Component::kYCQL:
       auto cql_server = cql_server_.load();
       return (cql_server ? cql_server->messenger() : nullptr);
   }
-  FATAL_INVALID_ENUM_VALUE(ServerType, server_type);
+  FATAL_INVALID_ENUM_VALUE(ash::Component, component);
 }
 
 }  // namespace yb::tserver

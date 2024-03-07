@@ -825,7 +825,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				wait_event = pgstat_get_wait_event(raw_wait_event);
 
 			}
-			else if (beentry->st_backendType != B_BACKEND)
+			else if (beentry->st_backendType != B_BACKEND &&
+					 beentry->st_backendType != YB_YSQL_CONN_MGR)
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from

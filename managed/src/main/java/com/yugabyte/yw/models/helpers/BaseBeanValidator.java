@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.BeanValidator.ErrorMessageBuilder;
 import javax.inject.Inject;
-import org.apache.commons.lang3.StringUtils;
 
 public abstract class BaseBeanValidator {
   protected final BeanValidator beanValidator;
@@ -16,32 +16,28 @@ public abstract class BaseBeanValidator {
     this.beanValidator = beanValidator;
   }
 
-  protected void throwBeanValidatorError(String fieldName, String exceptionMsg) {
-    beanValidator.error().forField(fieldFullName(fieldName), exceptionMsg).throwError();
+  protected void throwBeanValidatorError(
+      String fieldName, String exceptionMsg, JsonNode requestJson) {
+    beanValidator.error().forRequest(requestJson).forField(fieldName, exceptionMsg).throwError();
   }
 
   protected void throwBeanValidatorError(
-      String fieldName, String exceptionMsg, String errorSource) {
+      String fieldName, String exceptionMsg, String errorSource, JsonNode requestJson) {
     beanValidator
         .error()
-        .forField(fieldFullName(fieldName), exceptionMsg)
+        .forRequest(requestJson)
+        .forField(fieldName, exceptionMsg)
         .forField("errorSource", errorSource)
         .throwError();
   }
 
   protected void throwMultipleBeanValidatorError(
-      SetMultimap<String, String> errorsMap, String errorSource) {
+      SetMultimap<String, String> errorsMap, String errorSource, JsonNode requestJson) {
     ErrorMessageBuilder builder = beanValidator.error().forField("errorSource", errorSource);
+    builder.forRequest(requestJson);
     for (String errorField : errorsMap.keySet()) {
-      builder.forField(fieldFullName(errorField), String.join(", ", errorsMap.get(errorField)));
+      builder.forField(errorField, errorsMap.get(errorField));
     }
     builder.throwError();
-  }
-
-  public static String fieldFullName(String fieldName) {
-    if (StringUtils.isEmpty(fieldName)) {
-      return "data";
-    }
-    return "data." + fieldName;
   }
 }

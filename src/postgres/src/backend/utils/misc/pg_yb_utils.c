@@ -328,10 +328,12 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 	int            natts         = RelationGetNumberOfAttributes(rel);
 	Bitmapset      *pkey         = NULL;
 	YBCPgTableDesc ybc_tabledesc = NULL;
+	MemoryContext  oldctx;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
 	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel),
 		&ybc_tabledesc));
+	oldctx = MemoryContextSwitchTo(CacheMemoryContext);
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -352,21 +354,30 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 		}
 	}
 
+	MemoryContextSwitchTo(oldctx);
 	return pkey;
 }
 
 Bitmapset *YBGetTablePrimaryKeyBms(Relation rel)
 {
-	return GetTablePrimaryKeyBms(rel,
-								 YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
-								 false /* includeYBSystemColumns */);
+	if (!rel->primary_key_bms) {
+		rel->primary_key_bms = GetTablePrimaryKeyBms(
+			rel,
+			YBGetFirstLowInvalidAttributeNumber(rel) /* minattr */,
+			false /* includeYBSystemColumns */);
+	}
+	return rel->primary_key_bms;
 }
 
 Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 {
-	return GetTablePrimaryKeyBms(rel,
-								 YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
-								 true /* includeYBSystemColumns */);
+	if (!rel->full_primary_key_bms) {
+		rel->full_primary_key_bms = GetTablePrimaryKeyBms(
+			rel,
+			YBSystemFirstLowInvalidAttributeNumber + 1 /* minattr */,
+			true /* includeYBSystemColumns */);
+	}
+	return rel->full_primary_key_bms;
 }
 
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
@@ -507,16 +518,9 @@ bool
 YBIsDBCatalogVersionMode()
 {
 	static bool cached_is_db_catalog_version_mode = false;
-	static int cached_gflag = -1;
 
 	if (cached_is_db_catalog_version_mode)
 		return true;
-
-	if (cached_gflag == -1)
-	{
-		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_ysql_enable_db_catalog_version_mode", false);
-	}
 
 	/*
 	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
@@ -524,7 +528,7 @@ YBIsDBCatalogVersionMode()
 	 */
 	if (!IsYugaByteEnabled() ||
 		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
-		!cached_gflag)
+		!*YBCGetGFlags()->ysql_enable_db_catalog_version_mode)
 		return false;
 
 	/*
@@ -631,6 +635,9 @@ YBCanEnableDBCatalogVersionMode()
 	if (YBCIsSysTablePrefetchingStarted())
 		return false;
 
+	if (yb_test_stay_in_global_catalog_version_mode)
+		return false;
+
 	/*
 	 * We assume that the table pg_yb_catalog_version has either exactly
 	 * one row in global catalog version mode, or one row per database in
@@ -639,7 +646,7 @@ YBCanEnableDBCatalogVersionMode()
 	 * upgrade, the pg_yb_catalog_version is transactionally updated
 	 * to have one row per database.
 	 */
-	return (YbGetNumberOfDatabases() > 1);
+	return YbCatalogVersionTableInPerdbMode();
 }
 
 /*
@@ -766,6 +773,20 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 }
 
 void
+HandleYBStatusWithCustomErrorForNotFound(YBCStatus status,
+										 const char *message_for_not_found)
+{
+	bool		not_found = false;
+
+	HandleYBStatusIgnoreNotFound(status, &not_found);
+
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("%s", message_for_not_found)));
+}
+
+void
 HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 {
 	if (!status)
@@ -836,10 +857,13 @@ YBInitPostgresBackend(
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
-		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
-					  &MyProc->yb_is_ash_metadata_set);
+		YBCPgAshConfig ash_config;
+		ash_config.metadata = &MyProc->yb_ash_metadata;
+		ash_config.is_metadata_set = &MyProc->yb_is_ash_metadata_set;
+		ash_config.yb_enable_ash = &yb_enable_ash;
+		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
 		YBCInstallTxnDdlHook();
-		if (YBEnableAsh())
+		if (yb_ash_enable_infra)
 			YbAshInstallHooks();
 
 		/*
@@ -859,7 +883,7 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
-		if (YBEnableAsh())
+		if (yb_ash_enable_infra)
 			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
@@ -1290,6 +1314,7 @@ bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool yb_prefer_bnl = false;
 bool yb_explain_hide_non_deterministic_fields = false;
+bool yb_enable_saop_pushdown = true;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1311,6 +1336,10 @@ char *yb_test_block_index_phase = "";
 char *yb_test_fail_index_state_change = "";
 
 bool yb_test_fail_table_rewrite_after_creation = false;
+
+bool yb_test_stay_in_global_catalog_version_mode = false;
+
+bool yb_test_table_rewrite_keep_old_table = false;
 
 bool ddl_rollback_enabled = false;
 
@@ -3719,18 +3748,92 @@ void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 }
 
 bool
+parse_yb_read_time(const char *value, unsigned long long *result, bool* is_ht_unit)
+{
+	unsigned long long	val;
+	char	           *endptr;
+
+	if (is_ht_unit)
+	{
+		*is_ht_unit = false;
+	}
+
+	/* To suppress compiler warnings, always set output params */
+	if (result)
+		*result = 0;
+
+	errno = 0;
+	val = strtoull(value, &endptr, 0);
+
+	if (endptr == value || errno == ERANGE)
+		return false;
+
+	/* allow whitespace between integer and unit */
+	while (isspace((unsigned char) *endptr))
+		endptr++;
+
+	/* Handle possible unit */
+	if (*endptr != '\0')
+	{
+		char		unit[2 + 1];
+		int			unitlen;
+		bool		converted = false;
+
+		unitlen = 0;
+		while (*endptr != '\0' && !isspace((unsigned char) *endptr) &&
+			   unitlen < 2)
+			unit[unitlen++] = *(endptr++);
+		unit[unitlen] = '\0';
+		/* allow whitespace after unit */
+		while (isspace((unsigned char) *endptr))
+			endptr++;
+
+		if (*endptr == '\0')
+			converted = (strcmp(unit, "ht") == 0);
+		if (!converted)
+			return false;
+		else if (is_ht_unit)
+			*is_ht_unit = true;
+	}
+
+	if (result)
+		*result = val;
+	return true;
+}
+
+bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
 	/* Read time should be convertable to unsigned long long */
-	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
-	char read_time_string[23];
-	sprintf(read_time_string, "%llu", read_time_ull);
-	if (strcmp(*newval, read_time_string))
+	unsigned long long read_time_ull;
+	unsigned long long value_ull;
+	bool is_ht_unit;
+	if(!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
 	{
-		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
-							" i.e. 1694673026673528");
 		return false;
 	}
+
+	if (is_ht_unit)
+	{
+		/*
+		 * Right shift by 12 bits to get physical time in micros from HybridTime
+		 * See src/yb/common/hybrid_time.h (GetPhysicalValueMicros)
+		 */
+		read_time_ull = value_ull >> 12;
+	}
+	else
+	{
+		read_time_ull = value_ull;
+		char read_time_string[23];
+		sprintf(read_time_string, "%llu", read_time_ull);
+		if (strcmp(*newval, read_time_string))
+		{
+			GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+								" i.e. 1694673026673528");
+			return false;
+		}
+	}
+
 	/* Read time should not be set to a timestamp in the future */
 	struct timeval now_tv;
 	gettimeofday(&now_tv, NULL);
@@ -3746,7 +3849,11 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 void
 assign_yb_read_time(const char* newval, void *extra)
 {
-	yb_read_time = strtoull(newval, NULL, 0);
+	unsigned long long value_ull;
+	bool is_ht_unit;
+	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+	yb_read_time = value_ull;
+	yb_is_read_time_ht = is_ht_unit;
 	ereport(NOTICE,
 			(errmsg("yb_read_time should be set with caution."),
 			 errdetail("No DDL operations should be performed while it is set and "
@@ -3801,17 +3908,20 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YbPgEventMetric* agg = &instr->storage_event_metrics[i];
-		const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
-		agg->sum += val->sum;
-		agg->count += val->count;
+	if (exec_stats->storage_metrics_version != instr->storage_metrics_version) {
+		instr->storage_metrics_version = exec_stats->storage_metrics_version;
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YbPgEventMetric* agg = &instr->storage_event_metrics[i];
+			const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
+			agg->sum += val->sum;
+			agg->count += val->count;
+		}
 	}
 }
 
@@ -3841,20 +3951,23 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		result->storage_gauge_metrics[i] =
-				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		result->storage_counter_metrics[i] =
-				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
-		const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
-		const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
-		result_metric->sum = current_metric->sum - old_metric->sum;
-		result_metric->count = current_metric->count - old_metric->count;
+	result->storage_metrics_version = current->storage_metrics_version;
+	if (old->storage_metrics_version != current->storage_metrics_version) {
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			result->storage_gauge_metrics[i] =
+					current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			result->storage_counter_metrics[i] =
+					current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
+			const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
+			const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+			result_metric->sum = current_metric->sum - old_metric->sum;
+			result_metric->count = current_metric->count - old_metric->count;
+		}
 	}
 }
 
@@ -3874,6 +3987,7 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		old->catalog = current->catalog;
 
 	if (yb_session_stats.current_state.metrics_capture) {
+		old->storage_metrics_version = current->storage_metrics_version;
 		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
 			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
 		}
@@ -4018,6 +4132,13 @@ uint32_t YbGetNumberOfDatabases()
 	 * databases back.
 	 */
 	return num_databases;
+}
+
+bool YbCatalogVersionTableInPerdbMode()
+{
+	bool perdb_mode = false;
+	HandleYBStatus(YBCCatalogVersionTableInPerdbMode(&perdb_mode));
+	return perdb_mode;
 }
 
 static bool yb_is_batched_execution = false;
@@ -4336,7 +4457,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   newRelfileNodeId,
 				   indexedRel,
 				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
-				   false,
+				   true /* skip_index_backfill */,
 				   indexRel->yb_table_properties->is_colocated,
 				   indexRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */,

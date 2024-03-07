@@ -474,10 +474,9 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-    
     if (isNullOrEmpty(currentUniverse)) return;
 
-    const clusterWidgetSize = this.hasReadReplica(currentUniverse) ? 3 : 4;
+    const clusterWidgetSize = isDedicatedNodes ? 4 : this.hasReadReplica(currentUniverse) ? 3 : 4;
 
     if (isRollBackFeatureEnabled) {
       return (
@@ -577,7 +576,7 @@ export default class UniverseOverviewNew extends Component {
     const hasReadReplicaCluster = this.hasReadReplica(universeInfo);
 
     return (
-      <Col lg={isDedicatedNodes && hasReadReplicaCluster ? 2 : 4} md={6} sm={8} xs={12}>
+      <Col lg={isDedicatedNodes && hasReadReplicaCluster ? 3 : 4} md={6} sm={8} xs={12}>
         <HealthInfoPanel healthCheck={healthCheck} universeInfo={universeInfo} />
       </Col>
     );
@@ -889,11 +888,13 @@ export default class UniverseOverviewNew extends Component {
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
           <Col lg={4} md={6} sm={8} xs={12}>
-            <DBVersionWidget
-              higherVersionCount={updateAvailable}
-              isRollBackFeatureEnabled={isRollBackFeatureEnabled}
-              failedTaskDetails={failedTask}
-            />
+            {getPromiseState(currentUniverse).isSuccess() && (
+              <DBVersionWidget
+                higherVersionCount={updateAvailable}
+                isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+                failedTaskDetails={failedTask}
+              />
+            )}
           </Col>
         </Row>
         <Row>

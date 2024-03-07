@@ -48,7 +48,6 @@ import { EditConfigModal } from './editConfig/EditConfigModal';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
 import { XClusterConfig } from '../dtos';
-import { DrConfigState } from './dtos';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -74,7 +73,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
 
-    margin: `${theme.spacing(3)}px 0 ${theme.spacing(2)}px`,
+    marginBottom: theme.spacing(2),
 
     '& $actionButtonContainer': {
       marginLeft: 'auto'
@@ -174,6 +173,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     currentUniverseUuid !== targetUniverseUuid
       ? [currentUniverseQuery.data, participantUniverseQuery.data]
       : [participantUniverseQuery.data, currentUniverseQuery.data];
+
+  // Polling for live metrics and config updates.
   useInterval(() => {
     if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
       queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverse?.universeUUID));
@@ -182,9 +183,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(universeQueryKey.detail(targetUniverse?.universeUUID));
     }
   }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
-  // Polling for metrics and config updates.
   useInterval(() => {
-    queryClient.invalidateQueries(metricQueryKey.ALL); // TODO: Add a dedicated key for 'latest xCluster metrics'.
+    queryClient.invalidateQueries(metricQueryKey.live());
   }, PollingIntervalMs.XCLUSTER_METRICS);
   useInterval(() => {
     const xClusterConfigStatus = drConfigQuery.data?.status;

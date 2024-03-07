@@ -14,6 +14,7 @@ import { toast } from 'react-toastify';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { find } from 'lodash';
+import * as yup from 'yup';
 import { useMutation } from 'react-query';
 import { Grid, MenuItem, Typography, makeStyles } from '@material-ui/core';
 import { YBInputField, YBModal, YBSelectField } from '../../../../../redesign/components';
@@ -76,7 +77,7 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
 
   const allProviders = useSelector((data: any) => data.cloud.providers) ?? [];
 
-  const { control, handleSubmit } = useForm<UpgradeLinuxVersionModalForm>({
+  const { control, handleSubmit, setError } = useForm<UpgradeLinuxVersionModalForm>({
     defaultValues: {
       sleepAfterInSeconds: 180,
       targetVersion: null
@@ -143,6 +144,14 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     uuid: primaryCluster?.userIntent.imageBundleUUID
   });
 
+  const validationSchema = yup.object({
+    targetVersion: yup
+      .string()
+      .nullable(true)
+      .required(t('requiredField', { keyPrefix: 'common' }))
+      .notOneOf([curLinuxImgBundle?.uuid], t('sameVersionErrMsg', { image_name: curLinuxImgBundle?.name }))
+  });
+
   return (
     <YBModal
       open={visible}
@@ -158,12 +167,19 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       submitLabel={t('submitLabel')}
       onSubmit={() => {
-        handleSubmit((values) => {
-          doUpgradeVM.mutate({
-            imageBundleUUID: values.targetVersion!,
-            nodePrefix: universeData.universeDetails.nodePrefix,
-            sleepAfterInSeconds: values.sleepAfterInSeconds
-          });
+        handleSubmit(async (values) => {
+          try {
+            await validationSchema.validate(values);
+            doUpgradeVM.mutate({
+              imageBundleUUID: values.targetVersion!,
+              nodePrefix: universeData.universeDetails.nodePrefix,
+              sleepAfterInSeconds: values.sleepAfterInSeconds
+            });
+          } catch (e) {
+            setError('targetVersion', {
+              message: (e as yup.ValidationError)?.message
+            });
+          }
         })();
       }}
     >

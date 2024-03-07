@@ -32,7 +32,7 @@ For more information on connecting applications in YugabyteDB Managed, refer to 
 
 ## Download your cluster certificate
 
-YugabyteDB Managed uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The [cluster CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) is used to verify the identity of the cluster when you connect to it from an application or client.
+YugabyteDB Managed uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. The [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) is used to verify the identity of the cluster when you connect to it from an application or client.
 
 To download the certificate to the computer that will be connecting to the cluster, do the following:
 

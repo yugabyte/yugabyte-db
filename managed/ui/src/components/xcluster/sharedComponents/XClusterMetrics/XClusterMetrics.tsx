@@ -58,11 +58,15 @@ import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
+  isDrInterface: boolean;
 }
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.metricsPanel';
 
-export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphProps) => {
+export const XClusterMetrics = ({
+  xClusterConfig,
+  isDrInterface
+}: ConfigReplicationLagGraphProps) => {
   const [selectedTimeRangeOption, setSelectedTimeRangeOption] = useState<MetricTimeRangeOption>(
     DEFAULT_METRIC_TIME_RANGE_OPTION
   );
@@ -170,7 +174,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const configReplicationLagMetricQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(replciationLagMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           replciationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
@@ -210,7 +214,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const consumerSafeTimeLagMetricsQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(consumerSafeTimeLagMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           consumerSafeTimeLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
@@ -250,7 +254,7 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const consumerSafeTimeSkewMetricsQuery = useQuery(
     isFixedTimeRange
       ? metricQueryKey.detail(consumerSafeTimeSkewMetricRequestParams)
-      : metricQueryKey.latest(
+      : metricQueryKey.live(
           consumerSafeTimeSkewMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
@@ -276,19 +280,29 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   if (sourceUniverseQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={t('failedToFetchSourceUniverse', {
-          keyPrefix: 'queryError',
-          universeUuid: xClusterConfig.sourceUniverseUUID
-        })}
+        customErrorMessage={t(
+          isDrInterface ? 'failedToFetchDrPrimaryUniverse' : 'failedToFetchSourceUniverse',
+          {
+            keyPrefix: 'queryError',
+            universeUuid: xClusterConfig.sourceUniverseUUID
+          }
+        )}
       />
     );
   }
   if (targetUniverseQuery.isError || targetUniverseNamespaceQuery.isError) {
+    const i18nKey = isDrInterface
+      ? targetUniverseQuery.isError
+        ? 'failedToFetchDrReplicaUniverse'
+        : 'failedToFetchDrReplicaNamespaces'
+      : targetUniverseQuery.isError
+      ? 'failedToFetchTargetUniverse'
+      : 'failedToFetchTargetUniverseNamespaces';
     return (
       <YBErrorIndicator
-        customErrorMessage={t('failedToFetchTargetUniverse', {
+        customErrorMessage={t(i18nKey, {
           keyPrefix: 'queryError',
-          universeUuid: xClusterConfig.sourceUniverseUUID
+          universeUuid: xClusterConfig.targetUniverseUUID
         })}
       />
     );

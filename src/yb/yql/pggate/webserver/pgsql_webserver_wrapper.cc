@@ -15,6 +15,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <math.h>
+#include <cassert>
 
 #include <map>
 #include <vector>
@@ -135,7 +136,8 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
-static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
+                                uint64_t *last_updated_timestamp) {
   char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if(stats_shm_key == NULL)
     return;
@@ -163,13 +165,38 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
     stats->push_back(shmp[itr]);
   }
 
+  if (last_updated_timestamp != NULL) {
+    // Read last updated timestamp from control connection pool struct, present at index 0.
+    *last_updated_timestamp = shmp[0].last_updated_timestamp;
+  }
+
   shmdt(shmp);
 }
 
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  uint64_t num_pools = 0, last_updated_timestamp = 0;
+
+  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp);
+  num_pools = stats_list.size();
+
+  ysql_conn_mgr_prometheus_attr.erase(DATABASE);
+  ysql_conn_mgr_prometheus_attr.erase(USER);
+
+  // Publish the count for number of pools.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
+      AggregationFunction::kSum, kServerLevel),
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  // Publish the last time ysql conn mgr metrics are emitted.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
+      last_updated_timestamp, AggregationFunction::kSum, kServerLevel),
+      "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
@@ -399,7 +426,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  GetYsqlConnMgrStats(&stats_list, NULL);
 
   writer.StartObject();
   writer.String("pools");

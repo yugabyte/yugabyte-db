@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex opid_proto)
+set(YB_PCH_DEP_LIBS boost_regex)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
@@ -212,6 +212,7 @@ ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
+ADD_YB_TEST(cdcsdk_consumption_consistent_changes-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
 ADD_YB_TEST(cdcsdk_consistent_snapshot-test)

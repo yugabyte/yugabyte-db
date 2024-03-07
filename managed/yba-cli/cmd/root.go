@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/task"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/tools"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -60,20 +63,20 @@ func init() {
 	setDefaults()
 	rootCmd.PersistentFlags().SortFlags = false
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "",
-		"config file, defaults to $HOME/.yba-cli.yaml")
+		"Config file, defaults to $HOME/.yba-cli.yaml")
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
-		"YugabyteDB Anywhere Host, defaults to http://localhost:9000")
+		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
 	rootCmd.PersistentFlags().StringP("output", "o", "table",
-		"select the desired output format (table, json, pretty), defaults to table.")
+		"Select the desired output format. Allowed values: table, json, pretty.")
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
-		"select the desired log level format, defaults to info.")
-	rootCmd.PersistentFlags().Bool("debug", false, "use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("no-color", false, "disable colors in output , defaults to false.")
+		"Select the desired log level format.")
+	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
+	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colors in output , defaults to false.")
 	rootCmd.PersistentFlags().Bool("wait", true,
-		"wait until the task is completed, otherwise it will exit immediately, defaults to true.")
+		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
-		"wait command timeout,example: 5m, 1h.")
+		"Wait command timeout, example: 5m, 1h.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
@@ -85,10 +88,13 @@ func init() {
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
 
-	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(auth.LoginCmd)
 	rootCmd.AddCommand(releases.ReleasesCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
+	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
+	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 }

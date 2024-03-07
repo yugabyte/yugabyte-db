@@ -55,14 +55,18 @@ public class EditDrConfig extends CreateXClusterConfig {
         Universe.getOrBadRequest(newXClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
         try {
           // Lock the new target universe.
-          lockUniverseForUpdate(
-              newTargetUniverse.getUniverseUUID(), newTargetUniverse.getVersion());
+          lockAndFreezeUniverseForUpdate(
+              newTargetUniverse.getUniverseUUID(),
+              newTargetUniverse.getVersion(),
+              null /* Txn callback */);
 
           addSubtasksToUseNewXClusterConfig(
               currentXClusterConfig,
@@ -144,6 +148,7 @@ public class EditDrConfig extends CreateXClusterConfig {
       XClusterConfig currentXClusterConfig,
       XClusterConfig newXClusterConfig,
       boolean forceDeleteCurrentXClusterConfig) {
+
     // Delete the main replication config.
     createDeleteXClusterConfigSubtasks(
         currentXClusterConfig,
@@ -153,7 +158,6 @@ public class EditDrConfig extends CreateXClusterConfig {
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
-    // Create the new xCluster config.
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
     createXClusterConfigSetStatusForTablesTask(

@@ -12,6 +12,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -85,6 +86,7 @@ export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
   enableHostedZone: boolean;
+  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -178,10 +180,12 @@ export const AWSProviderCreateForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
     enableHostedZone: false,
+    useIMDSv2: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
@@ -205,7 +209,11 @@ export const AWSProviderCreateForm = ({
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const handleFormSubmitServerError = (
@@ -411,6 +419,15 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Use IMDSv2"
+                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
+                >
+                  Use IMDSv2
+                </FieldLabel>
+                <YBToggleField name="useIMDSv2" control={formMethods.control} />
+              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -565,7 +582,7 @@ export const AWSProviderCreateForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -668,7 +685,7 @@ const constructProviderPayload = async (
     formValues.skipKeyValidateAndUpload
   );
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   return {
     code: ProviderCode.AWS,
@@ -682,7 +699,8 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          useIMDSv2: formValues.useIMDSv2
         }
       },
       ntpServers: formValues.ntpServers,

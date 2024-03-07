@@ -108,6 +108,14 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsq
       false /* use_replication_slot */, false /* enable_replication_commands */);
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
+  ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+      true /* verify_snapshot_name */));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
+      true /* verify_snapshot_name */));
+}
+
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
     std::string sync_point, std::string expected_error) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
@@ -287,16 +295,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  // Reduce the deadline passed to yb-master for DDL operation (CreateCDCStream) so that we timeout
-  // faster.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = 10;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
     LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
     // This sleep duration must be >= timeout of the CreateCDCStream RPC in yb-master. This is
     // specified in the DdlDeadline() function in pg_ddl.cc.
-    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
+    SleepFor(MonoDelta::FromSeconds(60 * kTimeMultiplier));
   });
   SyncPoint::GetInstance()->EnableProcessing();
 

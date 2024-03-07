@@ -625,7 +625,8 @@ class YBClient {
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
-      CoarseTimePoint deadline = CoarseTimePoint());
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      uint64_t *consistent_snapshot_time = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -665,9 +666,7 @@ class YBClient {
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
       std::optional<uint64_t>* stream_creation_time = nullptr);
 
-  Status GetCDCStream(
-      const ReplicationSlotName& replication_slot_name,
-      xrepl::StreamId* stream_id);
+  Result<CDCSDKStreamInfo> GetCDCStream(const ReplicationSlotName& replication_slot_name);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
@@ -768,11 +767,14 @@ class YBClient {
   const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
   // List only those tables whose names pass a substring match on 'filter'.
+  // For YSQL tables, ysql_db_filter can be used to filter by the db they
+  // belong to.
   //
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
-      bool exclude_ysql = false);
+      bool exclude_ysql = false,
+      const std::string& ysql_db_filter = "");
 
   // List tables in a namespace.
   //

@@ -51,7 +51,9 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       checkUniverseVersion();
 
       // Update the DB to prevent other changes from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -129,7 +131,8 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       // the node state moves to Starting.
       // and this node is already a master.
       // TODO Fix the above issue when there is a better state management of processes.
-      createStartMasterOnNodeTasks(universe, currentNode, null, false);
+      createStartMasterOnNodeTasks(
+          universe, currentNode, null, false /* stoppable */, false /* ignore stop error */);
 
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)

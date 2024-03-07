@@ -66,6 +66,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)
+  (kCloneTablet)
   (kCreateReplica)
   (kDeleteReplica)
   (kFlushTablets)
@@ -85,7 +86,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kUpdateTransactionTablesVersion)
   (kAddTableToXClusterTarget)
   (kMarkTableAsRunning)
-  (kAddTableToXClusterSource));
+  (kAddTableToXClusterSource)
+  (kAddNamespaceToXClusterSource));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
@@ -139,6 +141,9 @@ using MonitoredTaskPtr = std::shared_ptr<MonitoredTask>;
 class RunnableMonitoredTask : public MonitoredTask {
  public:
   virtual Status Run() = 0;
+
+  virtual Status BeforeSubmitToTaskPool();
+  virtual Status OnSubmitFailure();
 };
 
 } // namespace server

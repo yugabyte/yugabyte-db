@@ -8,6 +8,9 @@ export const isColocatedParentTable = (table: YBTable): boolean =>
 export const isColocatedChildTable = (table: YBTable): boolean =>
   table.colocated && !!table.colocationParentId;
 
+/**
+ * Returns table UUID without `-`
+ */
 export const getTableUuid = (table: YBTable): string => table.tableID ?? table.tableUUID;
 
 export const getTableName = (table: YBTable | XClusterTable): string =>

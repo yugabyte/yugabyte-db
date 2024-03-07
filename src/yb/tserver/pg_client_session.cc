@@ -725,12 +725,14 @@ Status PgClientSession::CreateReplicationSlot(
     }
   }
 
+  uint64_t consistent_snapshot_time;
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
-      snapshot_option, context->GetClientDeadline()));
+      snapshot_option, context->GetClientDeadline(), &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
+  resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
 }
 
@@ -1192,7 +1194,9 @@ PgClientSession::SetupSession(
   const auto read_time_serial_no = options.read_time_serial_no();
   UsedReadTimePtr used_read_time;
   if (options.restart_transaction()) {
-    RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Restarting a DDL transaction not supported");
+    if (options.ddl_mode()) {
+      return STATUS(NotSupported, "Restarting a DDL transaction not supported");
+    }
     Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
     transaction = Transaction(kind).get();
   } else {
@@ -1738,11 +1742,11 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
-  client::YBTransaction* transaction = Transaction(PgClientSessionKind::kPlain).get();
-  if (!transaction && (read_time_serial_no_ != req.read_time_serial_no())) {
+  const auto read_time_serial_no = req.read_time_serial_no();
+  if (read_time_serial_no_ != read_time_serial_no) {
     ResetReadPoint(PgClientSessionKind::kPlain);
+    read_time_serial_no_ = read_time_serial_no;
   }
-  read_time_serial_no_ = req.read_time_serial_no();
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),

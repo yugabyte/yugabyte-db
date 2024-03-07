@@ -22,8 +22,10 @@ import {
   ImageBundle,
   ImageBundleType
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
-import { ProviderCode, ProviderStatus } from '../../constants';
+import { ArchitectureType, ProviderCode, ProviderStatus } from '../../constants';
 import { Add } from '@material-ui/icons';
 
 interface LinuxVersionCatalogProps {
@@ -96,7 +98,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...sampleX86Image.details,
             regions: Object.assign({}, ...regions.map((r) => ({ [r.code]: {} })))
           },
-          useAsDefault: images.length === 0
+          useAsDefault:
+            images.filter(
+              (i) => i.details.arch === ArchitectureType.X86_64 && i.useAsDefault === true
+            ).length === 0
         });
       }
       if (ybImageOptions.useArm && providerType === ProviderCode.AWS) {
@@ -106,7 +111,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
             ...sampleAarchImage.details,
             regions: Object.assign({}, ...regions.map((r) => ({ [r.code]: {} })))
           },
-          useAsDefault: images.length === 0
+          useAsDefault:
+            images.filter(
+              (i) => i.details.arch === ArchitectureType.ARM64 && i.useAsDefault === true
+            ).length === 0
         });
       }
 
@@ -127,13 +135,22 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
       infoTitle={t('linuxVersions')}
       infoContent={t('infoContent')}
       headerAccessories={
-        <YBButton
-          onClick={() => toggleShowLinuxVersionModal(true)}
-          startIcon={<Add />}
-          variant="secondary"
+        <RbacValidator
+          accessRequiredOn={
+            viewMode === 'CREATE'
+              ? ApiPermissionMap.CREATE_PROVIDER
+              : ApiPermissionMap.MODIFY_PROVIDER
+          }
+          isControl
         >
-          {t('addLinuxVersion')}
-        </YBButton>
+          <YBButton
+            onClick={() => toggleShowLinuxVersionModal(true)}
+            startIcon={<Add />}
+            variant="secondary"
+          >
+            {t('addLinuxVersion')}
+          </YBButton>
+        </RbacValidator>
       }
     >
       <div className={classes.root}>
@@ -176,13 +193,13 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
 
         {imageBundles.length === 0 ? (
           <LinuxVersionEmpty
-            control={control}
+            viewMode={viewMode}
             onAdd={() => {
               toggleShowLinuxVersionModal(true);
             }}
           />
         ) : (
-          <LinuxVersionsList control={control} providerType={providerType} />
+          <LinuxVersionsList control={control} providerType={providerType} viewMode={viewMode} />
         )}
       </div>
       <AddLinuxVersionModal
@@ -192,6 +209,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
         }}
         providerType={providerType}
         control={control as any}
+        existingImageBundles={imageBundles}
         onSubmit={(img) => {
           append({
             ...img,

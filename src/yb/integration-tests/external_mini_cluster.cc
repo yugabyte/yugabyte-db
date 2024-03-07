@@ -413,7 +413,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
       vector<string> extra_flags;
       for (const auto& flag : opts_.extra_tserver_flags) {
         if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back(flag);
+          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
         }
       }
       // we need 1 yb controller server for each tserver
@@ -2479,7 +2479,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
   bound_rpc_ = bound_rpc_hostport();
   bound_http_ = bound_http_hostport();
 
-  LOG_WITH_PREFIX(INFO) << "Starting Shutdown()";
+  LOG_WITH_PREFIX(INFO) << "Starting Shutdown() of daemon with id " << id();
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;

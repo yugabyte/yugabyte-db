@@ -13,9 +13,11 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
@@ -83,6 +85,8 @@ public abstract class AbstractTaskBase implements ITask {
   protected final BackupHelper backupHelper;
   protected final AutoFlagUtil autoFlagUtil;
   protected final NodeUIApiHelper nodeUIApiHelper;
+  protected final ImageBundleUtil imageBundleUtil;
+  protected final ReleaseManager releaseManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -106,6 +110,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.backupHelper = baseTaskDependencies.getBackupHelper();
     this.autoFlagUtil = baseTaskDependencies.getAutoFlagUtil();
     this.nodeUIApiHelper = baseTaskDependencies.getNodeUIApiHelper();
+    this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
+    this.releaseManager = baseTaskDependencies.getReleaseManager();
   }
 
   protected ITaskParams taskParams() {

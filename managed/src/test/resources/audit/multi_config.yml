@@ -34,11 +34,11 @@ receivers:
     include: [/home/yugabyte/tserver/logs/postgresql-*.log]
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*LOG:  AUDIT:.*$"', type: filter}
+      expr: 'body not matches "^.*\\w+:  AUDIT:.*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
       regex: '^((?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
-        ][|][ ]([^ ]+)[ ][:][ ]LOG:  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$'
+        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$'
       timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
       type: regex_parser
     start_at: beginning

@@ -67,6 +67,7 @@ import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -1626,6 +1627,65 @@ public class TablesControllerTest extends FakeDBApplication {
     assertAuditEntry(0, customer.getUuid());
   }
 
+  // When xClusterSupportedOnly flag is set as true and listTablesInfo rpc contains
+  // indexed_table_id field, then no further RPC calls should be made to fetch table info.
+  @Test
+  public void testXClusterOnlyListTablesWithIndexedTable() throws Exception {
+    List<TableInfo> mockTableInfoList = getTableInfoWithIndexTables(true, true);
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(mockTableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    Universe.saveDetails(
+        u1.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.21.1.0-b168";
+          universe.setUniverseDetails(universeDetails);
+        });
+    u1 = Universe.getOrBadRequest(u1.getUniverseUUID());
+    when(mockClient.getTableSchemaByUUID(anyString()))
+        .thenThrow(new RuntimeException("Additional RPC calls made to getTableSchemaByUUID"));
+
+    Result r =
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true);
+    JsonNode json = Json.parse(contentAsString(r));
+    assertEquals(OK, r.status());
+    assertTrue(json.isArray());
+    assertEquals(2, json.size());
+    Iterator<JsonNode> it = json.elements();
+    JsonNode mainTable = it.next();
+    JsonNode indexedTable = it.next();
+    assertEquals(mainTable.get("tableUUID"), indexedTable.get("mainTableUUID"));
+  }
+
+  // When xClusterSupportedOnly flag is set as true and listTablesInfo rpc doesn't contain
+  // indexed_table_id field, but there are no Index tables in the list tables response,
+  // then no further RPC calls should be made to fetch table info.
+  @Test
+  public void testXClusterOnlyListTablesWithoutIndexedTableFieldWithoutIndexTables()
+      throws Exception {
+    List<TableInfo> mockTableInfoList = getTableInfoWithIndexTables(false, false);
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(mockTableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    when(mockClient.getTableSchemaByUUID(anyString()))
+        .thenThrow(new RuntimeException("Additional RPC calls made to getTableSchemaByUUID"));
+
+    Result r =
+        tablesController.listTables(
+            customer.getUuid(), u1.getUniverseUUID(), false, false, true, true);
+    JsonNode json = Json.parse(contentAsString(r));
+    assertEquals(OK, r.status());
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+    Iterator<JsonNode> it = json.elements();
+    JsonNode mainTable = it.next();
+    assertEquals("main_table", mainTable.get("tableName").asText());
+  }
+
   private List<TableInfo> tableInfoListWithColocated() {
     List<TableInfo> tableInfoList = new ArrayList<>();
     Set<String> tableNames = new HashSet<>();
@@ -1729,6 +1789,28 @@ public class TablesControllerTest extends FakeDBApplication {
     tableInfoList.add(ti5);
     tableInfoList.add(ti6);
     tableInfoList.add(ti7);
+    return tableInfoList;
+  }
+
+  private List<TableInfo> getTableInfoWithIndexTables(
+      boolean includeIndexTable, boolean includeIndexedTableIdField) {
+    List<TableInfo> tableInfoList = new ArrayList<>();
+    TableInfo mainTable =
+        TableInfo.newBuilder()
+            .setName("main_table")
+            .setId(ByteString.copyFromUtf8("000033c0000030008000000000004002"))
+            .build();
+    TableInfo indexTable =
+        TableInfo.newBuilder()
+            .setName("main_table_idx")
+            .setId(ByteString.copyFromUtf8("000033c0000030008000000000004003"))
+            .setRelationType(RelationType.INDEX_TABLE_RELATION)
+            .setIndexedTableId(includeIndexedTableIdField ? mainTable.getId().toStringUtf8() : "")
+            .build();
+    tableInfoList.add(mainTable);
+    if (includeIndexTable) {
+      tableInfoList.add(indexTable);
+    }
     return tableInfoList;
   }
 }

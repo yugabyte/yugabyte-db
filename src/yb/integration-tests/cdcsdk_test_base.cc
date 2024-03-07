@@ -12,41 +12,24 @@
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 
-#include <algorithm>
-#include <utility>
 #include <string>
-#include <chrono>
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -157,6 +140,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   // Set max_replication_slots to a large value so that we don't run out of them during tests and
   // don't have to do cleanups after every test case.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -313,6 +299,9 @@ Status CDCSDKTestBase::DropColumn(
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
+  // Sleep to ensure that alter table is committed in docdb
+  // TODO: (#21288) Remove the sleep once the best effort waiting mechanism for drop table lands.
+  SleepFor(MonoDelta::FromSeconds(5));
   return Status::OK();
 }
 
@@ -417,7 +406,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
     CDCRecordType record_type) {
   auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   RETURN_NOT_OK(conn.FetchFormat(
-      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       replication_slot_name));
 
   // Fetch the stream_id of the replication slot.
@@ -428,7 +417,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
-    CDCSDKSnapshotOption snapshot_option) {
+    const std::string& slot_name,
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 
   std::string snapshot_action;
@@ -441,9 +431,11 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       break;
   }
 
-  auto slot_name = GenerateRandomReplicationSlotName();
-  RETURN_NOT_OK(repl_conn.FetchFormat(
-      "CREATE_REPLICATION_SLOT $0 LOGICAL yboutput $1", slot_name, snapshot_action));
+  auto result = VERIFY_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput $1", slot_name, snapshot_action));
+  auto snapshot_name =
+      VERIFY_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
 
   // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream.
   SleepFor(MonoDelta::FromSeconds(1));
@@ -452,7 +444,27 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
   auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
       slot_name)));
-  return xrepl::StreamId::FromString(stream_id);
+  auto xrepl_stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  if (verify_snapshot_name)  {
+    auto resp = VERIFY_RESULT(GetCDCStream(xrepl_stream_id));
+    auto cstime = resp.stream().cdcsdk_consistent_snapshot_time();
+    if (snapshot_option == NOEXPORT_SNAPSHOT) {
+      SCHECK_EQ(snapshot_name.has_value(), false, InternalError, "Snapshot name is not NULL");
+    } else {
+      SCHECK_EQ(*snapshot_name, std::to_string(cstime), InternalError,
+          "Snapshot Name is not matching the consistent snapshot time");
+    }
+  }
+
+  return xrepl_stream_id;
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateConsistentSnapshotStreamWithReplicationSlot(
+      slot_name, snapshot_option, verify_snapshot_name);
 }
 
 // This creates a Consistent Snapshot stream on the database kNamespaceName by default.
@@ -484,6 +496,23 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
     CDCCheckpointType checkpoint_type) {
   return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
                                                         : CreateDBStream(IMPLICIT);
+}
+
+Result<master::GetCDCStreamResponsePB> CDCSDKTestBase::GetCDCStream(
+    const xrepl::StreamId& db_stream_id) {
+  master::GetCDCStreamRequestPB get_req;
+  master::GetCDCStreamResponsePB get_resp;
+  get_req.set_stream_id(db_stream_id.ToString());
+
+  rpc::RpcController get_rpc;
+  get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  master::MasterReplicationProxy master_proxy_(
+      &test_client()->proxy_cache(),
+      VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+  RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
+  return get_resp;
 }
 
 Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {

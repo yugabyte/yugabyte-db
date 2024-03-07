@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.audit.AuditService;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ import play.mvc.Result;
 
 @Slf4j
 public class ApiControllerUtils {
+  @Inject private AuditService auditService;
   @Inject private Materializer mat;
   protected ObjectMapper mapper =
       Json.mapper()
@@ -96,5 +98,9 @@ public class ApiControllerUtils {
       throws Exception {
     S source = extractFromResult(result, sourceType);
     return convert(source, targetType, targetDeser);
+  }
+
+  protected AuditService auditService() {
+    return auditService;
   }
 }

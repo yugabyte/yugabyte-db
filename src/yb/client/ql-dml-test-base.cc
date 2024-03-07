@@ -422,22 +422,21 @@ Result<std::map<int32_t, int32_t>> SelectAllRows(
   partitions.push_back(std::string()); // Upper bound for last partition.
 
   uint16_t prev_code = 0;
-  for (const auto& partition : partitions) {
+  // When processing partition key current_code (not including the first partition key, which is
+  // empty), we add a read op for the keys in [prev_code, current_code).
+  for (size_t i = 1; i < partitions.size(); ++i) {
+    const auto& partition = partitions[i];
     const YBqlReadOpPtr op = table->NewReadOp();
     auto* const req = op->mutable_request();
     table->AddColumns(table->AllColumnNames(), req);
     if (prev_code) {
       req->set_hash_code(prev_code);
     }
-    // Partition could be empty, or contain 2 bytes of partition start.
+    // Partition is either a 2 byte key or empty (the last key).
     if (partition.size() == 2) {
       uint16_t current_code = BigEndian::Load16(partition.c_str());
       req->set_max_hash_code(current_code - 1);
       prev_code = current_code;
-    } else if (!prev_code) {
-      // Partitions contain starts of partition, so we always skip first iteration, because don't
-      // know end of first partition at this point.
-      continue;
     }
     ops.push_back(op);
     session->Apply(op);

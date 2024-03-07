@@ -60,7 +60,7 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           <Tab label={t('tab.tables')} value={DrConfigTab.TABLES} />
         </TabList>
         <TabPanel value={DrConfigTab.METRICS}>
-          <XClusterMetrics xClusterConfig={xClusterConfig} />
+          <XClusterMetrics xClusterConfig={xClusterConfig} isDrInterface={true} />
         </TabPanel>
         <TabPanel value={DrConfigTab.TABLES}>
           <ReplicationTables

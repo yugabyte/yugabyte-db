@@ -178,6 +178,8 @@ class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
     return internal::StatusFromResp(*resp_);
   }
 
+  bool ShouldRetry(const Status& status) override;
+
  private:
   RespClass* resp_;
   std::string name_;
@@ -322,6 +324,18 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterRemoveNamespaceFromOutboundR
   BOOST_PP_SEQ_FOR_EACH(YB_CLIENT_SPECIALIZE_SIMPLE_EX_EACH, ~, rpcs)
 
 YB_CLIENT_SPECIALIZE_SIMPLE_FOR(CLIENT_SYNC_LEADER_MASTER_RPC_LIST)
+
+template<class ProxyClass, class RespClass>
+bool SyncClientMasterRpc<ProxyClass, RespClass>::ShouldRetry(const Status& status) {
+  return internal::ClientMasterRpcBase::ShouldRetry(status);
+}
+
+template<>
+bool SyncClientMasterRpc<master::MasterAdminProxy,
+                         WaitForYsqlBackendsCatalogVersionResponsePB>::ShouldRetry(
+    const Status& status) {
+  return status.IsTryAgain();
+}
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -567,12 +581,11 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
     return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
   }
 
-  RETURN_NOT_OK(SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsCreateTableDone",
-      &master::MasterDdlProxy::IsCreateTableDoneAsync));
+  auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsCreateTableDone", &master::MasterDdlProxy::IsCreateTableDoneAsync);
 
   *create_in_progress = !resp.done();
-  return Status::OK();
+  return status;
 }
 
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
@@ -1199,6 +1212,9 @@ Status YBClient::Data::IsFlushTableInProgress(YBClient* client,
       &master::MasterAdminProxy::IsFlushTablesDoneAsync));
 
   *flush_in_progress = !resp.done();
+  if (!resp.success()) {
+    return STATUS_FORMAT(InternalError, "Flush operation for id: $0 failed", flush_id);
+  }
   return Status::OK();
 }
 
@@ -2159,21 +2175,21 @@ class GetXClusterStreamsRpc
         std::bind(&GetXClusterStreamsRpc::Finished, this, Status::OK()));
   }
 
-  void ProcessResponse(const Status& status) override {
-    auto status_copy = status;
-    if (status_copy.ok() && resp_.has_error()) {
-      status_copy = StatusFromPB(resp_.error().status());
-    }
-
-    if (!status_copy.ok()) {
-      LOG(WARNING) << ToString() << " failed: " << status_copy;
-      user_cb_(std::move(status_copy));
-      return;
-    }
-
+  Status ResponseStatus() override {
+    RETURN_NOT_OK(internal::StatusFromResp(resp_));
     if (resp_.not_ready()) {
       VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
-      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet");
+    }
+    return Status::OK();
+  }
+
+  bool ShouldRetry(const Status& status) override { return status.IsTryAgain(); }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(std::move(status));
       return;
     }
 
@@ -2214,21 +2230,21 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
         std::bind(&IsXClusterBootstrapRequiredRpc::Finished, this, Status::OK()));
   }
 
-  void ProcessResponse(const Status& status) override {
-    auto status_copy = status;
-    if (status_copy.ok() && resp_.has_error()) {
-      status_copy = StatusFromPB(resp_.error().status());
-    }
-
-    if (!status_copy.ok()) {
-      LOG(WARNING) << ToString() << " failed: " << status_copy;
-      user_cb_(std::move(status_copy));
-      return;
-    }
-
+  Status ResponseStatus() override {
+    RETURN_NOT_OK(internal::StatusFromResp(resp_));
     if (resp_.not_ready()) {
       VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
-      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet");
+    }
+    return Status::OK();
+  }
+
+  bool ShouldRetry(const Status& status) override { return status.IsTryAgain(); }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(std::move(status));
       return;
     }
 

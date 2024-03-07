@@ -53,9 +53,8 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     google::SetVLOGLevel("xrepl*", 4);
     google::SetVLOGLevel("xcluster*", 4);
     google::SetVLOGLevel("add_table*", 4);
+    google::SetVLOGLevel("multi_step*", 4);
     google::SetVLOGLevel("catalog*", 4);
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
@@ -299,20 +298,22 @@ TEST_F(XClusterYsqlIndexTest, CreateIndexWithWorkload) {
 
 TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   // Create index on consumer before producer should fail.
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "not found");
 
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   // Create index while replication is paused should fail.
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "is currently disabled");
+
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(
+      CreateIndex(*consumer_conn_), "FLAGS_TEST_xcluster_fail_table_create_during_bootstrap");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -325,6 +326,8 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
 }
 
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
+
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   SyncPoint::GetInstance()->LoadDependency(

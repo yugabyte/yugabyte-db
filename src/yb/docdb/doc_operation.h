@@ -49,7 +49,7 @@ struct DocOperationApplyData {
 // When specifiying the parent key, the constant -1 is used for the subkey index.
 const int kNilSubkeyIndex = -1;
 
-typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
+using DocPathsToLock = boost::container::small_vector_base<RefCntPrefix>;
 
 YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents)(kStrongReadIntents));
 YB_DEFINE_ENUM(DocOperationType,

@@ -334,6 +334,7 @@ export const CreateConfigModal = ({
           tablesQuery.data,
           universeQuery.data,
           isTableSelectionValidated,
+          tableType,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -447,6 +448,7 @@ const validateForm = async (
   sourceUniverseTables: YBTable[],
   sourceUniverse: Universe,
   isTableSelectionValidated: boolean,
+  tableType: TableType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarnings: (formWarnings: CreateXClusterConfigFormWarnings) => void
 ) => {
@@ -485,9 +487,14 @@ const validateForm = async (
       if (!isTableSelectionValidated) {
         if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
           errors.tableUUIDs = {
-            title: 'No tables selected.',
-            body: 'Select at least 1 table to proceed'
+            title: `No ${
+              tableType === TableType.PGSQL_TABLE_TYPE ? 'databases' : 'tables'
+            } selected.`,
+            body: `Select at least 1 ${
+              tableType === TableType.PGSQL_TABLE_TYPE ? 'database' : 'table'
+            } to proceed`
           };
+          throw errors;
         }
         let bootstrapTableUUIDs: string[] | null = null;
         try {
@@ -496,9 +503,7 @@ const validateForm = async (
             sourceUniverse.universeUUID,
             values.targetUniverse.value.universeUUID,
             sourceUniverseTables,
-            [] /* Table UUIDs currently in config */,
-            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
-            false /* used for dr */
+            values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
           );
         } catch (error: any) {
           toast.error(
@@ -573,11 +578,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Fully Copy';
+        return 'Next: Configure Full Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Full Copy and Enable Replication';
+      return 'Create Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }

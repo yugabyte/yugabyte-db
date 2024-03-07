@@ -16,6 +16,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
@@ -38,9 +39,21 @@ using std::string;
 namespace yb {
 namespace pgwrapper {
 
+struct TestTxnLockInfo {
+  TestTxnLockInfo() {}
+  explicit TestTxnLockInfo(int num_locks) : num_locks(num_locks) {}
+  TestTxnLockInfo(
+      int num_locks, bool has_additional_granted_locks, bool has_additional_waiting_locks)
+          : num_locks(num_locks), has_additional_granted_locks(has_additional_granted_locks),
+            has_additional_waiting_locks(has_additional_waiting_locks) {}
+  int num_locks = 0;
+  bool has_additional_granted_locks = false;
+  bool has_additional_waiting_locks = false;
+};
+
 using tserver::TabletServerServiceProxy;
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
-using TxnLocksMap = std::unordered_map<TransactionId, int, TransactionIdHash>;
+using TxnLocksMap = std::unordered_map<TransactionId, TestTxnLockInfo, TransactionIdHash>;
 using TabletTxnLocksMap = std::unordered_map<TabletId, TxnLocksMap>;
 
 class PgGetLockStatusTest : public PgLocksTestBase {
@@ -103,7 +116,11 @@ class PgGetLockStatusTest : public PgLocksTestBase {
           ASSERT_NE(txn_map_it, tablet_map_it->second.end());
           ASSERT_EQ(
               txn_lock_info.granted_locks_size() + txn_lock_info.waiting_locks().locks_size(),
-              txn_map_it->second);
+              txn_map_it->second.num_locks);
+          ASSERT_EQ(txn_lock_info.has_additional_granted_locks(),
+                    txn_map_it->second.has_additional_granted_locks);
+          ASSERT_EQ(txn_lock_info.waiting_locks().has_additional_waiting_locks(),
+                    txn_map_it->second.has_additional_waiting_locks);
           tablet_map_it->second.erase(txn_map_it);
         }
         ASSERT_TRUE(tablet_map_it->second.empty());
@@ -224,7 +241,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusSimple) {
     {
       session.first_involved_tablet,
       {
-        {session.txn_id, 2}
+        {session.txn_id, TestTxnLockInfo(2)}
       }
     }
   });
@@ -251,7 +268,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusOfOldTxns) {
     {
       session.first_involved_tablet,
       {
-        {session.txn_id, 2}
+        {session.txn_id, TestTxnLockInfo(2)}
       }
     }
   });
@@ -271,8 +288,8 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusOfOldTxns) {
     {
       session.first_involved_tablet,
       {
-        {session.txn_id, 2},
-        {other_txn, 2}
+        {session.txn_id, TestTxnLockInfo(2)},
+        {other_txn, TestTxnLockInfo(2)}
       }
     }
   });
@@ -284,7 +301,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusOfOldTxns) {
     {
       session.first_involved_tablet,
       {
-        {other_txn, 2}
+        {other_txn, TestTxnLockInfo(2)}
       }
     }
   });
@@ -321,7 +338,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumOldTxns) {
     {
       session.first_involved_tablet,
       {
-        {session.txn_id, 2}
+        {session.txn_id, TestTxnLockInfo(2)}
       }
     }
   });
@@ -356,6 +373,100 @@ TEST_F(PgGetLockStatusTest, TestWaiterLockContainingColumnId) {
       "ybdetails->'keyrangedetails'->>'column_id' IS NOT NULL")));
   ASSERT_OK(session.conn->Execute("COMMIT"));
 }
+
+#ifndef NDEBUG
+TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumTxnLocks) {
+  auto session = ASSERT_RESULT(Init("foo", "1"));
+
+  // Create a blocking txn.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=2 FOR UPDATE"));
+
+  tserver::PgGetLockStatusRequestPB req;
+  req.set_transaction_id(session.txn_id.data(), session.txn_id.size());
+  req.set_max_txn_locks_per_tablet(1);
+  auto resp = ASSERT_RESULT(GetLockStatus(req));
+  VerifyResponse(resp, {
+    {
+      session.first_involved_tablet,
+      {
+        // Only one lock should be returned as we limit the num locks per txn per tablet.
+        {session.txn_id,
+             TestTxnLockInfo(1,
+                             true /* has more granted locks */,
+                             false /* has more awaiting locks */)}
+      }
+    }
+  });
+  resp.Clear();
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestGetLockStatusLimitNumTxnLocks"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  std::thread th([&session] {
+    ASSERT_OK(session.conn->Fetch("SELECT * FROM foo WHERE k=2 FOR UPDATE"));
+  });
+
+  DEBUG_ONLY_TEST_SYNC_POINT("TestGetLockStatusLimitNumTxnLocks");
+  req.set_max_txn_locks_per_tablet(3);
+  resp = ASSERT_RESULT(GetLockStatus(req));
+  VerifyResponse(resp, {
+    {
+      session.first_involved_tablet,
+      {
+        // All granted locks and partial awaiting locks would be returned.
+        {session.txn_id,
+             TestTxnLockInfo(3,
+                             false /* has more granted locks */,
+                             true /* has more awaiting locks */)}
+      }
+    }
+  });
+  resp.Clear();
+
+  req.set_max_txn_locks_per_tablet(1);
+  resp = ASSERT_RESULT(GetLockStatus(req));
+  VerifyResponse(resp, {
+    {
+      session.first_involved_tablet,
+      {
+        // Both granted and awaiting locks returned would be incomplete.
+        {session.txn_id,
+             TestTxnLockInfo(1,
+                             true /* has more granted locks */,
+                             true /* has more awaiting locks */)}
+      }
+    }
+  });
+  resp.Clear();
+
+  // When the field is set to zero, it could mean wither of the below cases
+  // 1. the request is sent from a node running an older version of YB
+  // 2. or the client explicitly set the field to zero
+  //
+  // In either case, we don't limit the locks per transaction and return all the locks.
+  req.set_max_txn_locks_per_tablet(0);
+  resp = ASSERT_RESULT(GetLockStatus(req));
+  VerifyResponse(resp, {
+    {
+      session.first_involved_tablet,
+      {
+        // All granted locks and all partial awaiting locks would be returned.
+        {session.txn_id,
+             TestTxnLockInfo(4,
+                             false /* has more granted locks */,
+                             false /* has more awaiting locks */)}
+      }
+    }
+  });
+  ASSERT_OK(conn.CommitTransaction());
+  th.join();
+  ASSERT_OK(session.conn->CommitTransaction());
+}
+#endif // NDEBUG
 
 TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
   const auto table = "foo";

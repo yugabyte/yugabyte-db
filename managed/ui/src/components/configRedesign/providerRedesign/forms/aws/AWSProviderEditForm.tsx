@@ -8,11 +8,12 @@ import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
-import { Provider, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { AxiosError } from 'axios';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -109,6 +110,7 @@ export interface AWSProviderEditFormFieldValues {
   editAccessKey: boolean;
   editSSHKeypair: boolean;
   enableHostedZone: boolean;
+  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -193,6 +195,7 @@ export const AWSProviderEditForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<AWSProviderEditFormFieldValues>({
     defaultValues: defaultValues,
@@ -207,13 +210,20 @@ export const AWSProviderEditForm = ({
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
+
   if (
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
@@ -514,6 +524,24 @@ export const AWSProviderEditForm = ({
                   />
                 </FormField>
               )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Use IMDSv2"
+                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
+                >
+                  Use IMDSv2
+                </FieldLabel>
+                <YBToggleField
+                  name="useIMDSv2"
+                  control={formMethods.control}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AWS,
+                    'useIMDSv2',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                />
+              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -748,7 +776,7 @@ export const AWSProviderEditForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -852,6 +880,7 @@ const constructDefaultFormValues = (
   editAccessKey: false,
   editSSHKeypair: false,
   enableHostedZone: !!providerConfig.details.cloudInfo.aws.awsHostedZoneId,
+  useIMDSv2: !!providerConfig.details.cloudInfo.aws.useIMDSv2,
   hostedZoneId: providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
@@ -892,7 +921,7 @@ const constructProviderPayload = async (
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
@@ -931,7 +960,8 @@ const constructProviderPayload = async (
               ? formValues.secretAccessKey
               : providerConfig.details.cloudInfo.aws.awsAccessKeySecret
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          useIMDSv2: formValues.useIMDSv2
         }
       },
       ntpServers: formValues.ntpServers,

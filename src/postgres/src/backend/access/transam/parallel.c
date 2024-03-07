@@ -221,12 +221,24 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	Size		asnaplen = 0;
 	Size		tstatelen = 0;
 	Size		reindexlen = 0;
-	Size        enumblacklistlen = 0;
+	Size		enumblacklistlen = 0;
 	Size		segsize = 0;
 	int			i;
 	FixedParallelState *fps;
 	dsm_handle	session_dsm_handle = DSM_HANDLE_INVALID;
-	Snapshot	transaction_snapshot = GetTransactionSnapshot();
+	Snapshot	transaction_snapshot;
+	/*
+	 * Postgres unconditionally takes the snapshot, however Yugabyte has
+	 * undesired side effect if transaction isolation is READ COMMITTED: it
+	 * resets the read point, so the next DocDB request picks new read time.
+	 * This can result in a change of read snapshot in the middle of the query.
+	 * Fortunately we can skip that call in READ COMMITTED mode, because
+	 * the transaction_snapshot is only used if the isolation level is
+	 * REPEATABLE READ or SERIALIZABLE.
+	 * For safety, keep original behavior if Yugabyte is not enabled.
+	 */
+	if (IsolationUsesXactSnapshot() || !IsYugaByteEnabled())
+		transaction_snapshot = GetTransactionSnapshot();
 	Snapshot	active_snapshot = GetActiveSnapshot();
 
 	/* We might be running in a very short-lived memory context. */
@@ -1448,7 +1460,10 @@ ParallelWorkerMain(Datum main_arg)
 	 * obtain it. Perhaps master scan should share the value it has.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+		YBCPgResetCatalogReadTime();
+	}
 
 	/*
 	 * We've initialized all of our state now; nothing should change

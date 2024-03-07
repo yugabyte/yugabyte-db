@@ -7,7 +7,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -15,7 +14,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -27,7 +25,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -75,22 +72,23 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
-          TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -123,22 +121,23 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
           TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
           TaskType.ModifyBlackList,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
-          TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -219,25 +218,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
 
-      List<String> command = new ArrayList<>();
-      command.add("locale");
-      command.add("-a");
-      command.add("|");
-      command.add("grep");
-      command.add("-E");
-      command.add("-q");
-      command.add("\"en_US.utf8|en_US.UTF-8\"");
-      command.add("&&");
-      command.add("echo");
-      command.add("\"Locale is present\"");
-      command.add("||");
-      command.add("echo");
-      command.add("\"Locale is not present\"");
-      when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
-          .thenReturn(
-              ShellResponse.create(
-                  ShellResponse.ERROR_CODE_SUCCESS,
-                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "Locale is present"));
+      mockLocaleCheckResponse(mockNodeUniverseManager);
 
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
@@ -413,20 +394,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.EditUniverse,
         taskParams);
-  }
-
-  @Test
-  public void testVolumeSizeValidation() {
-    Universe universe = defaultUniverse;
-    UniverseDefinitionTaskParams taskParams = performFullMove(universe);
-    setDumpEntitiesMock(defaultUniverse, "", false);
-    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
-    assertTrue(exception.getMessage().contains("Cannot decrease volume size from 100 to 99"));
-    RuntimeConfigEntry.upsertGlobal("yb.edit.allow_volume_decrease", "true");
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test

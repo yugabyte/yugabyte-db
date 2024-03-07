@@ -48,8 +48,7 @@ public class AddGFlagMetadata extends AbstractTaskBase {
       String releasesPath,
       ReleaseManager releaseManager,
       GFlagsValidation gFlagsValidation) {
-    try (InputStream tarGZIPInputStream =
-        releaseManager.getTarGZipDBPackageInputStream(version, releaseMetadata)) {
+    try (InputStream tarGZIPInputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
       gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
           tarGZIPInputStream, version, requiredGFlagsFileList, releasesPath);
     } catch (Exception e) {

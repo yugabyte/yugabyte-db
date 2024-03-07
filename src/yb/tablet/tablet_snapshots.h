@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/tablet/restore_util.h"
@@ -22,7 +23,6 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 
 namespace rocksdb {

@@ -8,6 +8,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import json
 import jwt
 import logging
 import shlex
@@ -28,6 +29,27 @@ SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
 FILE_UPLOAD_CHUNK_BYTES = 524288
+
+# GRPC specific configurations.
+GRPC_WAIT_FOR_READY = False
+
+# Max attempt is capped at 5 internally by the underlying client.
+# Below values are large enough to detect permanently unreachable server much faster,
+# and handle flaky connection.
+GRPC_SERVICE_CONFIG = {
+    "methodConfig": [
+        {
+            "name": [{"service": "nodeagent.server.NodeAgent"}],
+            "retryPolicy": {
+                "maxAttempts": 5,
+                "initialBackoff": "5s",
+                "maxBackoff": "30s",
+                "backoffMultiplier": 2,
+                "retryableStatusCodes": ["UNAVAILABLE", "RESOURCE_EXHAUSTED"]
+            }
+        }
+    ]
+}
 
 
 class RpcOutput(object):
@@ -75,6 +97,11 @@ class RpcClient(object):
             self.rpc_timeout_sec = RPC_TIMEOUT_SEC
         logging.info("RPC time-out is set to {} secs".format(self.rpc_timeout_sec))
 
+        # Prepare channel options.
+        self.channel_options = None
+        if not GRPC_WAIT_FOR_READY:
+            self.channel_options = (("grpc.service_config", json.dumps(GRPC_SERVICE_CONFIG)),)
+
     def connect(self):
         """
         Create GRPC connection to the node agent.
@@ -84,7 +111,8 @@ class RpcClient(object):
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
         credentials = composite_channel_credentials(cert_creds, auth_creds)
-        self.channel = secure_channel(self.ip + ':' + str(self.port), credentials)
+        self.channel = secure_channel(self.ip + ':' + str(self.port), credentials,
+                                      options=self.channel_options)
         self.stub = NodeAgentStub(self.channel)
         self.connected = True
 
@@ -133,7 +161,7 @@ class RpcClient(object):
                     cmd_args_list = cmd
             for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
-                    timeout=timeout_sec, wait_for_ready=True):
+                    timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -173,12 +201,12 @@ class RpcClient(object):
             cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
                                                    commandInput=cmd_input),
-                                 timeout=timeout_sec, wait_for_ready=True)
+                                 timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
-                            timeout=timeout_sec, wait_for_ready=True):
+                            timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
                         if response.HasField('error'):
                             output.rc = response.error.code
                             output.stderr = response.error.message
@@ -209,7 +237,7 @@ class RpcClient(object):
             timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
             request = SubmitTaskRequest(user=self.user, taskId=task_id)
             self._set_request_oneof_field(request, param)
-            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=True)
+            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -267,7 +295,7 @@ class RpcClient(object):
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
         self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                             timeout=timeout_sec, wait_for_ready=True)
+                             timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -277,7 +305,7 @@ class RpcClient(object):
         timeout_sec = kwargs.get('timeout', self.rpc_timeout_sec)
         for response in self.stub.DownloadFile(
                 DownloadFileRequest(filename=in_path, user=self.user),
-                timeout=timeout_sec, wait_for_ready=True):
+                timeout=timeout_sec, wait_for_ready=GRPC_WAIT_FOR_READY):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
 

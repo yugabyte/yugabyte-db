@@ -157,6 +157,9 @@
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
+#include "yb/common/opid.fwd.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_internal.h"
@@ -252,9 +255,6 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
 #include "yb/util/object_pool.h"
-#include "yb/util/opid.fwd.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"

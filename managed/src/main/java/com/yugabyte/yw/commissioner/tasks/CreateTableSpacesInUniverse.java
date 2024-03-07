@@ -40,7 +40,9 @@ public class CreateTableSpacesInUniverse extends UniverseTaskBase {
       checkUniverseVersion();
 
       // Update the DB to prevent other changes from happening.
-      universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       createTableSpacesTask().setSubTaskGroupType(SubTaskGroupType.CreatingTablespaces);
 

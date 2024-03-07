@@ -51,7 +51,7 @@
 /* DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
-/* DocDB Remote filter cost */
+/* DocDB storage filter cost */
 #define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */

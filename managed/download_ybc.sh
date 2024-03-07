@@ -16,6 +16,7 @@ EOT
 #default_parameters
 config_file=""
 should_copy_ybc="false"
+ignore_if_exists="false"
 
 POSITIONAL_ARGS=()
 
@@ -28,6 +29,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -s|--should_copy)
       should_copy_ybc="true"
+      shift
+      ;;
+    -i|--ignore-if-exists)
+      ignore_if_exists="true"
       shift
       ;;
     -h|--help)
@@ -51,12 +56,16 @@ ybc_version=$(
 
 mkdir -p src/universal/ybc
 
-aws s3 cp \
-  s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-linux-x86_64.tar.gz \
-  src/universal/ybc
-aws s3 cp \
-  s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-el8-aarch64.tar.gz \
-  src/universal/ybc
+if [ "$ignore_if_exists" = "false" ] ||
+   ! [ -f src/universal/ybc/ybc-${ybc_version}-linux-x86_64.tar.gz ] ||
+   ! [ -f src/universal/ybc/ybc-${ybc_version}-el8-aarch64.tar.gz ]; then
+  aws s3 cp \
+    s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-linux-x86_64.tar.gz \
+    src/universal/ybc
+  aws s3 cp \
+    s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-el8-aarch64.tar.gz \
+    src/universal/ybc
+fi
 
 if [ "$should_copy_ybc" = "true" ]; then
   mkdir -p /opt/yugabyte/ybc/release

@@ -12,7 +12,6 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include <cstddef>
-#include <list>
 #include <map>
 #include <vector>
 #include <gtest/gtest.h>
@@ -25,7 +24,11 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -1406,6 +1409,128 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     }
   }
 
+  Status CDCSDKYsqlTest::InitVirtualWAL(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id) {
+    InitVirtualWALForCDCRequestPB init_req;
+    init_req.set_stream_id(stream_id.ToString());
+    init_req.set_session_id(session_id);
+    for (const auto& table_id : table_ids) {
+      init_req.add_table_id(table_id);
+    }
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          InitVirtualWALForCDCResponsePB init_resp;
+          RpcController init_rpc;
+          auto status = cdc_proxy_->InitVirtualWALForCDC(init_req, &init_resp, &init_rpc);
+
+          if (status.ok() && !init_resp.has_error()) {
+            return true;
+          }
+
+          if (status.ok() && init_resp.has_error()) {
+            status = StatusFromPB(init_resp.error().status());
+            if (status.IsAlreadyPresent() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "InitVirtualWal failed due to RPC timeout"));
+
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::DestroyVirtualWAL(const uint64_t session_id) {
+    DestroyVirtualWALForCDCRequestPB req;
+    req.set_session_id(session_id);
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          DestroyVirtualWALForCDCResponsePB resp;
+          RpcController init_rpc;
+          auto status = cdc_proxy_->DestroyVirtualWALForCDC(req, &resp, &init_rpc);
+
+          if (status.ok() && !resp.has_error()) {
+            return true;
+          }
+
+          if (status.ok() && resp.has_error()) {
+            status = StatusFromPB(resp.error().status());
+            if (status.IsNotFound() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "DestroyVirtualWAL failed due to RPC timeout"));
+
+    return Status::OK();
+  }
+
+  Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromCDC(
+      const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
+      const uint64_t session_id) {
+    GetConsistentChangesRequestPB change_req;
+    GetConsistentChangesResponsePB final_resp;
+    change_req.set_stream_id(stream_id.ToString());
+    change_req.set_session_id(session_id);
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          GetConsistentChangesResponsePB change_resp;
+          RpcController get_changes_rpc;
+          auto status =
+              cdc_proxy_->GetConsistentChanges(change_req, &change_resp, &get_changes_rpc);
+
+          if (!status.ok()) {
+            return false;
+          }
+
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+            if (status.IsNotFound() || status.IsInvalidArgument()) {
+              RETURN_NOT_OK(status);
+            }
+          }
+
+          final_resp = change_resp;
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "GetConsistentChanges failed due to RPC timeout"));
+
+    return final_resp;
+  }
+
+  Status CDCSDKYsqlTest::UpdateAndPersistLSN(
+      const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
+      const uint64_t restart_lsn, const uint64_t session_id) {
+    UpdateAndPersistLSNRequestPB update_req;
+    update_req.set_session_id(session_id);
+    update_req.set_stream_id(stream_id.ToString());
+    update_req.set_restart_lsn(restart_lsn);
+    update_req.set_confirmed_flush_lsn(confirmed_flush_lsn);
+
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          UpdateAndPersistLSNResponsePB update_resp;
+          RpcController rpc;
+          auto status = cdc_proxy_->UpdateAndPersistLSN(update_req, &update_resp, &rpc);
+
+          if (status.ok() && !update_resp.has_error()) {
+            return true;
+          }
+          LOG(WARNING) << StatusFromPB(update_resp.error().status()).ToString();
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout), "UpdateRestartLSN failed due to RPC timeout"));
+
+    return Status::OK();
+  }
+
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -1686,6 +1811,114 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       // flip the flag every iteration.
       reset_req_checkpoint = !reset_req_checkpoint;
     } while (prev_records_size != 0);
+
+    return resp;
+  }
+
+  Result<uint64_t> FindLSNForSendingFeedback(GetConsistentChangesResponsePB& change_resp) {
+    bool found_commit = false;
+    uint64_t commit_lsn;
+    if (change_resp.cdc_sdk_proto_records_size() > 0) {
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        if (record.row_message().op() == RowMessage_Op_COMMIT) {
+          found_commit = true;
+          commit_lsn = record.row_message().pg_lsn();
+        }
+      }
+    }
+
+    if (!found_commit) {
+      LOG(INFO) << "Couldnt find a commit lsn for sending feedback";
+      return STATUS_FORMAT(NotFound, "Couldnt find a commit lsn for sending feedback");
+    }
+
+    return commit_lsn;
+  }
+
+  Result<CDCSDKYsqlTest::GetAllPendingChangesResponse>
+  CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
+      const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
+      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback) {
+    // We will keep on consuming changes until we get the entire txn i.e COMMIT record of the
+    // last txn. This indicates that even though we might have received the expecpted DML
+    // records, we might still continue calling GetConsistentChanges until we receive the
+    // COMMIT record.
+
+    GetAllPendingChangesResponse resp;
+    if (init_virtual_wal) {
+      Status s = InitVirtualWAL(stream_id, table_ids, session_id);
+      if (!s.ok()) {
+        LOG(INFO) << "Error while trying to initialize virtual WAL";
+        RETURN_NOT_OK(s);
+      }
+    }
+
+    // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT
+    // in that order.
+    int count[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    int begin_records = 0;
+    int commit_records = 0;
+    int dml_records = 0;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          GetConsistentChangesResponsePB change_resp;
+          auto get_changes_result = GetConsistentChangesFromCDC(stream_id, table_ids, session_id);
+
+          if (get_changes_result.ok()) {
+            change_resp = *get_changes_result;
+          } else {
+            LOG(ERROR) << "Encountered error while calling GetConsistentChanges on stream: "
+                       << stream_id << ", status: " << get_changes_result.status();
+          }
+
+          for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
+            resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
+            UpdateRecordCount(change_resp.cdc_sdk_proto_records(i), count);
+          }
+
+          begin_records = count[6];
+          commit_records = count[7];
+          dml_records =
+              count[1] + count[2] + count[3] + count[5];  // INSERT + UPDATE + DELETE + TRUNCATE
+          LOG(INFO) << "Total Received records for stream " << resp.records.size();
+          uint64_t restart_lsn = 0;
+          uint64_t confirmed_flush_lsn = 0;
+          bool send_feedback = false;
+
+          if (allow_sending_feedback) {
+            auto result = FindLSNForSendingFeedback(change_resp);
+            if (result.ok()) {
+              send_feedback = true;
+              confirmed_flush_lsn = *result;
+              restart_lsn = *result + 1;
+            }
+
+            if (send_feedback) {
+              LOG(INFO) << "Sending feedback for stream " << stream_id
+                        << " with restart_lsn: " << restart_lsn
+                        << " and confirmed_flush_lsn: " << confirmed_flush_lsn;
+              auto result =
+                  UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn, session_id);
+              if (!result.ok()) {
+                LOG(WARNING) << "UpdateRestartLSN failed: " << result;
+              }
+            }
+          }
+
+          if (dml_records < expected_dml_records || commit_records < begin_records) {
+            return false;
+          }
+
+          return true;
+        },
+        MonoDelta::FromSeconds(300), "Didnt receive expected records within time",
+        MonoDelta::FromMilliseconds(kDefaultInitialWaitMs), 1));
+
+    LOG(INFO) << "Record count array: ";
+    for (int i = 0; i < 8; i++) {
+      LOG(INFO) << "Count[" << i << "] = " << count[i];
+      resp.record_count[i] = count[i];
+    }
 
     return resp;
   }
@@ -2369,24 +2602,6 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     RETURN_NOT_OK(test_client()->GetCDCStream(
         stream_id, &ns_id, &stream_table_ids, &options, &transactional));
     return stream_table_ids;
-  }
-
-  Result<master::GetCDCStreamResponsePB> CDCSDKYsqlTest::GetCDCStream(
-      const xrepl::StreamId& db_stream_id) {
-    master::GetCDCStreamRequestPB get_req;
-    master::GetCDCStreamResponsePB get_resp;
-    get_req.set_stream_id(db_stream_id.ToString());
-
-    RpcController get_rpc;
-    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    master::MasterReplicationProxy master_proxy_(
-        &test_client()->proxy_cache(),
-        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
-
-    return get_resp;
   }
 
   uint32_t CDCSDKYsqlTest::GetTotalNumRecordsInTablet(
@@ -3321,6 +3536,50 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return expected_row;
   }
 
+  void CDCSDKYsqlTest::VerifyExplicitCheckpointingOnTablets(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_map<TabletId, CdcStateTableRow>& initial_tablet_checkpoint,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
+      const std::unordered_set<TabletId>& expected_tablet_ids_with_progress) {
+    for (const auto& tablet : tablets) {
+      auto result = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablet.tablet_id()));
+      ASSERT_GT(result.op_id, initial_tablet_checkpoint.at(tablet.tablet_id()).op_id);
+      if (expected_tablet_ids_with_progress.contains(tablet.tablet_id())) {
+        ASSERT_GT(
+            result.cdc_sdk_safe_time,
+            initial_tablet_checkpoint.at(tablet.tablet_id()).cdc_sdk_safe_time);
+      } else {
+        ASSERT_EQ(
+            result.cdc_sdk_safe_time,
+            initial_tablet_checkpoint.at(tablet.tablet_id()).cdc_sdk_safe_time);
+      }
+    }
+  }
+
+  void CDCSDKYsqlTest::VerifyLastRecordAndProgressOnSlot(
+      const xrepl::StreamId& stream_id, const CDCSDKProtoRecordPB& last_record) {
+    // Last record received from the Virtual WAL should always be a COMMIT record. While sending the
+    // last feedback to the VWAL after receiving the last batch of records, VWAL will use the
+    // last shipped commit record's metadata to update the slot entry in cdc_state table. Hence,
+    // confirmed_flush_lsn & restart_lsn will be same and they'll be equal to last shipped commit
+    // record' lsn.
+    ASSERT_EQ(last_record.row_message().op(), RowMessage::Op::RowMessage_Op_COMMIT);
+    auto commit_record_lsn = last_record.row_message().pg_lsn();
+    auto commit_record_txn_id = last_record.row_message().pg_transaction_id();
+    auto commit_record_commit_time = last_record.row_message().commit_time();
+
+    CDCStateTable cdc_state_table(test_client());
+    auto slot_entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+        {kCDCSDKSlotEntryTabletId, stream_id},
+        CDCStateTableEntrySelector().IncludeData().IncludeCDCSDKSafeTime()));
+    ASSERT_TRUE(slot_entry.has_value());
+    ASSERT_EQ(slot_entry->confirmed_flush_lsn, commit_record_lsn);
+    ASSERT_EQ(slot_entry->restart_lsn, commit_record_lsn);
+    ASSERT_EQ(slot_entry->xmin, commit_record_txn_id);
+    ASSERT_EQ(slot_entry->record_id_commit_time, commit_record_commit_time);
+    ASSERT_EQ(slot_entry->cdc_sdk_safe_time, commit_record_commit_time);
+  }
+
   void CDCSDKYsqlTest::UpdateRecordCount(const CDCSDKProtoRecordPB& record, int* record_count) {
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
@@ -3350,6 +3609,85 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       default:
         ASSERT_FALSE(true);
         break;
+    }
+  }
+
+  void CDCSDKYsqlTest::CheckRecordCount(
+      GetAllPendingChangesResponse resp, int expected_dml_records) {
+    // The record count array in GetAllPendingChangesResponse stores counts of DDL, INSERT, UPDATE,
+    // DELETE, READ, TRUNCATE, BEGIN, COMMIT in that order.
+    int dml_records =
+        resp.record_count[1] + resp.record_count[2] + resp.record_count[3] + resp.record_count[5];
+    ASSERT_EQ(dml_records, expected_dml_records);
+
+    // last record received should be a COMMIT.
+    ASSERT_EQ(resp.records.back().row_message().op(), RowMessage::COMMIT);
+
+    // Number of BEGIN & COMMIT should be equal to the txn_id of last received record (i.e COMMIT)
+    // - 1 since transaction generator starts from 2, so first record will have txn_id as 2.
+    auto last_txn_id = resp.records.back().row_message().pg_transaction_id() - 1;
+    int begin_records = resp.record_count[6];
+    int commit_records = resp.record_count[7];
+    ASSERT_EQ(begin_records, last_txn_id);
+    ASSERT_EQ(commit_records, last_txn_id);
+  }
+
+  void CDCSDKYsqlTest::CheckRecordsConsistencyWithWriteId(
+      const std::vector<CDCSDKProtoRecordPB>& records) {
+    uint64_t prev_commit_time = 0;
+    uint64_t prev_record_time = 0;
+    uint32_t prev_write_id = 0;
+    uint64_t prev_lsn = 0;
+    uint64_t prev_txn_id = 0;
+    bool in_transaction = false;
+    bool first_record_in_transaction = false;
+    for (auto& record : records) {
+      if (record.row_message().op() == RowMessage::BEGIN) {
+        in_transaction = true;
+        first_record_in_transaction = true;
+        // BEGIN record should have strictly > commit_time than prev record' commit_time. Same
+        // follows for PG txn_id.
+        ASSERT_GT(record.row_message().commit_time(), prev_commit_time);
+        ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+        ASSERT_GT(record.row_message().pg_transaction_id(), prev_txn_id);
+        prev_commit_time = record.row_message().commit_time();
+        prev_lsn = record.row_message().pg_lsn();
+        prev_txn_id = record.row_message().pg_transaction_id();
+      }
+
+      if (record.row_message().op() == RowMessage::COMMIT) {
+        ASSERT_TRUE(in_transaction);
+        in_transaction = false;
+        ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+        ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+        // PG txn_id should be same as the BEGIN record of the current txn.
+        ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+        prev_commit_time = record.row_message().commit_time();
+        prev_lsn = record.row_message().pg_lsn();
+      }
+
+      if (record.row_message().op() == RowMessage::INSERT ||
+          record.row_message().op() == RowMessage::UPDATE ||
+          record.row_message().op() == RowMessage::DELETE) {
+        ASSERT_TRUE(in_transaction);
+        ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+        ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+        // PG txn_id should be same as the BEGIN record of the current txn.
+        ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+        prev_commit_time = record.row_message().commit_time();
+        prev_lsn = record.row_message().pg_lsn();
+
+        if (!first_record_in_transaction) {
+          ASSERT_GE(record.row_message().record_time(), prev_record_time);
+          if (record.row_message().record_time() == prev_record_time) {
+            ASSERT_GE(record.cdc_sdk_op_id().write_id(), prev_write_id);
+          }
+        }
+
+        first_record_in_transaction = false;
+        prev_record_time = record.row_message().record_time();
+        prev_write_id = record.cdc_sdk_op_id().write_id();
+      }
     }
   }
 

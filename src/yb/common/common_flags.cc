@@ -80,6 +80,13 @@ DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_m
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
+// TODO(#13369): use this flag in tserver.
+DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
+    "Lease period between master and tserver that guarantees YSQL system catalog is not stale."
+    " Must be higher than --heartbeat_interval_ms, preferrably many times higher.");
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
+
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
 DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
@@ -99,6 +106,12 @@ TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
 DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
                             "Enable support for CDC Consistent Snapshot Streams");
+
+DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
+                       "Enable consumption of changes via replication slots."
+                       "Requires yb_enable_replication_commands to be true.");
+TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
+TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
 
 namespace {
 

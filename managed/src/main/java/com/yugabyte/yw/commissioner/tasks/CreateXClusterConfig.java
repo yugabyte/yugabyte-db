@@ -69,10 +69,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
         createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
@@ -432,7 +434,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // Delete hanging replication streams, otherwise deleting the database will fail.
         createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName);
         // If the table type is YSQL, delete the database from the target universe before restore.
-        createDeleteKeySpaceTask(namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE);
+        createDeleteKeySpaceTask(
+            namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE, true /*ysqlForce*/);
       }
 
       // Wait for sometime to make sure the above drop database has reached all the nodes.

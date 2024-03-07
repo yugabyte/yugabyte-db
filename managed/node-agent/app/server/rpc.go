@@ -86,6 +86,7 @@ func NewRPCServer(
 				listener,
 				&tls.Config{
 					Certificates: tlsConfig.Certificates,
+					MinVersion:   tls.VersionTLS12,
 					NextProtos:   []string{http2.NextProtoTLS, "http/1.1"},
 				},
 			)
@@ -115,7 +116,7 @@ func NewRPCServer(
 	// Start metrics server.
 	go func() {
 		if err := server.metricServer.Serve(mListener); err != nil {
-			util.FileLogger().Errorf(ctx, "Failed to start metrics server: %v", err)
+			util.FileLogger().Errorf(ctx, "Exiting metrics service: %v", err)
 		}
 		select {
 		case <-server.done:
@@ -126,7 +127,7 @@ func NewRPCServer(
 	// Start RPC server.
 	go func() {
 		if err := gServer.Serve(gListener); err != nil {
-			util.FileLogger().Errorf(ctx, "Failed to start RPC server: %v", err)
+			util.FileLogger().Errorf(ctx, "Exiting RPC service: %v", err)
 		}
 		select {
 		case <-server.done:
@@ -137,7 +138,7 @@ func NewRPCServer(
 	// Start the root listener.
 	go func() {
 		if err := mux.Serve(); err != nil {
-			util.FileLogger().Errorf(ctx, "Failed to start server: %v", err)
+			util.FileLogger().Errorf(ctx, "Exiting server: %v", err)
 		}
 		select {
 		case <-server.done:
@@ -159,6 +160,7 @@ func loadTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.NoClientCert,
+		MinVersion:   tls.VersionTLS12,
 	}
 	return tlsConfig, nil
 }

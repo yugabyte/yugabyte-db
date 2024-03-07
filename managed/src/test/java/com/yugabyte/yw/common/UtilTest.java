@@ -8,12 +8,14 @@ import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -484,5 +486,38 @@ public class UtilTest extends FakeDBApplication {
     TestUtils.setFakeHttpContext(defaultUser, "");
     userEmail = Util.maybeGetEmailFromContext();
     assertEquals(userEmail, "");
+  }
+
+  @Test
+  public void testAddJsonPathToLeafNodes() {
+    // Account for all JSON types, boolean, int, double, null, string.
+    JsonNode input =
+        Util.convertStringToJson(
+            "{\"sin\": true,"
+                + "\"obj\": {\"c\": \"two\", \"d\": 3},"
+                + "\"oArr\": [4.1, {\"f\": null}],"
+                + "\"arr\": [9, 10, \"\"]}");
+    JsonNode output = Util.addJsonPathToLeafNodes(input);
+    assertEquals(
+        Util.convertStringToJson(
+            "{\"sin\":{\"jsonPath\":\"$.sin\",\"value\":true},"
+                + " \"obj\":{\"c\":{\"jsonPath\":\"$.obj.c\",\"value\":\"two\"},"
+                + " \"d\":{\"jsonPath\":\"$.obj.d\",\"value\":3}},"
+                + " \"oArr\":[{\"jsonPath\":\"$.oArr[0]\",\"value\":4.1},"
+                + " {\"f\":{\"jsonPath\":\"$.oArr[1].f\",\"value\":null}}],"
+                + " \"arr\":[{\"jsonPath\":\"$.arr[0]\",\"value\":9},"
+                + " {\"jsonPath\":\"$.arr[1]\",\"value\":10},"
+                + "{\"jsonPath\":\"$.arr[2]\",\"value\":\"\"}]}"),
+        output);
+    assertNotEquals(input, output);
+
+    // Array with single element
+    assertEquals(
+        Util.convertStringToJson("[{\"jsonPath\": \"$[0]\", \"value\": \"yb\"}]"),
+        Util.addJsonPathToLeafNodes(Util.convertStringToJson("[\"yb\"]")));
+
+    // Empty containers like array and object remain as it is
+    JsonNode emptyContainers = Util.convertStringToJson("{\"no\": {}, \"na\": []}");
+    assertEquals(emptyContainers, Util.addJsonPathToLeafNodes(emptyContainers));
   }
 }

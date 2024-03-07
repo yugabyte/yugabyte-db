@@ -1920,6 +1920,16 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				bound_inclusive = true;
 				switch_fallthrough();
 			case BTGreaterStrategyNumber:
+				/*
+				 * For prechecks, we skip computation of the range bounds as we
+				 * are interested in only knowing if the keys can be bound, and
+				 * not what they bind to. Further, in some cases such as nested
+				 * subqueries, the value datums may not yet be available during
+				 * the precheck.
+				 */
+				if (is_for_precheck)
+					break;
+
 				if (start_valid[idx])
 				{
 					/* take max of old value and new value */
@@ -1943,6 +1953,16 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				bound_inclusive = true;
 				switch_fallthrough();
 			case BTLessStrategyNumber:
+				/*
+				 * For prechecks, we skip computation of the range bounds as we
+				 * are interested in only knowing if the keys can be bound, and
+				 * not what they bind to. Further, in some cases such as nested
+				 * subqueries, the value datums may not yet be available during
+				 * the precheck.
+				 */
+				if (is_for_precheck)
+					break;
+
 				if (end_valid[idx])
 				{
 					/* take min of old value and new value */
@@ -2542,7 +2562,7 @@ YbDmlAppendTargets(List *colrefs, YBCPgStatement handle)
 /*
  * YbDmlAppendQuals
  *
- * Add remote filter expressions to the statement.
+ * Add storage filter expressions to the statement.
  * The expression are pushed down to DocDB and used to filter rows early to
  * avoid sending them across network.
  * Set is_primary to false if the filter expression is to apply to secondary

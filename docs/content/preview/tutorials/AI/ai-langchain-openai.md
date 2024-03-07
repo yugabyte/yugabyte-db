@@ -6,7 +6,7 @@ description: Learn to build context-aware LLM applications using LangChain and O
 image: /images/tutorials/ai/icons/langchain-icon.svg
 headcontent: Use YugaybteDB as the database backend for LLM applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-ai-langchain-openai
     parent: tutorials-ai
     weight: 60

@@ -67,11 +67,15 @@ public class YbcUpgrade {
   public static final String YBC_ALLOW_SCHEDULED_UPGRADE_PATH =
       "ybc.upgrade.allow_scheduled_upgrade";
   public static final String YBC_NODE_UPGRADE_BATCH_SIZE_PATH = "ybc.upgrade.node_batch_size";
+  public static final String MAX_YBC_UPGRADE_POLL_RESULT_TRIES_PATH =
+      "ybc.upgrade.poll_result_tries";
+  public static final String YBC_UPGRADE_POLL_RESULT_SLEEP_MS_PATH =
+      "ybc.upgrade.poll_result_sleep_ms";
 
   private final int YBC_UNIVERSE_UPGRADE_BATCH_SIZE;
   private final int YBC_NODE_UPGRADE_BATCH_SIZE;
-  public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES = 10;
-  public final long YBC_UPGRADE_POLL_RESULT_SLEEP_MS = 10000;
+  public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES;
+  public final long YBC_UPGRADE_POLL_RESULT_SLEEP_MS;
   private final long YBC_REMOTE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
 
@@ -98,6 +102,8 @@ public class YbcUpgrade {
     this.nodeUniverseManager = nodeUniverseManager;
     this.YBC_UNIVERSE_UPGRADE_BATCH_SIZE = getYBCUniverseBatchSize();
     this.YBC_NODE_UPGRADE_BATCH_SIZE = getYBCNodeBatchSize();
+    this.MAX_YBC_UPGRADE_POLL_RESULT_TRIES = getMaxYBCUpgradePollResultTries();
+    this.YBC_UPGRADE_POLL_RESULT_SLEEP_MS = getYBCUpgradePollResultSleepMs();
     this.nodeManager = nodeManager;
   }
 
@@ -119,6 +125,14 @@ public class YbcUpgrade {
 
   private int getYBCNodeBatchSize() {
     return confGetter.getGlobalConf(GlobalConfKeys.ybcNodeBatchSize);
+  }
+
+  private int getMaxYBCUpgradePollResultTries() {
+    return confGetter.getGlobalConf(GlobalConfKeys.maxYbcUpgradePollResultTries);
+  }
+
+  private long getYBCUpgradePollResultSleepMs() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcUpgradePollResultSleepMs);
   }
 
   public synchronized void setYBCUpgradeProcess(UUID universeUUID) {

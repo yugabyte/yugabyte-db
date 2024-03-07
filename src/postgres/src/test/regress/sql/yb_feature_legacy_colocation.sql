@@ -264,6 +264,39 @@ CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);
 CREATE TABLE tbl_no_colocation (k INT, v INT) WITH (colocation = false);
 \d tbl_no_colocation
 
+-- Test table rewrite operations with legacy colocation.
+-- Suppress NOTICE messages during table rewrite operations.
+SET client_min_messages TO WARNING;
+CREATE TABLE base (col int, col2 int);
+CREATE INDEX base_idx ON base(col2);
+INSERT INTO base VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base ADD PRIMARY KEY (col HASH); -- should fail.
+ALTER TABLE base
+    ADD PRIMARY KEY (col), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base;
+SELECT col, col2, col4 FROM base WHERE col2 = 1;
+ALTER TABLE base DROP CONSTRAINT base_pkey;
+SELECT col, col2, col4 FROM base ORDER BY col;
+\d+ base;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base_idx'::regclass);
+CREATE TABLE base2 (col int, col2 int) WITH (COLOCATION=false);
+CREATE INDEX base2_idx ON base2(col2);
+INSERT INTO base2 VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base2
+    ADD PRIMARY KEY (col ASC), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base2 ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base2 ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base2;
+SELECT col, col2, col4 FROM base2 WHERE col2 = 1;
+ALTER TABLE base2 DROP CONSTRAINT base2_pkey;
+SELECT col, col2, col4 FROM base2 ORDER BY col;
+\d+ base2;
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base2_idx'::regclass);
+
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;

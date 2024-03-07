@@ -67,6 +67,9 @@ LightweightBoundaries::LightweightBoundaries(Arena* arena,
     arena->AllocateAligned(sizeof(UserBoundaryTag) * num_user_values));
   user_values = reinterpret_cast<Slice*>(
     arena->AllocateAligned(sizeof(Slice) * num_user_values));
+  if (source.user_frontier) {
+    hybrid_time = source.user_frontier->GetHybridTimeAsUInt64();
+  }
   for (size_t i = 0; i != num_user_values; ++i) {
     const UserBoundaryValue& value = source.user_values[i];
     new (user_tags + i) UserBoundaryTag(value.tag);

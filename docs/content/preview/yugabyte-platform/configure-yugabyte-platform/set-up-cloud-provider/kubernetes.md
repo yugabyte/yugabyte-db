@@ -1,41 +1,20 @@
 ---
 title: Configure the Kubernetes cloud provider
-headerTitle: Create provider configuration
-linkTitle: Create provider configuration
+headerTitle: Create Kubernetes provider configuration
+linkTitle: Kubernetes
 description: Configure the Kubernetes provider configuration
-headContent: Configure a Kubernetes provider configuration
+headContent: For deploying universes on Kubernetes
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
   preview_yugabyte-platform:
-    identifier: set-up-cloud-provider-5-kubernetes
-    parent: configure-yugabyte-platform
+    identifier: set-up-kubernetes-provider-1
+    parent: set-up-cloud-provider
     weight: 20
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li>
-    <a href="../aws/" class="nav-link">
-      <i class="fa-brands fa-aws"></i>
-      AWS
-    </a>
-  </li>
-
-  <li>
-    <a href="../gcp/" class="nav-link">
-      <i class="fa-brands fa-google" aria-hidden="true"></i>
-      GCP
-    </a>
-  </li>
-
-  <li>
-    <a href="../azure/" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>
-      Azure
-    </a>
-  </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
@@ -58,22 +37,13 @@ type: docs
     </a>
   </li>
 
-  <li>
-    <a href="../on-premises/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
-      On-premises
-    </a>
-  </li>
-
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
-
-A provider configuration describes your Kubernetes environment. The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
+Before you can deploy universes to Kubernetes using YugabyteDB Anywhere (YBA), you must create a provider configuration.
 
 ## Prerequisites
 
-To deploy YugabyteDB universes on Kubernetes, you need to provide your Kubernetes provider credentials. YugabyteDB Anywhere uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
+To deploy YugabyteDB universes on Kubernetes, you need to provide your Kubernetes provider credentials. YBA uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you create a Kubernetes provider, perform the following:
 
@@ -82,13 +52,13 @@ Before you create a Kubernetes provider, perform the following:
 
 This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
 
-If YugabyteDB Anywhere is deployed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
+If YBA is installed on Kubernetes, you can use the existing service account to discover details about the Kubernetes cluster and auto-fill the provider configuration. You can then modify these settings to further customize the provider. See [Create a provider](#create-a-provider).
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YBA.
 
-Set the `YBA_NAMESPACE` environment variable to the namespace where your YugabyteDB Anywhere is installed, as follows:
+Set the `YBA_NAMESPACE` environment variable to the namespace where your YBA is installed, as follows:
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
@@ -152,7 +122,7 @@ If you have multiple target namespaces, then you have to apply the YAML in all o
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
-For example, if your goal is to allow YugabyteDB Anywhere to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
+For example, if your goal is to allow YBA to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
@@ -212,7 +182,7 @@ To create a Kubernetes provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-    To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+    To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YBA is installed on, click **Autofill local cluster config**.
 
     ![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
 
@@ -256,7 +226,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Kube Namespace** field to specify the namespace. If the provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YugabyteDB Anywhere uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
+1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
 1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
 
@@ -333,7 +303,7 @@ The following overrides are available:
         memory: 4Gi
   ```
 
-  This overrides instance types selected in the YugabyteDB Anywhere universe creation flow.
+  This overrides instance types selected in the YBA universe creation flow.
 
 - Overrides to enable Istio compatibility:
 
@@ -513,11 +483,11 @@ The following overrides are available:
 
 If you plan to create multi-region YugabyteDB universes, you can set up [Multi-Cluster Services](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS) across your Kubernetes clusters. This section covers implementation specific details for setting up MCS on various cloud providers and service mesh tools.
 
-{{< warning title="YugabyteDB Anywhere support for MCS is in Early Access" >}}
+{{< warning title="YBA support for MCS is in Early Access" >}}
 
 The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
 
-MCS support in YugabyteDB Anywhere is currently in [Early Access](../../../../releases/versioning/#feature-availability). Keep in mind following caveats:
+MCS support in YBA is currently in [Early Access](../../../../releases/versioning/#feature-availability). Keep in mind following caveats:
 
 - Universe metrics may not display correct metrics for all the pods.
 - xCluster replication needs an additional manual step to work on OpenShift MCS.
@@ -529,7 +499,7 @@ MCS support in YugabyteDB Anywhere is currently in [Early Access](../../../../re
 
 GKE MCS allows clusters to be combined as a fleet on Google Cloud. These fleet clusters can export services, which enables you to do cross-cluster communication. For more information, see [Multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services) in the Google Cloud documentation.
 
-To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services). Note down the unique membership name of each cluster in the fleet, it will be used during the cloud provider setup in YugabyteDB Anywhere.
+To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services). Note down the unique membership name of each cluster in the fleet, it will be used during the cloud provider setup in YBA.
 
 ### Prepare OpenShift clusters for MCS
 
@@ -539,7 +509,7 @@ Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Ku
 1. Provision the OpenShift clusters which will be connected together.
    Ensure that the CIDRs mentioned in the cluster configuration file at `networking.clusterNetwork`, `networking.serviceNetwork`, and `networking.machineNetwork` are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the [OpenShift Container Platform installation overview](https://docs.openshift.com/container-platform/4.11/installing/index.html) (look for sections named "Installing a cluster on [provider name] with customizations").
 1. Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
-1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YugabyteDB Anywhere.
+1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YBA.
 
 ### Prepare Kubernetes clusters for Istio multicluster
 
@@ -584,7 +554,7 @@ Follow the steps in [Configure region and zones](#configure-region-and-zones) an
 
 For example, if your cluster membership name is `yb-asia-south1`, then the **Add new region** screen would look as follows:
 
-![Add new region screen of YugabyteDB Anywhere with GKE MCS](/images/ee/k8s-setup/k8s-add-region-gke-mcs.png)
+![Add new region screen of YBA with GKE MCS](/images/ee/k8s-setup/k8s-add-region-gke-mcs.png)
 
 #### Configure region and zones for OpenShift MCS
 

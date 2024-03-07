@@ -78,6 +78,7 @@ export const LinuxVersionOverview: FC<LinuxVersionOverviewProps> = ({ imageBundl
                 setImageAsDefault={noop}
                 showMoreActions={false}
                 showTitle={false}
+                viewMode="EDIT"
               />
             );
           }}

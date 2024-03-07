@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import api.v2.models.ClusterGFlags;
+import api.v2.models.UpgradeUniverseGFlags;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Sets;
@@ -36,6 +38,59 @@ public class GFlagsAuditHandler {
   @Inject
   public GFlagsAuditHandler(GFlagsValidationHandler gFlagsValidationHandler) {
     this.gFlagsValidationHandler = gFlagsValidationHandler;
+  }
+
+  public JsonNode constructGFlagAuditPayload(
+      String universeUuid, UpgradeUniverseGFlags requestParams) {
+    Map<String, GFlagsAuditPayload> auditPayload = new HashMap<>();
+    Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> oldVersionsOfClusters =
+        universe.getUniverseDetails().clusters.stream()
+            .collect(Collectors.toMap(c -> c.uuid, c -> c));
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    for (UniverseDefinitionTaskParams.Cluster oldCluster : oldVersionsOfClusters.values()) {
+      Map<String, String> oldMasterGFlags =
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.MASTER, oldCluster, oldVersionsOfClusters.values());
+      Map<String, String> oldTserverGFlags =
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.TSERVER, oldCluster, oldVersionsOfClusters.values());
+      ClusterGFlags newClusterGFlags =
+          requestParams.getUniverseGflags() != null
+              ? requestParams.getUniverseGflags().get(oldCluster.uuid.toString())
+              : null;
+      Map<String, String> newMasterGFlags =
+          newClusterGFlags != null ? newClusterGFlags.getMaster() : null;
+      Map<String, String> newTserverGFlags =
+          newClusterGFlags != null ? newClusterGFlags.getTserver() : null;
+      if (!Objects.equals(newMasterGFlags, oldMasterGFlags)
+          || !Objects.equals(newTserverGFlags, oldTserverGFlags)) {
+        GFlagsAuditPayload payload = new GFlagsAuditPayload();
+
+        payload.master =
+            generateGFlagEntries(
+                oldMasterGFlags,
+                newMasterGFlags,
+                UniverseTaskBase.ServerType.MASTER.toString(),
+                softwareVersion);
+        payload.tserver =
+            generateGFlagEntries(
+                oldTserverGFlags,
+                newTserverGFlags,
+                UniverseTaskBase.ServerType.TSERVER.toString(),
+                softwareVersion);
+
+        if (oldCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
+          auditPayload.put("gflags", payload);
+        } else {
+          auditPayload.put("readonly_cluster_gflags", payload);
+        }
+      }
+    }
+    ObjectMapper mapper = new ObjectMapper();
+    return mapper.valueToTree(auditPayload);
   }
 
   public JsonNode constructGFlagAuditPayload(GFlagsUpgradeParams requestParams) {

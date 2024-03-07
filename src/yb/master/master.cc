@@ -55,7 +55,6 @@
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_backup.service.h"
-#include "yb/master/master_backup_service.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
@@ -293,10 +292,8 @@ Status Master::RegisterServices() {
   });
 #endif
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_master_backup_svc_queue_length, std::make_shared<MasterBackupServiceImpl>(this)));
-
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterBackupService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
@@ -628,6 +625,11 @@ EncryptionManager& Master::encryption_manager() {
 uint32_t Master::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
+
+CloneStateManager* Master::clone_state_manager() const {
+  return catalog_manager_->clone_state_manager();
+}
+
 
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
 

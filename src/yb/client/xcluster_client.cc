@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/master/master_defaults.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
@@ -108,7 +109,7 @@ Result<UniverseUuid> XClusterRemoteClient::SetupDbScopedUniverseReplication(
   return UniverseUuid::FromString(resp.universe_uuid());
 }
 
-Result<master::IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDone(
+Result<IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
@@ -118,13 +119,12 @@ Result<master::IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseRepli
     return StatusFromPB(resp.error().status());
   }
 
-  Status status;
   if (resp.has_replication_error()) {
     // IsSetupUniverseReplicationDoneRequestPB will contain an OK status on success.
-    status = StatusFromPB(resp.replication_error());
+    return IsOperationDoneResult::Done(StatusFromPB(resp.replication_error()));
   }
 
-  return master::IsOperationDoneResult(resp.done(), std::move(status));
+  return resp.done() ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
 }
 
 Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(

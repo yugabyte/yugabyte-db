@@ -1,0 +1,17 @@
+title: GFlags for a cluster
+description: GFlags for a cluster
+type: object
+properties:
+  tserver:
+    description: GFlags applied on TServer process
+    additionalProperties:
+      type: string
+  master:
+    description: GFlags applied on Master process
+    additionalProperties:
+      type: string
+  az_gflags:
+    description: GFlags per availability zone uuid
+    type: object
+    additionalProperties:
+      $ref: ./AvailabilityZoneGFlags.yaml

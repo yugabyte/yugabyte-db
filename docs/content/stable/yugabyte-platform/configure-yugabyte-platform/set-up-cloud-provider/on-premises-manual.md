@@ -1,34 +1,34 @@
 ---
 title: Manually provision on-premises nodes
 headerTitle: Manually provision on-premises nodes
-linkTitle: Manually provision on-prem nodes
+linkTitle: Manually provision nodes
 description: Provision the on-premises nodes manually.
 headContent: Your SSH user does not have sudo privileges
 menu:
   stable_yugabyte-platform:
     identifier: on-premises-manual-2
-    parent: configure-yugabyte-platform
+    parent: set-up-on-premises
     weight: 20
 type: docs
 ---
 
-Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
+Use the following procedure to manually provision nodes for your on-premises provider configuration:
 
-- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
-- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
+- Your [SSH user](../on-premises-provider/#ssh-key-pairs) has sudo privileges that require a password - **Assisted manual**.
+- Your SSH user does not have sudo privileges at all - **Fully manual**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../on-premises-script/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Manual setup with script
+      Assisted manual
     </a>
   </li>
 
   <li>
     <a href="../on-premises-manual/" class="nav-link active">
       <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual setup
+      Fully manual
     </a>
   </li>
 </ul>
@@ -48,13 +48,13 @@ For each node, perform the following:
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
-After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
+After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../on-premises-nodes/#add-instances).
 
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.
 
-Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard CentOS 7 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
+Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard AlmaLinux 8 instance used in this example). Then, configure the time service client to use the available time server. The procedure includes this step and assumes chrony is the installed client.
 
 ## Open incoming TCP/IP ports
 
@@ -82,9 +82,9 @@ The preceding table is based on the information on the [default ports page](../.
 
 This process carries out all provisioning tasks on the database nodes which require elevated privileges. After the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
-Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
+Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Log in to each database node as a user with sudo enabled (the `centos` user in CentOS 7 images).
+1. Log in to each database node as a user with sudo enabled (for example, the `ec2-user` user in AWS).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
@@ -155,11 +155,11 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Install the rsync and OpenSSL packages (if not already included with your Linux distribution) using the following commands:
 
     ```sh
-    sudo yum install openssl
-    sudo yum install rsync
+    sudo dnf install openssl
+    sudo dnf install rsync
     ```
 
-    For airgapped environments, make sure your Yum repository mirror contains these packages.
+    For airgapped environments, make sure your DNF repository mirror contains these packages.
 
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
@@ -167,7 +167,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
         ```sh
         sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E >> /etc/sysctl.conf
+        sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E
         ```
 
     1. Configure the parameter `vm.max_map_count` as follows:
@@ -225,7 +225,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `ec2-user`).
 
 1. Run the following commands:
 
@@ -308,7 +308,7 @@ You can install the backup utility for the backup storage you plan to use, as fo
   - For a regular installation, execute the following:
 
       ```sh
-      sudo yum install s3cmd
+      sudo dnf install s3cmd
       ```
 
   - For an airgapped installation, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the YugabyteDB Anywhere node to the database node, and then extract it into the `/usr/local` directory on the database node, as follows:
@@ -767,8 +767,6 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
 
-After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node agent binary to your PATH.
-
 ### Preflight check
 
 After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
@@ -791,7 +789,52 @@ node-agent node preflight-check --add_node
 
 ### Reconfigure a node agent
 
-If you need to reconfigure a node agent, you can use the following procedure:
+If you want to use a node that has already been provisioned in a different provider, you can reconfigure the node agent.
+
+To reconfigure a node for use in a different provider, do the following:
+
+1. Remove the node instance from the provider using the following command:
+
+    ```sh
+    node-agent node delete-instance
+    ```
+
+1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
+
+    ```sh
+    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    ```
+
+    For example, if you run the following:
+
+    ```sh
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    ```
+
+    ```output
+    * The current value of Node Name is set to node1; Enter new value or enter to skip:
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip:
+    * Select your Onprem Manually Provisioned Provider.
+    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
+    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
+        Enter new option number or enter to skip:
+    * Select your Instance Type.
+    1. Instance Code: c5.large
+    * The current value is Instance Code: c5.large.
+        Enter new option number or enter to skip:
+    * Select your Region.
+    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
+    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
+        Enter new option number or enter to skip:
+    * Select your Zone.
+    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
+    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
+        Enter new option number or enter to skip:
+    • Completed Node Agent Configuration
+    • Node Agent Registration Successful
+    ```
+
+If you are running v2.18.5 or earlier, the node must be unregistered first. Use the following procedure:
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 
@@ -851,35 +894,6 @@ If you need to reconfigure a node agent, you can use the following procedure:
     node-agent node configure -t <api_token> -u https://<yba_address>:9000
     ```
 
-    For example, if you run the following:
-
-    ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
-    ```
-
-    ```output
-    * The current value of Node Name is set to node1; Enter new value or enter to skip: 
-    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip: 
-    * Select your Onprem Provider.
-    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
-    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
-        Enter new option number or enter to skip: 
-    * Select your Instance Type.
-    1. Instance Code: c5.large
-    * The current value is Instance Code: c5.large.
-        Enter new option number or enter to skip: 
-    * Select your Region.
-    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
-    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
-        Enter new option number or enter to skip: 
-    * Select your Zone.
-    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
-    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
-        Enter new option number or enter to skip: 
-    • Completed Node Agent Configuration
-    • Node Agent Registration Successful
-    ```
-
 1. Start the Systemd service as a sudo user.
 
     ```sh
@@ -897,3 +911,5 @@ If you need to reconfigure a node agent, you can use the following procedure:
     ```sh
     node-agent node preflight-check --add_node
     ```
+
+For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
