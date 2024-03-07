@@ -119,11 +119,10 @@ public class UpgradeYbcGFlags extends KubernetesTaskBase {
     } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       errorString = t.getMessage();
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      // Mark the update of the universe as done. This will allow future updates to the universe.
       unlockUniverseForUpdate(errorString);
     }
     log.info("Finished {} task.", getName());

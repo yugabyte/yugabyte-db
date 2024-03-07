@@ -509,7 +509,7 @@ copy_pgproc_sample_fields(PGPROC *proc)
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	cb_sample->wait_event_code = proc->wait_event_info;
+	cb_sample->encoded_wait_event_code = proc->wait_event_info;
 }
 
 static void
@@ -619,9 +619,12 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		else
 			nulls[j++] = true;
 
-		values[j++] = CStringGetTextDatum(YBCGetWaitEventComponent(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event_type(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event(sample->wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		uchar_to_uuid(sample->yql_endpoint_tserver_uuid, &yql_endpoint_tserver_uuid);
 		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);

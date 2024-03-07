@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tserver)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+set(YB_PCH_DEP_LIBS yb_test_util)
 
 #########################################
 # tserver_proto

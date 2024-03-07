@@ -1014,7 +1014,7 @@ TEST_F_EX(PgBackendsTest, TserverUnresponsiveNoShutdown, PgBackendsTestRf3) {
   ASSERT_OK(TestTserverUnresponsive(true /* keep_alive */));
 }
 
-class PgBackendsTestRf3Block : public PgBackendsTestRf3, public testing::WithParamInterface<int> {
+class PgBackendsTestRf3Block : public PgBackendsTestRf3 {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3::UpdateMiniClusterOptions(options);
@@ -1026,14 +1026,25 @@ class PgBackendsTestRf3Block : public PgBackendsTestRf3, public testing::WithPar
   Result<int> AccessYsqlBackendsManagerTestRegister(std::optional<int> value = std::nullopt,
                                                     const ExternalMaster* master = nullptr);
   Status LoggedWaitForTestRegister(int target_value, const ExternalMaster* master = nullptr);
-
-  Result<int> TestLeaderChangeInFlight(bool expect_retry);
 };
 
-class PgBackendsTestRf3BlockNoLeaderLock : public PgBackendsTestRf3Block {
+class PgBackendsTestRf3BlockAvoidAbort : public PgBackendsTestRf3Block,
+                                         public testing::WithParamInterface<int> {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3Block::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_ysql_backends_catalog_version_disable_abort_all_jobs=true");
+  }
+
+ protected:
+  Result<int> TestLeaderChangeInFlight(bool expect_retry);
+};
+
+class PgBackendsTestRf3BlockAvoidAbortNoLeaderLock : public PgBackendsTestRf3BlockAvoidAbort {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTestRf3BlockAvoidAbort::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_wait_for_ysql_backends_catalog_version_take_leader_lock=false");
   }
@@ -1083,7 +1094,7 @@ Status PgBackendsTestRf3Block::LoggedWaitForTestRegister(
 // 1. Deactivate blocking.
 // 1. If expect_retry=true, expect a retry request to show up on the new leader; otherwise, don't
 //    expect that.
-Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) {
+Result<int> PgBackendsTestRf3BlockAvoidAbort::TestLeaderChangeInFlight(bool expect_retry) {
   const auto block_id = GetParam();
   LOG(INFO) << "Block id is " << block_id;
 
@@ -1098,6 +1109,8 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
   SCHECK_EQ(
       0, VERIFY_RESULT(AccessYsqlBackendsManagerTestRegister(block_id)),
       IllegalState, "unexpected test register");
+
+  WaitOutInitialCatalogLeasePeriod();
 
   CountDownLatch latch(1);
   TestThreadHolder thread_holder;
@@ -1137,7 +1150,8 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
 
   LOG(INFO) << "Launching wait query";
   auto start = MonoTime::Now();
-  auto res = client_->WaitForYsqlBackendsCatalogVersion("yugabyte", master_catalog_version);
+  auto res = client_->WaitForYsqlBackendsCatalogVersion(
+      "yugabyte", master_catalog_version, 1min /* timeout */);
   const auto time_taken = MonoTime::Now() - start;
   LOG(INFO) << "Time taken: " << time_taken;
 
@@ -1146,22 +1160,22 @@ Result<int> PgBackendsTestRf3Block::TestLeaderChangeInFlight(bool expect_retry) 
   return res;
 }
 
-TEST_P(PgBackendsTestRf3Block, LeaderChangeInFlight) {
+TEST_P(PgBackendsTestRf3BlockAvoidAbort, LeaderChangeInFlight) {
   auto num_lagging_backends = ASSERT_RESULT(TestLeaderChangeInFlight(true /* expect_retry */));
   ASSERT_EQ(0, num_lagging_backends);
 }
 
 // Negative test for the above LeaderChangeInFlight test where leadership loss handling is disabled.
 // This proves that the above test is showing something meaningful.
-TEST_P(PgBackendsTestRf3BlockNoLeaderLock, LeaderChangeInFlightNegative) {
+TEST_P(PgBackendsTestRf3BlockAvoidAbortNoLeaderLock, LeaderChangeInFlightNegative) {
   auto res = TestLeaderChangeInFlight(false /* expect_retry */);
   // It is possible (but rare as of D19621) for there to be an issue for processing the request on a
   // master that lost leadership.
   WARN_NOT_OK(res, "Failed processing request on follower");
 }
 
-INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3Block, ::testing::Range(1, 4));
-INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockNoLeaderLock, ::testing::Range(1, 4));
+INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockAvoidAbort, ::testing::Range(1, 4));
+INSTANTIATE_TEST_CASE_P(, PgBackendsTestRf3BlockAvoidAbortNoLeaderLock, ::testing::Range(1, 4));
 
 // Test:
 // 1. Prep a lagging backend.

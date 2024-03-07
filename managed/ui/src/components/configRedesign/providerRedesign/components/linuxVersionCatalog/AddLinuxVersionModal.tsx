@@ -12,7 +12,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { values } from 'lodash';
 import { Control, useFieldArray, useForm } from 'react-hook-form';
-import { Grid, Typography, makeStyles } from '@material-ui/core';
+import { FormHelperText, Grid, Typography, makeStyles } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
   RadioGroupOrientation,
@@ -23,7 +23,10 @@ import {
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { CloudVendorRegionField } from '../../forms/configureRegion/ConfigureRegionModal';
 import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
-import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import {
+  ImageBundle,
+  ImageBundleType
+} from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ArchitectureType, ProviderCode } from '../../constants';
 import { AWSProviderEditFormFieldValues } from '../../forms/aws/AWSProviderEditForm';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
@@ -78,6 +81,9 @@ const useStyles = makeStyles((theme) => ({
   },
   amiInput: {
     width: '230px'
+  },
+  ybaActiveError: {
+    marginBottom: '10px'
   }
 }));
 
@@ -137,6 +143,10 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
 
   const isEditMode = isNonEmptyObject(editDetails);
 
+  const isYBAManagedBundle =
+    isNonEmptyObject(editDetails) &&
+    (editDetails as ImageBundle)?.metadata?.type === ImageBundleType.YBA_ACTIVE;
+
   return (
     <YBModal
       open={visible}
@@ -161,6 +171,12 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
         })();
       }}
     >
+      {isYBAManagedBundle && (
+        <FormHelperText className={classes.ybaActiveError} error={true}>
+          {t('form.validationMsg.cannotModfiyYBABundles')}
+        </FormHelperText>
+      )}
+
       <div className={classes.form}>
         <div>
           <Typography variant="body1">{t('form.linuxVersionName')}</Typography>
@@ -169,7 +185,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             name="name"
             className={classes.nameInput}
             placeholder={t('form.linuxVersionNamePlaceholder')}
-            disabled={isEditMode}
+            disabled={isEditMode || isYBAManagedBundle}
           />
         </div>
         {providerType !== ProviderCode.AWS && (
@@ -191,7 +207,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
               options={CPU_ARCH_OPTIONS}
               name="details.arch"
               orientation={RadioGroupOrientation.HORIZONTAL}
-              isDisabled={isEditMode}
+              isDisabled={isEditMode || isYBAManagedBundle}
             />
           </div>
         )}
@@ -212,6 +228,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                           name={`details.regions.${cell.code}.ybImage`}
                           placeholder={t('form.machineImagePlaceholder')}
                           className={classes.amiInput}
+                          disabled={isYBAManagedBundle}
                         />
                       );
                     }}
@@ -236,6 +253,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 name={'sshUserOverride'}
                 placeholder={t('form.sshUserPlaceholder')}
                 fullWidth
+                disabled={isYBAManagedBundle}
               />
             </Grid>
           </Grid>
@@ -249,6 +267,7 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
                 control={formControl}
                 name={'sshPortOverride'}
                 placeholder={t('form.sshPortPlaceholder')}
+                disabled={isYBAManagedBundle}
                 fullWidth
               />
             </Grid>

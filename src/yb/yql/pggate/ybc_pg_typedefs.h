@@ -549,12 +549,17 @@ typedef struct PgReplicationSlotDescriptor {
   const char *stream_id;
   YBCPgOid database_oid;
   bool active;
+  uint64_t confirmed_flush;
+  uint64_t restart_lsn;
+  uint32_t xmin;
 } YBCReplicationSlotDescriptor;
 
 typedef struct PgDatumMessage {
   const char* column_name;
-  uint64_t datum;
-  bool is_null;
+  uint64_t after_op_datum;
+  bool after_op_is_null;
+  uint64_t before_op_datum;
+  bool before_op_is_null;
 } YBCPgDatumMessage;
 
 typedef enum PgRowMessageAction {
@@ -630,7 +635,7 @@ typedef struct AshSample {
   char aux_info[16];
 
   // 32-bit wait event code of the sample.
-  uint32_t wait_event_code;
+  uint32_t encoded_wait_event_code;
 
   // If a certain number of samples are available and we capture a portion of
   // them, the sample weight is the reciprocal of the captured portion or 1,

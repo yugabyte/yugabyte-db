@@ -16,7 +16,6 @@
 #########################################
 
 set(YB_PCH_PREFIX redisserver)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 YRPC_GENERATE(
   REDISSERVER_YRPC_SRCS REDISSERVER_YRPC_HDRS REDISSERVER_YRPC_TGTS

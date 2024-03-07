@@ -162,13 +162,14 @@ Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsNotRolledBack(client::YBClien
   // kDropCol should have a column marked for deletion.
   RETURN_NOT_OK(VerifySchema(client, database, kDropCol, {"key", "value", "num"}, {"value"}));
 
-  // kAddPk and kDropPk should still be in the intermediate phase where a new table has been created
-  // with the required constraints and the old table still exists with the suffix "_temp_old"
-  VerifyTableExists(client, database, kAddPk + "_temp_old", 10);
-  VerifyTableExists(client, database, kDropPk + "_temp_old", 10);
-  VerifyTableExists(client, database, kAddPk, 10);
-  VerifyTableExists(client, database, kDropPk, 10);
-
+  // kAddPk and kDropPk should still be in the intermediate phase where a new table DocDB table
+  // has been created with the required PK and the old table still exists.
+  if (VERIFY_RESULT(
+        client->ListTables(kAddPk, false /* exclude_ysql */, database)).size() != 2)
+    return STATUS_FORMAT(IllegalState, "Expected 2 tables for $0", kAddPk);
+  if (VERIFY_RESULT(
+        client->ListTables(kDropPk, false /* exclude_ysql */, database)).size() != 2)
+    return STATUS_FORMAT(IllegalState, "Expected 2 tables for $0", kDropPk);
   return Status::OK();
 }
 
@@ -191,12 +192,14 @@ Status PgDdlAtomicityTestBase::VerifyAllFailingDdlsRolledBack(PGConn *conn,
   VerifyTableExists(client, database, kRenameIndex, 20);
 
   // Intermediate tables created for add/drop pk should be dropped.
-  VerifyTableNotExists(client, database, kAddPk + "_temp_old", 10);
-  VerifyTableNotExists(client, database, kDropPk + "_temp_old", 10);
-
-  // The table with the new constraints should be present.
-  VerifyTableExists(client, database, kAddPk, 10);
-  VerifyTableExists(client, database, kDropPk, 10);
+  RETURN_NOT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(
+              kAddPk, false /* exclude_ysql */, database)).size() == 1
+          && VERIFY_RESULT(client->ListTables(
+              kDropPk, false /* exclude_ysql */, database)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB tables to be dropped."));
 
   // Verify that all the tables still have their old schema after the alter operation failed.
   static const auto tables = {kRenameCol, kAddCol, kDropCol};
@@ -303,11 +306,16 @@ Status PgDdlAtomicityTestBase::WaitForDdlVerificationAfterSuccessfulDdl(
   client::VerifyTableNotExists(client, database, kDropTable, 20);
   client::VerifyTableExists(client, database, kRenamedIndex, 20);
   client::VerifyTableNotExists(client, database, kDropIndex, 20);
-  // Adding/Dropping a primary key will first cause the table to be renamed by adding a suffix
-  // "_temp_old" to the table name. This table will be deleted after the DDL transaction is
-  // committed or renamed back if the transaction is aborted.
-  client::VerifyTableNotExists(client, database, kAddPk + "_temp_old", 20);
-  client::VerifyTableNotExists(client, database, kDropPk + "_temp_old", 20);
+  // Adding/Dropping a primary key creates a new DocDB table. The old table will be deleted after
+  // the DDL transaction is committed.
+  RETURN_NOT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(
+              kAddPk, false /* exclude_ysql */, database)).size() == 1
+          && VERIFY_RESULT(client->ListTables(
+              kDropPk, false /* exclude_ysql */, database)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for old DocDB tables to be dropped."));
 
   static const vector<string> tables = {kRenameCol, kAddCol, kDropCol, kCreateTable, kCreateIndex,
       kRenamedTable, kRenamedIndex, kAddPk, kDropPk};
@@ -324,8 +332,14 @@ Status PgDdlAtomicityTestBase::WaitForDdlVerificationAfterDdlFailure(
 
   client::VerifyTableNotExists(client, database, kCreateTable, 20);
   client::VerifyTableNotExists(client, database, kCreateIndex, 20);
-  client::VerifyTableNotExists(client, database, kAddPk + "_temp_old", 20);
-  client::VerifyTableNotExists(client, database, kDropPk + "_temp_old", 20);
+  RETURN_NOT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(
+              kAddPk, false /* exclude_ysql */, database)).size() == 1
+          && VERIFY_RESULT(client->ListTables(
+              kDropPk, false /* exclude_ysql */, database)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new tables to be dropped."));
 
   static const vector<string> tables = {kRenameCol, kAddCol, kDropCol, kDropTable, kDropIndex,
       kRenameTable, kRenameIndex, kAddPk, kDropPk};

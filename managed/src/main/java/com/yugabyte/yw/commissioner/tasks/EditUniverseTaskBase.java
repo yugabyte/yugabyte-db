@@ -6,7 +6,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -70,6 +69,10 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         n -> {
           n.masterState = MasterState.ToStop;
         });
+    for (Cluster cluster : taskParams().clusters) {
+      createValidateDiskSizeOnNodeRemovalTasks(
+          universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
+    }
     createPreflightNodeCheckTasks(
         taskParams().clusters,
         PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet),

@@ -292,6 +292,20 @@ class PgClient::Impl : public BigDataFetcher {
       }
       heartbeat_running_ = false;
       if (!status.ok()) {
+        if (status.IsInvalidArgument()) {
+          // Unknown session errors are handled as FATALs in the postgres layer. Since the error
+          // response of heartbeat RPCs is not propagated to postgres, we handle the error here by
+          // shutting down the heartbeat mechanism. Nothing further can be done in this session, and
+          // the next user activity will trigger a FATAL anyway. This is done specifically to avoid
+          // log spew of the warning message below in cases where the session is idle (ie. no other
+          // RPCs are being sent to the tserver).
+          LOG(ERROR) << "Heartbeat failed. Connection needs to be reset. "
+                     << "Shutting down heartbeating mechanism due to unknown session "
+                     << session_id_;
+          heartbeat_poller_.Shutdown();
+          return;
+        }
+
         LOG_WITH_PREFIX(WARNING) << "Heartbeat failed: " << status;
       }
     });
@@ -548,8 +562,11 @@ class PgClient::Impl : public BigDataFetcher {
 
     auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
     if (exchange_ && exchange_->ReadyToSend()) {
-      auto out = exchange_->Obtain(req.SerializedSize());
+      constexpr size_t kHeaderSize = sizeof(uint64_t);
+      auto out = exchange_->Obtain(kHeaderSize + req.SerializedSize());
       if (out) {
+        LittleEndian::Store64(out, timeout_.ToMilliseconds());
+        out += sizeof(uint64_t);
         auto status = StartPerform(data.get(), req, out);
         if (!status.ok()) {
           ProcessPerformResponse(data.get(), status);
@@ -937,25 +954,13 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
-  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
-      const ReplicationSlotName& slot_name) {
-    tserver::PgGetReplicationSlotStatusRequestPB req;
-    req.set_replication_slot_name(slot_name.ToString());
-
-    tserver::PgGetReplicationSlotStatusResponsePB resp;
-
-    RETURN_NOT_OK(proxy_->GetReplicationSlotStatus(req, &resp, PrepareController()));
-    RETURN_NOT_OK(ResponseStatus(resp));
-    return resp;
-  }
-
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory() {
     tserver::PgActiveSessionHistoryRequestPB req;
     req.set_fetch_tserver_states(true);
     req.set_fetch_flush_and_compaction_states(true);
     req.set_fetch_raft_log_appender_states(true);
     req.set_fetch_cql_states(true);
-    req.set_ignore_ash_calls(true);
+    req.set_ignore_ash_and_perform_calls(true);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
@@ -1283,11 +1288,6 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots
 Result<tserver::PgGetReplicationSlotResponsePB> PgClient::GetReplicationSlot(
     const ReplicationSlotName& slot_name) {
   return impl_->GetReplicationSlot(slot_name);
-}
-
-Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
-    const ReplicationSlotName& slot_name) {
-  return impl_->GetReplicationSlotStatus(slot_name);
 }
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgClient::ActiveSessionHistory() {

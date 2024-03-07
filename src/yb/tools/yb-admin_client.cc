@@ -33,6 +33,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 
@@ -82,13 +83,14 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/protobuf_util.h"
@@ -611,9 +613,9 @@ Status ClusterAdminClient::Init() {
   if (!FLAGS_certs_dir_name.empty()) {
     LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
     const auto& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(server::CreateSecureContext(
-        FLAGS_certs_dir_name, server::UseClientCerts(!cert_name.empty()), cert_name));
-    server::ApplySecureContext(secure_context_.get(), &messenger_builder);
+    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
+        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
+    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
   }
 
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
@@ -2839,17 +2841,17 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
 
   Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
   if (!s.ok()) {
-        if (s.IsRemoteError() &&
-            rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+    if (s.IsRemoteError() &&
+        rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
       cout << "WARNING: fallback to RestoreSnapshotScheduleDeprecated." << endl;
       return RestoreSnapshotScheduleDeprecated(schedule_id, restore_at);
-        }
-        RETURN_NOT_OK_PREPEND(
-            s, Format("Failed to restore snapshot from schedule: $0", schedule_id.ToString()));
+    }
+    RETURN_NOT_OK_PREPEND(
+        s, Format("Failed to restore snapshot from schedule: $0", schedule_id.ToString()));
   }
 
   if (resp.has_error()) {
-        return StatusFromPB(resp.error().status());
+    return StatusFromPB(resp.error().status());
   }
 
   auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
@@ -2861,6 +2863,65 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
   AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
 
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::CloneFromSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, const string& target_namespace_name,
+    HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  master::CloneFromSnapshotScheduleRequestPB req;
+  master::CloneFromSnapshotScheduleResponsePB resp;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_target_namespace_name(target_namespace_name);
+  req.set_restore_ht(restore_at.ToUint64());
+
+  Status s = master_backup_proxy_->CloneFromSnapshotSchedule(req, &resp, &rpc);
+  if (!s.ok()) {
+    RETURN_NOT_OK_PREPEND(
+        s, Format("Failed to clone namespace from schedule: $0", schedule_id.ToString()));
+  }
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetObject();
+  AddStringField(
+      "source_namespace_id", resp.source_namespace_id(), &document, &document.GetAllocator());
+  AddStringField("seq_no", std::to_string(resp.seq_no()), &document, &document.GetAllocator());
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::IsCloneDone(
+    const NamespaceId& source_namespace_id, uint32_t seq_no) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  master::IsCloneDoneRequestPB req;
+  master::IsCloneDoneResponsePB resp;
+  req.set_source_namespace_id(source_namespace_id);
+  req.set_seq_no(seq_no);
+
+  Status s = master_backup_proxy_->IsCloneDone(req, &resp, &rpc);
+  if (!s.ok()) {
+    RETURN_NOT_OK_PREPEND(
+        s, Format("Failed to get clone status for namespace $0 and seq_no $1", source_namespace_id,
+        seq_no));
+  }
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetObject();
+  AddStringField("is_done", resp.is_done() ? "true" : "false", &document, &document.GetAllocator());
   return document;
 }
 

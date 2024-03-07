@@ -34,6 +34,7 @@
 
 #include "yb/util/logging.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -49,7 +50,6 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/status_log.h"
 
 using std::string;

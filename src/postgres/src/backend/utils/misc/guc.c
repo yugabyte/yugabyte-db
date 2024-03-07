@@ -2242,6 +2242,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_table_rewrite_keep_old_table", PGC_SUSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, DDLs that rewrite tables/indexes will"
+						 " not drop the old relfilenode/DocDB table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_table_rewrite_keep_old_table,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL

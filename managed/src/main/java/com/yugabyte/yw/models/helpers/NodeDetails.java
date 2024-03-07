@@ -258,7 +258,7 @@ public class NodeDetails {
   public int nodeExporterPort = 9300;
 
   @ApiModelProperty(value = "Otel collector metrics port")
-  public int otelCollectorMetricsPort = 8888;
+  public int otelCollectorMetricsPort = 8889;
 
   // True if cronjobs were properly configured for this node.
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")

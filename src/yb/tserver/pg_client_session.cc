@@ -484,6 +484,8 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 
   SharedExchange* exchange;
 
+  CoarseTimePoint deadline;
+
   CountDownLatch latch{1};
 
   SharedExchangeQuery(
@@ -494,8 +496,16 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
         session(std::move(session_)), exchange(exchange_) {
   }
 
+  // Initialize query from data stored in exchange with specified size.
+  // The serialized query has the following format:
+  // 8 bytes - timeout in milliseconds.
+  // remaining bytes - serialized PgPerformRequestPB protobuf.
   Status Init(size_t size) {
-    return pb_util::ParseFromArray(&req, to_uchar_ptr(exchange->Obtain(size)), size);
+    auto input = to_uchar_ptr(exchange->Obtain(size));
+    auto end = input + size;
+    deadline = CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(LittleEndian::Load64(input));
+    input += sizeof(uint64_t);
+    return pb_util::ParseFromArray(&req, input, end - input);
   }
 
   void Wait() {
@@ -1188,7 +1198,8 @@ PgClientSession::SetupSession(
   auto session = Session(kind).get();
   client::YBTransaction* transaction = Transaction(kind).get();
 
-  VLOG_WITH_PREFIX(4) << __func__ << ": " << options.ShortDebugString();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
+                               << MonoDelta(deadline - CoarseMonoClock::now());
 
   const auto txn_serial_no = options.txn_serial_no();
   const auto read_time_serial_no = options.read_time_serial_no();
@@ -1859,13 +1870,10 @@ Status PgClientSession::CheckPlainSessionReadTime() {
 
 std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange) {
-  // TODO(shared_mem) Use the same timeout as RPC scenario.
-  const auto kTimeout = std::chrono::seconds(60);
-  auto deadline = CoarseMonoClock::now() + kTimeout;
   auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
   auto status = data->Init(size);
   if (status.ok()) {
-    status = DoPerform(data, deadline, nullptr);
+    status = DoPerform(data, data->deadline, nullptr);
   }
   if (!status.ok()) {
     StatusToPB(status, data->resp.mutable_status());

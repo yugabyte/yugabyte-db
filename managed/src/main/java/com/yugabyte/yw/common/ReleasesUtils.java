@@ -13,7 +13,9 @@ import com.yugabyte.yw.models.ReleaseLocalFile;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -52,9 +54,31 @@ public class ReleasesUtils {
     } catch (Exception e) {
       log.error("could not compute sha256", e);
     }
+    try {
+      ExtractedMetadata em =
+          versionMetadataFromInputStream(
+              new BufferedInputStream(new FileInputStream(releaseFilePath.toFile())));
+      em.sha256 = sha256;
+      return em;
+    } catch (IOException e) {
+      log.error("failed to open file " + releaseFilePath.toString(), e);
+      return null;
+    }
+  }
+
+  public ExtractedMetadata versionMetadataFromURL(URL url) {
+    try {
+      return versionMetadataFromInputStream(new BufferedInputStream(url.openStream()));
+    } catch (IOException e) {
+      log.error("failed to open url " + url.toString(), e);
+      return null;
+    }
+  }
+
+  // Everything but the sha256
+  private ExtractedMetadata versionMetadataFromInputStream(InputStream inputStream) {
     ExtractedMetadata metadata = new ExtractedMetadata();
-    try (InputStream fIn = new BufferedInputStream(new FileInputStream(releaseFilePath.toFile()));
-        GzipCompressorInputStream gzIn = new GzipCompressorInputStream(fIn);
+    try (GzipCompressorInputStream gzIn = new GzipCompressorInputStream(inputStream);
         TarArchiveInputStream tarInput = new TarArchiveInputStream(gzIn)) {
       TarArchiveEntry entry;
       while ((entry = tarInput.getNextEntry()) != null) {
@@ -67,7 +91,6 @@ public class ReleasesUtils {
           log.debug("read version_metadata.json string: {}", new String(fileContent));
           JsonNode node = Json.parse(fileContent);
           metadata.yb_type = Release.YbType.YBDB;
-          metadata.sha256 = sha256;
 
           // Populate required fields from version metadata. Bad Request if required fields do not
           // exist.
@@ -119,12 +142,11 @@ public class ReleasesUtils {
           return metadata;
         }
       } // end of while loop
-      log.error("No verison_metadata found in {}", releaseFilePath);
+      log.error("No verison_metadata found in given input stream");
       throw new PlatformServiceException(BAD_REQUEST, "no version_metadata found");
     } catch (java.io.IOException e) {
       log.error("failed reading the local file", e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "failed to read metadata from " + releaseFilePath);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "failed to read metadata");
     }
   }
 

@@ -60,6 +60,11 @@ var addInstanceTypesCmd = &cobra.Command{
 			return
 		}
 
+		if r[0].GetCode() != "onprem" {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
+		}
+
 		providerUUID := r[0].GetUuid()
 
 		instanceTypeName, err := cmd.Flags().GetString("instance-type-name")
@@ -161,7 +166,6 @@ func buildVolumeDetails(volumeStrings []string) (
 	}
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
-		fmt.Println("volume string ", volumeString)
 		for _, volumeInfo := range strings.Split(volumeString, ",") {
 			kvp := strings.Split(volumeInfo, "=")
 			if len(kvp) != 2 {
@@ -186,7 +190,6 @@ func buildVolumeDetails(volumeStrings []string) (
 				}
 			}
 		}
-		fmt.Println("VOlume: ", volume)
 		if _, ok := volume["mount-points"]; !ok {
 			logrus.Fatalln(
 				formatter.Colorize("Mount points not specified in volume.",

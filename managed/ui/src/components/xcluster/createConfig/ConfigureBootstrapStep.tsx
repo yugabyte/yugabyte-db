@@ -2,6 +2,8 @@ import { Field, FormikProps } from 'formik';
 import { useSelector } from 'react-redux';
 import { components } from 'react-select';
 import { groupBy } from 'lodash';
+import { Box, Typography, useTheme } from '@material-ui/core';
+import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 
 import { YBFormSelect } from '../../common/forms/fields';
 import { CreateXClusterConfigFormValues } from './CreateConfigModal';
@@ -34,6 +36,7 @@ export const ConfigureBootstrapStep = ({
     )
   );
   const { values, setFieldValue } = formik.current;
+  const theme = useTheme();
 
   if (storageConfigs.length === 1 && values.storageConfig === undefined) {
     const { configUUID, configName, name, data } = storageConfigs[0];
@@ -118,23 +121,25 @@ export const ConfigureBootstrapStep = ({
           }}
         />
       </div>
-      <div className={styles.note}>
-        <p>
-          <b>Note!</b>
-        </p>
-        <p>
-          Creating a full copy is a <b>time intensive</b> process that involves creating a
-          checkpoint on the source, deleting the data on target, creating a copy of the source data
-          using backup, and replicating the data to target using restore.
-        </p>
-        <p>
-          <b>Data</b> on the target cluster <b>will be deleted</b> during when creating a full copy.
-          Queries to these temporarily deleted tables will error out.
-        </p>
-        <p>
-          We recommend <b>creating a full copy during off-peak hours.</b>
-        </p>
-      </div>
+      <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>
+        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+          <Typography variant="body2" component="p">
+            <b>Note!</b>
+          </Typography>
+          <Typography variant="body2" component="p">
+            Creating a full copy is a <b>time intensive</b> process that involves creating a
+            checkpoint on the source, deleting the data on target, creating a copy of the source
+            data using backup, and replicating the data to target using restore.
+          </Typography>
+          <Typography variant="body2" component="p">
+            <b>Data</b> on the target cluster <b>will be deleted</b> during when creating a full
+            copy. Queries to these temporarily deleted tables will error out.{' '}
+          </Typography>
+          <Typography variant="body2" component="p">
+            We recommend <b>creating a full copy during off-peak hours.</b>
+          </Typography>
+        </Box>
+      </YBBanner>
     </>
   );
 };

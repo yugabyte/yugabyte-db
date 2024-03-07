@@ -39,6 +39,12 @@
         description: Server error
     security:
       - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeGFlags
+      taskUuid: obj.getTaskUuid()
+      additionalDetails: true
     x-yba-api-authz:
       - requiredPermission:
           resourceType: universe

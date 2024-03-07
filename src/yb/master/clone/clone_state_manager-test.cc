@@ -34,6 +34,8 @@
 #include "yb/util/physical_time.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(enable_db_clone);
+
 namespace yb {
 namespace master {
 
@@ -80,6 +82,7 @@ class CloneStateManagerTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     clone_state_manager_ = std::unique_ptr<CloneStateManager>(
         new CloneStateManager(SetupExternalFunctions()));
 
@@ -126,9 +129,15 @@ class CloneStateManagerTest : public YBTest {
         return mock_funcs_.GetTabletInfo(tablet_id);
       },
 
+      .FindNamespaceById = nullptr,
+
       .ScheduleCloneTabletCall = [&](
           const TabletInfoPtr& source_tablet, LeaderEpoch epoch, tablet::CloneTabletRequestPB req)
           { return mock_funcs_.ScheduleCloneTabletCall(source_tablet, epoch, req); },
+
+      .DoCreateSnapshot = nullptr,
+      .GenerateSnapshotInfoFromSchedule = nullptr,
+      .DoImportSnapshotMeta = nullptr,
 
       .Upsert = [&](const CloneStateInfoPtr& clone_state) {
           { return mock_funcs_.Upsert(clone_state); }

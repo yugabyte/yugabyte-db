@@ -1022,11 +1022,6 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
   return pg_client_.GetReplicationSlot(slot_name);
 }
 
-Result<tserver::PgGetReplicationSlotStatusResponsePB> PgSession::GetReplicationSlotStatus(
-    const ReplicationSlotName& slot_name) {
-  return pg_client_.GetReplicationSlotStatus(slot_name);
-}
-
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return {wait_starter_, wait_event};
 }

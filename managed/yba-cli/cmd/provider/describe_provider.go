@@ -18,14 +18,16 @@ import (
 )
 
 var describeProviderCmd = &cobra.Command{
-	Use:     "describe [provider-name]",
+	Use:     "describe",
 	Aliases: []string{"get"},
 	Short:   "Describe a YugabyteDB Anywhere provider",
 	Long:    "Describe a provider in YugabyteDB Anywhere",
-	Args:    cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		if len(args) == 0 && len(providerNameFlag) == 0 {
+		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(providerNameFlag) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to describe\n", formatter.RedColor))
@@ -38,11 +40,9 @@ var describeProviderCmd = &cobra.Command{
 		}
 		authAPI.GetCustomerUUID()
 		providerListRequest := authAPI.GetListOfProviders()
-		providerNameFlag, _ := cmd.Flags().GetString("name")
+		providerNameFlag, _ := cmd.Flags().GetString("provider-name")
 		var providerName string
-		if len(args) > 0 {
-			providerName = args[0]
-		} else if len(providerNameFlag) > 0 {
+		if len(providerNameFlag) > 0 {
 			providerName = providerNameFlag
 		} else {
 			logrus.Fatalln(
@@ -81,6 +81,7 @@ var describeProviderCmd = &cobra.Command{
 
 func init() {
 	describeProviderCmd.Flags().SortFlags = false
-	describeProviderCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the provider to get details.")
+	describeProviderCmd.Flags().StringP("provider-name", "n", "",
+		"[Required] The name of the provider to get details.")
+	describeProviderCmd.MarkFlagRequired("provider-name")
 }

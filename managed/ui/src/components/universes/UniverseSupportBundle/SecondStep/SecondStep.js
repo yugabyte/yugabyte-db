@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
-import { YBCheckBox } from '../../../common/forms/fields';
-import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
-import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
-import { useSelector } from 'react-redux';
 import { find } from 'lodash';
-import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
-import { UniverseState } from '../../helpers/universeHelpers';
-import { YBInput, YBLabel } from '../../../../redesign/components';
+import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { Box, Typography } from '@material-ui/core';
+import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
+import { YBLoading } from '../../../common/indicators';
+import { YBCheckBox } from '../../../common/forms/fields';
+import { YBInput, YBLabel } from '../../../../redesign/components';
+import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
+import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
+import { fetchGlobalRunTimeConfigs } from '../../../../api/admin';
+import { UniverseState } from '../../helpers/universeHelpers';
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
@@ -27,10 +30,10 @@ export const selectionOptions = [
   { label: 'Instance files', value: 'Instance' },
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
   { label: 'Tablet meta files', value: 'TabletMeta' },
-  { label: 'Node agent logs', value: 'NodeAgent' },
-  { label: 'Core Files', value: 'CoreFiles' }
+  { label: 'Node agent logs', value: 'NodeAgent' }
 ];
 
+const coreFileOption = { label: 'Core Files', value: 'CoreFiles' };
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
 const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo' };
 
@@ -73,7 +76,7 @@ export const updateOptions = (
     endDate: convertToISODateString(endDate),
     components: components
   };
-  if (components.find((c) => c === 'CoreFiles')) {
+  if (components.find((c) => c === coreFileOption.value)) {
     payloadObj = { ...payloadObj, ...coreFileParams };
   }
   return payloadObj;
@@ -87,8 +90,33 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   const [coreFileParams, setCoreFileParams] = useState(CoreFilesProps);
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false);
   const refs = useRef([]);
-
   const featureFlags = useSelector((state) => state.featureFlags);
+  const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs(true).then((res) => res.data)
+  );
+
+  if (isLoading)
+    return (
+      <Box height="620px" display="flex" alignItems={'center'} justifyContent={'center'}>
+        <YBLoading />
+      </Box>
+    );
+  const isCoreFileEnabled =
+    globalRuntimeConfigs?.configEntries?.find(
+      (c) => c.key === 'yb.support_bundle.allow_cores_collection'
+    )?.value === 'true';
+
+  if (isCoreFileEnabled && !find(selectionOptions, coreFileOption)) {
+    selectionOptions.push(coreFileOption);
+    selectionOptionsValue.push(true);
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom,
+      coreFileParams
+    );
+    onOptionsChange(changedOptions);
+  }
 
   if (
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
@@ -119,7 +147,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
   }
 
   const isCoreFileSelected =
-    selectionOptionsValue[selectionOptions.findIndex((e) => e.value === 'CoreFiles')];
+    selectionOptionsValue[selectionOptions.findIndex((e) => e.value === coreFileOption.value)];
 
   return (
     <div className="universe-support-bundle-step-two">

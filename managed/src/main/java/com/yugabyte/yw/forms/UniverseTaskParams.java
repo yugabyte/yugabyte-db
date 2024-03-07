@@ -71,6 +71,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
     @ApiModelProperty(value = "Node exporter port")
     public int nodeExporterPort;
 
+    @ApiModelProperty(value = "Otel Collector metrics port")
+    public int otelCollectorMetricsPort;
+
     public static CommunicationPorts exportToCommunicationPorts(NodeDetails node) {
       return exportToCommunicationPorts(new CommunicationPorts(), node);
     }
@@ -94,6 +97,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.ysqlServerHttpPort = node.ysqlServerHttpPort;
       portsObj.ysqlServerRpcPort = node.ysqlServerRpcPort;
       portsObj.nodeExporterPort = node.nodeExporterPort;
+      portsObj.otelCollectorMetricsPort = node.otelCollectorMetricsPort;
 
       return portsObj;
     }
@@ -112,6 +116,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.ysqlServerHttpPort = ports.ysqlServerHttpPort;
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
+      node.otelCollectorMetricsPort = ports.otelCollectorMetricsPort;
     }
 
     public static void mergeCommunicationPorts(

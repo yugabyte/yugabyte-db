@@ -18,6 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
 
@@ -44,7 +45,6 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/logging.h"
-#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -89,6 +89,8 @@ DEFINE_NON_RUNTIME_int64(
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
 
 DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace cdc {
@@ -2662,7 +2664,21 @@ Status GetChangesForCDCSDK(
               changed_schema_version = result->second;
             }
 
+            bool has_columns_marked_for_deletion = false;
+            if (FLAGS_ysql_ddl_rollback_enabled) {
+              for (auto column : current_schema.columns()) {
+                if (column.marked_for_deletion()) {
+                  has_columns_marked_for_deletion = true;
+                  LOG(INFO)
+                      << "The CHANGE_METADATA_OP contains a column marked for deletion. Will NOT "
+                         "populate a DDL record corresponding to it.";
+                  break;
+                }
+              }
+            }
+
             if (previous_schema_version != changed_schema_version &&
+                !has_columns_marked_for_deletion &&
                 !boost::ends_with(table_name, kTablegroupParentTableNameSuffix) &&
                 !boost::ends_with(table_name, kColocationParentTableNameSuffix)) {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(

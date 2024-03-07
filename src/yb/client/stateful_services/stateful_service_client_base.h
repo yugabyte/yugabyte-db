@@ -14,24 +14,21 @@
 #pragma once
 
 #include <memory>
-#include "yb/client/client.h"
-#include "yb/rpc/messenger.h"
-#include "yb/server/secure.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-#include "yb/rpc/proxy.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/gutil/thread_annotations.h"
+
 #include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/status.h"
 
 using namespace std::placeholders;
 
 namespace yb {
-namespace tserver {
-class TabletServer;
-}
+
+class HostPort;
 
 namespace client {
+class YBClient;
 
 #define STATEFUL_SERVICE_RPC(r, service, method_name) \
   template <typename T> \
@@ -64,10 +61,11 @@ class StatefulServiceClientBase {
 
   virtual ~StatefulServiceClientBase();
 
-  Status Init(tserver::TabletServer* server);
+  Status Init(
+      const std::string& local_hosts, const std::vector<std::vector<HostPort>>& master_addresses,
+      const std::string& root_dir);
 
-  Status TESTInit(
-      const std::string& local_host, const std::string& master_addresses);
+  Status TEST_Init(const std::string& local_host, const std::string& master_addresses);
 
   void Shutdown();
 

@@ -72,3 +72,4 @@ service:
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics: {address: '0.0.0.0:8889'}

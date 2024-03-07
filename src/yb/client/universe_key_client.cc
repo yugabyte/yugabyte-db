@@ -18,15 +18,13 @@
 
 #include "yb/encryption/encryption.pb.h"
 
-#include "yb/fs/fs_manager.h"
-
 #include "yb/master/master_encryption.proxy.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
@@ -84,13 +82,12 @@ void UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse(
   callback_(resp->universe_keys());
 }
 
-Result<encryption::UniverseKeyRegistryPB>UniverseKeyClient::GetFullUniverseKeyRegistry(
-    const std::string& local_hosts,
-    const std::string& master_addresses,
-    const FsManager& fs_manager) {
+Result<encryption::UniverseKeyRegistryPB> UniverseKeyClient::GetFullUniverseKeyRegistry(
+    const std::string& local_hosts, const std::string& master_addresses,
+    const std::string& root_dir) {
   rpc::MessengerBuilder messenger_builder("universe_key_client");
-  auto secure_context = VERIFY_RESULT(
-        server::SetupInternalSecureContext(local_hosts, fs_manager, &messenger_builder));
+  auto secure_context =
+      VERIFY_RESULT(rpc::SetupInternalSecureContext(local_hosts, root_dir, &messenger_builder));
   auto messenger = VERIFY_RESULT(messenger_builder.Build());
   auto se = ScopeExit([&] {
     if (messenger) {

@@ -156,6 +156,10 @@
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
 
+#include "yb/common/opid.fwd.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_internal.h"
@@ -268,10 +272,6 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/numbered_deque.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.fwd.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.messages.h"
-#include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"

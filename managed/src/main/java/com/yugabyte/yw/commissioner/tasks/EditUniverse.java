@@ -126,24 +126,31 @@ public class EditUniverse extends EditUniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       errorString = t.getMessage();
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       releaseReservedNodes();
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      universe = unlockUniverseForUpdate(errorString);
-
-      if (universe != null
-          && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
-        universe.updateConfig(
-            ImmutableMap.of(
-                Universe.USE_CUSTOM_IMAGE,
-                Boolean.toString(
-                    universe.getUniverseDetails().nodeDetailsSet.stream()
-                        .allMatch(n -> n.ybPrebuiltAmi))));
-        universe.save();
+      if (universe != null) {
+        // Universe is locked by this task.
+        try {
+          // Fetch the latest universe.
+          universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+          if (universe
+              .getConfig()
+              .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+              .equals("true")) {
+            universe.updateConfig(
+                ImmutableMap.of(
+                    Universe.USE_CUSTOM_IMAGE,
+                    Boolean.toString(
+                        universe.getUniverseDetails().nodeDetailsSet.stream()
+                            .allMatch(n -> n.ybPrebuiltAmi))));
+            universe.save();
+          }
+        } finally {
+          unlockUniverseForUpdate(errorString);
+        }
       }
     }
     log.info("Finished {} task.", getName());
