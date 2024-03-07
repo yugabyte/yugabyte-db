@@ -640,6 +640,13 @@
   from = "/:version/reference/connectors/*"
   to = "/preview/integrations/apache-kafka/"
 
+# Redirect for troubleshoot
+
+[[redirects]]
+  from = "/:version/troubleshoot/*"
+  to = "/preview/troubleshoot/*"
+  force = true
+
 # A few redirects to head off issues with version_menu_pagelinks
 
 [[redirects]]

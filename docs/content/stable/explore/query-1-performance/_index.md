@@ -27,7 +27,7 @@ CREATE EXTENSION if not exists pg_stat_statements;
 
 To get the output of `pg_stat_statements` in JSON format, visit `https://<yb-tserver-ip>:13000/statements` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
-For more information, refer to [Get query statistics using `pg_stat_statements`](../pg-stat-statements).
+For more information, refer to [Get query statistics using `pg_stat_statements`](./pg-stat-statements).
 
 <!-- ### View live queries
 
