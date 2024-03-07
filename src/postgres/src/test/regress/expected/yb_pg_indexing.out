@@ -47,8 +47,9 @@ CREATE TABLE idxpart1 PARTITION OF idxpart FOR VALUES FROM (MINVALUE) TO (MAXVAL
 CREATE INDEX partidx_abc_idx ON idxpart (a, b, c);
 INSERT INTO idxpart (a, b, c) SELECT i, i, i FROM generate_series(1, 50) i;
 ALTER TABLE idxpart ALTER COLUMN c TYPE numeric;
-ERROR:  changing column type of a partitioned table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 DROP TABLE idxpart;
 -- If a table without index is attached as partition to a table with
 -- an index, the index is automatically created

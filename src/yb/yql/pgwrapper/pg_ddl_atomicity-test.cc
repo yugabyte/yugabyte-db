@@ -281,8 +281,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   // Test failure of alter statement with multiple subcommands.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
       " ALTER COLUMN num TYPE text USING num::text"));
-  VerifyTableNotExists(client.get(), "yugabyte", table_name + "_temp_old", 10);
-  VerifyTableExists(client.get(), "yugabyte", table_name, 20);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(table_name)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.

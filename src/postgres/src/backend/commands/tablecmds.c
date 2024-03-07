@@ -550,6 +550,8 @@ static bool YbATIsRangePk(IndexStmt *stmt,
 static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 											AlteredTableInfo *tab,
 											bool skip_copy_split_options);
+static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
+									  AlteredTableInfo *tab);
 /* ----------------------------------------------------------------
  *		DefineRelation
  *				Creates a new relation.
@@ -4408,11 +4410,14 @@ ATRewriteCatalogs(List **wqueue,
 				/* clang-format on */
 
 				/*
+				 * YB Note: The following only applies to the old ADD/DROP PK
+				 * and ALTER TYPE code. This code path will be removed in a
+				 * future release.
 				 * It is possible that we create a new table in ATExecCmd, so we
 				 * need to update main_relid and later update the rest of our
 				 * commands so that they know to use the new relid
 				 */
-				if (IsYBRelation(rel) &&
+				if (IsYBRelation(rel) && !yb_enable_alter_table_rewrite &&
 					(pass == AT_PASS_ALTER_TYPE || pass == AT_PASS_ADD_INDEX))
 				{
 					main_relid = RelationGetRelid(rel);
@@ -4430,7 +4435,8 @@ ATRewriteCatalogs(List **wqueue,
 			 * have created an entirely new table, so there is no need for
 			 * cleanup.
 			 */
-			if (pass == AT_PASS_ALTER_TYPE && !IsYBRelation(rel))
+			if (pass == AT_PASS_ALTER_TYPE &&
+				(!IsYBRelation(rel) || yb_enable_alter_table_rewrite))
 				ATPostAlterTypeCleanup(wqueue, tab, lockmode);
 
 			relation_close(rel, NoLock);
@@ -4792,6 +4798,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		if (!RELKIND_CAN_HAVE_STORAGE(tab->relkind))
 			continue;
 		/*
+		 * YB Note: The following only applies to the old ALTER TYPE code.
+		 * This code path will be removed in a future release.
 		 * If this command involved altering a column type, then we have created
 		 * an entirely new table so there is no need to rewrite it here.
 		 *
@@ -4800,8 +4808,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		 * the equivalent of a rewrite, by the time we reach here so the trigger
 		 * is executed after the rewrite.
 		 */
-		if (IsYBRelationById(tab->relid) &&
-			tab->subcmds[AT_PASS_ALTER_TYPE] != NIL && tab->rewrite > 0)
+		if (IsYBRelationById(tab->relid) && !yb_enable_alter_table_rewrite
+			&& tab->subcmds[AT_PASS_ALTER_TYPE] != NIL && tab->rewrite > 0)
 		{
 			if (parsetree)
 				EventTriggerTableRewrite((Node *) parsetree, tab->relid,
@@ -5252,6 +5260,12 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		 * checking all the constraints.
 		 */
 		snapshot = RegisterSnapshot(GetLatestSnapshot());
+		/*
+		 * For YB relations under going a table rewrite due to ALTER TYPE,
+		 * set up the YB scan using the old tuple desc.
+		 */
+		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
+			oldrel->rd_att = oldTupDesc;
 		scan = heap_beginscan(oldrel, snapshot, 0, NULL);
 
 		/*
@@ -5398,6 +5412,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		MemoryContextSwitchTo(oldCxt);
 		heap_endscan(scan);
 		UnregisterSnapshot(snapshot);
+
+		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
+			/* Revert back to the new tuple desc */
+			oldrel->rd_att = newTupDesc;
 
 		ExecDropSingleTupleTableSlot(oldslot);
 		ExecDropSingleTupleTableSlot(newslot);
@@ -10421,7 +10439,21 @@ ATPrepAlterColumnType(List **wqueue,
 
 		tab->newvals = lappend(tab->newvals, newval);
 		if (ATColumnChangeRequiresRewrite(transform, attnum))
+		{
 			tab->rewrite |= AT_REWRITE_COLUMN_REWRITE;
+			if (IsYBRelation(rel) && yb_enable_alter_table_rewrite)
+			{
+				YbGetTableProperties(rel);
+				/*
+				 * Skip copying split options if the altered column is a
+				 * part of the primary key
+				 */
+				if (IsYBRelation(rel) &&
+					rel->yb_table_properties->num_range_key_columns > 0 &&
+					YbIsColumnPartOfKey(rel, colName))
+					tab->yb_skip_copy_split_options = true;
+			}
+		}
 	}
 	else if (transform)
 		ereport(ERROR,
@@ -10619,7 +10651,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 		CommandCounterIncrement();
 	}
 
-	bool yb_clone_table = IsYBRelation(rel) && tab->rewrite > 0;
+	bool yb_clone_table = IsYBRelation(rel) && !yb_enable_alter_table_rewrite
+		&& tab->rewrite > 0;
 
 	if (!yb_clone_table)
 		attrelation = heap_open(AttributeRelationId, RowExclusiveLock);
@@ -11387,6 +11420,10 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 
 			if (!rewrite)
 				TryReuseIndex(oldId, stmt);
+
+			if (IsYugaByteEnabled())
+				YbATCopyIndexSplitOptions(oldId, stmt, tab);
+
 			/* keep the index's comment */
 			stmt->idxcomment = GetComment(oldId, RelationRelationId, 0);
 
@@ -18966,5 +19003,40 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 		childtab->yb_skip_copy_split_options =
 			childtab->yb_skip_copy_split_options
 			|| skip_copy_split_options;
+	}
+}
+
+/*
+ * Used in YB during the ALTER TYPE operation to copy split options for
+ * affected indexes.
+ */
+static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
+									  AlteredTableInfo *tab)
+{
+	Relation idx_rel = RelationIdGetRelation(oldId);
+	if (IsYBRelation(idx_rel) && !idx_rel->rd_index->indisprimary)
+	{
+		ListCell   *lcmd;
+		bool yb_copy_split_options = true;
+		YbGetTableProperties(idx_rel);
+		/*
+		 * If the index has a range key, omit copying the split
+		 * options if any of the altered columns are a part of the
+		 * index's key.
+		 */
+		if (idx_rel->yb_table_properties->num_range_key_columns > 0
+			&& idx_rel->yb_table_properties->num_hash_key_columns == 0)
+		{
+			foreach(lcmd, tab->subcmds[AT_PASS_ALTER_TYPE])
+			{
+				AlterTableCmd *cmd =
+					castNode(AlterTableCmd, lfirst(lcmd));
+				if (YbIsColumnPartOfKey(idx_rel, cmd->name))
+					yb_copy_split_options = false;
+			}
+		}
+		if (yb_copy_split_options)
+			stmt->split_options = YbGetSplitOptions(idx_rel);
+		RelationClose(idx_rel);
 	}
 }
