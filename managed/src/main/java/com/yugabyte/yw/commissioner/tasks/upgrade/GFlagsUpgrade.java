@@ -307,10 +307,11 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
               createSetFlagInMemoryTasks(
                       nodeList,
                       processType,
-                      true,
-                      node ->
-                          GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters),
-                      false)
+                      (node, params) -> {
+                        params.force = true;
+                        params.gflags =
+                            GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters);
+                      })
                   .setSubTaskGroupType(getTaskSubGroupType());
             },
             masterNodes,
