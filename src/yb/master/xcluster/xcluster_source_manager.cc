@@ -70,7 +70,7 @@ Status XClusterSourceManager::Init() {
       catalog_manager_.GetValidateEpochFunc(), *catalog_manager_.AsyncTaskPool(),
       *master_.messenger());
 
-  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_.cdc_state_client_initializer());
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_.cdc_state_client_future());
   return Status::OK();
 }
 

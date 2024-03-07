@@ -6826,7 +6826,7 @@ Status CatalogManager::DoProcessXClusterTabletDeletion() {
 }
 
 std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
-  auto ybclient = master_->cdc_state_client_initializer().client();
+  auto ybclient = master_->cdc_state_client_future().get();
   auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
   DCHECK(!hostport.host().empty());
 

@@ -1041,8 +1041,7 @@ Status CatalogManager::Init() {
   }
 
   ysql_transaction_ = std::make_unique<YsqlTransactionDdl>(
-      sys_catalog_.get(), master_->async_client_initializer().get_client_future(),
-      background_tasks_thread_pool_.get());
+      sys_catalog_.get(), master_->client_future(), background_tasks_thread_pool_.get());
 
   // Initialize the metrics emitted by the catalog manager.
   load_balance_policy_->InitMetrics();
@@ -1056,7 +1055,7 @@ Status CatalogManager::Init() {
   metric_create_table_too_many_tablets_ =
       METRIC_create_table_too_many_tablets.Instantiate(master_->metric_entity_cluster());
 
-  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
   RETURN_NOT_OK(xcluster_manager_->Init());
 

@@ -21,7 +21,6 @@
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
-#include "yb/client/async_initializer.h"
 
 #include "yb/master/master_client.fwd.h"
 
