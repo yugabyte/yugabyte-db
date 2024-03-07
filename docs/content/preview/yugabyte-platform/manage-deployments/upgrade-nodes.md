@@ -57,12 +57,6 @@ For each node in the universe, use the following general procedure:
         --data-raw '{"nodeAction":"REPROVISION"}'
         ```
 
-    - If the node uses [fully manual provisioning](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/), unregister the node agent using the following command:
-
-        ```sh
-        node-agent node unregister
-        ```
-
     - If the node uses assisted or fully manual provisioning, re-provision the node by following the [manual provisioning steps](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/).
 
 1. Start the processes for the node.

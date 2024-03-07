@@ -699,11 +699,23 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
-Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
+For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
+Use the following procedure to install node agent for fully manual provisioning.
+
+{{< note title="Re-provisioning a node" >}}
+
+If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Use the following command:
+
+```sh
+node-agent node unregister
+```
+
+{{< /note >}}
+
+To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
