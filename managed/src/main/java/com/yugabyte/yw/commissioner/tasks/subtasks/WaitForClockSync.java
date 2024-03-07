@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -82,6 +83,11 @@ public class WaitForClockSync extends NodeTaskBase {
               + taskParams().nodeName
               + " not found in universe "
               + taskParams().getUniverseUUID());
+    }
+
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.clockSyncCheckEnabled)) {
+      log.info("Skipping Clock Sync check as it is disabled through config.");
+      return;
     }
 
     // It ensures that the chrony service has started, and the last system clock offset is applied
