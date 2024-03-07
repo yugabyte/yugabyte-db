@@ -3520,7 +3520,7 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 static inline bool
 YbIsHashCodeFunc(FuncExpr *func)
 {
-	return func && func->funcid == YB_HASH_CODE_OID;
+	return func->funcid == YB_HASH_CODE_OID;
 }
 
 /*
@@ -3529,7 +3529,7 @@ YbIsHashCodeFunc(FuncExpr *func)
  * After the change attribute numbers will be taken from index which is used
  * for the yb_hash_code pushdown.
  */
-static bool
+static void
 YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 {
 	Assert(YbIsHashCodeFunc(hash_code_func));
@@ -3537,14 +3537,24 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 	int indexcol = 0;
 	foreach(l, hash_code_func->args)
 	{
-		Node *arg_node = (Node *)lfirst(l);
-		Var *arg_var = (Var *)(IsA(arg_node, Var) ? arg_node : NULL);
-		if (!arg_var ||
-		    indexcol >= index->nkeycolumns ||
-		    index->rel->relid != arg_var->varno ||
-		    index->indexkeys[indexcol] != arg_var->varattno ||
-		    index->opcintype[indexcol] != arg_var->vartype)
-				return false;
+		Var *arg_var = (Var *) lfirst(l);
+		/*
+		 * Sanity check. Planner should have already verified that function
+		 * arguments match the index.
+		 * Should it rather be an assertion?
+		 */
+		if (!IsA(arg_var, Var) ||
+			indexcol >= index->nkeycolumns ||
+			index->rel->relid != arg_var->varno ||
+			index->indexkeys[indexcol] != arg_var->varattno ||
+			index->opcintype[indexcol] != arg_var->vartype)
+				ereport(ERROR,
+						(errmsg("bad call of yb_hash_code"),
+						 errdetail("Function yb_hash_code is chosen as an index condition, "
+								   "but its arguments do not match hash keys of the index"),
+						 errcode(ERRCODE_INTERNAL_ERROR),
+						 hash_code_func->location != -1 ?
+							errposition(hash_code_func->location) : 0));
 		/*
 		 * Note: In spite of the fact that YSQL will use secodary index for handling
 		 * the yb_hash_code pushdown the arg_var->varno field should not be changed
@@ -3553,61 +3563,55 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 		 * function itself not its arguments will not be converted into index
 		 * columns.
 		 */
-		arg_var->varattno = indexcol + 1;
-		++indexcol;
+		arg_var->varattno = ++indexcol;
 	}
-	return true;
 }
 
 static bool
-YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo *index)
+YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo* indexinfo)
 {
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func) && !YbFixHashCodeFuncArgs(func, index))
-		elog(ERROR, "bad call of yb_hash_code");
-
-	return expression_tree_walker(
-		node, &YbFixHashCodeFuncArgsWalker, index);
-}
-
-static bool
-YbHasHashCodeFuncWalker(Node *node, bool *hash_code_func_found)
-{
-	if (*hash_code_func_found)
-		return true;
-
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func))
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr))
 	{
-		*hash_code_func_found = true;
-		return true;
+		FuncExpr *func = (FuncExpr *) node;
+		if (YbIsHashCodeFunc(func))
+		{
+			YbFixHashCodeFuncArgs(func, indexinfo);
+			return false;
+		}
 	}
-
 	return expression_tree_walker(
-		node, &YbHasHashCodeFuncWalker, hash_code_func_found);
+		node, &YbFixHashCodeFuncArgsWalker, (void *) indexinfo);
+}
+
+static bool
+YbHasHashCodeFuncWalker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr) && YbIsHashCodeFunc((FuncExpr *) node))
+		return true;
+	return expression_tree_walker(node, YbHasHashCodeFuncWalker, context);
 }
 
 /*
  * In case indexquals has at least one yb_hash_code qual function makes
  * a copy of indexquals and alters yb_hash_code function args attrributes.
- * In other cases functions returns NULL.
+ * In other cases functions returns NIL.
  */
 static List*
 YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
 {
-	bool has_hash_code_func = false;
-	expression_tree_walker(
-		(Node *)indexquals, &YbHasHashCodeFuncWalker, &has_hash_code_func);
-	if (has_hash_code_func)
+	if (expression_tree_walker(
+		(Node *) indexquals, YbHasHashCodeFuncWalker, NULL))
 	{
 		List *result = copyObject(indexquals);
 		expression_tree_walker(
-			(Node *)result, &YbFixHashCodeFuncArgsWalker, indexinfo);
+			(Node *) result, YbFixHashCodeFuncArgsWalker, indexinfo);
 		return result;
 	}
-	return NULL;
+	return NIL;
 }
 
 /*
