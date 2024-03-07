@@ -528,6 +528,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status CompactSystemTable();
 
+  Status FlushTable(const TableId& table_id);
+
+  Status WaitForPostApplyMetadataWritten(size_t expected_num_transactions);
+
   void GetTabletLeaderAndAnyFollowerIndex(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       size_t* leader_index, size_t* follower_index);
