@@ -231,6 +231,9 @@ libraryDependencies ++= Seq(
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
   "org.hsqldb" % "hsqldb" % "2.7.1",
+  "org.mapstruct" %"mapstruct" % "1.5.5.Final",
+  "org.mapstruct" %"mapstruct-processor" % "1.5.5.Final",
+  "org.projectlombok" %"lombok-mapstruct-binding" % "0.2.0",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
