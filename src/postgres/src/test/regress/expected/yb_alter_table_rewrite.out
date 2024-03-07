@@ -206,25 +206,22 @@ CREATE TABLE test_partitioned(a int, PRIMARY KEY (a ASC), b text) PARTITION BY R
 CREATE TABLE test_partitioned_part1 PARTITION OF test_partitioned FOR VALUES FROM (1) TO (6);
 CREATE TABLE test_partitioned_part2 PARTITION OF test_partitioned FOR VALUES FROM (6) TO (11);
 INSERT INTO test_partitioned VALUES(generate_series(1, 10), 'text');
-ALTER TABLE test_partitioned ADD COLUMN c SERIAL;
-ALTER TABLE test_partitioned ALTER COLUMN b TYPE int USING length(b);
-ERROR:  changing column type of a partitioned table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
+ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING length(b);
 ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
 ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
 SELECT * FROM test_partitioned;
- a  |  b   | c  
-----+------+----
-  1 | text |  1
-  2 | text |  2
-  3 | text |  3
-  4 | text |  4
-  5 | text |  5
-  6 | text |  6
-  7 | text |  7
-  8 | text |  8
-  9 | text |  9
- 10 | text | 10
+ a  | b | c  
+----+---+----
+  1 | 4 |  1
+  2 | 4 |  2
+  3 | 4 |  3
+  4 | 4 |  4
+  5 | 4 |  5
+  6 | 4 |  6
+  7 | 4 |  7
+  8 | 4 |  8
+  9 | 4 |  9
+ 10 | 4 | 10
 (10 rows)
 
 -- Test table rewrite on temp tables.
@@ -702,3 +699,274 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('range_pk_test
 -------------+----------------------
            5 |                    1
 (1 row)
+
+-- Tests for ALTER TYPE.
+-- basic tests.
+CREATE TABLE varchar_table(id SERIAL, c1 varchar(10), PRIMARY KEY (id ASC));
+CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
+ALTER TABLE varchar_table ALTER c1 TYPE int; -- should fail.
+ERROR:  column "c1" cannot be cast automatically to type integer
+HINT:  You might need to specify "USING c1::integer".
+ALTER TABLE int4_table ALTER c1 TYPE int8;
+INSERT INTO int4_table(c1) VALUES (2 ^ 40);
+ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+ERROR:  integer out of range
+INSERT INTO varchar_table(c1) VALUES ('aa');
+ALTER TABLE varchar_table ALTER c1 TYPE varchar(1); -- should fail.
+ERROR:  value too long for type character varying(1)
+INSERT INTO varchar_table(c1) VALUES ('a'), (2), ('aaa');
+ALTER TABLE varchar_table ALTER c1 TYPE text;
+SELECT * from varchar_table;
+ id | c1  
+----+-----
+  1 | aa
+  2 | a
+  3 | 2
+  4 | aaa
+(4 rows)
+
+INSERT INTO varchar_table(c1) VALUES ('a'), ('bb'), ('ccc');
+ALTER TABLE varchar_table ALTER c1 TYPE int USING length(c1);
+SELECT * from varchar_table;
+ id | c1 
+----+----
+  1 |  2
+  2 |  1
+  3 |  1
+  4 |  3
+  5 |  1
+  6 |  2
+  7 |  3
+(7 rows)
+
+ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
+SELECT * from varchar_table;
+ id |        c1        
+----+------------------
+  1 |  1.4142135623731
+  2 |                1
+  3 |                1
+  4 | 1.73205080756888
+  5 |                1
+  6 |  1.4142135623731
+  7 | 1.73205080756888
+(7 rows)
+
+ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, ALTER c1 TYPE varchar;
+INSERT INTO int4_table(c1, c2, c3) VALUES ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3);
+SELECT * from int4_table;
+ id |      c1       | c2 | c3 
+----+---------------+----+----
+  1 | 1099511627776 |    |   
+  2 | a             | a  |  1
+  3 | b             | b  |  2
+  4 | c             | c  |  3
+(4 rows)
+
+CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
+ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
+ERROR:  cannot alter type of column named in partition key
+CREATE TABLE pk_table(c1 int primary key);
+INSERT INTO pk_table VALUES (1), (2);
+ALTER TABLE pk_table ALTER c1 TYPE varchar;
+SELECT * from pk_table ORDER BY c1 ASC;
+ c1 
+----
+ 1
+ 2
+(2 rows)
+
+INSERT INTO pk_table VALUES (1); -- should fail.
+ERROR:  duplicate key value violates unique constraint "pk_table_pkey"
+ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
+ERROR:  duplicate key value violates unique constraint "pk_table"
+-- test ALTER TYPE on a column that is a part of a view/rule.
+CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE VIEW test_view AS SELECT c2 FROM test_table;
+ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
+ERROR:  cannot alter type of a column used by a view or rule
+DETAIL:  rule _RETURN on view test_view depends on column "c2"
+ALTER TABLE test_table ALTER c3 TYPE varchar(1);
+CREATE TABLE dummy_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE RULE "_RETURN" AS
+    ON SELECT TO dummy_table
+    DO INSTEAD
+        SELECT * FROM test_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1); -- should fail.
+ERROR:  cannot alter type of a column used by a view or rule
+DETAIL:  rule _RETURN on view dummy_table depends on column "c4"
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE on a foreign key column.
+CREATE TABLE fk_table (c1 varchar primary key);
+CREATE TABLE test_table (c1 varchar primary key references fk_table(c1));
+CREATE TABLE fk_table2 (c1 varchar references test_table(c1));
+INSERT INTO fk_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO test_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO fk_table2 VALUES ('a'), ('aa'), ('aaa');
+ALTER TABLE fk_table ALTER c1 TYPE int USING LENGTH(c1); -- should fail.
+ERROR:  foreign key constraint "test_table_c1_fkey" cannot be implemented
+DETAIL:  Key columns "c1" and "c1" are of incompatible types: character varying and integer.
+ALTER TABLE fk_table ALTER c1 TYPE varchar(3);
+\d fk_table;
+                    Table "public.fk_table"
+ Column |         Type         | Collation | Nullable | Default 
+--------+----------------------+-----------+----------+---------
+ c1     | character varying(3) |           | not null | 
+Indexes:
+    "fk_table_pkey" PRIMARY KEY, lsm (c1 HASH)
+Referenced by:
+    TABLE "test_table" CONSTRAINT "test_table_c1_fkey" FOREIGN KEY (c1) REFERENCES fk_table(c1)
+
+\d test_table;
+                  Table "public.test_table"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ c1     | character varying |           | not null | 
+Indexes:
+    "test_table_pkey" PRIMARY KEY, lsm (c1 HASH)
+Foreign-key constraints:
+    "test_table_c1_fkey" FOREIGN KEY (c1) REFERENCES fk_table(c1)
+Referenced by:
+    TABLE "fk_table2" CONSTRAINT "fk_table2_c1_fkey" FOREIGN KEY (c1) REFERENCES test_table(c1)
+
+\d fk_table2;
+                  Table "public.fk_table2"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ c1     | character varying |           |          | 
+Foreign-key constraints:
+    "fk_table2_c1_fkey" FOREIGN KEY (c1) REFERENCES test_table(c1)
+
+INSERT INTO fk_table2 VALUES ('aaaa'); -- should fail.
+ERROR:  insert or update on table "fk_table2" violates foreign key constraint "fk_table2_c1_fkey"
+DETAIL:  Key (c1)=(aaaa) is not present in table "test_table".
+INSERT INTO test_table VALUES ('aaaa'); -- should fail.
+ERROR:  insert or update on table "test_table" violates foreign key constraint "test_table_c1_fkey"
+DETAIL:  Key (c1)=(aaaa) is not present in table "fk_table".
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE where an index with a default tablespace is re-created.
+CREATE TABLESPACE test_tblspc LOCATION '/invalid';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE test_tblspc LOCATION '/invalid';
+                                      ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+SET default_tablespace = test_tblspc;
+CREATE TABLE test_table (c1 int, c2 int);
+CREATE INDEX test_index ON test_table(c1);
+ALTER TABLE test_table ALTER c1 TYPE int2;
+\d test_index;
+       Index "public.test_index"
+ Column |   Type   | Key? | Definition 
+--------+----------+------+------------
+ c1     | smallint | yes  | c1
+lsm, for table "public.test_table"
+Tablespace: "test_tblspc"
+
+-- test ALTER TYPE on a table with a range key.
+CREATE TABLE range_key_table(col1 int, a int, b int, col2 int, c text, d text,
+    col3 int, e int, PRIMARY KEY((a, b) HASH, c ASC, d DESC) INCLUDE (e));
+INSERT INTO range_key_table(a, b, c, d)
+    VALUES (1, 1, 'a', 'e'), (1, 1, 'aa', 'f'), (1, 1, 'aa', 'g');
+CREATE INDEX ON range_key_table(c ASC);
+ALTER TABLE range_key_table ALTER c TYPE int USING length(c);
+SELECT a, b, c, d FROM range_key_table;
+ a | b | c | d 
+---+---+---+---
+ 1 | 1 | 1 | e
+ 1 | 1 | 2 | g
+ 1 | 1 | 2 | f
+(3 rows)
+
+\d range_key_table;
+          Table "public.range_key_table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ col1   | integer |           |          | 
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ col2   | integer |           |          | 
+ c      | integer |           | not null | 
+ d      | text    |           | not null | 
+ col3   | integer |           |          | 
+ e      | integer |           |          | 
+Indexes:
+    "range_key_table_pkey" PRIMARY KEY, lsm ((a, b) HASH, c ASC, d DESC) INCLUDE (e), tablespace "test_tblspc"
+    "range_key_table_c_idx" lsm (c ASC), tablespace "test_tblspc"
+Tablespace: "test_tblspc"
+
+-- tests for split options.
+CREATE TABLE test1 (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx1 ON test1(c1) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx2 ON test1(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx3 ON test1(c2 ASC) INCLUDE(c1)
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+CREATE INDEX idx4 ON test1(c1 ASC) SPLIT AT VALUES (('h'));
+ALTER TABLE test1 ALTER c1 TYPE int USING length(c1);
+-- verify hash split options on the table are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test1'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+-- verify hash split options on the indexes are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx1'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx2'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+-- verify range split options on the indexes are only preserved when the altered column is not a
+-- part of the index key.
+SELECT yb_get_range_split_clause('idx3'::regclass);
+              yb_get_range_split_clause               
+------------------------------------------------------
+ SPLIT AT VALUES ((E'test123""''\\\\\\u0068\\u0069'))
+(1 row)
+
+SELECT yb_get_range_split_clause('idx4'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))
+    SPLIT AT VALUES (('h', 20));
+ALTER TABLE test2 ALTER c1 TYPE int USING length(c1);
+CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+ALTER TABLE test3 ALTER c1 TYPE int USING length(c1);
+-- verify range split options on the table are only preserved when the altered column is not a
+-- part of the table's key.
+SELECT yb_get_range_split_clause('test2'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+SELECT yb_get_range_split_clause('test3'::regclass);
+              yb_get_range_split_clause               
+------------------------------------------------------
+ SPLIT AT VALUES ((E'test123""''\\\\\\u0068\\u0069'))
+(1 row)
+
+-- test ALTER TYPE on temp tables.
+CREATE TEMP TABLE test_table (col1 text UNIQUE);
+INSERT INTO test_table VALUES ('1'), ('01');
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+ERROR:  could not create unique index "test_table_col1_key"
+DETAIL:  Key (col1)=(1) is duplicated.
+ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key;
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+SELECT * FROM test_table;
+ col1 
+------
+    1
+    1
+(2 rows)
