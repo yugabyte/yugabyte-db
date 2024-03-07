@@ -94,7 +94,13 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", "true");
-            createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags)
+            createSetFlagInMemoryTasks(
+                    nodeList,
+                    getSingle(processTypes),
+                    (node, params) -> {
+                      params.force = true;
+                      params.gflags = gflags;
+                    })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
@@ -128,7 +134,13 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(2, nodeList, processType);
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
-            createSetFlagInMemoryTasks(nodeList, processType, true, gflags)
+            createSetFlagInMemoryTasks(
+                    nodeList,
+                    processType,
+                    (node, params) -> {
+                      params.force = true;
+                      params.gflags = gflags;
+                    })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
