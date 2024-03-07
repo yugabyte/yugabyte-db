@@ -25,7 +25,6 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -117,14 +116,21 @@ public class SupportBundleReconciler
             .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
 
     // Get the Universe
-    Optional<Universe> opUniverse =
-        Universe.maybeGetUniverseByName(customer.getId(), bundle.getSpec().getUniverseName());
-    if (!opUniverse.isPresent()) {
-      throw new RuntimeException(
-          "no universe found with name " + bundle.getSpec().getUniverseName());
+    Universe universe = null;
+    try {
+      universe =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              customer.getId(),
+              bundle.getSpec().getUniverseName(),
+              bundle.getMetadata().getNamespace());
+      if (universe == null) {
+        log.error("No universe found with name " + bundle.getSpec().getUniverseName());
+        return;
+      }
+    } catch (Exception e) {
+      log.error("Error fetching universe with name " + bundle.getSpec().getUniverseName());
+      return;
     }
-    Universe universe = opUniverse.get();
-
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
     markStatusGenerating(bundle, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =
