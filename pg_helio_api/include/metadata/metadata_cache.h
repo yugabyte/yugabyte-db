@@ -98,6 +98,7 @@ Oid BsonValueBitsAnySetFunctionId(void);
 /* operators */
 Oid BigintEqualOperatorId(void);
 Oid TextEqualOperatorId(void);
+Oid TextLessOperatorId(void);
 Oid BsonArrowOperatorId(void);
 Oid BsonEqualOperatorId(void);
 Oid BsonEqualMatchOperatorId(void);
@@ -111,6 +112,10 @@ Oid BsonGreaterThanOperatorId(void);
 Oid BsonLessThanOperatorId(void);
 Oid BsonGreaterThanEqualOperatorId(void);
 Oid BsonLessThanEqualOperatorId(void);
+Oid PostgresInt4PlusFunctionOid(void);
+Oid PostgresInt4LessOperatorOid(void);
+Oid PostgresInt4LessOperatorFunctionOid(void);
+Oid PostgresInt4EqualOperatorOid(void);
 
 /* types */
 Oid BsonQueryTypeId(void);

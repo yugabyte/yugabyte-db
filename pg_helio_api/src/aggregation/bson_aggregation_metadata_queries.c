@@ -343,9 +343,8 @@ GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionNa
 								InvalidOid, varlevelsup);
 
 	bool boolConstValue = true;
-	bool isNull = false;
 	List *args = list_make2(indexSpecVar,
-							makeBoolConst(boolConstValue, isNull));
+							MakeBoolValueConst(boolConstValue));
 	FuncExpr *indexSpecAsBsonExpr = makeFuncExpr(IndexSpecAsBsonFunctionId(),
 												 BsonTypeId(),
 												 args, InvalidOid, InvalidOid,

@@ -99,6 +99,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the <text> OPERATOR(pg_catalog.=) <text> operator */
 	Oid TextEqualOperatorId;
 
+	/* OID of the <text> OPERATOR(pg_catalog.<) <text> operator */
+	Oid TextLessOperatorId;
+
 	/* OID of the <bson> OPERATOR(ApiCatalogSchemaName.->) <bson> operator */
 	Oid BsonArrowOperatorId;
 
@@ -401,6 +404,18 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the timestamptz_zone postgres method which shifts the current timestamp to the specified timezone */
 	Oid PostgresTimestampToZoneFunctionId;
+
+	/* OID of the int4 + int4 function */
+	Oid PostgresInt4PlusFunctionOid;
+
+	/* OID of the int4 < int4 operator */
+	Oid PostgresInt4LessOperatorOid;
+
+	/* OID of the int4 < int4 function */
+	Oid PostgresInt4LessOperatorFunctionOid;
+
+	/* OID of the int4 = int4 function */
+	Oid PostgresInt4EqualOperatorOid;
 
 	/* OID of the make_interval postgres method which creates interval from taking in date part units.*/
 	Oid PostgresMakeIntervalFunctionId;
@@ -936,6 +951,24 @@ TextEqualOperatorId(void)
 	}
 
 	return Cache.TextEqualOperatorId;
+}
+
+
+Oid
+TextLessOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.TextLessOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("<"));
+
+		Cache.TextLessOperatorId =
+			OpernameGetOprid(operatorNameList, TEXTOID, TEXTOID);
+	}
+
+	return Cache.TextLessOperatorId;
 }
 
 
@@ -1759,6 +1792,17 @@ PostgresTimestampToZoneFunctionId(void)
 
 
 /*
+ * Returns the OID of the int4 + int4 function
+ */
+Oid
+PostgresInt4PlusFunctionOid(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresInt4PlusFunctionOid,
+										 "int4pl");
+}
+
+
+/*
  * Returns the OID of the "make_interval" internal postgres method
  */
 Oid
@@ -1766,6 +1810,35 @@ PostgresMakeIntervalFunctionId(void)
 {
 	return GetPostgresInternalFunctionId(&Cache.PostgresMakeIntervalFunctionId,
 										 "make_interval");
+}
+
+
+/*
+ * Returns the OID of the int4 < int4 Function
+ */
+Oid
+PostgresInt4LessOperatorOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.PostgresInt4LessOperatorOid == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("<"));
+
+		Cache.PostgresInt4LessOperatorOid =
+			OpernameGetOprid(operatorNameList, INT4OID, INT4OID);
+	}
+
+	return Cache.PostgresInt4LessOperatorOid;
+}
+
+
+Oid
+PostgresInt4LessOperatorFunctionOid(void)
+{
+	return GetPostgresInternalFunctionId(&Cache.PostgresInt4LessOperatorFunctionOid,
+										 "int4lt");
 }
 
 
@@ -1790,6 +1863,27 @@ PostgresAddIntervalToDateFunctionId(void)
 	return GetPostgresInternalFunctionId(
 		&Cache.PostgresAddIntervalToDateFunctionId,
 		"date_pl_interval");
+}
+
+
+/*
+ * Returns the OID of the int4 = int4 Function
+ */
+Oid
+PostgresInt4EqualOperatorOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.PostgresInt4EqualOperatorOid == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("="));
+
+		Cache.PostgresInt4EqualOperatorOid =
+			OpernameGetOprid(operatorNameList, INT4OID, INT4OID);
+	}
+
+	return Cache.PostgresInt4EqualOperatorOid;
 }
 
 

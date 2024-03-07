@@ -205,6 +205,9 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 
+#define DEFAULT_ENABLE_GRAPH_LOOKUP false
+bool EnableGraphLookup = DEFAULT_ENABLE_GRAPH_LOOKUP;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -535,6 +538,12 @@ InitApiConfigurations(char *prefix)
 			"Max number of indexes per collection."),
 		NULL, &MaxIndexesPerCollection, DEFAULT_MAX_INDEXES_PER_COLLECTION, 0, 300,
 		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableGraphLookupAggregation",
+		gettext_noop("Feature flag for the graph lookup aggregation stage"),
+		NULL, &EnableGraphLookup, DEFAULT_ENABLE_GRAPH_LOOKUP, PGC_USERSET, 0,
+		NULL, NULL, NULL);
 }
 
 

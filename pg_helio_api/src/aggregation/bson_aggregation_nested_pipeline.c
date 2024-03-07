@@ -44,6 +44,9 @@
 
 const int MaximumLookupPipelineDepth = 20;
 
+/* Graph lookup feature flag */
+extern bool EnableGraphLookup;
+
 /*
  * Struct having parsed view of the
  * arguments to Lookup.
@@ -81,6 +84,41 @@ typedef struct
 	bool hasLookupMatch;
 } LookupArgs;
 
+
+/*
+ * Args processed from the $graphLookup stage.
+ */
+typedef struct
+{
+	/* the input startWith expression */
+	bson_value_t inputExpression;
+
+	/* The target collection */
+	StringView fromCollection;
+
+	/* the connectFrom field */
+	StringView connectFromField;
+
+	/* the connectTo field */
+	StringView connectToField;
+
+	/* the field it should be written to */
+	StringView asField;
+
+	/* How many times to recurse */
+	int32_t maxDepth;
+
+	/* optional depth Field to write it into */
+	StringView depthField;
+
+	/* A match clause to restrict search */
+	bson_value_t restrictSearch;
+
+	/* connectFrom field as an expression */
+	bson_value_t connectFromFieldExpression;
+} GraphLookupArgs;
+
+
 static bool CanInlineInnerLookupPipeline(LookupArgs *lookupArgs);
 static int ValidateFacet(const bson_value_t *facetValue);
 static Query * BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
@@ -90,14 +128,29 @@ static Query * BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetV
 static Query * AddBsonArrayAggFunction(Query *baseQuery,
 									   AggregationPipelineBuildContext *context,
 									   ParseState *parseState, const char *fieldPath,
-									   uint32_t fieldPathLength, bool migrateToSubQuery);
+									   uint32_t fieldPathLength, bool migrateToSubQuery,
+									   Aggref **aggrefPtr);
 static Query * AddBsonObjectAggFunction(Query *baseQuery,
 										AggregationPipelineBuildContext *context);
 static void ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args);
+static void ParseGraphLookupStage(const bson_value_t *existingValue,
+								  GraphLookupArgs *args);
 static Query * CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix,
 									int stageNum, int levelsUp);
 static Query * ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 								 LookupArgs *lookupArgs);
+static Query * ProcessGraphLookupCore(Query *query,
+									  AggregationPipelineBuildContext *context,
+									  GraphLookupArgs *lookupArgs);
+static Query * BuildGraphLookupCteQuery(QuerySource parentSource,
+										CommonTableExpr *baseCteExpr,
+										GraphLookupArgs *args,
+										AggregationPipelineBuildContext *parentContext);
+static Query * BuildRecursiveGraphLookupQuery(QuerySource parentSource,
+											  GraphLookupArgs *args,
+											  AggregationPipelineBuildContext *
+											  parentContext,
+											  CommonTableExpr *baseCteExpr, int levelsUp);
 static void ValidateUnionWithPipeline(const bson_value_t *pipeline);
 
 
@@ -238,6 +291,30 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 
 	/* Now build the base query for the lookup */
 	return ProcessLookupCore(query, context, &lookupArgs);
+}
+
+
+/*
+ * Top level method handling processing of the $graphLookup Stage.
+ */
+Query *
+HandleGraphLookup(const bson_value_t *existingValue, Query *query,
+				  AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_GRAPH_LOOKUP);
+
+	GraphLookupArgs graphArgs;
+	memset(&graphArgs, 0, sizeof(GraphLookupArgs));
+	ParseGraphLookupStage(existingValue, &graphArgs);
+
+	if (!EnableGraphLookup)
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("aggregation stage $graphLookup not supported yet."),
+						errhint("aggregation stage $graphLookup not supported yet.")));
+	}
+
+	return ProcessGraphLookupCore(query, context, &graphArgs);
 }
 
 
@@ -576,10 +653,11 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 
 		/* Add bson_array_agg to the output */
 		bool migrateToSubQuery = true;
+		Aggref **aggrefPtr = NULL;
 		modifiedQuery = AddBsonArrayAggFunction(modifiedQuery, &nestedContext, parseState,
 												singleElement.path,
 												singleElement.pathLength,
-												migrateToSubQuery);
+												migrateToSubQuery, aggrefPtr);
 
 		/* Track that the CTE is actually N levels up from the inner-most query
 		 * Since we attach the CTE to the query with the obj_agg, we add one more level
@@ -633,9 +711,10 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 
 			/* Add the BSON_ARRAY_AGG function */
 			bool migrateToSubQuery = true;
+			Aggref **aggrefPtr = NULL;
 			innerQuery = AddBsonArrayAggFunction(innerQuery, &nestedContext, parseState,
 												 pathView.string, pathView.length,
-												 migrateToSubQuery);
+												 migrateToSubQuery, aggrefPtr);
 
 			/* Notify the base table that it got pushed down. */
 			RangeTblEntry *origTableEntry = linitial(baseQuery->rtable);
@@ -747,7 +826,8 @@ GetArrayAggCoalesce(Expr *innerExpr, const char *fieldPath, uint32_t fieldPathLe
 static Query *
 AddBsonArrayAggFunction(Query *baseQuery, AggregationPipelineBuildContext *context,
 						ParseState *parseState, const char *fieldPath,
-						uint32_t fieldPathLength, bool migrateToSubQuery)
+						uint32_t fieldPathLength, bool migrateToSubQuery,
+						Aggref **aggrefPtr)
 {
 	/* Now add the bson_array_agg function */
 	Query *modifiedQuery = migrateToSubQuery ? MigrateQueryToSubQuery(baseQuery,
@@ -764,6 +844,10 @@ AddBsonArrayAggFunction(Query *baseQuery, AggregationPipelineBuildContext *conte
 	Aggref *aggref = CreateMultiArgAggregate(BsonArrayAggregateFunctionOid(),
 											 aggregateArgs,
 											 argTypesList, parseState);
+	if (aggrefPtr != NULL)
+	{
+		*aggrefPtr = aggref;
+	}
 
 	firstEntry->expr = GetArrayAggCoalesce((Expr *) aggref, fieldPath, fieldPathLength);
 	modifiedQuery->hasAggs = true;
@@ -1220,10 +1304,12 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		 * modify the pipeline. */
 		rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
 											 &subPipelineContext);
+		Aggref **aggrefptr = NULL;
 		rightQuery = AddBsonArrayAggFunction(rightQuery, &subPipelineContext, parseState,
 											 lookupArgs->lookupAs.string,
 											 lookupArgs->lookupAs.length,
-											 subPipelineContext.requiresSubQuery);
+											 subPipelineContext.requiresSubQuery,
+											 aggrefptr);
 	}
 	else
 	{
@@ -1312,10 +1398,11 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 		/* Add the bson_array_agg function */
 		bool requiresSubQuery = false;
+		Aggref **aggrefPtr = NULL;
 		rightQuery = AddBsonArrayAggFunction(rightQuery, &subPipelineContext, parseState,
 											 lookupArgs->lookupAs.string,
 											 lookupArgs->lookupAs.length,
-											 requiresSubQuery);
+											 requiresSubQuery, aggrefPtr);
 
 		rightQuery->cteList = list_make1(rightTableExpr);
 		rightRteCte->ctelevelsup += subPipelineContext.numNestedLevels;
@@ -1424,12 +1511,13 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &projectorQueryContext);
 
 		/* Readd the aggregate */
+		Aggref **aggrefPtr = NULL;
 		subSelectQuery = AddBsonArrayAggFunction(subSelectQuery,
 												 &projectorQueryContext, parseState,
 												 lookupArgs->lookupAs.string,
 												 lookupArgs->lookupAs.length,
 												 projectorQueryContext.
-												 requiresSubQuery);
+												 requiresSubQuery, aggrefPtr);
 
 		rightOutput->varlevelsup += projectorQueryContext.numNestedLevels + 1;
 		SubLink *subLink = makeNode(SubLink);
@@ -1549,4 +1637,689 @@ ValidateUnionWithPipeline(const bson_value_t *pipeline)
 								"$merge is not allowed within a $unionWith's sub-pipeline")));
 		}
 	}
+}
+
+
+/*
+ * Parses & validates the input $graphLookup spec.
+ * Parsed outputs are placed in the GraphLookupArgs struct.
+ */
+static void
+ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
+{
+	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoLocation40319),
+						errmsg(
+							"the $lookup stage specification must be an object, but found %s",
+							BsonTypeName(existingValue->value_type)),
+						errhint(
+							"the $lookup stage specification must be an object, but found %s",
+							BsonTypeName(existingValue->value_type))));
+	}
+
+	bson_iter_t lookupIter;
+	BsonValueInitIterator(existingValue, &lookupIter);
+
+	while (bson_iter_next(&lookupIter))
+	{
+		const char *key = bson_iter_key(&lookupIter);
+		const bson_value_t *value = bson_iter_value(&lookupIter);
+		if (strcmp(key, "as") == 0)
+		{
+			if (value->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"graphlookup argument 'as' must be a string, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->asField = (StringView) {
+				.length = value->value.v_utf8.len,
+				.string = value->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "startWith") == 0)
+		{
+			args->inputExpression = *value;
+		}
+		else if (strcmp(key, "connectFromField") == 0)
+		{
+			if (value->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"graphlookup argument 'connectFromField' must be a string, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->connectFromField = (StringView) {
+				.length = value->value.v_utf8.len,
+				.string = value->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "connectToField") == 0)
+		{
+			if (value->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"graphlookup argument 'connectToField' must be a string, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->connectToField = (StringView) {
+				.length = value->value.v_utf8.len,
+				.string = value->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "from") == 0)
+		{
+			if (value->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoLocation40321),
+								errmsg(
+									"graphlookup argument 'from' must be a string, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->fromCollection = (StringView) {
+				.length = value->value.v_utf8.len,
+				.string = value->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "maxDepth") == 0)
+		{
+			if (!BsonValueIsNumber(value))
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"graphlookup argument 'maxDepth' must be a number, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->maxDepth = BsonValueAsInt32(value);
+
+			if (args->maxDepth <= 0)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"graphlookup.maxDepth must be a positive integer.")));
+			}
+		}
+		else if (strcmp(key, "depthField") == 0)
+		{
+			if (value->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"graphlookup argument 'depthField' must be a string, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->depthField = (StringView) {
+				.length = value->value.v_utf8.len,
+				.string = value->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "restrictSearchWithMatch") == 0)
+		{
+			EnsureTopLevelFieldValueType("$graphlookup.restrictSearchWithMatch", value,
+										 BSON_TYPE_DOCUMENT);
+			args->restrictSearch = *value;
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse),
+							errmsg("unknown argument to $graphlookup: %s", key)));
+		}
+	}
+
+	if (args->asField.length == 0)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("must specify 'as' field for a $graphLookup")));
+	}
+
+	if (args->fromCollection.length == 0)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("must specify 'from' field for a $graphLookup")));
+	}
+
+	if (args->inputExpression.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg("must specify 'startWith' for a $graphLookup")));
+	}
+
+	if (args->connectFromField.length == 0 || args->connectToField.length == 0)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							"must specify both 'connectFrom' and 'connectTo' for a $graphLookup")));
+	}
+
+	StringInfo connectExpr = makeStringInfo();
+	appendStringInfo(connectExpr, "$%.*s", args->connectFromField.length,
+					 args->connectFromField.string);
+	args->connectFromFieldExpression.value_type = BSON_TYPE_UTF8;
+	args->connectFromFieldExpression.value.v_utf8.len = strlen(connectExpr->data);
+	args->connectFromFieldExpression.value.v_utf8.str = connectExpr->data;
+}
+
+
+/*
+ * Adds input expression query to the input query projection list. This is the expression
+ * for the inputExpression for the Graph lookup
+ * bson_expression_get(document, '{ "connectToField": "$inputExpression" } ) AS "inputExpr"
+ */
+static AttrNumber
+AddInputExpressionToQuery(Query *query, StringView *fieldName, const
+						  bson_value_t *inputExpression)
+{
+	/* Now, add the expression value projector to the left query */
+	TargetEntry *origEntry = linitial(query->targetList);
+
+
+	/* Adds the projector bson_expression_get(document, '{ "connectToField": "$inputExpression" } ) AS "inputExpr"
+	 * into the left query.
+	 */
+	pgbsonelement element;
+	element.path = fieldName->string;
+	element.pathLength = fieldName->length;
+	element.bsonValue = *inputExpression;
+	pgbson *inputExpr = PgbsonElementToPgbson(&element);
+	Const *trueConst = (Const *) MakeBoolValueConst(true);
+	List *inputExprArgs = list_make3(origEntry->expr, MakeBsonConst(inputExpr),
+									 trueConst);
+	FuncExpr *inputFuncExpr = makeFuncExpr(
+		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	bool resjunk = false;
+	AttrNumber expressionResultNumber = 2;
+	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
+										 "inputExpr",
+										 resjunk);
+	query->targetList = lappend(query->targetList, entry);
+
+	return expressionResultNumber;
+}
+
+
+/*
+ * Add the $unwind and expression_get to the expression engine.
+ * This is used to do equality matches on the graph lookup in the recursive CTE
+ * For more details see ProcessGraphLookupCore
+ */
+static AttrNumber
+AddInputUnwindExpressionToQuery(Query *query, StringView *fieldName, const
+								GraphLookupArgs *args)
+{
+	/* Now, add the expression value projector to the left query */
+	TargetEntry *origEntry = linitial(query->targetList);
+
+	/*
+	 * Add an $unwind if we have an array - this ensures that the $in scenario
+	 * is also handled for the connectFrom and startsWith expressions.
+	 */
+	pgbson_writer unwindOptions;
+	PgbsonWriterInit(&unwindOptions);
+	PgbsonWriterAppendValue(&unwindOptions, "path", 4, &args->connectFromFieldExpression);
+	PgbsonWriterAppendBool(&unwindOptions, "preserveNullAndEmptyArrays", 26, true);
+	Const *pathConst = (Const *) MakeBsonConst(PgbsonWriterGetPgbson(&unwindOptions));
+	List *unwindArgs = list_make2(origEntry->expr, pathConst);
+	FuncExpr *unwindFuncExpr = makeFuncExpr(
+		BsonDollarUnwindWithOptionsFunctionOid(), BsonTypeId(), unwindArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	unwindFuncExpr->funcretset = true;
+
+	/*
+	 * Adds the projector bson_expression_get(document, '{ "connectToField": "$inputExpression" } ) AS "inputExpr"
+	 * into the left query.
+	 */
+	pgbsonelement element;
+	element.path = fieldName->string;
+	element.pathLength = fieldName->length;
+	element.bsonValue = args->connectFromFieldExpression;
+	pgbson *inputExpr = PgbsonElementToPgbson(&element);
+	Const *trueConst = (Const *) MakeBoolValueConst(true);
+	List *inputExprArgs = list_make3(unwindFuncExpr, MakeBsonConst(inputExpr),
+									 trueConst);
+	FuncExpr *inputFuncExpr = makeFuncExpr(
+		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	AttrNumber expressionResultNumber = 2;
+	bool resjunk = false;
+	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
+										 "inputExpr",
+										 resjunk);
+
+	query->targetList = lappend(query->targetList, entry);
+	query->hasTargetSRFs = true;
+
+	return expressionResultNumber;
+}
+
+
+/*
+ * Core handling for a graph lookup query.
+ * This forms the query as follows:
+ *
+ * WITH basecte AS (SELECT document, bson_expression_get(document, '{ "*connectToField*": "$*inputExpression*" }', true) AS initialexpr FROM *inputCollection*),
+ * graphLookupStage AS (SELECT document, COALESCE((WITH RECURSIVE graphLookup AS (
+ * SELECT coll.document AS doc, bson_expression_get(coll.document, '{ "*connectToField*": "$*connectFromField*" }', true) AS expr FROM *fromCollection* coll WHERE bson_dollar_eq(coll.document, basecte.initialexpr)
+ * UNION ALL
+ * SELECT document AS doc, bson_expression_get(document, '{ "*connectToField*": "$*connectFromField*" }', true) AS expr FROM *fromCollection*, graphLookup WHERE bson_dollar_eq(document, cte1.expr)
+ * ) SELECT bson_array_agg(DISTINCT doc, '*as*') FROM graphLookup), '{ "*as*": [] }') AS addFields FROM basecte)
+ * SELECT bson_dollar_add_fields(document, addFields) FROM graphLookupStage;
+ *
+ */
+static Query *
+ProcessGraphLookupCore(Query *query, AggregationPipelineBuildContext *context,
+					   GraphLookupArgs *lookupArgs)
+{
+	/* Similar to $lookup, if there's more than 1 projector push down */
+	if (list_length(query->targetList) > 1)
+	{
+		query = MigrateQueryToSubQuery(query, context);
+	}
+
+	/* First add the input expression to the input query */
+	AddInputExpressionToQuery(query, &lookupArgs->connectToField,
+							  &lookupArgs->inputExpression);
+
+	/* Create the final query */
+	Query *graphLookupQuery = makeNode(Query);
+	graphLookupQuery->commandType = CMD_SELECT;
+	graphLookupQuery->querySource = query->querySource;
+	graphLookupQuery->canSetTag = true;
+
+	/* Push the input query a base CTE list */
+	StringInfo cteStr = makeStringInfo();
+	appendStringInfo(cteStr, "graphLookupBase_%d", context->nestedPipelineLevel);
+	CommonTableExpr *baseCteExpr = makeNode(CommonTableExpr);
+	baseCteExpr->ctename = cteStr->data;
+	baseCteExpr->ctequery = (Node *) query;
+	graphLookupQuery->cteList = lappend(graphLookupQuery->cteList, baseCteExpr);
+
+	/* Create a graphLookupStage CTE */
+	StringInfo secondCteStr = makeStringInfo();
+	appendStringInfo(secondCteStr, "graphLookupStage_%d", context->nestedPipelineLevel);
+	CommonTableExpr *graphCteExpr = makeNode(CommonTableExpr);
+	graphCteExpr->ctename = secondCteStr->data;
+	graphCteExpr->ctequery = (Node *) BuildGraphLookupCteQuery(query->querySource,
+															   baseCteExpr,
+															   lookupArgs, context);
+	graphLookupQuery->cteList = lappend(graphLookupQuery->cteList, graphCteExpr);
+
+	/* Make the graphLookupStage the RTE of the final query */
+	int stageNum = 1;
+	RangeTblEntry *graphLookupStageRte = CreateCteRte(graphCteExpr, "graphLookup",
+													  stageNum, 0);
+	graphLookupQuery->rtable = list_make1(graphLookupStageRte);
+	RangeTblRef *graphLookupRef = makeNode(RangeTblRef);
+	graphLookupRef->rtindex = 1;
+	graphLookupQuery->jointree = makeFromExpr(list_make1(graphLookupRef), NULL);
+
+	/* Add the add_fields on the targetEntry
+	 * SELECT bson_dollar_add_fields(document, addFields) FROM graphLookupStage;
+	 */
+	Var *documentVar = makeVar(graphLookupRef->rtindex, 1, BsonTypeId(), -1, InvalidOid,
+							   0);
+	Var *addFieldsVar = makeVar(graphLookupRef->rtindex, 2, BsonTypeId(), -1, InvalidOid,
+								0);
+
+	FuncExpr *addFieldsExpr = makeFuncExpr(
+		BsonDollarAddFieldsFunctionOid(), BsonTypeId(),
+		list_make2(documentVar, addFieldsVar),
+		InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	TargetEntry *finalTargetEntry = makeTargetEntry((Expr *) addFieldsExpr, 1, "document",
+													false);
+	graphLookupQuery->targetList = list_make1(finalTargetEntry);
+
+	return graphLookupQuery;
+}
+
+
+/*
+ * This builds the the caller of the recursive CTE for a graphLookup
+ * For the structure of this query, see ProcessGraphLookupCore
+ */
+static Query *
+BuildGraphLookupCteQuery(QuerySource parentSource,
+						 CommonTableExpr *baseCteExpr,
+						 GraphLookupArgs *args,
+						 AggregationPipelineBuildContext *parentContext)
+{
+	Query *graphLookupQuery = makeNode(Query);
+	graphLookupQuery->commandType = CMD_SELECT;
+	graphLookupQuery->querySource = parentSource;
+	graphLookupQuery->canSetTag = true;
+
+	/* The base RTE is the base query */
+	/* This is now the SELECT ... FROM baseCte */
+	int stageNum = 1;
+	int levelsUp = 1;
+	RangeTblEntry *graphLookupStageRte = CreateCteRte(baseCteExpr, "graphLookupBase",
+													  stageNum, levelsUp);
+	graphLookupQuery->rtable = list_make1(graphLookupStageRte);
+
+	RangeTblRef *graphLookupRef = makeNode(RangeTblRef);
+	graphLookupRef->rtindex = 1;
+	graphLookupQuery->jointree = makeFromExpr(list_make1(graphLookupRef), NULL);
+
+	/* The first projector is the document var from the CTE */
+	Var *firstVar = makeVar(graphLookupRef->rtindex, 1, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *firstEntry = makeTargetEntry((Expr *) firstVar, 1, "document", false);
+
+	/* The subquery for the recursive CTE goes here:
+	 * The CTE goes 2 levels up since it has to go through this graphLookupQuery (1)
+	 * to the parent query (2)
+	 */
+	int ctelevelsUp = 2;
+	Query *recursiveSelectQuery = BuildRecursiveGraphLookupQuery(parentSource, args,
+																 parentContext,
+																 baseCteExpr,
+																 ctelevelsUp);
+	SubLink *subLink = makeNode(SubLink);
+	subLink->subLinkType = EXPR_SUBLINK;
+	subLink->subLinkId = 0;
+	subLink->subselect = (Node *) recursiveSelectQuery;
+	graphLookupQuery->hasSubLinks = true;
+
+	/* Coalesce to handle NULL entries */
+	/* COALESCE( recursiveQuery, '{ "*as*": [] }' ) */
+	Expr *coalesceExpr = GetArrayAggCoalesce((Expr *) subLink, args->asField.string,
+											 args->asField.length);
+	TargetEntry *secondEntry = makeTargetEntry((Expr *) coalesceExpr, 2, "addFields",
+											   false);
+
+	graphLookupQuery->targetList = list_make2(firstEntry, secondEntry);
+	return graphLookupQuery;
+}
+
+
+/*
+ * This is the base case for the recursive CTE. This scans the from collection
+ * with the equality match on the original table's rows.
+ * SELECT * FROm from_collection WHERE document #= '{ "inputExpression" }
+ */
+static Query *
+GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
+					  GraphLookupArgs *args, int baseCteLevelsUp)
+{
+	AggregationPipelineBuildContext subPipelineContext = { 0 };
+	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
+	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+	pg_uuid_t *collectionUuid = NULL;
+	Query *baseCaseQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
+												  &args->fromCollection, collectionUuid,
+												  &subPipelineContext);
+
+	/* Citus doesn't suppor this scenario: ERROR:  recursive CTEs are not supported in distributed queries */
+	if (subPipelineContext.mongoCollection != NULL &&
+		subPipelineContext.mongoCollection->shardKey != NULL)
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"$graphLookup with 'from' on a sharded collection is not supported"),
+						errhint(
+							"$graphLookup with 'from' on a sharded collection is not supported")));
+	}
+
+	List *baseQuals = NIL;
+	if (baseCaseQuery->jointree->quals != NULL)
+	{
+		baseQuals = make_ands_implicit((Expr *) baseCaseQuery->jointree->quals);
+	}
+
+	TargetEntry *firstEntry = linitial(baseCaseQuery->targetList);
+
+	/* Match the Var of the top level input query: We're one level deeper (Since this is inside the SetOP) */
+	Var *rightVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, baseCteLevelsUp);
+
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonEqualMatchRuntimeFunctionId(), BOOLOID,
+											  list_make2(firstEntry->expr, rightVar),
+											  InvalidOid, InvalidOid,
+											  COERCE_EXPLICIT_CALL);
+
+	baseQuals = lappend(baseQuals, initialMatchFunc);
+	baseCaseQuery->jointree->quals = (Node *) make_ands_explicit(baseQuals);
+
+	/* Append the graph walk expression */
+	AddInputUnwindExpressionToQuery(baseCaseQuery, &args->connectToField, args);
+
+	/* Add the depth field (base case is 0) */
+	Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(0), false,
+								  true);
+	baseCaseQuery->targetList = lappend(baseCaseQuery->targetList,
+										makeTargetEntry((Expr *) depthConst, 3, "depth",
+														false));
+
+	return baseCaseQuery;
+}
+
+
+/*
+ * This is the recursive lookup case. This is equivalent to searching equality from the prior round
+ * SELECT * FROm from_collection WHERE document #= '{ "previousFromExpr" }
+ */
+static Query *
+GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
+						   CommonTableExpr *recursiveCte,
+						   GraphLookupArgs *args, int levelsUp)
+{
+	AggregationPipelineBuildContext subPipelineContext = { 0 };
+	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
+	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+	pg_uuid_t *collectionUuid = NULL;
+	Query *recursiveQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
+												   &args->fromCollection, collectionUuid,
+												   &subPipelineContext);
+
+	List *baseQuals = NIL;
+	if (recursiveQuery->jointree->quals != NULL)
+	{
+		baseQuals = make_ands_implicit((Expr *) recursiveQuery->jointree->quals);
+	}
+
+	RangeTblEntry *entry = CreateCteRte(recursiveCte, "lookupRecursive", 1, levelsUp);
+	entry->self_reference = true;
+	recursiveQuery->rtable = lappend(recursiveQuery->rtable, entry);
+
+	RangeTblRef *rangeTblRef = makeNode(RangeTblRef);
+	rangeTblRef->rtindex = 2;
+	recursiveQuery->jointree->fromlist = lappend(recursiveQuery->jointree->fromlist,
+												 rangeTblRef);
+
+	TargetEntry *firstEntry = linitial(recursiveQuery->targetList);
+
+	/* Match the Var of the CTE level input query */
+	Var *rightVar = makeVar(rangeTblRef->rtindex, 2, BsonTypeId(), -1, InvalidOid, 0);
+
+	FuncExpr *initialMatchFunc = makeFuncExpr(BsonEqualMatchRuntimeFunctionId(), BOOLOID,
+											  list_make2(firstEntry->expr, rightVar),
+											  InvalidOid, InvalidOid,
+											  COERCE_EXPLICIT_CALL);
+
+	baseQuals = lappend(baseQuals, initialMatchFunc);
+
+	Var *priorDepthValue = makeVar(rangeTblRef->rtindex, 3, INT4OID, -1, InvalidOid, 0);
+	if (args->maxDepth > 0)
+	{
+		Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(
+										  args->maxDepth), false, true);
+		OpExpr *depthMatchFunc = (OpExpr *) make_opclause(PostgresInt4LessOperatorOid(),
+														  BOOLOID, false,
+														  (Expr *) priorDepthValue,
+														  (Expr *) depthConst, InvalidOid,
+														  InvalidOid);
+		depthMatchFunc->opfuncid = PostgresInt4LessOperatorFunctionOid();
+		baseQuals = lappend(baseQuals, depthMatchFunc);
+	}
+
+	recursiveQuery->jointree->quals = (Node *) make_ands_explicit(baseQuals);
+
+	/* Append the graph walk expression */
+	AddInputUnwindExpressionToQuery(recursiveQuery, &args->connectToField, args);
+	Const *depthConst = makeConst(INT4OID, -1, InvalidOid, 4, Int32GetDatum(1), false,
+								  true);
+	Expr *funcExpr = (Expr *) makeFuncExpr(PostgresInt4PlusFunctionOid(), INT4OID,
+										   list_make2(depthConst, priorDepthValue),
+										   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	recursiveQuery->targetList = lappend(recursiveQuery->targetList,
+										 makeTargetEntry(funcExpr, 3, "depth", false));
+
+	return recursiveQuery;
+}
+
+
+/*
+ * This builds the core recursive CTE for a graphLookup
+ * For the structure of this query, see ProcessGraphLookupCore
+ */
+static Query *
+BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
+							   AggregationPipelineBuildContext *parentContext,
+							   CommonTableExpr *baseCteExpr, int baseCteLevelsUp)
+{
+	AggregationPipelineBuildContext subPipelineContext = { 0 };
+	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
+	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+
+	/* First build the recursive CTE object */
+	StringInfo cteStr = makeStringInfo();
+	appendStringInfo(cteStr, "graphLookupRecurseStage_%d", 1);
+	CommonTableExpr *graphCteExpr = makeNode(CommonTableExpr);
+	graphCteExpr->ctename = cteStr->data;
+	graphCteExpr->cterecursive = true;
+
+	/* Define the UNION ALL query step needed for the recursive CTE */
+	Query *unionAllQuery = makeNode(Query);
+	unionAllQuery->commandType = CMD_SELECT;
+	unionAllQuery->querySource = parentSource;
+	unionAllQuery->canSetTag = true;
+	unionAllQuery->jointree = makeFromExpr(NIL, NULL);
+
+	/* We need to build the output of hte UNION ALL first (since this is recursive )*/
+	/* The first var is the document */
+	Var *documentVar = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *docEntry = makeTargetEntry((Expr *) documentVar,
+											1, "document", false);
+
+	/* The second is the expression extracted out */
+	Var *exprVar = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *exprEntry = makeTargetEntry((Expr *) exprVar,
+											 2, "inputExpr", false);
+
+	/* The third is the depth */
+	Var *depthVar = makeVar(1, 3, INT4OID, -1, InvalidOid, 0);
+	TargetEntry *depthEntry = makeTargetEntry((Expr *) depthVar,
+											  3, "depth", false);
+
+	List *unionTargetEntries = list_make3(docEntry, exprEntry, depthEntry);
+
+	unionAllQuery->targetList = unionTargetEntries;
+	graphCteExpr->ctequery = (Node *) unionAllQuery;
+
+	ParseState *parseState = make_parsestate(NULL);
+	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
+	parseState->p_next_resno = 1;
+
+	/* Build the base case query (non recursive entry)*/
+	baseCteLevelsUp++;
+	Query *baseSubQuery = GenerateBaseCaseQuery(parentContext, args, baseCteLevelsUp);
+
+	/* Build the recursive case query: Not ethe actual graph CTE is 2 levels up:
+	 * One to get to the SetOpStatement query
+	 * Two to get to the parent GraphLookup query.
+	 */
+	int graphCteLevelsUp = 2;
+	Query *recursiveSubQuery = GenerateRecursiveCaseQuery(parentContext, graphCteExpr,
+														  args, graphCteLevelsUp);
+
+	/* To create a UNION ALL we need the left and right to be subquery RTEs */
+	bool includeAllColumns = true;
+	int depth = 2;
+	RangeTblEntry *baseQuery = MakeSubQueryRte(baseSubQuery, 1, depth, "baseQuery",
+											   includeAllColumns);
+	baseQuery->inFromCl = false;
+	RangeTblEntry *recursiveQuery = MakeSubQueryRte(recursiveSubQuery, 2, depth,
+													"recursiveQuery", includeAllColumns);
+	recursiveQuery->inFromCl = false;
+
+	unionAllQuery->rtable = list_make2(baseQuery, recursiveQuery);
+	RangeTblRef *baseReference = makeNode(RangeTblRef);
+	baseReference->rtindex = 1;
+	RangeTblRef *recursiveReference = makeNode(RangeTblRef);
+	recursiveReference->rtindex = 2;
+
+	/* Mongo dedups these, so has to be UNION not UNION ALL */
+	SetOperationStmt *setOpStatement = makeNode(SetOperationStmt);
+	setOpStatement->all = true;
+	setOpStatement->op = SETOP_UNION;
+	setOpStatement->colCollations = list_make3_oid(InvalidOid, InvalidOid, InvalidOid);
+	setOpStatement->colTypes = list_make3_oid(BsonTypeId(), BsonTypeId(), INT4OID);
+	setOpStatement->colTypmods = list_make3_int(-1, -1, -1);
+	setOpStatement->larg = (Node *) baseReference;
+	setOpStatement->rarg = (Node *) recursiveReference;
+
+	/* Update the query with the SetOp statement */
+	unionAllQuery->setOperations = (Node *) setOpStatement;
+
+	/* Now form the top level Graph Lookup Recursive Query entry */
+	Query *graphLookupQuery = makeNode(Query);
+	graphLookupQuery->commandType = CMD_SELECT;
+	graphLookupQuery->querySource = parentSource;
+	graphLookupQuery->canSetTag = true;
+
+	/* WITH RECURSIVE */
+	graphLookupQuery->hasRecursive = true;
+
+	graphLookupQuery->cteList = lappend(graphLookupQuery->cteList, graphCteExpr);
+
+	/* Next build the RangeTables */
+	RangeTblEntry *rte = CreateCteRte(graphCteExpr, "graphLookup", 2, 0);
+
+	graphLookupQuery->rtable = list_make1(rte);
+
+	/* Next build the FromList for the final query */
+	RangeTblRef *singleRangeTableRef = makeNode(RangeTblRef);
+	singleRangeTableRef->rtindex = 1;
+	graphLookupQuery->jointree = makeFromExpr(list_make1(singleRangeTableRef), NULL);
+
+	/* Build the final targetList: */
+	/* SELECT bson_array_agg(doc, 'asField') FROM graphLookup */
+
+	/* Build a base targetEntry that the arrayAgg will use */
+	Var *simpleVar = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *simpleTargetEntry = makeTargetEntry((Expr *) simpleVar, 1, "document",
+													 false);
+	graphLookupQuery->targetList = list_make1(simpleTargetEntry);
+
+	/* Add the bson_array_agg */
+	bool migrateToSubQuery = false;
+	Aggref *arrayAggRef = NULL;
+	graphLookupQuery = AddBsonArrayAggFunction(graphLookupQuery, &subPipelineContext,
+											   parseState,
+											   args->asField.string, args->asField.length,
+											   migrateToSubQuery, &arrayAggRef);
+
+	/* Add a distinct to match Mongo */
+
+	SortGroupClause *bsonSortGroup = makeNode(SortGroupClause);
+	bsonSortGroup->eqop = BsonEqualOperatorId();
+	bsonSortGroup->sortop = BsonLessThanOperatorId();
+	bsonSortGroup->hashable = false;
+
+	SortGroupClause *textSortGroup = makeNode(SortGroupClause);
+	textSortGroup->eqop = TextEqualOperatorId();
+	textSortGroup->sortop = TextLessOperatorId();
+	textSortGroup->hashable = true;
+
+	arrayAggRef->aggdistinct = list_make2(bsonSortGroup, textSortGroup);
+	pfree(parseState);
+	return graphLookupQuery;
 }

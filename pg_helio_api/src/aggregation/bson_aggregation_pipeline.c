@@ -301,7 +301,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$graphLookup",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleGraphLookup,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = true,
@@ -3090,9 +3090,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	parseState->p_next_resno = 1;
 	parseState->p_expr_kind = EXPR_KIND_GROUP_BY;
 
-	bool isBoolNull = false;
 	List *groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
-								 makeBoolConst(true, isBoolNull));
+								 MakeBoolValueConst(true));
 	FuncExpr *groupFunc = makeFuncExpr(
 		BsonExpressionGetFunctionOid(), BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);

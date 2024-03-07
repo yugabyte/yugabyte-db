@@ -108,6 +108,9 @@ Query * HandleFacet(const bson_value_t *existingValue, Query *query,
 Query * HandleLookup(const bson_value_t *existingValue, Query *query,
 					 AggregationPipelineBuildContext *context);
 
+Query * HandleGraphLookup(const bson_value_t *existingValue, Query *query,
+						  AggregationPipelineBuildContext *context);
+
 Query * HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 							 AggregationPipelineBuildContext *context);
 
@@ -151,6 +154,17 @@ MakeBsonConst(pgbson *pgbson)
 {
 	return makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(pgbson), false,
 					 false);
+}
+
+
+/*
+ * Inline method for a bool const specifying the isNull attribute.
+ */
+inline static Node *
+MakeBoolValueConst(bool value)
+{
+	bool isNull = false;
+	return makeBoolConst(value, isNull);
 }
 
 
