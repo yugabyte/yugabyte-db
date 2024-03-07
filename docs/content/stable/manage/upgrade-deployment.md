@@ -131,33 +131,33 @@ New YugabyteDB features may require changes to the format of data that is sent o
 
 1. Use the [yb-admin](../../admin/yb-admin/) utility to promote the new AutoFlags:
 
-```sh
-./bin/yb-admin \
-    -master_addresses <master-addresses> \
-    promote_auto_flags
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <master-addresses> \
+        promote_auto_flags
+    ```
 
-Expect to see the following output:
+    Expect to see the following output:
 
-```output
-PromoteAutoFlags completed successfully
-New AutoFlags were promoted
-New config version: 2
-``````
+    ```output
+    PromoteAutoFlags completed successfully
+    New AutoFlags were promoted
+    New config version: 2
+    ``````
 
-Or
+    Or
 
-```output
-PromoteAutoFlags completed successfully
-No new AutoFlags eligible to promote
-Current config version: 1
-``````
+    ```output
+    PromoteAutoFlags completed successfully
+    No new AutoFlags eligible to promote
+    Current config version: 1
+    ```
 
-{{< note title="Note" >}}
+    {{< note title="Note" >}}
 
 - `promote_auto_flags` is idempotent and can be run multiple times.
 - Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. Process running an old version may fail to connect to the cluster after the AutoFlags have been promoted.
-{{< /note >}}
+    {{< /note >}}
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
 
@@ -277,53 +277,53 @@ The process described above keeps all new AutoFlags in the default non-promoted 
 
 1. Enable the volatile AutoFlags after the upgrade phase has completed:
 
-```sh
-./bin/yb-admin \
-    -master_addresses <master-addresses> \
-    promote_auto_flags kLocalVolatile
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <master-addresses> \
+        promote_auto_flags kLocalVolatile
+    ```
 
-Copy the output and store it in a safe place.
+    Copy the output and store it in a safe place.
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
 
 1. In the case of a roll back, you need to *first roll back the AutoFlags that were promoted* before proceeding with the rollback phase.
 
-If the output of `promote_auto_flags kLocalVolatile` contained the following message then you can skip this step:
+    If the output of `promote_auto_flags kLocalVolatile` contained the following message then you can skip this step:
 
-```output
-No new AutoFlags eligible to promote
-```
+    ```output
+    No new AutoFlags eligible to promote
+    ```
 
-However, if the output contained the following message, then get the config version from it and roll back the AutoFlags to the previous version:
+    However, if the output contained the following message, then get the config version from it and roll back the AutoFlags to the previous version:
 
-```output
-New AutoFlags were promoted
-New config version: <new_config_version>
-```
+    ```output
+    New AutoFlags were promoted
+    New config version: <new_config_version>
+    ```
 
-```sh
-./bin/yb-admin \
-    -master_addresses <master-addresses> \
-    rollback_auto_flags <previous_config_version>
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <master-addresses> \
+        rollback_auto_flags <previous_config_version>
+    ```
 
-**Example**
+    **Example**
 
-```output
-PromoteAutoFlags completed successfully
-New AutoFlags were promoted
-New config version: 3
-```
+    ```output
+    PromoteAutoFlags completed successfully
+    New AutoFlags were promoted
+    New config version: 3
+    ```
 
-```sh
-./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    rollback_auto_flags 2
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+        rollback_auto_flags 2
 
-RollbackAutoFlags completed successfully
-AutoFlags that were promoted after config version 2 were successfully rolled back
-New config version: 4
-```
+    RollbackAutoFlags completed successfully
+    AutoFlags that were promoted after config version 2 were     successfully rolled back
+    New config version: 4
+    ```
 
 1. In the case of finalize, no extra steps are required. Proceed with the finalize phase which will promote *all* the AutoFlags and upgrade the YSQL system catalog.
