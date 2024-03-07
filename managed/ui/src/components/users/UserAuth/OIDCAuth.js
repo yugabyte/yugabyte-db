@@ -637,7 +637,7 @@ export const OIDCAuth = (props) => {
                                                   dataSort
                                                   width="170px"
                                                   dataFormat={(r) => {
-                                                    const role = roles.find(role => role.roleUUID === r[0]);
+                                                    const role = roles?.find(role => role.roleUUID === r[0]);
                                                     return role?.name ?? '-';
                                                   }}
                                                 >
