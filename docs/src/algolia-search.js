@@ -312,18 +312,47 @@ import algoliasearch from 'algoliasearch';
           totalResults = 1000;
         }
 
+        document.getElementById('doc-hit').innerHTML = sectionHTML;
         if (hits.length > 0 && sectionHTML !== '') {
-          document.getElementById('doc-hit').innerHTML = sectionHTML;
           if (searchSummary !== null) {
-            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
+            searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           }
         } else {
-          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. Try this search in AI.`;
+          const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           if (searchSummary) {
             searchSummary.innerHTML = noResultMessage;
           } else {
             document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
           }
+        }
+
+        const aiSearch = document.getElementById('ai-search');
+        if (aiSearch) {
+          aiSearch.addEventListener('click', () => {
+            const kapaWidgetButton = document.querySelector('#kapa-widget-container > button');
+            if (kapaWidgetButton) {
+              kapaWidgetButton.click();
+              setTimeout(() => {
+                const aiSearchTab = document.querySelector('.mantine-SegmentedControl-control input[value="search"]');
+                if (aiSearchTab) {
+                  aiSearchTab.click();
+                }
+
+                setTimeout(() => {
+                  const aiSearchInput = document.querySelector('.mantine-TextInput-input');
+                  if (aiSearchInput) {
+                    const event = new Event('input', {
+                      bubbles: true,
+                    });
+
+                    aiSearchInput.setAttribute('value', searchedTerm);
+
+                    document.querySelector('.mantine-TextInput-input').dispatchEvent(event);
+                  }
+                }, 10);
+              }, 5);
+            }
+          });
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
