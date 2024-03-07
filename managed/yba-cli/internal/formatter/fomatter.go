@@ -180,7 +180,7 @@ func (c *Context) Write(sub SubContext, f SubFormat) error {
 // Colorize the message accoring the colors var
 func Colorize(message string, colors string) string {
 	//If Colors is disable return the message as it is.
-	if viper.GetBool("no-color") {
+	if viper.GetBool("disable-color") {
 		color.NoColor = true
 	}
 	switch colors {
