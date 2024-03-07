@@ -1875,9 +1875,8 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -1885,14 +1884,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType
             << change_resp_1.cdc_sdk_proto_records_size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;
@@ -1967,14 +1963,11 @@ void CDCSDKYsqlTest::TestHighIntentCountPersistencyAllNodesRestart(
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 1 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(1, 75, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(1, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2022,9 +2015,9 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(1 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &change_resp_1, stream_id, tablets, 100, is_explicit_checkpoint));
@@ -2042,9 +2035,11 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
   }
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
+
+  int64_t before_fetch_num_intents;
+  PollForIntentCount(0, 0, IntentCountCompareOption::GreaterThan, &before_fetch_num_intents);
 
   ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
   // Shutdown tserver hosting tablet initial leader, now it is a follower.
@@ -2057,16 +2052,24 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
 
   // Restart the tserver hosting the initial leader.
   ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
-  SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
-  int64 last_seen_num_intents = -1;
+  int64_t expected_num_intents =
+      checkpoint_type == cdc::CDCCheckpointType::EXPLICIT ? before_fetch_num_intents
+                                                          : before_fetch_num_intents / 2;
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     auto tablet_peer_result =
         test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
     if (!tablet_peer_result.ok()) {
       continue;
     }
+
+    int64_t num_intents;
+    PollForIntentCount(
+        expected_num_intents, i, IntentCountCompareOption::EqualTo, &num_intents);
+    ASSERT_EQ(expected_num_intents, num_intents);
+    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
+
     auto tablet_peer = std::move(*tablet_peer_result);
 
     OpId checkpoint = (*tablet_peer).cdc_sdk_min_checkpoint_op_id();
@@ -2076,17 +2079,6 @@ void CDCSDKYsqlTest::TestIntentCountPersistencyBootstrap(CDCCheckpointType check
     } else {
       ASSERT_EQ(last_seen_checkpoint_op_id, checkpoint);
     }
-
-    int64 num_intents;
-    if (last_seen_num_intents == -1) {
-      PollForIntentCount(0, i, IntentCountCompareOption::GreaterThan, &num_intents);
-      last_seen_num_intents = num_intents;
-    } else {
-      PollForIntentCount(
-          last_seen_num_intents, i, IntentCountCompareOption::GreaterThanOrEqualTo, &num_intents);
-      ASSERT_EQ(last_seen_num_intents, num_intents);
-    }
-    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
   }
 }
 
@@ -2568,18 +2560,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionWithLargeBatchSize
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(100, 500, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(2 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   int64 initial_num_intents;
   PollForIntentCount(400, 0, IntentCountCompareOption::GreaterThan, &initial_num_intents);
@@ -2625,22 +2615,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
+
   GetChangesResponsePB change_resp_1;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 100));
   LOG(INFO) << "Number of records after first transaction: " << change_resp_1.records().size();
 
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(FlushTable(table.table_id()));
 
   ASSERT_OK(WriteRowsHelper(200 /* start */, 300 /* end */, &test_cluster_, true));
-  ASSERT_OK(WaitForFlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+  ASSERT_OK(WaitForPostApplyMetadataWritten(3 /* expected_num_transactions */));
+  ASSERT_OK(FlushTable(table.table_id()));
   SleepFor(MonoDelta::FromSeconds(10));
 
   int64 initial_num_intents;

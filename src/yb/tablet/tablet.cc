@@ -284,6 +284,7 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
@@ -923,6 +924,9 @@ Status Tablet::OpenKeyValueTablet() {
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
         doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
+    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      CleanupIntentFiles();
+    }
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -975,6 +979,7 @@ void Tablet::DoCleanupIntentFiles() {
     return;
   }
   HybridTime best_file_max_ht = HybridTime::kMax;
+  OpId best_file_op_id = OpId::Max();
   std::vector<rocksdb::LiveFileMetaData> files;
   // Stops when there are no more files to delete.
   uint64_t previous_name_id = std::numeric_limits<uint64_t>::max();
@@ -990,6 +995,7 @@ void Tablet::DoCleanupIntentFiles() {
     }
 
     best_file_max_ht = HybridTime::kMax;
+    best_file_op_id = OpId::Max();
     const rocksdb::LiveFileMetaData* best_file = nullptr;
     files.clear();
     intents_db_->GetLiveFilesMetaData(&files);
@@ -1003,8 +1009,10 @@ void Tablet::DoCleanupIntentFiles() {
         if (file.largest.user_frontier) {
           auto& frontier = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
           best_file_max_ht = frontier.hybrid_time();
+          best_file_op_id = frontier.op_id();
         } else {
           best_file_max_ht = HybridTime::kMax;
+          best_file_op_id = OpId::Max();
         }
         best_file = &file;
       }
@@ -1017,6 +1025,16 @@ void Tablet::DoCleanupIntentFiles() {
           << "Cannot delete because of running transactions: " << min_running_start_ht
           << ", best file max ht: " << best_file_max_ht;
       break;
+    }
+
+    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      auto cdc_op_id = transaction_participant_->GetLatestCheckPoint();
+      if (cdc_op_id.valid() && (!best_file_op_id.valid() || cdc_op_id < best_file_op_id)) {
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Cannot delete because of CDC: " << cdc_op_id
+            << ", best file op id: " << best_file_op_id;
+        break;
+      }
     }
     if (best_file->name_id == previous_name_id) {
       LOG_WITH_PREFIX_AND_FUNC(INFO)
@@ -2050,6 +2068,38 @@ Status Tablet::RemoveIntents(
   return RemoveIntentsImpl(data, reason, transactions);
 }
 
+Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) {
+  if (metadatas.empty()) {
+    return Status::OK();
+  }
+
+  OpId min_op_id = OpId::Max();
+  OpId max_op_id = OpId::Min();
+  HybridTime min_ht = HybridTime::kMax;
+  HybridTime max_ht = HybridTime::kMin;
+
+  for (const auto& metadata : metadatas) {
+    min_op_id = std::min(min_op_id, metadata.apply_op_id);
+    max_op_id = std::max(max_op_id, metadata.apply_op_id);
+    min_ht = std::min({min_ht, metadata.commit_ht, metadata.log_ht});
+    max_ht = std::max({max_ht, metadata.commit_ht, metadata.log_ht});
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  frontiers.Smallest().set_op_id(min_op_id);
+  frontiers.Smallest().set_hybrid_time(min_ht);
+  frontiers.Largest().set_op_id(max_op_id);
+  frontiers.Largest().set_hybrid_time(max_ht);
+
+  rocksdb::WriteBatch write_batch;
+  docdb::PostApplyMetadataWriter writer(metadatas);
+  write_batch.SetDirectWriter(&writer);
+
+  WriteToRocksDB(&frontiers, &write_batch, StorageDbType::kIntents);
+
+  return Status::OK();
+}
+
 // We batch this as some tx could be very large and may not fit in one batch
 Status Tablet::GetIntents(
     const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
@@ -2111,6 +2161,9 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
       VLOG_WITH_PREFIX(1) << "Intents opid retention duration = " << cdc_sdk_op_id_expiration;
       txn_participant->SetIntentRetainOpIdAndTime(
           cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration);
+      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        CleanupIntentFiles();
+      }
     }
   }
 
