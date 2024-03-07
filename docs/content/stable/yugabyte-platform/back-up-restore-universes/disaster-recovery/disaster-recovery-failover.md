@@ -22,7 +22,7 @@ If the DR primary is terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Navigate to your DR primary universe and select **Disaster Recovery**.
+1. Navigate to your DR primary universe and select **xCluster Disaster Recovery**.
 
 1. Note the **Potential data loss on failover** to understand the extent of possible data loss as a result of the outage, and determine if the extent of data loss is acceptable for your situation.
 
@@ -52,15 +52,13 @@ In both cases, repairing DR involves making a full copy of the databases through
 
 To repair DR, do the following:
 
-1. Navigate to your (new) DR primary universe and select **Disaster Recovery**.
+1. Navigate to your (new) DR primary universe and select **xCluster Disaster Recovery**.
 
 1. Click **Repair DR**.
 
 1. If the original DR primary has recovered and is fully functional with no active alerts, choose **Reuse the current DR replica**.
 
     To use a new universe as the DR replica, choose **Select a new universe as DR replica** and select the universe.
-
-1. Select a storage configuration.
 
 1. Click **Initiate Repair**.
 
