@@ -195,7 +195,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< warning title="Important" >}}
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 or higher.
-- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you can [Export and import](../backup-restore/export-import-data/) the data to another cluster that is running the old version. You may have to manually modify the SQL script to make it match the old version's format.
+- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 
 In order to roll back to the version that you were on before the upgrade, you need to restart all YB-Master and YB-Tservers on the old version. All YB-Tservers have to be rolled back before you roll back YB-Masters.
