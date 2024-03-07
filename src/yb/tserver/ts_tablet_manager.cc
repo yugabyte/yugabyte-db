@@ -479,6 +479,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&raft_pool_));
+
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
+
   CHECK_OK(ThreadPoolBuilder("log-sync")
                .set_min_threads(1)
                .unlimited_threads()
@@ -1801,6 +1807,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet->GetTableMetricsEntity(),
         tablet->GetTabletMetricsEntity(),
         raft_pool(),
+        raft_notifications_pool(),
         tablet_prepare_pool(),
         &retryable_requests_manager,
         std::move(cmeta),

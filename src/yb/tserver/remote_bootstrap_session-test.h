@@ -50,6 +50,7 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/tablet-test-util.h"
 
@@ -106,6 +107,7 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
   MetricRegistry metric_registry_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   std::unique_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;

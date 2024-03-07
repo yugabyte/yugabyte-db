@@ -14,6 +14,8 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"

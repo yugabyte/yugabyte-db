@@ -73,11 +73,14 @@ FunctorThreadPoolTask<F>* MakeFunctorThreadPoolTask(F&& f) {
 
 struct ThreadPoolOptions {
   std::string name;
+
   size_t max_workers;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(name, max_workers);
   }
+
+  static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();
 };
 
 class ThreadPool {
