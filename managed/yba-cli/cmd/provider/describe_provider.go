@@ -7,6 +7,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -40,7 +41,10 @@ var describeProviderCmd = &cobra.Command{
 		}
 		authAPI.GetCustomerUUID()
 		providerListRequest := authAPI.GetListOfProviders()
-		providerNameFlag, _ := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		var providerName string
 		if len(providerNameFlag) > 0 {
 			providerName = providerNameFlag
@@ -49,6 +53,14 @@ var describeProviderCmd = &cobra.Command{
 				formatter.Colorize("No provider name found to describe\n", formatter.RedColor))
 		}
 		providerListRequest = providerListRequest.Name(providerName)
+
+		providerCode, err := cmd.Flags().GetString("code")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(strings.TrimSpace(providerCode)) != 0 {
+			providerListRequest = providerListRequest.ProviderCode(providerCode)
+		}
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
@@ -84,4 +96,7 @@ func init() {
 	describeProviderCmd.Flags().StringP("provider-name", "n", "",
 		"[Required] The name of the provider to get details.")
 	describeProviderCmd.MarkFlagRequired("provider-name")
+	describeProviderCmd.Flags().StringP("code", "c", "",
+		"[Optional] Code of the provider. "+
+			"Allowed values: aws, gcp, azu, onprem, kubernetes.")
 }

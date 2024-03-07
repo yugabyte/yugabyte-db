@@ -261,18 +261,26 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "shared-subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["shared-subnet"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "instance-template":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["instance-template"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "yb-image":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["yb-image"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}
