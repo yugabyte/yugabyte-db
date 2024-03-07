@@ -562,8 +562,11 @@ class PgClient::Impl : public BigDataFetcher {
 
     auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
     if (exchange_ && exchange_->ReadyToSend()) {
-      auto out = exchange_->Obtain(req.SerializedSize());
+      constexpr size_t kHeaderSize = sizeof(uint64_t);
+      auto out = exchange_->Obtain(kHeaderSize + req.SerializedSize());
       if (out) {
+        LittleEndian::Store64(out, timeout_.ToMilliseconds());
+        out += sizeof(uint64_t);
         auto status = StartPerform(data.get(), req, out);
         if (!status.ok()) {
           ProcessPerformResponse(data.get(), status);
