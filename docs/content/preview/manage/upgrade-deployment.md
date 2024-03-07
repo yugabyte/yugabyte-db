@@ -90,9 +90,9 @@ Upgrade the YB-Masters one node at a time:
 
 1. Pause for at least 60 seconds before upgrading the next YB-Master.
 
-#### 4. Upgrade YB-TServers
+#### 4. Upgrade YB-Tservers
 
-Upgrade the YB-TServers one node at a time:
+Upgrade the YB-Tservers one node at a time:
 
 1. Stop the `yb-tserver` process.
 
@@ -106,11 +106,11 @@ Upgrade the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$NEW_VER/
     ```
 
-1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the new version of the YB-Tserver process. Follow the instructions in [Start YB-Tservers](../../deploy/manual-deployment/start-tservers/).
 
 1. Make sure that all YB-Tserver processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
 
-1. Pause for at least 60 seconds before upgrading the next YB-TServer.
+1. Pause for at least 60 seconds before upgrading the next YB-Tserver.
 
 
 ### Monitor Phase
@@ -216,11 +216,11 @@ Roll back the YB-Tservers one node at a time:
     cd /home/yugabyte/softwareyb-$OLD_VER/
     ```
 
-1. Start the old version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the old version of the YB-Tserver process. Follow the instructions in [Start YB-Tservers](../../deploy/manual-deployment/start-tservers/).
 
 1. Make sure that all YB-Tserver processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
-1. Pause for at least 60 seconds before rolling back the next YB-TServer.
+1. Pause for at least 60 seconds before rolling back the next YB-Tserver.
 
 #### 2. Roll back YB-Masters
 
