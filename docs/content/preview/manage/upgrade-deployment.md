@@ -16,29 +16,57 @@ type: docs
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place without minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB's [High availability](../../explore/fault-tolerance/) capability and load balancer, automatically move the tablet leaders around as nodes/processes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../explore/linear-scalability/data-distribution/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
-{{< note title="Note" >}}
+## Important information
+
+{{< warning >}}
+Review the following information before starting an upgrade.
+{{< /warning >}}
+
+- You can only upgrade to the latest minor version of every release.
+
+    For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
+
+    To view and download releases, refer to [Releases](../../releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
-{{< /note >}}
+
+### Review major changes in previous YugabyteDB releases
+
+Before starting the upgrade, review the following major changes to YugabyteDB. Depending on the upgrade you are planning, you may need to make changes to your automation.
+
+#### Upgrading from versions earlier than v2.16.0
+
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for v2.16.0 and later.
+
+YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
+
+**Impacts**
+
+- Firewall ports - update your firewall rules to allow incoming TCP traffic on port 18018, which is used by YBC, for all nodes in a universe.
+
+- OS patching procedure - if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
+
+#### Upgrading from versions earlier than v2.18.0
+
+YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2160).
 
 ## Upgrade YugabyteDB cluster
 
-{{< warning title="Important" >}}
-You can only upgrade to the latest minor version of every release.
+You upgrade a cluster in the following phases:
 
-For example, if you are on version v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 and not v2.20.1.0 or v2.20.0.0.
-To view and download releases, refer to [Releases](../../releases/).
-{{< /warning >}}
+- [Upgrade](#upgrade-phase)
+- [Monitor](#monitor-phase)
+- [Finalize](#a-finalize-phase) or [Rollback](#b-rollback-phase)
 
-The [Upgrade Phase](#upgrade-phase) deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until the [Finalize Phase](#a-finalize-phase) completes. This gives you the capability to evaluate the majority of the changes before committing to the new version. If you encounter any issues before finalizing the upgrade, you have the option to initiate the [Rollback Phase](#b-roll-back-phase), which will restore the cluster to its state before the upgrade.
+The Upgrade Phase deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until you finalize the upgrade. This allows you to evaluate the majority of the changes before committing to the new version. If you encounter any issues while monitoring the cluster, you have the option to roll back and restore the cluster to its state before the upgrade.
 
 ### Upgrade Phase
 
