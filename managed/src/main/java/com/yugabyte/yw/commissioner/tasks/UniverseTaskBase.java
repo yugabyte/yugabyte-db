@@ -318,6 +318,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DeleteXClusterConfig,
           TaskType.RestartXClusterConfig,
           TaskType.SyncXClusterConfig,
+          TaskType.CreateDrConfig,
+          TaskType.SetTablesDrConfig,
+          TaskType.RestartDrConfig,
+          TaskType.EditDrConfig,
+          TaskType.SwitchoverDrConfig,
+          TaskType.FailoverDrConfig,
+          TaskType.SyncDrConfig,
+          TaskType.DeleteDrConfig,
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse);
 
