@@ -193,8 +193,6 @@ To change the universe that is used as a DR replica, do the following:
 
 1. Enter the name of the DR replica and click **Next: Confirm Full Copy**.
 
-1. Select a storage configuration to be used for backup and restore in case a full copy needs to be transferred to the new DR replica.
-
 1. Click **Apply Changes**.
 
     This removes the current DR replica and sets up the new DR replica, with a full copy of the databases if needed.
