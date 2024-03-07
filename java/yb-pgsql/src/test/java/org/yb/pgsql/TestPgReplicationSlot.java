@@ -306,6 +306,112 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void consumptionOnSubsetOfColocatedTables() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> tserverFlags = super.getTServerFlags();
+    // Set the batch size to a smaller value than the default of 500, so that the
+    // test is fast.
+    tserverFlags.put("cdcsdk_max_consistent_records", "2");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    String slotName = "test_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE DATABASE col_db WITH colocation = true");
+    }
+
+    Connection conn = getConnectionBuilder().withDatabase("col_db").connect();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = true);");
+      stmt.execute("CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = true);");
+      stmt.execute("CREATE TABLE t3 (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = true);");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+      // Close statement.
+      stmt.close();
+    }
+    conn.close();
+
+    Connection conn2 =
+        getConnectionBuilder().withDatabase("col_db").withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn2.unwrap(PGConnection.class).getReplicationAPI();
+
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = conn2.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abc')");
+      stmt.execute("INSERT INTO t2 VALUES(2, 'def')");
+      stmt.execute("INSERT INTO t3 VALUES(3, 'hij')");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES(4, 'klm')");
+      stmt.execute("INSERT INTO t2 VALUES(5, 'nop')");
+      stmt.execute("INSERT INTO t3 VALUES(6, 'qrs')");
+      stmt.execute("COMMIT");
+      stmt.close();
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 2 Relation (t1 & t2) + 3 records/txn (B+I+C) * 2 txns (performed on t1 & t2
+    // respectively) + 2 records/txn (B+C) * 1 txn (performed on t3) + 4 records/txn
+    // (B+I1+I2+C) * 1 multi-shard txn.
+    result.addAll(receiveMessage(stream, 14));
+    for (PgOutputMessage res : result) {
+      LOG.info("Row = {}", res);
+    }
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'd',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("name", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'd',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("name", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("def")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnValue("klm")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("5"),
+                new PgOutputMessageTupleColumnValue("nop")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn2.close();
+  }
+
+  @Test
   public void replicationConnectionConsumption() throws Exception {
     testReplicationConnectionConsumption("test_repl_slot_consumption");
   }
