@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can export cluster database logs to third-party tools for analysis and customization. You can export the following types of logs:
+Export cluster database logs to third-party tools for analysis and customization. You can export the following types of logs:
 
 - Audit logs. Audit logs are generated using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)).
 - Query logs. These are the standard PostrgreSQL logs.
@@ -73,3 +73,7 @@ To enable database query logging for a cluster, do the following:
 1. Select the export configuration to use.
 
 1. Click **Enable Database Query Logging**.
+
+## Learn more
+
+- [Configure audit logging in YSQL](../../../secure/audit-logging/audit-logging-ysql/)
