@@ -118,7 +118,6 @@ const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
 
-YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";

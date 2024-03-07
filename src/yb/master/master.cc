@@ -40,7 +40,7 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/util/logging.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 
 #include "yb/common/pg_catversions.h"
@@ -631,6 +631,14 @@ CloneStateManager* Master::clone_state_manager() const {
 
 
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
+
+const std::shared_future<client::YBClient*>& Master::client_future() const {
+  return async_client_init_->get_client_future();
+}
+
+const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() const {
+  return cdc_state_client_init_->get_client_future();
+}
 
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,

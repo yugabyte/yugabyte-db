@@ -33,7 +33,6 @@
 set(YB_PCH_PREFIX client)
 
 set(CLIENT_SRCS
-  async_initializer.cc
   async_rpc.cc
   batcher.cc
   client.cc
@@ -76,7 +75,6 @@ set(CLIENT_LIBS
   master_proto
   master_rpc
   master_util
-  server_process
   tserver_proto
   tserver_service_proto
   pg_auto_analyze_service_proto

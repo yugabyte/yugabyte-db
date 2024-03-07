@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 
 #include "yb/client/client.h"
 
@@ -25,7 +25,7 @@
 using namespace std::literals;
 
 DEFINE_test_flag(bool, force_master_leader_resolution, false,
-                 "Force master leader resolution even only one master is set.");
+    "Force master leader resolution even only one master is set.");
 
 namespace yb {
 namespace client {
@@ -34,7 +34,8 @@ AsyncClientInitializer::AsyncClientInitializer(
     const std::string& client_name, MonoDelta default_timeout, const std::string& tserver_uuid,
     const yb::server::ServerBaseOptions* opts, scoped_refptr<MetricEntity> metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker, rpc::Messenger* messenger)
-    : client_builder_(std::make_unique<YBClientBuilder>()), messenger_(messenger),
+    : client_builder_(std::make_unique<YBClientBuilder>()),
+      messenger_(messenger),
       client_future_(client_promise_.get_future()) {
   client_builder_->set_client_name(client_name);
   client_builder_->default_rpc_timeout(default_timeout);
@@ -74,9 +75,7 @@ void AsyncClientInitializer::Start(const server::ClockPtr& clock) {
       &init_client_thread_));
 }
 
-YBClient* AsyncClientInitializer::client() const {
-  return client_future_.get();
-}
+YBClient* AsyncClientInitializer::client() const { return client_future_.get(); }
 
 void AsyncClientInitializer::InitClient(const server::ClockPtr& clock) {
   LOG(INFO) << "Starting to init ybclient";

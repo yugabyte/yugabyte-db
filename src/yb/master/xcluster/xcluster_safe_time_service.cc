@@ -12,7 +12,6 @@
 
 #include <chrono>
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -504,7 +503,7 @@ Result<XClusterSafeTimeService::ProducerTabletToSafeTimeMap>
 XClusterSafeTimeService::GetSafeTimeFromTable() {
   ProducerTabletToSafeTimeMap tablet_safe_time;
 
-  auto* yb_client = master_->cdc_state_client_initializer().client();
+  auto* yb_client = master_->client_future().get();
   if (!yb_client) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
@@ -649,7 +648,7 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
     return OK();
   }
 
-  auto* ybclient = master_->cdc_state_client_initializer().client();
+  auto* ybclient = master_->client_future().get();
   if (!ybclient) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
