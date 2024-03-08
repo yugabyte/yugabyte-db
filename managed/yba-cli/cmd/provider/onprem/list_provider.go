@@ -22,6 +22,4 @@ var listOnpremProviderCmd = &cobra.Command{
 func init() {
 	listOnpremProviderCmd.Flags().SortFlags = false
 
-	listOnpremProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
-
 }

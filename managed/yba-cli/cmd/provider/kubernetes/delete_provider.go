@@ -25,9 +25,6 @@ var deleteK8sProviderCmd = &cobra.Command{
 
 func init() {
 	deleteK8sProviderCmd.Flags().SortFlags = false
-	deleteK8sProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to be deleted.")
-	deleteK8sProviderCmd.MarkFlagRequired("name")
 	deleteK8sProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }

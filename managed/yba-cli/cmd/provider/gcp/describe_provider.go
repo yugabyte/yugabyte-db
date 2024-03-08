@@ -25,7 +25,4 @@ var describeGCPProviderCmd = &cobra.Command{
 
 func init() {
 	describeGCPProviderCmd.Flags().SortFlags = false
-	describeGCPProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to get details.")
-	describeGCPProviderCmd.MarkFlagRequired("name")
 }

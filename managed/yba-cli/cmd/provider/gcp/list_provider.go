@@ -21,6 +21,4 @@ var listGCPProviderCmd = &cobra.Command{
 
 func init() {
 	listGCPProviderCmd.Flags().SortFlags = false
-
-	listGCPProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
 }

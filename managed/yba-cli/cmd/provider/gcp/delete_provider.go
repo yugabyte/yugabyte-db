@@ -25,9 +25,6 @@ var deleteGCPProviderCmd = &cobra.Command{
 
 func init() {
 	deleteGCPProviderCmd.Flags().SortFlags = false
-	deleteGCPProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to be deleted.")
-	deleteGCPProviderCmd.MarkFlagRequired("name")
 	deleteGCPProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }

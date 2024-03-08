@@ -25,7 +25,5 @@ var describeK8sProviderCmd = &cobra.Command{
 
 func init() {
 	describeK8sProviderCmd.Flags().SortFlags = false
-	describeK8sProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to get details.")
-	describeK8sProviderCmd.MarkFlagRequired("name")
+
 }

@@ -17,7 +17,7 @@ var GCPProviderCmd = &cobra.Command{
 	Use:     util.GCPProviderType,
 	GroupID: "type",
 	Short:   "Manage a YugabyteDB Anywhere GCP provider",
-	Long:    "Create and update a GCP provider in YugabyteDB Anywhere",
+	Long:    "Manage a GCP provider in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -33,7 +33,7 @@ func init() {
 	GCPProviderCmd.AddCommand(deleteGCPProviderCmd)
 
 	GCPProviderCmd.PersistentFlags().StringP("name", "n", "",
-		fmt.Sprintf("[Optional] The name of the provider to be created. %s",
+		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
 				"Required for create, delete, describe.",
 				formatter.GreenColor)))

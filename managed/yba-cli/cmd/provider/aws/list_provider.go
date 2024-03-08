@@ -21,6 +21,4 @@ var listAWSProviderCmd = &cobra.Command{
 
 func init() {
 	listAWSProviderCmd.Flags().SortFlags = false
-
-	listAWSProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
 }

@@ -25,8 +25,5 @@ var describeOnpremProviderCmd = &cobra.Command{
 
 func init() {
 	describeOnpremProviderCmd.Flags().SortFlags = false
-	describeOnpremProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to get details.")
-	describeOnpremProviderCmd.MarkFlagRequired("name")
 
 }
