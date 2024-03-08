@@ -73,5 +73,6 @@ public enum AlertTemplate {
   REACTOR_DELAYS,
   RPC_QUEUE_SIZE,
   LOG_CACHE_SIZE,
-  CACHE_MISS;
+  CACHE_MISS,
+  HA_STANDBY_SYNC;
 }
