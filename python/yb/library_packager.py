@@ -84,9 +84,21 @@ DistributionContext = collections.namedtuple(
          'verbose_mode'])
 
 
+# Ensure files with these names are treated as shared libraries for the purpose of setting RPATHs.
+SPECIAL_CASE_LIB_NAME_PREFIXES = (
+    'liblber-',
+    'libldap-',
+    'libldap_r-',
+)
+
+
 def should_manipulate_rpath_of(file_path: str) -> bool:
+    base_name = os.path.basename(file_path)
     return not os.path.islink(file_path) and (
-        os.access(file_path, os.X_OK) or file_path.endswith('.so')
+        os.access(file_path, os.X_OK) or
+        file_path.endswith('.so') or
+        # Some libraries don't have the executable bit set on them. We will fix that.
+        base_name.startswith(SPECIAL_CASE_LIB_NAME_PREFIXES) and '.so.' in base_name
     ) and not (
         # This directory has a few executable files that we should not manipulate.
         os.path.dirname(file_path).endswith('/pgxs/config')
@@ -204,6 +216,11 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def symlink(source: str, link_path: str) -> None:
+    """
+    Create a symbolic link at `link_path` pointing to the existing file or directory at `source`.
+    Does nothing if the source path is absolute and the desired link already exists and points
+    to the same path.
+    """
     if os.path.exists(link_path):
         if not source.startswith('/') or os.path.realpath(link_path) != os.path.realpath(source):
             raise RuntimeError(
@@ -272,6 +289,8 @@ class LibraryPackager:
     @staticmethod
     def set_or_remove_rpath(dest_root_dir: str, file_path: str) -> None:
         if not should_manipulate_rpath_of(file_path):
+            if not os.path.islink(file_path):
+                logging.debug("Not manipulating RPATH or permissions of file: %s", file_path)
             return
 
         if not os.access(file_path, os.W_OK):
@@ -279,15 +298,22 @@ class LibraryPackager:
             # Linuxbrew or third-party dependencies.
             subprocess.check_call(['chmod', 'u+w', file_path])
 
+        if not os.access(file_path, os.X_OK):
+            subprocess.check_call(['chmod', 'u+x', file_path])
+
         if using_linuxbrew():
-            # In Linuxbrew mode, we will set the rp
+            # When using Linuxbrew, we manage RPATH as follows:
+            # - Remove RPATH altogether during packaging (what we are doing here).
+            # - Generate a post_install.sh file, which, when executed, sets the RPATH appropriately
+            #   according to the installation location.
+            logging.debug("Removing RPATH from file: %s", file_path)
             remove_rpath(file_path)
             return
 
         file_abs_path = os.path.abspath(file_path)
         new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path)))
-        logging.info("Setting rpath on file %s to %s", file_path, new_rpath)
+        logging.debug("Setting rpath on file %s to %s", file_path, new_rpath)
         set_rpath(file_path, new_rpath)
 
     def install_dyn_linked_binary(self, src_path: str, dest_dir: str) -> str:
