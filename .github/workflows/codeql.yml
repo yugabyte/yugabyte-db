@@ -1,0 +1,41 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "master", "2.0.5", "2.1", "2.1.8", "2.2", "2.2.0", "2.2.0.0-b80-custom_branch", "2.2.0.0-b80", "2.2.2.1", "2.3", "2.4", "2.4.1", "2.4.4", "2.5", "2.5.3", "2.6", "2.6.0", "2.6.1-9231ceab-hotfix-branch", "2.6.1", "2.6.7", "2.6.10", "2.6.10.1", "2.6.17", "2.7.0", "2.7.1", "2.7.2", "2.8", "2.8.1", "2.8.3", "2.8.9", "2.9.0", "2.9.1", "2.11.0", "2.11.1", "2.11.2", "2.12", "2.12.3", "2.12.4", "2.12.5", "2.12.6", "2.12.9", "2.13.0", "2.13.1", "2.13.1.0-b99", "2.13.1.1", "2.13.2", "2.14", "2.14.0", "2.14.0.0-b94-and-session-id-to-transaction-id-linkage", "2.14.0.0-b94-session-id-to-transaction-id-linkage", "2.14.0.0-b94-with-session-id-to-transaction-id-linkage", "2.14.2", "2.14.3", "2.15.0", "2.15.1", "2.15.2", "2.15.3", "2.15.3.1000", "2.15.4.1000", "2.16", "2.17.0", "2.17.1.1186", "docs-design-preview" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    - cron: "1 1 * * 3"
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ javascript, python ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{ matrix.language }}"
