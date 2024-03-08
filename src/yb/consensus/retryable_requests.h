@@ -106,13 +106,7 @@ class RetryableRequestsManager {
 
   RetryableRequestsManager(
       const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir,
-      const MemTrackerPtr& mem_tracker, std::string log_prefix)
-          : tablet_id_(tablet_id),
-            fs_manager_(fs_manager),
-            dir_(wal_dir),
-            retryable_requests_(
-                std::make_unique<RetryableRequests>(mem_tracker,
-                                                    std::move(log_prefix))) {}
+      const MemTrackerPtr& mem_tracker, const std::string log_prefix);
 
   Status Init(const server::ClockPtr& clock);
 
@@ -142,6 +136,10 @@ class RetryableRequestsManager {
   // Take the snapshot of the retryable requests, return the copy if success.
   std::unique_ptr<RetryableRequests> TakeSnapshotOfRetryableRequests();
 
+  void set_log_prefix(const std::string& log_prefix);
+
+  std::string LogPrefix() const;
+
  private:
   std::string CurrentFilePath() {
     return FilePath(dir_);
@@ -168,6 +166,7 @@ class RetryableRequestsManager {
   FsManager* fs_manager_ = nullptr;
   std::string dir_;
   std::unique_ptr<RetryableRequests> retryable_requests_;
+  std::string log_prefix_;
 
   static constexpr char kSuffixNew[] = ".NEW";
   static constexpr char kRetryableRequestsFileName[] = "retryable_requests";
