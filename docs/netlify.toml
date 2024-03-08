@@ -543,7 +543,11 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/"
+  to = "/preview/releases/ybdb-release/"
+
+[[redirects]]
+  from = "/preview/releases/release-notes/"
+  to = "/preview/releases/ybdb-release/"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"

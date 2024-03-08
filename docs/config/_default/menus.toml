@@ -201,7 +201,7 @@
   weight = 1
   identifier = "yugabytedb-releases"
   parent = "releases"
-  url = "/preview/releases/release-notes/"
+  url = "/preview/releases/ybdb-releases/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/database.svg"
@@ -712,7 +712,7 @@
   name = "YugabyteDB"
   weight = 4
   identifier = "release-notes"
-  url = "/preview/releases/release-notes/"
+  url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
     showSection = true
 
