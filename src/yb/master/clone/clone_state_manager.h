@@ -53,10 +53,12 @@ class CloneStateManager {
       const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const NamespaceInfoPtr& source_namespace, const HybridTime& restore_time);
+      uint32_t seq_no, const NamespaceId& source_namespace_id,
+      const std::string& target_namespace_name, const HybridTime& restore_time);
 
   Status UpdateCloneStateWithSnapshotInfo(
-      CloneStateInfoPtr clone_state, const TxnSnapshotId& source_snapshot_id,
+      const CloneStateInfoPtr& clone_state,
+      const TxnSnapshotId& source_snapshot_id,
       const TxnSnapshotId& target_snapshot_id,
       const ExternalTableSnapshotDataMap& table_snapshot_data);
 
@@ -77,12 +79,12 @@ class CloneStateManager {
   Status ClonePgSchemaObjects(
       CloneStateInfoPtr clone_state, const std::string& source_db_name,
       const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
-      const HybridTime& restore_time, const LeaderEpoch& epoch);
+      const LeaderEpoch& epoch);
 
-  // Transition clone state according to ClonePgSchema async task response then StartTabletsCloning.
+  // Return clone schema status if it failed, or otherwise StartTabletsCloning.
   Status StartTabletsCloningYsql(
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const HybridTime& restore_time, const std::string& target_namespace_name,
+      const std::string& target_namespace_name,
       CoarseTimePoint deadline, const LeaderEpoch& epoch, Status pg_schema_cloning_status);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
@@ -91,7 +93,7 @@ class CloneStateManager {
   // of YCQL and the second part of the clone process in case of YSQL.
   Status StartTabletsCloning(
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const HybridTime& restore_time, const std::string& target_namespace_name,
+      const std::string& target_namespace_name,
       CoarseTimePoint deadline, const LeaderEpoch& epoch);
 
   Status LoadCloneState(const std::string& id, const SysCloneStatePB& metadata);
@@ -104,11 +106,12 @@ class CloneStateManager {
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const HybridTime& restore_time, const std::string& target_namespace_name,
+      const std::string& target_namespace_name,
       CoarseTimePoint deadline, const LeaderEpoch& epoch);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);
+  Result<bool> IsDeleteNamespaceDone(const CloneStateInfoPtr& clone_state);
 
   std::mutex mutex_;
 

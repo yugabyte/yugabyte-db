@@ -89,7 +89,8 @@ class CloneStateManagerTest : public YBTest {
         (const TxnSnapshotId& snapshot_id, HybridTime restore_at), (override));
     MOCK_METHOD(
         Status, ListRestorations,
-        (const TxnSnapshotId& snapshot_id, ListSnapshotRestorationsResponsePB* resp), (override));
+        (const TxnSnapshotRestorationId& restoration_id,
+        ListSnapshotRestorationsResponsePB* resp), (override));
 
     MOCK_METHOD(Result<TabletInfoPtr>, GetTabletInfo, (const TabletId& tablet_id), (override));
 
@@ -191,25 +192,33 @@ class CloneStateManagerTest : public YBTest {
     }
   }
 
-  Result<CloneStateInfoPtr> CreateCloneState(uint32_t seq_no) {
-    // NB: This does not call EXPECT_CALL Upsert because some tests expect this to fail.
-    return clone_state_manager_->CreateCloneState(
-        seq_no, source_ns_, kRestoreTime);
-  }
-
-  Result<CloneStateInfoPtr> CreateCloneStateAndStartCloning(
+  // Creates a clone state in the CLONE_SCHEMA_STARTED state from a provided
+  // ExternalTableSnapshotDataMap (instead of using import / export snapshot).
+  // NB: This does not call EXPECT_CALL(Upsert) because some tests expect this to fail.
+  Result<CloneStateInfoPtr> CreateCloneState(
       uint32_t seq_no, const ExternalTableSnapshotDataMap& table_snapshot_data) {
-    EXPECT_CALL(MockFuncs(), Upsert(_));
-    auto clone_state = VERIFY_RESULT(CreateCloneState(seq_no));
+    auto clone_state = VERIFY_RESULT(clone_state_manager_->CreateCloneState(
+        seq_no, kSourceNamespaceId, kTargetNamespaceName, kRestoreTime));
 
-    EXPECT_CALL(MockFuncs(), Upsert(_));
     RETURN_NOT_OK(clone_state_manager_->UpdateCloneStateWithSnapshotInfo(
         clone_state, kSourceSnapshotId, kTargetSnapshotId, table_snapshot_data));
-
     return clone_state;
   }
 
-  Result<CloneStateInfoPtr> CreateCloneStateAndStartCloning() {
+  Result<CloneStateInfoPtr> CreateSecondCloneState() {
+    ExternalTableSnapshotDataMap table_snapshot_data;
+    auto& table_data = table_snapshot_data[kSourceTableId];
+    table_data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
+    IdPairPB tablet_ids;
+    tablet_ids.set_old_id("test_source_id");
+    tablet_ids.set_new_id("test_target_id");
+    *table_data.table_meta->add_tablets_ids() = tablet_ids;
+
+    EXPECT_CALL(MockFuncs(), Upsert(_));
+    return CreateCloneState(kSeqNo + 1, table_snapshot_data);
+  }
+
+  ExternalTableSnapshotDataMap DefaultTableSnapshotData() {
     ExternalTableSnapshotDataMap table_snapshot_data;
     auto& table_data = table_snapshot_data[kSourceTableId];
     table_data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
@@ -219,18 +228,24 @@ class CloneStateManagerTest : public YBTest {
       tablet_ids.set_new_id(target_tablets_[i]->id());
       *table_data.table_meta->add_tablets_ids() = tablet_ids;
     }
-    return CreateCloneStateAndStartCloning(kSeqNo, table_snapshot_data);
+    return table_snapshot_data;
   }
 
-  Result<CloneStateInfoPtr> CreateSecondCloneStateAndStartCloning() {
-    ExternalTableSnapshotDataMap table_snapshot_data;
-    auto& table_data = table_snapshot_data[kSourceTableId];
-    table_data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
-    IdPairPB tablet_ids;
-    tablet_ids.set_old_id("test_source_id");
-    tablet_ids.set_new_id("test_target_id");
-    *table_data.table_meta->add_tablets_ids() = tablet_ids;
-    return CreateCloneStateAndStartCloning(kSeqNo + 1, table_snapshot_data);
+  // Creates a clone state and schedules clone ops to move it into the CREATING state.
+  Result<CloneStateInfoPtr> CreateCloneStateAndStartCloning() {
+    EXPECT_CALL(MockFuncs(), Upsert(_));
+    auto clone_state = VERIFY_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+
+    for (int i = 0; i < kNumTablets; ++i) {
+      EXPECT_CALL(MockFuncs(), GetTabletInfo(source_tablets_[i]->id()))
+          .WillOnce(Return(source_tablets_[i]));
+      EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
+          .WillOnce(Return(target_tablets_[i]));
+      EXPECT_CALL(MockFuncs(), ScheduleCloneTabletCall(source_tablets_[i], kEpoch, _));
+    }
+    EXPECT_CALL(MockFuncs(), Upsert(_));
+    RETURN_NOT_OK(ScheduleCloneOps(clone_state, kEpoch, {} /* not_snapshotted_tablets */));
+    return clone_state;
   }
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state) {
@@ -271,6 +286,7 @@ class CloneStateManagerTest : public YBTest {
   const int kNumTablets = 2;
   const HybridTime kRestoreTime = HybridTime(12345);
   const YQLDatabase kDatabaseType = YQLDatabase::YQL_DATABASE_CQL;
+  const LeaderEpoch kEpoch = LeaderEpoch(123 /* term */);
 
   NamespaceInfoPtr source_ns_;
   NamespaceInfoPtr target_ns_;
@@ -281,20 +297,15 @@ class CloneStateManagerTest : public YBTest {
 };
 
 TEST_F(CloneStateManagerTest, CreateCloneState) {
-  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+  EXPECT_CALL(MockFuncs(), Upsert(_));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
 
   // Check clone state persisted fields.
   SysCloneStatePB expected_pb;
-  for (int i = 0; i < kNumTablets; ++i) {
-    auto* tablet_data = expected_pb.add_tablet_data();
-    tablet_data->set_source_tablet_id(source_tablets_[i]->id());
-    tablet_data->set_target_tablet_id(target_tablets_[i]->id());
-  }
-  expected_pb.set_source_snapshot_id(kSourceSnapshotId.data(), kSourceSnapshotId.size());
-  expected_pb.set_target_snapshot_id(kTargetSnapshotId.data(), kTargetSnapshotId.size());
+  expected_pb.set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
   expected_pb.set_source_namespace_id(kSourceNamespaceId);
   expected_pb.set_clone_request_seq_no(kSeqNo);
-  expected_pb.set_aggregate_state(SysCloneStatePB::CREATING);
+  expected_pb.set_target_namespace_name(kTargetNamespaceName);
   expected_pb.set_restore_time(kRestoreTime.ToUint64());
   std::string diff;
   bool same = pb_util::ArePBsEqual(clone_state->LockForRead()->pb, expected_pb, &diff);
@@ -305,43 +316,34 @@ TEST_F(CloneStateManagerTest, CreateCloneState) {
       GetCloneStateFromSourceNamespace(kSourceNamespaceId)), clone_state);
 }
 
-TEST_F(CloneStateManagerTest, CreateCloneStateWhileOneIsOngoing) {
-  // It should not be possible to create a clone state while a clone is ongoing.
-  auto clone_state1 = ASSERT_RESULT(CreateCloneStateAndStartCloning());
+TEST_F(CloneStateManagerTest, CreateSecondCloneState) {
+  // It should be possible to create a clone state if and only if the previous clone is in a
+  // terminal state.
+  ASSERT_RESULT(CreateCloneStateAndStartCloning());
 
-  { // Existing clone state is CREATING.
-    auto s = CreateCloneState(kSeqNo + 1);
-    ASSERT_NOK(s);
-    ASSERT_TRUE(s.status().IsAlreadyPresent());
-  }
+  for (int i = SysCloneStatePB::State_MIN; i <= SysCloneStatePB::State_MAX; ++i) {
+    auto state = SysCloneStatePB_State(i);
+    auto current_clone_state = ASSERT_RESULT(GetCloneStateFromSourceNamespace(kSourceNamespaceId));
 
-  {
-    auto l = clone_state1->LockForWrite();
-    l.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORING);
+    LOG(INFO) << "Setting previous state to " << SysCloneStatePB::State_Name(state);
+    auto l = current_clone_state->LockForWrite();
+    l.mutable_data()->pb.set_aggregate_state(state);
     l.Commit();
-    auto s = CreateCloneState(kSeqNo + 1);
-    ASSERT_NOK(s);
-    ASSERT_TRUE(s.status().IsAlreadyPresent());
-  }
 
-  {
-    auto l = clone_state1->LockForWrite();
-    l.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORED);
-    l.Commit();
-    ASSERT_OK(CreateSecondCloneStateAndStartCloning());
+    if (current_clone_state->LockForRead()->pb.aggregate_state() == SysCloneStatePB::RESTORED) {
+      EXPECT_CALL(MockFuncs(), Upsert(_));
+      ASSERT_OK(CreateCloneState(i + 1, DefaultTableSnapshotData()));
+    } else {
+      auto s = CreateCloneState(i + 1, DefaultTableSnapshotData());
+      ASSERT_NOK(s);
+      ASSERT_TRUE(s.status().IsAlreadyPresent());
+    }
   }
 }
 
 TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
-  for (int i = 0; i < kNumTablets; ++i) {
-    EXPECT_CALL(MockFuncs(), GetTabletInfo(source_tablets_[i]->id()))
-        .WillOnce(Return(source_tablets_[i]));
-    EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
-        .WillOnce(Return(target_tablets_[i]));
-  }
-
-  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
-  LeaderEpoch epoch(123 /* term */);
+  EXPECT_CALL(MockFuncs(), Upsert(_));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
 
   for (int i = 0; i < kNumTablets; ++i) {
     tablet::CloneTabletRequestPB expected_req;
@@ -357,10 +359,15 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     *expected_req.mutable_target_partition_schema() =
         target_table_->LockForRead()->pb.partition_schema();
 
+    EXPECT_CALL(MockFuncs(), GetTabletInfo(source_tablets_[i]->id()))
+        .WillOnce(Return(source_tablets_[i]));
+    EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
+        .WillOnce(Return(target_tablets_[i]));
     EXPECT_CALL(MockFuncs(), ScheduleCloneTabletCall(
-        source_tablets_[i], epoch, CloneTabletRequestPBMatcher(expected_req)));
+        source_tablets_[i], kEpoch, CloneTabletRequestPBMatcher(expected_req)));
   }
-  ASSERT_OK(ScheduleCloneOps(clone_state, epoch, {} /* not_snapshotted_tablets */));
+  EXPECT_CALL(MockFuncs(), Upsert(_));
+  ASSERT_OK(ScheduleCloneOps(clone_state, kEpoch, {} /* not_snapshotted_tablets */));
 }
 
 TEST_F(CloneStateManagerTest, HandleCreatingStateAllTabletsCreating) {
@@ -417,44 +424,14 @@ TEST_F(CloneStateManagerTest, HandleCreatingStateAllTabletsRunning) {
   // HandleCreatingState should transition aggregate state to RESTORING and should also trigger a
   // restore.
   EXPECT_CALL(MockFuncs(), Upsert(_));
-  ListSnapshotRestorationsResponsePB resp;
-  EXPECT_CALL(MockFuncs(), ListRestorations(kTargetSnapshotId, _))
-      .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
   EXPECT_CALL(MockFuncs(), Restore(kTargetSnapshotId, kRestoreTime))
       .WillOnce(Return(kRestorationId));
   ASSERT_OK(HandleCreatingState(clone_state));
 
   auto read_lock  = clone_state->LockForRead();
   ASSERT_EQ(read_lock->pb.aggregate_state(), SysCloneStatePB::RESTORING);
-}
 
-TEST_F(CloneStateManagerTest, HandleCreatingStateExistingRestoration) {
-  // Mark all tablets as RUNNING.
-  for (int i = 0; i < kNumTablets; ++i) {
-    auto lock = target_tablets_[i]->LockForWrite();
-    lock.mutable_data()->set_state(
-        SysTabletsEntryPB::RUNNING, Format("Marked tablet $0 as running", i));
-    lock.Commit();
-  }
-
-  auto clone_state = ASSERT_RESULT(CreateCloneStateAndStartCloning());
-
-  for (int i = 0; i < kNumTablets; ++i) {
-    EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
-        .WillOnce(Return(target_tablets_[i]));
-  }
-
-  // HandleCreatingState should transition aggregate state to RESTORING but not trigger a restore
-  // since one already exists.
-  EXPECT_CALL(MockFuncs(), Upsert(_));
-  ListSnapshotRestorationsResponsePB resp;
-  resp.add_restorations();
-  EXPECT_CALL(MockFuncs(), ListRestorations(kTargetSnapshotId, _))
-      .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
-  ASSERT_OK(HandleCreatingState(clone_state));
-
-  auto read_lock  = clone_state->LockForRead();
-  ASSERT_EQ(read_lock->pb.aggregate_state(), SysCloneStatePB::RESTORING);
+  ASSERT_EQ(clone_state->RestorationId(), kRestorationId);
 }
 
 TEST_F(CloneStateManagerTest, HandleRestoringStateIncomplete) {
@@ -463,12 +440,13 @@ TEST_F(CloneStateManagerTest, HandleRestoringStateIncomplete) {
     auto lock = clone_state->LockForWrite();
     lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORING);
     lock.Commit();
+    clone_state->SetRestorationId(kRestorationId);
   }
 
   ListSnapshotRestorationsResponsePB resp;
   auto* restoration = resp.add_restorations();
   restoration->mutable_entry()->set_state(SysSnapshotEntryPB::RESTORING);
-  EXPECT_CALL(MockFuncs(), ListRestorations(kTargetSnapshotId, _))
+  EXPECT_CALL(MockFuncs(), ListRestorations(kRestorationId, _))
       .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
 
   // Should not do anything.
@@ -483,12 +461,13 @@ TEST_F(CloneStateManagerTest, HandleRestoringStateRestored) {
     auto lock = clone_state->LockForWrite();
     lock.mutable_data()->pb.set_aggregate_state(SysCloneStatePB::RESTORING);
     lock.Commit();
+    clone_state->SetRestorationId(kRestorationId);
   }
 
   ListSnapshotRestorationsResponsePB resp;
   auto* restoration = resp.add_restorations();
   restoration->mutable_entry()->set_state(SysSnapshotEntryPB::RESTORED);
-  EXPECT_CALL(MockFuncs(), ListRestorations(kTargetSnapshotId, _))
+  EXPECT_CALL(MockFuncs(), ListRestorations(kRestorationId, _))
       .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
   EXPECT_CALL(MockFuncs(), Upsert);
 
@@ -533,7 +512,7 @@ TEST_F(CloneStateManagerTest, LoadUsesLatestSeqNo) {
     lock.Commit();
   }
 
-  auto clone_state2 = ASSERT_RESULT(CreateSecondCloneStateAndStartCloning());
+  auto clone_state2 = ASSERT_RESULT(CreateSecondCloneState());
 
   // Should load clone_state2 since it has a higher seq_no.
   {
