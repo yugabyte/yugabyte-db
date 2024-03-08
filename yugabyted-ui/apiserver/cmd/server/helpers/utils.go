@@ -122,7 +122,7 @@ func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {
 }
 
 func (h *HelperContainer) FindBinaryLocation(binaryName string) (string, error) {
-    YUGABYTE_DIR := filepath.Join("..", "..")
+    YUGABYTE_DIR, _ := filepath.Abs(filepath.Join("..", "..","..",".."))
 
     dirCandidates := []string{
         // Default if tar is downloaded
