@@ -38,26 +38,6 @@ Review the following information before starting an upgrade.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
 
-### Review major changes in previous YugabyteDB releases
-
-Before starting the upgrade, review the following major changes to YugabyteDB. Depending on the upgrade you are planning, you may need to make changes to your automation.
-
-#### Upgrading from versions earlier than v2.16.0
-
-The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for v2.16.0 and later.
-
-YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
-
-**Impacts**
-
-- Firewall ports - update your firewall rules to allow incoming TCP traffic on port 18018, which is used by YBC, for all nodes in a universe.
-
-- OS patching procedure - if your OS patching procedures involve re-installing YugabyteDB software on a node, you will need to update those procedures to accommodate YBC.
-
-#### Upgrading from versions earlier than v2.18.0
-
-YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2-16-0).
-
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:
@@ -76,7 +56,7 @@ Before starting the upgrade process, ensure that the cluster is healthy.
 
 1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
 1. Make sure there are no leaderless or under replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
-1. Make sure that all YB-Tserver processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
+1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
 ![Tablet Servers](/images/manage/upgrade-deployment/tablet-servers.png)
 
@@ -137,15 +117,15 @@ Upgrade the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$NEW_VER/
     ```
 
-1. Start the new version of the YB-Tserver process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-1. Make sure that all YB-Tserver processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
+1. Make sure that all YB-TServer processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
 
-1. Pause for at least 60 seconds before upgrading the next YB-Tserver.
+1. Pause for at least 60 seconds before upgrading the next YB-TServer.
 
 ### Monitor Phase
 
-Once all the YB-Master and YB-Tserver processes have been upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
+Once all the YB-Master and YB-TServer processes have been upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
 You can remain in this phase for as long as you need, but it is recommended to finalize the upgrade sooner in order to avoid operator errors that can arise from having to maintain two versions. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
@@ -252,11 +232,11 @@ Roll back the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$OLD_VER/
     ```
 
-1. Start the old version of the YB-Tserver process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the old version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-1. Make sure that all YB-Tserver processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
+1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
-1. Pause for at least 60 seconds before rolling back the next YB-Tserver.
+1. Pause for at least 60 seconds before rolling back the next YB-TServer.
 
 #### 2. Roll back YB-Masters
 
@@ -296,7 +276,7 @@ xCluster replication requires the target cluster version to the same or later th
 The instructions in the previous sections are sufficient for most users. The following instructions are for advanced users who want more coverage of new features during the monitoring phase. It involves a few more steps and can be error prone if not performed correctly.
 {{< /warning >}}
 
-During the standard Monitor phase, all new AutoFlags are kept in the default non-promoted state. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. However, for the highest possible level of coverage of the incoming changes, you can enable these features during the monitoring phase. In the case of a rollback, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
+During the standard Monitor phase, all new AutoFlags are kept in the default non-promoted state. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. For the highest possible level of coverage of the incoming changes, you can enable these features during the monitoring phase. In the case of a rollback, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
 
 During the Monitor phase, do the following:
 

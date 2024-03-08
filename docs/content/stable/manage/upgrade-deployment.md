@@ -16,29 +16,37 @@ type: docs
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place without minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB's [High availability](../../explore/fault-tolerance/) capability and load balancer, automatically move the tablet leaders around as nodes/processes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../explore/linear-scalability/data-distribution/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
-{{< note title="Note" >}}
+## Important information
+
+{{< warning >}}
+Review the following information before starting an upgrade.
+{{< /warning >}}
+
+- You can only upgrade to the latest minor version of every release.
+
+    For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
+
+    To view and download releases, refer to [Releases](../../releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
-{{< /note >}}
 
 ## Upgrade YugabyteDB cluster
 
-{{< warning title="Important" >}}
-You can only upgrade to the latest minor version of every release.
+You upgrade a cluster in the following phases:
 
-For example, if you are on version v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 and not v2.20.1.0 or v2.20.0.0.
-To view and download releases, refer to [Releases](../../releases/).
-{{< /warning >}}
+- [Upgrade](#upgrade-phase)
+- [Monitor](#monitor-phase)
+- [Finalize](#a-finalize-phase) or [Rollback](#b-rollback-phase)
 
-The [Upgrade Phase](#upgrade-phase) deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until the [Finalize Phase](#a-finalize-phase) completes. This gives you the capability to evaluate the majority of the changes before committing to the new version. If you encounter any issues before finalizing the upgrade, you have the option to initiate the [Rollback Phase](#b-roll-back-phase), which will restore the cluster to its state before the upgrade.
+During the upgrade phase, you deploy the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until you finalize the upgrade. This allows you to evaluate the majority of the changes before committing to the new version. If you encounter any issues while monitoring the cluster, you have the option to roll back in-place and restore the cluster to its state before the upgrade.
 
 ### Upgrade Phase
 
@@ -48,7 +56,7 @@ Before starting the upgrade process, ensure that the cluster is healthy.
 
 1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
 1. Make sure there are no leaderless or under replicated tablets at `http://<any-yb-master>:7000/tablet-replication`.
-1. Make sure that all YB-Tserver processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
+1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
 ![Tablet Servers](/images/manage/upgrade-deployment/tablet-servers.png)
 
@@ -89,7 +97,7 @@ Upgrade the YB-Masters one node at a time:
 
 1. Start the new version of the YB-Master process. Follow the instructions in [Start YB-Masters](../../deploy/manual-deployment/start-masters/).
 
-1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
+1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-rollback-phase).
 
 1. Pause for at least 60 seconds before upgrading the next YB-Master.
 
@@ -109,15 +117,15 @@ Upgrade the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$NEW_VER/
     ```
 
-1. Start the new version of the YB-Tserver process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the new version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
 1. Make sure that all YB-TServer processes are running at `http://<any-yb-master>:7000/tablet-servers`, and wait for the cluster load to balance. If anything looks unhealthy, you can jump ahead to [Rollback Phase](#b-roll-back-phase).
 
-1. Pause for at least 60 seconds before upgrading the next YB-Tserver.
+1. Pause for at least 60 seconds before upgrading the next YB-TServer.
 
 ### Monitor Phase
 
-Once all the YB-Master and YB-Tserver processes have been upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
+Once all the YB-Master and YB-TServer processes have been upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
 You can remain in this phase for as long as you need, but it is recommended to finalize the upgrade sooner in order to avoid operator errors that can arise from having to maintain two versions. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
@@ -143,7 +151,7 @@ New YugabyteDB features may require changes to the format of data that is sent o
     PromoteAutoFlags completed successfully
     New AutoFlags were promoted
     New config version: 2
-    ``````
+    ```
 
     Or
 
@@ -183,9 +191,7 @@ Expect to see the following output:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the command with a greater `-timeout_ms` value:
-
-**Example**
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the command with a greater `-timeout_ms` value. For example:
 
 ```sh
 ./bin/yb-admin \
@@ -226,11 +232,11 @@ Roll back the YB-TServers one node at a time:
     cd /home/yugabyte/softwareyb-$OLD_VER/
     ```
 
-1. Start the old version of the YB-Tserver process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
+1. Start the old version of the YB-TServer process. Follow the instructions in [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
-1. Make sure that all YB-Tserver processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
+1. Make sure that all YB-TServer processes are running and the cluster load is balanced at `http://<any-yb-master>:7000/tablet-servers`.
 
-1. Pause for at least 60 seconds before rolling back the next YB-Tserver.
+1. Pause for at least 60 seconds before rolling back the next YB-TServer.
 
 #### 2. Roll back YB-Masters
 
@@ -250,7 +256,7 @@ Use the following procedure to roll back all YB-Masters:
 
 1. Start the old version of the YB-Master process. Follow the instructions in [Start YB-Masters](../../deploy/manual-deployment/start-masters/).
 
-1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/` .
+1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
 
 1. Pause for at least 60 seconds before rolling back the next YB-Master.
 
@@ -261,8 +267,7 @@ When you have unidirectional xCluster replication, it is recommended to upgrade 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
 
 {{< note title="Note" >}}
-xCluster replication requires the target cluster version to the same or later
- than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
+xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
 ## Advanced - enable volatile AutoFlags during monitoring
@@ -271,7 +276,7 @@ xCluster replication requires the target cluster version to the same or later
 The instructions in the previous sections are sufficient for most users. The following instructions are for advanced users who want more coverage of new features during the monitoring phase. It involves a few more steps and can be error prone if not performed correctly.
 {{< /warning >}}
 
-During the standard Monitor phase, all new AutoFlags are kept in the default non-promoted state. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. However, for the highest possible level of coverage of the incoming changes, you can enable these features during the monitoring phase. In the case of a rollback, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
+During the standard Monitor phase, all new AutoFlags are kept in the default non-promoted state. Most new features that have data format changes only affect the data that is sent over the network between processes belonging to the same cluster. This data is in-memory and is never stored on disk. For the highest possible level of coverage of the incoming changes, you can enable these features during the monitoring phase. In the case of a rollback, they can be safely disabled. These features are guarded with a `kLocalVolatile` class AutoFlag.
 
 During the Monitor phase, do the following:
 
@@ -287,7 +292,7 @@ During the Monitor phase, do the following:
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
 
-### Rollback
+### Roll back volatile AutoFlags
 
 If you need to roll back an upgrade where volatile AutoFlags were enabled, depending on the output of `promote_auto_flags`, you will need to *first roll back the AutoFlags that were promoted* before proceeding with the rollback phase.
 
