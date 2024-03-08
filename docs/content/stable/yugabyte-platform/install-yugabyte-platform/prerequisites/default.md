@@ -74,6 +74,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 - 4 cores
 - 8 GB memory
+- 265+ GB disk space (see following table)
 
 | Path | Usage | Free Space Required |
 | :--- | :--- | :--- |
