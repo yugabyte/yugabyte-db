@@ -68,7 +68,7 @@ If upgrading a cluster that is in production and serving user traffic, it is rec
 
 Install the new version of YugabyteDB in a new directory on every YugabyteDB node. Follow the instructions in [Install Software](../../deploy/manual-deployment/install-software/).
 
-**Example for CentOS**
+For example:
 
 ```sh
 wget https://downloads.yugabyte.com/yugabyte-$NEW_VER.tar.gz
