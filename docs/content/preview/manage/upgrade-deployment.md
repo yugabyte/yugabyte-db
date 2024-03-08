@@ -56,7 +56,7 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 #### Upgrading from versions earlier than v2.18.0
 
-YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2160).
+YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from versions earlier than v2.16.0](#upgrading-from-versions-earlier-than-v2-16-0).
 
 ## Upgrade YugabyteDB cluster
 
@@ -66,7 +66,7 @@ You upgrade a cluster in the following phases:
 - [Monitor](#monitor-phase)
 - [Finalize](#a-finalize-phase) or [Rollback](#b-rollback-phase)
 
-The Upgrade Phase deploys the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until you finalize the upgrade. This allows you to evaluate the majority of the changes before committing to the new version. If you encounter any issues while monitoring the cluster, you have the option to roll back and restore the cluster to its state before the upgrade.
+During the upgrade phase, you deploy the binaries of the new version to the YugabyteDB processes. Most of the incoming changes and bug fixes take effect at this stage. Some features, however, require changes to the format of data sent over the network, or stored on disk. These are not enabled until you finalize the upgrade. This allows you to evaluate the majority of the changes before committing to the new version. If you encounter any issues while monitoring the cluster, you have the option to roll back in-place and restore the cluster to its state before the upgrade.
 
 ### Upgrade Phase
 
@@ -211,9 +211,7 @@ Expect to see the following output:
 YSQL successfully upgraded to the latest version
 ```
 
-In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the command with a greater `-timeout_ms` value:
-
-**Example**
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. If this happens, run the command with a greater `-timeout_ms` value. For example:
 
 ```sh
 ./bin/yb-admin \
@@ -278,7 +276,7 @@ Use the following procedure to roll back all YB-Masters:
 
 1. Start the old version of the YB-Master process. Follow the instructions in [Start YB-Masters](../../deploy/manual-deployment/start-masters/).
 
-1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/` .
+1. Make sure that all YB-Master processes are running at `http://<any-yb-master>:7000/`.
 
 1. Pause for at least 60 seconds before rolling back the next YB-Master.
 
@@ -289,8 +287,7 @@ When you have unidirectional xCluster replication, it is recommended to upgrade 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
 
 {{< note title="Note" >}}
-xCluster replication requires the target cluster version to the same or later
- than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
+xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
 ## Advanced - enable volatile AutoFlags during monitoring
@@ -315,7 +312,7 @@ During the Monitor phase, do the following:
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
 
-### Rollback
+### Roll back volatile AutoFlags
 
 If you need to roll back an upgrade where volatile AutoFlags were enabled, depending on the output of `promote_auto_flags`, you will need to *first roll back the AutoFlags that were promoted* before proceeding with the rollback phase.
 
