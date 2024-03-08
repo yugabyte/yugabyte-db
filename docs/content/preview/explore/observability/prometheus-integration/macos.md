@@ -53,7 +53,45 @@ global:
 scrape_configs:
   - job_name: "yugabytedb"
     metrics_path: /prometheus-metrics
+    kubernetes_sd_configs:
+      - role: pod    
     relabel_configs:
+      # only scrape the pods where "component" label is "yugabytedb"
+      - source_labels: [ __meta_kubernetes_pod_label_component ]
+        action: keep
+        regex: yugabytedb
+      # http-ui is common for both - tservers and masters
+      - source_labels: [__meta_kubernetes_pod_container_port_name ]
+        action: keep
+        regex: http-ui|http-ycql-met|http-ysql-met|http-yedis-met
+      # Generating "redis_export" type for http-ui ports of tserver/master containers
+      - source_labels: [ __meta_kubernetes_pod_container_name, __meta_kubernetes_pod_container_port_name ]
+        action: replace
+        regex: yb-([^;]+);http-ui
+        target_label: export_type
+        replacement: ${1}_export
+      # Generating "[cql|ysql|redis]]_export" type for |http-ycql-met|http-ysql-met|http-yedis-met ports of tserver containers
+      - source_labels: [ __meta_kubernetes_pod_container_name, __meta_kubernetes_pod_container_port_name ]
+        action: replace
+        regex: yb-tserver;http-ycql-met
+        target_label: export_type
+        replacement: cql_export
+      - source_labels: [ __meta_kubernetes_pod_container_name, __meta_kubernetes_pod_container_port_name ]
+        action: replace
+        regex: yb-tserver;http-ysql-met
+        target_label: export_type
+        replacement: ysql_export
+      - source_labels: [ __meta_kubernetes_pod_container_name, __meta_kubernetes_pod_container_port_name ]
+        action: replace
+        regex: yb-tserver;http-yedis-met
+        target_label: export_type
+        replacement: redis_export
+      # Replace IP wit pod name in instance label
+      - source_labels: [ __meta_kubernetes_pod_name, __meta_kubernetes_pod_container_port_number ]
+        action: replace
+        separator: ":"
+        target_label: instance
+      # Cluster Name ?    
       - target_label: "node_prefix"
         replacement: "cluster-1"
     metric_relabel_configs:
@@ -80,26 +118,6 @@ scrape_configs:
         target_label: "__name__"
         replacement: "rpc_latency$4"
 
-    static_configs:
-      - targets: ["127.0.0.1:7000", "127.0.0.2:7000", "127.0.0.3:7000"]
-        labels:
-          export_type: "master_export"
-
-      - targets: ["127.0.0.1:9000", "127.0.0.2:9000", "127.0.0.3:9000"]
-        labels:
-          export_type: "tserver_export"
-
-      - targets: ["127.0.0.1:12000", "127.0.0.2:12000", "127.0.0.3:12000"]
-        labels:
-          export_type: "cql_export"
-
-      - targets: ["127.0.0.1:13000", "127.0.0.2:13000", "127.0.0.3:13000"]
-        labels:
-          export_type: "ysql_export"
-
-      - targets: ["127.0.0.1:11000", "127.0.0.2:11000", "127.0.0.3:11000"]
-        labels:
-          export_type: "redis_export"
 ```
 
 ### Start Prometheus server
