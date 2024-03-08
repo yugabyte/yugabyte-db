@@ -936,6 +936,59 @@ $$) AS (p agtype);
 (1 row)
 
 --
+-- Issue 1634: Setting all properties with map object causes error
+--
+SELECT * FROM create_graph('issue_1634');
+NOTICE:  graph "issue_1634" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- this did not work and was fixed
+SELECT * FROM cypher('issue_1634', $$ WITH {first: 'jon', last: 'snow'} AS map
+                                      MERGE (v:PERSION {id: '1'})
+                                      SET v=map
+                                      RETURN v,map $$) as (v agtype, map agtype);
+                                                  v                                                  |               map                
+-----------------------------------------------------------------------------------------------------+----------------------------------
+ {"id": 844424930131969, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex | {"last": "snow", "first": "jon"}
+(1 row)
+
+-- these 2 did work and are added as extra tests
+SELECT * FROM cypher('issue_1634', $$ MATCH (u) DELETE (u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1634', $$ WITH {first: 'jon', last: 'snow'} AS map
+                                      MERGE (v:PERSION {id: '1'})
+                                      SET v.first=map.first, v.last=map.last
+                                      RETURN v,map $$) as (v agtype, map agtype);
+                                                       v                                                        |               map                
+----------------------------------------------------------------------------------------------------------------+----------------------------------
+ {"id": 844424930131970, "label": "PERSION", "properties": {"id": "1", "last": "snow", "first": "jon"}}::vertex | {"last": "snow", "first": "jon"}
+(1 row)
+
+SELECT * FROM cypher('issue_1634', $$ MATCH (u) DELETE (u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1634', $$ MERGE (v:PERSION {id: '1'})
+                                      SET v={first: 'jon', last: 'snow'}
+                                      RETURN v $$) as (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1634', $$ MATCH (u) DELETE (u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+--
 -- Clean up
 --
 DROP TABLE tbl;
@@ -974,4 +1027,17 @@ NOTICE:  graph "cypher_set_1" has been dropped
  
 (1 row)
 
+SELECT drop_graph('issue_1634', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1634._ag_label_vertex
+drop cascades to table issue_1634._ag_label_edge
+drop cascades to table issue_1634."PERSION"
+NOTICE:  graph "issue_1634" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End
 --

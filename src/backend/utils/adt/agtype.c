@@ -5569,25 +5569,44 @@ Datum age_properties(PG_FUNCTION_ARGS)
 
     /* check for null */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
-    /* check for a scalar object */
-    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+    /* check for a scalar or regular object */
+
+    if (!AGT_ROOT_IS_SCALAR(agt_arg) && !AGT_ROOT_IS_OBJECT(agt_arg))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("properties() argument must resolve to a scalar value")));
+                        errmsg("properties() argument must resolve to an object")));
+    }
+
+    /*
+     * If it isn't an array (wrapped scalar) and is an object, just return it.
+     * This is necessary for some cases where an object may be passed in. For
+     * example, SET v={blah}.
+     */
+    if (!AGT_ROOT_IS_ARRAY(agt_arg) && AGT_ROOT_IS_OBJECT(agt_arg))
+    {
+        PG_RETURN_POINTER(agt_arg);
+    }
 
     /* get the object out of the array */
     agtv_object = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
     /* is it an agtype null? */
     if (agtv_object->type == AGTV_NULL)
-            PG_RETURN_NULL();
+    {
+        PG_RETURN_NULL();
+    }
 
     /* check for proper agtype */
     if (agtv_object->type != AGTV_VERTEX && agtv_object->type != AGTV_EDGE)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("properties() argument must be a vertex, an edge or null")));
+    }
 
     agtv_result = GET_AGTYPE_VALUE_OBJECT_VALUE(agtv_object, "properties");
 
