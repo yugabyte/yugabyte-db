@@ -13,6 +13,7 @@ JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
+JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testBnlWithSizeLimit
