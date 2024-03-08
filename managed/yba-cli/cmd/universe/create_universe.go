@@ -296,6 +296,12 @@ func init() {
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS. Provide throughput "+
 			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-tserver-mem-size", []float64{4, 4},
+		"[Optional] Memory size of the kubernetes tserver node in GB. Provide k8s-tserver-mem-size "+
+			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-tserver-cpu-core-count", []float64{2, 2},
+		"[Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count "+
+			"for each cluster as a separate flag or as comma separated values.")
 
 	// if dedicated nodes is set to true
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
@@ -327,6 +333,12 @@ func init() {
 	createUniverseCmd.Flags().Int("dedicated-master-throughput", 125,
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS.")
+	createUniverseCmd.Flags().Float64Slice("k8s-master-mem-size", []float64{4, 4},
+		"[Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size "+
+			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
+		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
+			"for each cluster as a separate flag or as comma separated values.")
 
 	// Advanced configuratopn // taken only for Primary cluster
 	createUniverseCmd.Flags().Bool("assign-public-ip", true,
@@ -381,6 +393,17 @@ func init() {
 			"as key=value pairs per flag. Example \"--user-tags "+
 			"name=test --user-tags owner=development\" OR "+
 			"\"--user-tags name=test,owner=development\".")
+	createUniverseCmd.Flags().String("kubernetes-universe-overrides-file-path", "",
+		"[Optional] Helm Overrides file path for the universe, supported for Kubernetes."+
+			" For examples on universe overrides file contents, please refer to: "+
+			"\"https://docs.yugabyte.com/stable/yugabyte-platform/"+
+			"create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides\"")
+	createUniverseCmd.Flags().StringArray("kubernetes-az-overrides-file-path", []string{},
+		"[Optional] Helm Overrides file paths for the availabilty zone, supported for Kubernetes."+
+			" Provide file paths for overrides of each Availabilty zone as a separate flag."+
+			" For examples on availabilty zone overrides file contents, please refer to: "+
+			"\"https://docs.yugabyte.com/stable/yugabyte-platform/"+
+			"create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides\"")
 
 	// Inputs for communication ports
 
