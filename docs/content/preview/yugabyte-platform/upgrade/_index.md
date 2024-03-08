@@ -1,7 +1,7 @@
 ---
 title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
-linkTitle: Upgrade YugabyteDB Anywhere
+linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
 image: /images/section_icons/quick_start/install.png
 menu:
@@ -14,7 +14,7 @@ type: indexpage
 
 Keep YugabyteDB Anywhere (YBA) up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](../../releases/yba-releases/).
+For information on which versions of YugabyteDB are compatible with your version of YBA, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
 
 You can upgrade YBA using the following methods:
 

@@ -61,6 +61,12 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     title="Troubleshoot and manage nodes"
     body="Remove unresponsive nodes, start and stop node processes, and recover nodes."
     href="remove-nodes/"
-    icon="/images/section_icons/deploy/manual-deployment.png">}}
+    icon="/images/section_icons/manage/enterprise/create_universe.png">}}
+
+  {{<index/item
+    title="Retry universe tasks"
+    body="Resolve failures by retrying the task."
+    href="retry-failed-task/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
 {{</index/block>}}
