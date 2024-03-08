@@ -18,21 +18,33 @@ import (
 
 // upgradeSoftwareCmd represents the universe upgrade software command
 var upgradeSoftwareCmd = &cobra.Command{
-	Use:   "software [universe-name] [yb-db-software-version]",
+	Use:   "software",
 	Short: "Software upgrade for a YugabyteDB Anywhere Universe",
 	Long:  "Software upgrade for a YugabyteDB Anywhere Universe",
-	Args:  cobra.MaximumNArgs(2),
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		if len(args) != 2 {
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("Universe name and YugabyteDB software version not provided.\n",
-					formatter.RedColor),
-			)
+				formatter.Colorize("No universe name found to upgrade\n", formatter.RedColor))
 		}
-		universeName := args[0]
-		ybdbVersion := args[1]
+
+		ybdbVersion, err := cmd.Flags().GetString("yb-db-version")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(ybdbVersion) == 0 {
+			cmd.Help()
+			logrus.Fatalln(
+				formatter.Colorize(
+					"No YugabyteDB software version found to upgrade\n",
+					formatter.RedColor,
+				))
+		}
 
 		// Validations before software upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
@@ -84,8 +96,14 @@ var upgradeSoftwareCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
-		universeName := args[0]
-		ybdbVersion := args[1]
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		ybdbVersion, err := cmd.Flags().GetString("yb-db-version")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		universeListRequest := authAPI.ListUniverses()
 		universeListRequest = universeListRequest.Name(universeName)
 
@@ -156,6 +174,10 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 func init() {
 	upgradeSoftwareCmd.Flags().SortFlags = false
+
+	upgradeSoftwareCmd.Flags().String("yb-db-version", "",
+		"[Required] Target YugabyteDB software version.")
+	upgradeSoftwareCmd.MarkFlagRequired("yb-db-version")
 
 	upgradeSoftwareCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+

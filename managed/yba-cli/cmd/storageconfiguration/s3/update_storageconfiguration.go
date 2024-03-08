@@ -44,7 +44,8 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 		r, response, err := storageConfigListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Update - List Customer Configurations")
+				response, err, "Storage Configuration: S3",
+				"Update - List Customer Configurations")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

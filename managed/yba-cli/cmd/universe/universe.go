@@ -23,7 +23,7 @@ var UniverseCmd = &cobra.Command{
 
 func init() {
 	UniverseCmd.AddCommand(listUniverseCmd)
-	// UniverseCmd.AddCommand(describeUniverseCmd)
+	UniverseCmd.AddCommand(describeUniverseCmd)
 	UniverseCmd.AddCommand(deleteUniverseCmd)
 	UniverseCmd.AddCommand(createUniverseCmd)
 	UniverseCmd.AddCommand(upgrade.UpgradeUniverseCmd)
