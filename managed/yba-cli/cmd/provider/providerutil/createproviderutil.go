@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package providerutil
 
 import (
 	"fmt"
@@ -18,15 +18,16 @@ import (
 	providerFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/provider"
 )
 
-func waitForCreateProviderTask(
+// WaitForCreateProviderTask is a util task for create provider
+func WaitForCreateProviderTask(
 	authAPI *ybaAuthClient.AuthAPIClient, providerName, providerUUID, taskUUID string) {
 
 	var providerData []ybaclient.Provider
 	var response *http.Response
 	var err error
 
-	msg := fmt.Sprintf("The provider %s is being created",
-		formatter.Colorize(providerName, formatter.GreenColor))
+	msg := fmt.Sprintf("The provider %s (%s) is being created",
+		formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
 
 	if viper.GetBool("wait") {
 		if taskUUID != "" {
@@ -58,7 +59,8 @@ func waitForCreateProviderTask(
 
 }
 
-func valueNotFoundForKeyError(key string) {
+// ValueNotFoundForKeyError is throws error when value is missing for a key
+func ValueNotFoundForKeyError(key string) {
 	logrus.Fatalln(
 		formatter.Colorize(
 			fmt.Sprintf("Key \"%s\" specified but value is empty\n", key),

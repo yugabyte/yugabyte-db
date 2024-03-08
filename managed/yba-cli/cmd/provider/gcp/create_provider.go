@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package gcp
 
 import (
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -20,11 +21,11 @@ import (
 
 // createGCPProviderCmd represents the provider command
 var createGCPProviderCmd = &cobra.Command{
-	Use:   "gcp",
-	Short: "Create an GCP YugabyteDB Anywhere provider",
-	Long:  "Create an GCP provider in YugabyteDB Anywhere",
+	Use:   "create",
+	Short: "Create a GCP YugabyteDB Anywhere provider",
+	Long:  "Create a GCP provider in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -40,7 +41,7 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -50,7 +51,7 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerCode := "gcp"
+		providerCode := util.GCPProviderType
 		config, err := buildGCPConfig(cmd)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -122,7 +123,7 @@ var createGCPProviderCmd = &cobra.Command{
 		providerUUID := rCreate.GetResourceUUID()
 		taskUUID := rCreate.GetTaskUUID()
 
-		waitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
+		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
 	},
 }
 
@@ -130,7 +131,7 @@ func init() {
 	createGCPProviderCmd.Flags().SortFlags = false
 
 	// Flags needed for GCP
-	createGCPProviderCmd.Flags().String("gcp-credentials", "",
+	createGCPProviderCmd.Flags().String("credentials", "",
 		fmt.Sprintf("GCP Service Account credentials file path. "+
 			"Can also be set using environment variable %s.", util.GCPCredentialsEnv))
 
@@ -189,7 +190,7 @@ func buildGCPConfig(cmd *cobra.Command) (map[string]interface{}, error) {
 	}
 
 	if !useHostCredentials {
-		gcpCredFilePath, err := cmd.Flags().GetString("gcp-credentials")
+		gcpCredFilePath, err := cmd.Flags().GetString("credentials")
 		if err != nil {
 			return nil, err
 		}
@@ -262,25 +263,25 @@ func buildGCPRegions(regionStrings []string, allowed bool, version string) (
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "shared-subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["shared-subnet"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "instance-template":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["instance-template"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "yb-image":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["yb-image"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
 		}

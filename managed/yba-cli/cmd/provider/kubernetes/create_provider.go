@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package kubernetes
 
 import (
 	"strings"
@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -17,13 +18,11 @@ import (
 
 // createK8sProviderCmd represents the provider command
 var createK8sProviderCmd = &cobra.Command{
-	Use:        "kubernetes",
-	Aliases:    []string{"k8s"},
-	SuggestFor: []string{"gke", "eks", "aks"},
-	Short:      "Create a Kubernetes YugabyteDB Anywhere provider",
-	Long:       "Create a Kubernetes provider in YugabyteDB Anywhere",
+	Use:   "create",
+	Short: "Create a Kubernetes YugabyteDB Anywhere provider",
+	Long:  "Create a Kubernetes provider in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -39,11 +38,11 @@ var createK8sProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		providerCode := "kubernetes"
+		providerCode := util.K8sProviderType
 
 		airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 		if err != nil {
@@ -115,14 +114,18 @@ var createK8sProviderCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Create K8s")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Provider: Kubernetes",
+				"Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		providerUUID := rCreate.GetResourceUUID()
 		taskUUID := rCreate.GetTaskUUID()
 
-		waitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
+		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
 	},
 }
 
@@ -131,7 +134,7 @@ func init() {
 
 	createK8sProviderCmd.Flags().String("type", "",
 		"[Required] Kubernetes cloud type. Allowed values: aks, eks, gke, custom.")
-	createK8sProviderCmd.MarkFlagRequired("kubernetes")
+	createK8sProviderCmd.MarkFlagRequired(util.K8sProviderType)
 	createK8sProviderCmd.Flags().String("image-registry", "quay.io/yugabyte/yugabyte",
 		"[Optional] Kubernetes Image Registry.")
 
@@ -209,61 +212,61 @@ func buildK8sRegions(
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "config-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["config-name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "config-file-path":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["config-file-path"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "storage-class":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["storage-class"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "cert-manager-cluster-issuer":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["cert-manager-cluster-issuer"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "cert-manager-issuer":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["cert-manager-issuer"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "domain":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["domain"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "namespace":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["namespace"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "overrirdes-file-path":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["overrirdes-file-path"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "pod-address-template":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["pod-address-template"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
 		}
@@ -334,67 +337,67 @@ func buildK8sZones(
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["region-name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "config-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["config-name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "config-file-path":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["config-file-path"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "storage-class":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["storage-class"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "cert-manager-cluster-issuer":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["cert-manager-cluster-issuer"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "cert-manager-issuer":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["cert-manager-issuer"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "domain":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["domain"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "namespace":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["namespace"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "overrirdes-file-path":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["overrirdes-file-path"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "pod-address-template":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["pod-address-template"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
 		}

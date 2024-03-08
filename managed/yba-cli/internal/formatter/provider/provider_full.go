@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/aws"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/azu"
@@ -136,7 +137,7 @@ func (fp *FullProviderContext) Write() error {
 	// Cloud Specific subSection
 	code := fp.p.GetCode()
 	switch code {
-	case "aws":
+	case util.AWSProviderType:
 		tmpl, err = fp.startSubsection(aws.Provider)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -148,7 +149,7 @@ func (fp *FullProviderContext) Write() error {
 			return err
 		}
 		fp.PostFormat(tmpl, aws.NewProviderContext())
-	case "gcp":
+	case util.GCPProviderType:
 		tmpl, err = fp.startSubsection(gcp.Provider)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -160,7 +161,7 @@ func (fp *FullProviderContext) Write() error {
 			return err
 		}
 		fp.PostFormat(tmpl, gcp.NewProviderContext())
-	case "azu":
+	case util.AzureProviderType:
 		tmpl, err = fp.startSubsection(azu.Provider1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -184,7 +185,7 @@ func (fp *FullProviderContext) Write() error {
 			return err
 		}
 		fp.PostFormat(tmpl, azu.NewProviderContext())
-	case "kubernetes":
+	case util.K8sProviderType:
 		tmpl, err = fp.startSubsection(kubernetes.Provider1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -208,7 +209,7 @@ func (fp *FullProviderContext) Write() error {
 			return err
 		}
 		fp.PostFormat(tmpl, kubernetes.NewProviderContext())
-	case "onprem":
+	case util.OnpremProviderType:
 		tmpl, err = fp.startSubsection(onprem.Provider)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
