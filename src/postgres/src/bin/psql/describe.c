@@ -1661,11 +1661,14 @@ describeOneTableDetails(const char *schemaname,
 	 * and whether a table/index is colocated or not.
 	 */
 	printfPQExpBuffer(&tablegroupbuf,
-					  "SELECT grpname, is_colocated\n"
-					  "FROM pg_catalog.yb_table_properties(%s) p\n"
-					  "LEFT JOIN pg_catalog.pg_yb_tablegroup gr\n"
-					  "  ON gr.oid = p.tablegroup_oid;",
-					  oid);
+    "SELECT tg.grpname\n"
+    "FROM yb_table_properties('%s.%s'::regclass) props,\n"
+    "   pg_yb_tablegroup tg\n"
+    "WHERE tg.oid = props.tablegroup_oid AND props.tablename = %s;",
+    schemaname,
+    PQgetvalue(result, i, 0),
+    PQgetquotedidentifier(PQcon, PQgetvalue(result, i, 0), strlen(PQgetvalue(result, i, 0))));
+
 
 	tgres = PSQLexec(tablegroupbuf.data);
 
