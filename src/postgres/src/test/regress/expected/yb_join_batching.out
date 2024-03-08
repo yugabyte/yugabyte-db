@@ -1068,6 +1068,96 @@ insert into out values (1, NULL), (1, 'abcd');
 
 drop table intable;
 drop table out;
+create table outtable(a int);
+insert into outtable values (1), (2), (3);
+create table intable(a int primary key);
+insert into intable values (2), (3), (4), (6);
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.a)
+         Filter: ((t1.a = 1) OR (t2.a = 2))
+         ->  Seq Scan on outtable t1
+         ->  Index Scan using intable_pkey on intable t2
+               Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(8 rows)
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+ a | a
+---+---
+ 1 |
+ 2 | 2
+(2 rows)
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.a)
+         Filter: ((t1.a >= t2.a) OR (t1.a = 1))
+         ->  Seq Scan on outtable t1
+         ->  Index Scan using intable_pkey on intable t2
+               Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(8 rows)
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+ a | a
+---+---
+ 1 |
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  YB Batched Nested Loop Left Join
+         Join Filter: (t1.a = t2.a)
+         Filter: (((t1.a + 1) > t2.a) OR (t1.a = 1))
+         ->  Seq Scan on outtable t1
+         ->  Index Scan using intable_pkey on intable t2
+               Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(8 rows)
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+ a | a
+---+---
+ 1 |
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+-- The problematic join filter is pushdownable to the nullable side.
+-- BNL not allowed here.
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+                       QUERY PLAN
+---------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Nested Loop Left Join
+         ->  Seq Scan on outtable t1
+         ->  Index Scan using intable_pkey on intable t2
+               Index Cond: (t1.a = a)
+               Filter: (((t1.a + 1) > a) OR (t1.a = 1))
+(7 rows)
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+ a | a
+---+---
+ 1 |
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+drop table outtable;
+drop table intable;
 CREATE TABLE q1(a int);
 CREATE TABLE q2(a int);
 CREATE TABLE q3(a int primary key);
