@@ -388,6 +388,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> azureIgnorePlan =
+      new ConfKeyInfo<>(
+          "yb.azure.vm.ignore_plan",
+          ScopeType.PROVIDER,
+          "Ignore VM plan information",
+          "Skip passing in any plan information when creating virtual machine, even if found.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<String> monitoredMountRoots =
       new ConfKeyInfo<>(
           "yb.provider.monitored_mount_roots",

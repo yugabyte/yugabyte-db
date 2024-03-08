@@ -1719,6 +1719,7 @@ public class NodeManager extends DevopsBase {
               }
             }
 
+            // Azure specific create parameters
             if (Common.CloudType.azu.equals(userIntent.providerType)) {
               AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
               String vnetName = a.getVnet();
@@ -1760,6 +1761,9 @@ public class NodeManager extends DevopsBase {
                 } catch (JsonProcessingException e) {
                   throw new RuntimeException("Could not convert custom network params to JSON");
                 }
+              }
+              if (confGetter.getConfForScope(provider, ProviderConfKeys.azureIgnorePlan)) {
+                commandArgs.add("--ignore_plan");
               }
             }
 
