@@ -46,6 +46,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/random_util.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
@@ -442,6 +443,43 @@ class AtomicTryMutex {
 
  private:
   std::atomic<bool> locked_{false};
+};
+
+class AtomicTryMutexWithTimestamp {
+ public:
+  void unlock() {
+    auto unlock_timestamp = std::chrono::steady_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(unlock_timestamp - lock_timestamp_)
+            .count();
+
+    if (duration > warning_threshold_ms_) {
+      LOG(WARNING) << "AtomicTryMutex locked for too long: " << duration << " ms";
+    }
+    mutex_.unlock();
+  }
+
+  bool try_lock() {
+    auto success_locked = mutex_.try_lock();
+    if (success_locked) {
+      lock_timestamp_ = std::chrono::steady_clock::now();
+    }
+    return success_locked;
+  }
+
+  bool is_locked() const {
+    return mutex_.is_locked();
+  }
+
+  // Set the threshold duration for warnings
+  void set_warning_threshold(long long threshold_ms) {
+    warning_threshold_ms_ = threshold_ms;
+  }
+
+ private:
+  AtomicTryMutex mutex_;
+  std::chrono::steady_clock::time_point lock_timestamp_;
+  long long warning_threshold_ms_ = 1000;  // Default threshold
 };
 
 template <class T, class D>
