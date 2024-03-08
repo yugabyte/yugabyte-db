@@ -23,7 +23,7 @@ var removeNodesCmd = &cobra.Command{
 	Long:    "Delete nodes of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -56,7 +56,7 @@ var removeNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -73,7 +73,7 @@ var removeNodesCmd = &cobra.Command{
 			return
 		}
 
-		if r[0].GetCode() != "onprem" {
+		if r[0].GetCode() != util.OnpremProviderType {
 			errMessage := "Operation only supported for On-premises providers."
 			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}

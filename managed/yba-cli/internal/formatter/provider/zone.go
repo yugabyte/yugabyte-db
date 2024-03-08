@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/kubernetes"
 )
@@ -78,7 +79,7 @@ func (z *ZoneContext) Write(providerCode string, index int) error {
 	}
 	z.PostFormat(tmpl, NewZoneContext())
 	switch providerCode {
-	case "kubernetes":
+	case util.K8sProviderType:
 		tmpl, err = z.startSubsection(kubernetes.Region1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())

@@ -61,7 +61,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	}
 	primaryCluster := clusters[0]
 	userIntent := primaryCluster.GetUserIntent()
-	if userIntent.GetProviderType() == "kubernetes" {
+	if userIntent.GetProviderType() == util.K8sProviderType {
 		errMessage := "Node operations are blocked for Kubernetes universe"
 		logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 	}

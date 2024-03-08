@@ -108,6 +108,20 @@ const (
 	ProviderType = "provider"
 )
 
+// Different cloud provider types
+const (
+	// util.AWSProviderType type
+	AWSProviderType = "aws"
+	// AzureProviderType type
+	AzureProviderType = "azu"
+	// GCPProviderType type
+	GCPProviderType = "gcp"
+	// K8sProviderType type
+	K8sProviderType = "kubernetes"
+	// OnpremProviderType type
+	OnpremProviderType = "onprem"
+)
+
 // CompletedStates returns set of states that mark the task as completed
 func CompletedStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
