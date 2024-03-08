@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: explore-security
     parent: explore
-    weight: 300
+    weight: 310
 type: docs
 ---
 

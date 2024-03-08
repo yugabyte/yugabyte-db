@@ -1,13 +1,15 @@
 ---
 title: View terminated queries with yb_terminated_queries
-linkTitle: View terminated queries
+linkTitle: Terminated queries
 description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
+aliases:
+  - /explore/query-1-performance/yb-pg-stat-get-queries/
 menu:
   stable:
     identifier: yb-terminated-queries
-    parent: query-tuning
+    parent: explore-observability
     weight: 350
 type: docs
 ---
@@ -247,5 +249,5 @@ new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='new_db
 ## Learn more
 
 - For information on the temporary file limit, refer to [temp_file_limit](../../../reference/configuration/yb-tserver/#temp-file-limit) YB-TServer flag.
-- Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
+- Refer to [Get query statistics using pg_stat_statements](../../query-1-performance/pg-stat-statements/) to track planning and execution of all the SQL statements.
 - Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
