@@ -169,6 +169,16 @@ class ClusterAdminClient {
       uint16_t peer_port,
       const std::string& peer_uuid = "");
 
+  Status AddMaster(
+      const std::string& peer_host,
+      uint16_t peer_port,
+      const std::string& peer_uuid = "");
+
+  Status RemoveMaster(
+      const std::string& peer_host,
+      uint16_t peer_port,
+      const std::string& peer_uuid = "");
+
   Status DumpMasterState(bool to_console);
 
   // List all the tables.
