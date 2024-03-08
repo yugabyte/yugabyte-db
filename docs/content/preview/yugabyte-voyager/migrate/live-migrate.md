@@ -584,7 +584,7 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 {{<note title="Important">}}
 
-Add the following flags to the cluster before starting migration, and revert them after the migration is complete:
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
 
 For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
 
