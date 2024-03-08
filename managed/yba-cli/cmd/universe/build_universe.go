@@ -520,9 +520,9 @@ func buildClusters(
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
 		if i == 0 {
-			clusterType = "PRIMARY"
+			clusterType = util.PrimaryClusterType
 		} else {
-			clusterType = "ASYNC"
+			clusterType = util.ReadReplicaClusterType
 		}
 		c := ybaclient.Cluster{
 			ClusterType: clusterType,
