@@ -38,6 +38,67 @@ When we Raft-commit this `APPLYING` operation, we also update in-memory data abo
 
 For sufficiently large transactions (see `FLAGS_txn_max_apply_batch_records`), we apply intent records in batches, along with an `ApplyTransactionState` record. If a node crashes and restarts after a batch of intents starts applying, but before we have applied all batches, we're able to load the canceled subtransaction state from the persisted `ApplyTransactionState` record. This affects the in-memory state used to track commit status of transactions as well as the state used to continue application of the current transaction.
 
-### Notes
+## Limitations
 
 Although we make our best effort to transmit the canceled subtransaction set from the client to the coordinator via status heartbeats, in order to support semantics identical to PostgreSQL, we would need to synchronously drop explicit locks taken during a now-canceled subtransaction (<https://github.com/yugabyte/yugabyte-db/issues/10039>). This would require transmitting the new canceled subtransaction state to the coordinator synchronously when the user issues a `ROLLBACK TO [savepoint]` command.
+
+## Usage
+
+1. Create a sample table.
+
+    ```plpgsql
+    CREATE TABLE sample(k int PRIMARY KEY, v int);
+    ```
+
+1. Begin a transaction and insert some rows.
+
+    ```plpgsql
+    BEGIN TRANSACTION;
+    INSERT INTO sample(k, v) VALUES (1, 2);
+    SAVEPOINT test;
+    INSERT INTO sample(k, v) VALUES (3, 4);
+    ```
+
+1. Now, check the rows in this table.
+
+    ```plpgsql
+    SELECT * FROM sample;
+    ```
+
+    ```output
+    k  | v  
+    ----+----
+      1 |  2
+      3 |  4
+    (2 rows)
+    ```
+
+1. Rollback to savepoint `test` and check the rows again. Note that the second row no longer appears.
+
+    ```plpgsql
+    ROLLBACK TO test;
+    SELECT * FROM sample;
+    ```
+
+    ```output
+    k  | v  
+    ----+----
+      1 |  2
+    (1 row)
+    ```
+
+1. You can even add a new row at this point. If you then commit the transaction, only the first and third rows inserted persist:
+
+    ```plpgsql
+    INSERT INTO sample(k, v) VALUES (5, 6);
+    COMMIT;
+    SELECT * FROM SAMPLE;
+    ```
+
+    ```output
+    k  | v  
+    ----+----
+      5 |  6
+      1 |  2
+    (2 rows)
+    ```
