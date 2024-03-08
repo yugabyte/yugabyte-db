@@ -87,7 +87,7 @@ By default, only the owner has privileges on new objects; you must grant privile
 For example, if you want all members of engineering to be able to read data from a table called `integration_tests`, you would use the `GRANT` statement to grant `SELECT` (or read) access to the `engineering` role. This can be done as follows:
 
 ```plpgsql
-yugabyte=# GRANT SELECT ON ALL TABLE integration_tests to engineering;
+yugabyte=# GRANT SELECT ON TABLE integration_tests to engineering;
 yugabyte=# GRANT USAGE ON SCHEMA public TO engineering;
 ```
 
