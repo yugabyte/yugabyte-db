@@ -78,10 +78,10 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 | Path | Usage | Free Space Required |
 | :--- | :--- | :--- |
 | / | Assuming /opt/yugabyte shares a file system with / | 50 GB |
-| /tmp | Used during Install & Upgrade | 10 GB<sup>1</sup> |
-| /opt/yugabyte | Config DB & Prometheus logs | 150+ GB<sup>1,2</sup> |
-| /var/lib/docker | Running YBA Components | 40 GB<sup>1</sup> |
-| /var/lib/replicated | Images & Staging | 15 GB<sup>1</sup> |
+| /tmp | Used during Install and Upgrade | 10 GB<sup>1</sup> |
+| /opt/yugabyte | Database configuration and Prometheus logs | 150+ GB<sup>1,2</sup> |
+| /var/lib/docker | Running YBA components | 40 GB<sup>1</sup> |
+| /var/lib/replicated | Images and staging | 15 GB<sup>1</sup> |
 
 <sup>1</sup> Where two or more of these paths share a file system, the free space required on that file system is the sum of the free space requirements.
 
