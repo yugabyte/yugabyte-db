@@ -622,11 +622,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			if (OidIsValid(tablegroupId))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
-
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
 				is_colocated_via_database = colocated_relopt;
