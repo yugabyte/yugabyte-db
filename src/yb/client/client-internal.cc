@@ -1143,7 +1143,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                  const string table_id,
                                                  CoarseTimePoint deadline) {
   return RetryFunc(
-      deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
+      deadline, "Waiting on Alter Table to be completed", "Timed out waiting for refresh of materialized view",
       std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
               alter_name, table_id, _1, _2));
 }
