@@ -1330,17 +1330,31 @@ Default: `1GB`
 
 ##### ysql_catalog_preload_additional_table_list
 
-Specifies the names of catalog tables (such as pg_operator,pg_proc, and pg_amop) to be preloaded by PostgreSQL backend processes.
+Specifies the names of catalog tables (such as pg_operator, pg_proc, and pg_amop) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first execution of a particular statement on a connection.
 
 Default: `""`
 
-If [ysql_catalog_preload_additional_tables] is also specified, the union of the specified tables and pg_am, pg_amproc, pg_cast, pg_tablespace will be preloaded.
+If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is also specified, the union of the above specified catalog tables and pg_am, pg_amproc, pg_cast, and pg_tablespace is preloaded.
 
 ##### ysql_catalog_preload_additional_tables
 
-When enabled, specifies the names of the tables PG backend processes will preload.
+When enabled, PG backend processes preloads the catalog tables: `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace`. This flag reduces latency of first execution of a particular statement on a connection.
 
 Default: false
+
+If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
+
+##### ysql_enable_read_request_caching
+
+Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+Default: true
+
+##### ysql_use_relcache_file
+
+Controls whether to utilize the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only these minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduced first query latency.
+
+Default: true
 
 ## Advanced flags
 
