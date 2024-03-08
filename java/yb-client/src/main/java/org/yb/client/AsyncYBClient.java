@@ -3306,8 +3306,8 @@ public class AsyncYBClient implements AutoCloseable {
       }
       return ip;
     } catch (UnknownHostException e) {
-      LOG.error("Failed to resolve the IP of `" + host + "' in "
-          + (System.nanoTime() - start) + "ns");
+      LOG.warn("Failed to resolve the IP of `" + host + "' in "
+          + (System.nanoTime() - start) + "ns", e);
       return null;
     }
   }
