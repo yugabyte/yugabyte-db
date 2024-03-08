@@ -57,3 +57,10 @@ func waitForCreateProviderTask(
 	}
 
 }
+
+func valueNotFoundForKeyError(key string) {
+	logrus.Fatalln(
+		formatter.Colorize(
+			fmt.Sprintf("Key \"%s\" specified but value is empty\n", key),
+			formatter.RedColor))
+}

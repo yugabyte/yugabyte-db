@@ -188,7 +188,7 @@ func init() {
 		"custom-ssh-keypair-file-path")
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
-		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment, "+
+		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
 			" lacking access to the public internet for package downloads, "+
 			"defaults to false.")
 

@@ -139,6 +139,17 @@ func (z *ZoneContext) Write(providerCode string, index int) error {
 		}
 		z.PostFormat(tmpl, kubernetes.NewZoneContext())
 
+		tmpl, err = z.startSubsection(kubernetes.Region6)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := z.ContextFormat(tmpl, zc.KubeZone); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		z.PostFormat(tmpl, kubernetes.NewZoneContext())
+
 	}
 	z.Output.Write([]byte("\n"))
 	return nil
