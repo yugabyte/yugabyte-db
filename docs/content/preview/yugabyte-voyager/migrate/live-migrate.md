@@ -592,6 +592,25 @@ If you don't provide the target YugabyteDB database name during import, yb-voyag
 CREATE DATABASE target_db_name;
 ```
 
+{{<note title="Important">}}
+
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete:
+
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
+
+```sh
+ysql_pg_conf_csv = yb_max_query_layer_retries=0
+```
+
+For all the other target YugabyteDB versions, set the following flags:
+
+```sh
+ysql_max_read_restart_attempts = 0
+ysql_max_write_restart_attempts = 0
+```
+
+{{</note>}}
+
 ### Create a user
 
 Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
@@ -878,15 +897,15 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
 If any of the CREATE INDEX DDLs fail in the preceding command, drop the INVALID indexes on the target database using:
 
 ```sql
-DO $$ 
+DO $$
 DECLARE
   index_name text;
 BEGIN
   FOR index_name IN (
-    SELECT indexrelid::regclass 
-    FROM pg_index 
+    SELECT indexrelid::regclass
+    FROM pg_index
     WHERE indisvalid = false
-  ) 
+  )
   LOOP
     EXECUTE 'DROP INDEX ' || index_name;
   END LOOP;

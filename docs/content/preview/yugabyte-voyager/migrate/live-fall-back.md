@@ -165,6 +165,25 @@ If you don't provide the target YugabyteDB database name during import, yb-voyag
 CREATE DATABASE target_db_name;
 ```
 
+{{<note title="Important">}}
+
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete:
+
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0`, set the following flag:
+
+```sh
+ysql_pg_conf_csv = yb_max_query_layer_retries=0
+```
+
+For all the other target YugabyteDB versions, set the following flags:
+
+```sh
+ysql_max_read_restart_attempts = 0
+ysql_max_write_restart_attempts = 0
+```
+
+{{</note>}}
+
 ### Create a user
 
 Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
