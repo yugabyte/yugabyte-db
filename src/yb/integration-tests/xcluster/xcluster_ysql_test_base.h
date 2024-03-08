@@ -118,7 +118,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status CheckpointReplicationGroup();
   Status CreateReplicationFromCheckpoint();
-  Result<bool> IsCreateXClusterReplicationDone();
   Status WaitForCreateReplicationToFinish();
 
  protected:
