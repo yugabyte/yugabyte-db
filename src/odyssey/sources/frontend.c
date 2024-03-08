@@ -1177,6 +1177,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ECLIENT_READ;
 			}
 
+			if (desc.operator_name[0] == '\0') {
+				/* no need for odyssey to track unnamed prepared statements */
+				break;
+			}
+
 			od_hash_t keyhash = od_murmur_hash(
 				desc.operator_name, desc.operator_name_len);
 			od_debug(&instance->logger, "parse", client, server,
@@ -1353,6 +1358,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (rc == -1) {
 				return OD_ECLIENT_READ;
+			}
+
+			/* unnamed prepared statement, ignore processing of the packet */
+			if (operator_name[0] == '\0') {
+				break;
 			}
 
 			int opname_start_offset =
