@@ -1263,8 +1263,137 @@ $$) as (a agtype);
 ---
 (0 rows)
 
+---
+--- Issue 1630 MERGE using array not working in some cases
+--
+SELECT * FROM create_graph('issue_1630');
+NOTICE:  graph "issue_1630" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('issue_1630', $$ MATCH (u) RETURN (u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+-- will it create it?
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH ['jon', 'snow'] AS cols
+                        MERGE (v:PERSION {first: cols[0], last: cols[1]})
+                        RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+-- will it retrieve it, if it exists?
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH ['jon', 'snow'] AS cols
+                        MERGE (v:PERSION {first: cols[0], last: cols[1]})
+                        RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1630', $$ MATCH (u) RETURN (u) $$) AS (u agtype);
+                                                  u                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+-- a whole array
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH ['jon', 'snow'] AS cols
+                        MERGE (v:PERSION {namea: cols})
+                        RETURN v $$) AS (v agtype);
+                                               v                                               
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "PERSION", "properties": {"namea": ["jon", "snow"]}}::vertex
+(1 row)
+
+-- a whole object
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH {first: 'jon', last: 'snow'} AS cols
+                        MERGE (v:PERSION {nameo: cols})
+                        RETURN v $$) AS (v agtype);
+                                                       v                                                        
+----------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "PERSION", "properties": {"nameo": {"last": "snow", "first": "jon"}}}::vertex
+(1 row)
+
+-- delete them to start over
+SELECT * FROM cypher('issue_1630', $$ MATCH (u) DELETE(u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH {first: 'jon', last: 'snow'} AS cols
+                        MERGE (v:PERSION {first: cols.first, last: cols.last})
+                        RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+-- delete them to start over
+-- check pushing through a few clauses
+SELECT * FROM cypher('issue_1630', $$ MATCH (u) DELETE(u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH {first: 'jon', last: 'snow'} AS jonsnow
+                        WITH jonsnow AS name
+                        WITH name AS cols
+                        MERGE (v:PERSION {first: cols.first, last: cols.last})
+                        RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131973, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+-- will it retrieve the one created?
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH {first: 'jon', last: 'snow'} AS jonsnow
+                        WITH jonsnow AS name
+                        WITH name AS cols
+                        MERGE (v:PERSION {first: cols.first, last: cols.last})
+                        RETURN v $$) AS (v agtype);
+                                                  v                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131973, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex
+(1 row)
+
+-- delete them to start over
+-- check pushing through a few clauses and returning both vars
+SELECT * FROM cypher('issue_1630', $$ MATCH (u) DELETE(u) $$) AS (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1630',
+                     $$ WITH {first: 'jon', last: 'snow'} AS jonsnow
+                        WITH jonsnow AS name
+                        WITH name AS cols
+                        MERGE (v:PERSION {first: cols.first, last: cols.last})
+                        RETURN v, cols $$) AS (v agtype, cols agtype);
+                                                  v                                                  |               cols               
+-----------------------------------------------------------------------------------------------------+----------------------------------
+ {"id": 844424930131974, "label": "PERSION", "properties": {"last": "snow", "first": "jon"}}::vertex | {"last": "snow", "first": "jon"}
+(1 row)
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1630', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 
 ---
 (0 rows)
@@ -1294,6 +1423,17 @@ drop cascades to table cypher_merge."R"
 drop cascades to table cypher_merge."E1"
 drop cascades to table cypher_merge.edge
 NOTICE:  graph "cypher_merge" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_1630', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1630._ag_label_vertex
+drop cascades to table issue_1630._ag_label_edge
+drop cascades to table issue_1630."PERSION"
+NOTICE:  graph "issue_1630" has been dropped
  drop_graph 
 ------------
  

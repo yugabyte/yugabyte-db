@@ -6417,6 +6417,7 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
     ParseExprKind tmp;
     cypher_merge *self = (cypher_merge *)clause->self;
     cypher_path *path;
+    ListCell *lc;
 
     Assert(is_ag_node(self->path, cypher_path));
 
@@ -6500,6 +6501,29 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
      */
     query->targetList = list_concat(query->targetList,
                                     make_target_list_from_join(pstate, jnsitem->p_rte));
+
+    /*
+     * Iterate through the targetList and wrap all user defined variables with a
+     * volatile wrapper. This is necessary for allowing variables from previous
+     * clauses to not be removed by the function remove_unused_subquery_outputs.
+     * That function may replace variables, in place, with a NULL Const. We need
+     * to fix them so that it doesn't. NOTE: Our hidden, internal vars, are not
+     * wrapped.
+     */
+    foreach(lc, query->targetList)
+    {
+        TargetEntry *qte = (TargetEntry *)lfirst(lc);
+
+        if (IsA(qte->expr, Var))
+        {
+            if (qte->resname != NULL &&
+                pg_strncasecmp(qte->resname, AGE_DEFAULT_VARNAME_PREFIX,
+                               strlen(AGE_DEFAULT_VARNAME_PREFIX)))
+            {
+                qte->expr = add_volatile_wrapper(qte->expr);
+            }
+        }
+    }
 
     /*
      * For the metadata need to create paths, find the tuple position that
