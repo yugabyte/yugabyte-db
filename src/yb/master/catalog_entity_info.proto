@@ -595,6 +595,7 @@ message SysCloneStatePB {
     CREATING = 2;
     RESTORING = 3;
     RESTORED = 4;
+    ABORTED = 5;
   }
 
   optional State aggregate_state = 1;
@@ -606,6 +607,9 @@ message SysCloneStatePB {
   // Used for debugging.
   optional string target_namespace_name = 4;
   optional fixed64 restore_time = 5;
+
+  // A reason for why the clone was aborted.
+  optional string abort_message = 6;
 }
 
 message SchemaVersionMappingPB {

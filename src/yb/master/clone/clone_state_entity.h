@@ -22,7 +22,12 @@
 namespace yb::master {
 
 struct PersistentCloneStateInfo :
-    public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE> {};
+    public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE> {
+  bool IsDone() const {
+    return pb.aggregate_state() == SysCloneStatePB::RESTORED ||
+           pb.aggregate_state() == SysCloneStatePB::ABORTED;
+  }
+};
 
 class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
                        public MetadataCowWrapper<PersistentCloneStateInfo> {

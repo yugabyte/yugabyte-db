@@ -52,16 +52,6 @@ class CloneStateManager {
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
-  Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const NamespaceId& source_namespace_id,
-      const std::string& target_namespace_name, const HybridTime& restore_time);
-
-  Status UpdateCloneStateWithSnapshotInfo(
-      const CloneStateInfoPtr& clone_state,
-      const TxnSnapshotId& source_snapshot_id,
-      const TxnSnapshotId& target_snapshot_id,
-      const ExternalTableSnapshotDataMap& table_snapshot_data);
-
   Status ClearAndRunLoaders();
 
  private:
@@ -75,17 +65,21 @@ class CloneStateManager {
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
 
+  Result<CloneStateInfoPtr> CreateCloneState(
+      uint32_t seq_no, const NamespaceId& source_namespace_id,
+      const std::string& target_namespace_name, const HybridTime& restore_time);
+
+  Status UpdateCloneStateWithSnapshotInfo(
+      const CloneStateInfoPtr& clone_state,
+      const TxnSnapshotId& source_snapshot_id,
+      const TxnSnapshotId& target_snapshot_id,
+      const ExternalTableSnapshotDataMap& table_snapshot_data);
+
   // Create PG schema objects of the clone database.
   Status ClonePgSchemaObjects(
       CloneStateInfoPtr clone_state, const std::string& source_db_name,
       const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
       const LeaderEpoch& epoch);
-
-  // Return clone schema status if it failed, or otherwise StartTabletsCloning.
-  Status StartTabletsCloningYsql(
-      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const std::string& target_namespace_name,
-      CoarseTimePoint deadline, const LeaderEpoch& epoch, Status pg_schema_cloning_status);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
   // restore_time and then import it and create a new snapshot for target_namespace). Then it
@@ -112,6 +106,9 @@ class CloneStateManager {
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);
   Result<bool> IsDeleteNamespaceDone(const CloneStateInfoPtr& clone_state);
+
+  // Mark state as aborting and set a descriptive message for debugging purposes.
+  Status MarkCloneAborted(const CloneStateInfoPtr& clone_state, const std::string& abort_reason);
 
   std::mutex mutex_;
 
