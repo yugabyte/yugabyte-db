@@ -582,14 +582,12 @@ message SysSnapshotEntryPB {
 
 message SysCloneStatePB {
   // State for clone operation.
-  // Initial state:
-  // - For YSQL: CLONE_SCHEMA_STARTED: async task to create PG schema is started.
-  // - For YCQL: CREATING: CLONE_OP for every tablet is issued.
-  // Transitions:
-  // CLONE_SCHEMA_STARTED --> CREATING: After successful response from create pg schema async task.
+  // CLONE_SCHEMA_STARTED: Initial state.
+  // CLONE_SCHEMA_STARTED --> CREATING: Once DB objects have been created by ysql_dump (YSQL) or
+  //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
   // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
-  // stated. Restore snapshot is issued.
-  // RESTORING --> RESTORED: Restore snapshot completed
+  // state. Restore snapshot is issued.
+  // RESTORING --> RESTORED: Restore snapshot completed.
   enum State {
     CLONE_SCHEMA_STARTED = 1;
     CREATING = 2;
@@ -597,21 +595,15 @@ message SysCloneStatePB {
     RESTORED = 4;
   }
 
-  message TabletData {
-    optional string source_tablet_id = 1;
-    optional string target_tablet_id = 2;
-  }
+  optional State aggregate_state = 1;
 
-  repeated TabletData tablet_data = 1;
-  optional bytes source_snapshot_id = 2;
-  optional bytes target_snapshot_id = 3;
-  optional string source_namespace_id = 4;
-  optional uint32 clone_request_seq_no = 5;
-  optional fixed64 restore_time = 6;
+  // Needed to load the clone state into the CloneStateManager's map.
+  optional string source_namespace_id = 2;
+  optional uint32 clone_request_seq_no = 3;
 
-  // Aggregate state of the clone operation. Valid transitions:
-  // CLONE_SCHEMA_STARTED --> CREATING --> RESTORING --> RESTORED
-  optional State aggregate_state = 7;
+  // Used for debugging.
+  optional string target_namespace_name = 4;
+  optional fixed64 restore_time = 5;
 }
 
 message SchemaVersionMappingPB {

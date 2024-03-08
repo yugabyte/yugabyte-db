@@ -18,10 +18,12 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/clone/clone_state_entity.h"
@@ -79,9 +81,10 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
   }
 
   Status ListRestorations(
-      const TxnSnapshotId& snapshot_id, ListSnapshotRestorationsResponsePB* resp) override {
+      const TxnSnapshotRestorationId& restoration_id, ListSnapshotRestorationsResponsePB* resp)
+      override {
     return catalog_manager_->snapshot_coordinator().ListRestorations(
-        TxnSnapshotRestorationId::Nil(), snapshot_id, resp);
+        restoration_id, TxnSnapshotId::Nil(), resp);
   }
 
   // Catalog manager.
@@ -239,48 +242,46 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
 
   auto seq_no = source_namespace->FetchAndIncrementCloneSeqNo();
 
-  // Set up persisted clone state.
-  auto clone_state = VERIFY_RESULT(CreateCloneState(seq_no, source_namespace, restore_time));
+  // Set up clone state.
+  auto clone_state = VERIFY_RESULT(
+      CreateCloneState(seq_no, source_namespace_id, target_namespace_name, restore_time));
 
   // Clone PG Schema objects first in case of PGSQL databases. Tablets cloning is initiated in the
   // callback of ClonePgSchemaObjects async task.
   if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
     RETURN_NOT_OK(ClonePgSchemaObjects(
         clone_state, source_namespace->name(), target_namespace_name, snapshot_schedule_id,
-        restore_time, epoch));
+        epoch));
   } else {
     // For YCQL, start tablets cloning directly.
     RETURN_NOT_OK(StartTabletsCloning(
-        clone_state, snapshot_schedule_id, restore_time, target_namespace_name, deadline, epoch));
+        clone_state, snapshot_schedule_id, target_namespace_name, deadline, epoch));
   }
   return make_pair(source_namespace_id, seq_no);
 }
 
 Status CloneStateManager::StartTabletsCloningYsql(
     CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-    const HybridTime& restore_time, const std::string& target_namespace_name,
+    const std::string& target_namespace_name,
     CoarseTimePoint deadline, const LeaderEpoch& epoch, Status pg_schema_cloning_status) {
   if (!pg_schema_cloning_status.ok()) {
     return pg_schema_cloning_status;
   }
-  // Transition the clone state from CLONE_SCHEMA_STARTED to CREATING
-  auto lock = clone_state->LockForWrite();
-  auto& pb = lock.mutable_data()->pb;
-  pb.set_aggregate_state(SysCloneStatePB::CREATING);
-  RETURN_NOT_OK(external_funcs_->Upsert(clone_state));
-  lock.Commit();
   return StartTabletsCloning(
-      clone_state, snapshot_schedule_id, restore_time, target_namespace_name, deadline, epoch);
+      clone_state, snapshot_schedule_id, target_namespace_name, deadline, epoch);
 }
 
 Status CloneStateManager::StartTabletsCloning(
-    CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-    const HybridTime& restore_time, const std::string& target_namespace_name,
-    CoarseTimePoint deadline, const LeaderEpoch& epoch) {
+    CloneStateInfoPtr clone_state,
+    const SnapshotScheduleId& snapshot_schedule_id,
+    const std::string& target_namespace_name,
+    CoarseTimePoint deadline,
+    const LeaderEpoch& epoch) {
   // Export snapshot info.
   auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
       external_funcs_->GenerateSnapshotInfoFromSchedule(
-          snapshot_schedule_id, restore_time, deadline));
+          snapshot_schedule_id, HybridTime(clone_state->LockForRead()->pb.restore_time()),
+          deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
 
   // Import snapshot info.
@@ -329,19 +330,21 @@ Status CloneStateManager::StartTabletsCloning(
 }
 
 Status CloneStateManager::ClonePgSchemaObjects(
-    CloneStateInfoPtr clone_state, const std::string& source_db_name,
-    const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
-    const HybridTime& restore_time, const LeaderEpoch& epoch) {
+    CloneStateInfoPtr clone_state,
+    const std::string& source_db_name,
+    const std::string& target_db_name,
+    const SnapshotScheduleId& snapshot_schedule_id,
+    const LeaderEpoch& epoch) {
   // Pick one of the live tservers to send ysql_dump and ysqlsh requests to.
   auto ts = external_funcs_->PickTserver();
   auto ts_permanent_uuid = ts->permanent_uuid();
-  auto read_lock = clone_state->LockForRead();
-  // Deadline passed to the ClonePGSchemaTask (including rpc time and callback execution deadline)
+  // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
-      ts_permanent_uuid, source_db_name, target_db_name, HybridTime(read_lock->pb.restore_time()),
+      ts_permanent_uuid, source_db_name, target_db_name,
+      HybridTime(clone_state->LockForRead()->pb.restore_time()),
       MakeDoneClonePgSchemaCallback(
-          clone_state, snapshot_schedule_id, restore_time, target_db_name, ToCoarse(deadline),
+          clone_state, snapshot_schedule_id, target_db_name, ToCoarse(deadline),
           epoch),
       deadline));
   return Status::OK();
@@ -385,76 +388,69 @@ Status CloneStateManager::LoadCloneState(const std::string& id, const SysCloneSt
 }
 
 Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
-    uint32_t seq_no, const NamespaceInfoPtr& source_namespace,
+    uint32_t seq_no,
+    const NamespaceId& source_namespace_id,
+    const std::string& target_namespace_name,
     const HybridTime& restore_time) {
-  NamespaceId source_namespace_id = source_namespace->id();
-  CloneStateInfoPtr clone_state;
-  {
-    std::lock_guard lock(mutex_);
-    auto it = source_clone_state_map_.find(source_namespace_id);
-    if (it != source_clone_state_map_.end()) {
-      auto state = it->second->LockForRead()->pb.aggregate_state();
-      if (state != SysCloneStatePB::RESTORED) {
-        return STATUS_FORMAT(
-            AlreadyPresent,
-            "Cannot create new clone state because there is already an ongoing "
-            "clone for source namespace $0 in state $1",
-            source_namespace_id, state);
-      }
+  std::lock_guard lock(mutex_);
+  auto it = source_clone_state_map_.find(source_namespace_id);
+  if (it != source_clone_state_map_.end()) {
+    auto state = it->second->LockForRead()->pb.aggregate_state();
+    if (state != SysCloneStatePB::RESTORED) {
+      return STATUS_FORMAT(
+          AlreadyPresent,
+          "Cannot create new clone state because there is already an ongoing "
+          "clone for source namespace $0 in state $1",
+          source_namespace_id, state);
     }
-    clone_state = CloneStateInfoPtr(new CloneStateInfo(GenerateObjectId()));
-    source_clone_state_map_[source_namespace_id] = clone_state;
   }
+
+  auto clone_state = make_scoped_refptr<CloneStateInfo>(GenerateObjectId());
   clone_state->mutable_metadata()->StartMutation();
   auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
-  pb->set_source_namespace_id(source_namespace_id);
+  pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
   pb->set_clone_request_seq_no(seq_no);
+  pb->set_source_namespace_id(source_namespace_id);
   pb->set_restore_time(restore_time.ToUint64());
-  // Clone PG schema is needed for PGSQL, otherwise start directly with the next step.
-  pb->set_aggregate_state(
-      source_namespace->database_type() == YQL_DATABASE_PGSQL
-          ? SysCloneStatePB::CLONE_SCHEMA_STARTED
-          : SysCloneStatePB::CREATING);
-
+  pb->set_target_namespace_name(target_namespace_name);
   RETURN_NOT_OK(external_funcs_->Upsert(clone_state));
   clone_state->mutable_metadata()->CommitMutation();
+
+  // Add to the in-memory map.
+  source_clone_state_map_[source_namespace_id] = clone_state;
+
   return clone_state;
 }
 
 Status CloneStateManager::UpdateCloneStateWithSnapshotInfo(
-    CloneStateInfoPtr clone_state, const TxnSnapshotId& source_snapshot_id,
+    const CloneStateInfoPtr& clone_state,
+    const TxnSnapshotId& source_snapshot_id,
     const TxnSnapshotId& target_snapshot_id,
     const ExternalTableSnapshotDataMap& table_snapshot_data) {
-  clone_state->mutable_metadata()->StartMutation();
-  auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
-  pb->set_source_snapshot_id(source_snapshot_id.data(), source_snapshot_id.size());
-  pb->set_target_snapshot_id(target_snapshot_id.data(), target_snapshot_id.size());
+  clone_state->SetSourceSnapshotId(source_snapshot_id);
+  clone_state->SetTargetSnapshotId(target_snapshot_id);
 
   // Add data for each tablet in this table.
-  std::unordered_map<TabletId, int> target_tablet_to_index;
   for (const auto& [_, table_snapshot_data] : table_snapshot_data) {
     for (auto& tablet : table_snapshot_data.table_meta->tablets_ids()) {
-      auto* tablet_data = pb->add_tablet_data();
-      tablet_data->set_source_tablet_id(tablet.old_id());
-      tablet_data->set_target_tablet_id(tablet.new_id());
-      target_tablet_to_index[tablet.new_id()] = pb->tablet_data_size() - 1;
+      auto tablet_data = CloneStateInfo::TabletData {
+          .source_tablet_id = tablet.old_id(),
+          .target_tablet_id = tablet.new_id()
+      };
+      clone_state->AddTabletData(std::move(tablet_data));
     }
   }
-  RETURN_NOT_OK(external_funcs_->Upsert(clone_state));
-  clone_state->mutable_metadata()->CommitMutation();
   return Status::OK();
 }
 
 Status CloneStateManager::ScheduleCloneOps(
     const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
     const std::unordered_set<TabletId>& not_snapshotted_tablets) {
-  auto lock = clone_state->LockForRead();
-  auto& pb = lock->pb;
-  for (auto& tablet_data : pb.tablet_data()) {
+  for (auto& tablet_data : clone_state->GetTabletData()) {
     auto source_tablet = VERIFY_RESULT(
-        external_funcs_->GetTabletInfo(tablet_data.source_tablet_id()));
+        external_funcs_->GetTabletInfo(tablet_data.source_tablet_id));
     auto target_tablet = VERIFY_RESULT(
-        external_funcs_->GetTabletInfo(tablet_data.target_tablet_id()));
+        external_funcs_->GetTabletInfo(tablet_data.target_tablet_id));
     auto source_table = source_tablet->table();
     auto target_table = target_tablet->table();
 
@@ -462,20 +458,23 @@ Status CloneStateManager::ScheduleCloneOps(
     auto source_table_lock = source_table->LockForRead();
     auto target_table_lock = target_table->LockForRead();
 
+    const auto& clone_pb_lock = clone_state->LockForRead();
     tablet::CloneTabletRequestPB req;
-    if (not_snapshotted_tablets.contains(tablet_data.source_tablet_id())) {
+    if (not_snapshotted_tablets.contains(tablet_data.source_tablet_id)) {
       RSTATUS_DCHECK(source_tablet->LockForRead()->pb.hide_hybrid_time() != 0, IllegalState,
           Format("Expected not snapshotted tablet to be in HIDDEN state. Actual: $0",
               source_table_lock->state_name()));
       req.set_clone_from_active_rocksdb(true);
     }
-    req.set_tablet_id(tablet_data.source_tablet_id());
-    req.set_target_tablet_id(tablet_data.target_tablet_id());
-    req.set_source_snapshot_id(pb.source_snapshot_id().data(), pb.source_snapshot_id().size());
-    req.set_target_snapshot_id(pb.target_snapshot_id().data(), pb.target_snapshot_id().size());
+    req.set_tablet_id(tablet_data.source_tablet_id);
+    req.set_target_tablet_id(tablet_data.target_tablet_id);
+    req.set_source_snapshot_id(
+        clone_state->SourceSnapshotId().data(), clone_state->SourceSnapshotId().size());
+    req.set_target_snapshot_id(
+        clone_state->TargetSnapshotId().data(), clone_state->TargetSnapshotId().size());
     req.set_target_table_id(target_table->id());
     req.set_target_namespace_name(target_table_lock->namespace_name());
-    req.set_clone_request_seq_no(pb.clone_request_seq_no());
+    req.set_clone_request_seq_no(clone_pb_lock->pb.clone_request_seq_no());
     req.set_target_pg_table_id(target_table_lock->pb.pg_table_id());
     if (target_table_lock->pb.has_index_info()) {
       *req.mutable_target_index_info() = target_table_lock->pb.index_info();
@@ -484,6 +483,13 @@ Status CloneStateManager::ScheduleCloneOps(
     *req.mutable_target_partition_schema() = target_table_lock->pb.partition_schema();
     RETURN_NOT_OK(external_funcs_->ScheduleCloneTabletCall(source_tablet, epoch, std::move(req)));
   }
+
+  auto lock = clone_state->LockForWrite();
+  auto& pb = lock.mutable_data()->pb;
+  pb.set_aggregate_state(SysCloneStatePB::CREATING);
+  RETURN_NOT_OK(external_funcs_->Upsert(clone_state));
+  lock.Commit();
+
   return Status::OK();
 }
 
@@ -495,12 +501,12 @@ Result<CloneStateInfoPtr> CloneStateManager::GetCloneStateFromSourceNamespace(
 
 AsyncClonePgSchema::ClonePgSchemaCallbackType CloneStateManager::MakeDoneClonePgSchemaCallback(
     CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-    const HybridTime& restore_time, const std::string& target_namespace_name,
+    const std::string& target_namespace_name,
     CoarseTimePoint deadline, const LeaderEpoch& epoch) {
-  return [this, clone_state, snapshot_schedule_id, restore_time, target_namespace_name, deadline,
+  return [this, clone_state, snapshot_schedule_id, target_namespace_name, deadline,
           epoch](Status pg_schema_cloning_status) {
     return StartTabletsCloningYsql(
-        clone_state, snapshot_schedule_id, restore_time, target_namespace_name, deadline, epoch,
+        clone_state, snapshot_schedule_id, target_namespace_name, deadline, epoch,
         pg_schema_cloning_status);
   };
 }
@@ -512,15 +518,14 @@ Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_sta
   }
 
   auto lock = clone_state->LockForWrite();
-
   SCHECK_EQ(lock->pb.aggregate_state(), SysCloneStatePB::CREATING, IllegalState,
       "Expected clone to be in creating state");
 
   bool all_tablets_running = true;
   auto& pb = lock.mutable_data()->pb;
-  for (auto& tablet_data : *pb.mutable_tablet_data()) {
+  for (auto& tablet_data : clone_state->GetTabletData()) {
     // Check to see if the tablet is done cloning (i.e. it is RUNNING).
-    auto tablet = VERIFY_RESULT(external_funcs_->GetTabletInfo(tablet_data.target_tablet_id()));
+    auto tablet = VERIFY_RESULT(external_funcs_->GetTabletInfo(tablet_data.target_tablet_id));
     if (!tablet->LockForRead()->is_running()) {
       all_tablets_running = false;
     }
@@ -531,17 +536,11 @@ Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_sta
   }
 
   LOG(INFO) << Format("All tablets for cloned namespace $0 with seq_no $1 are running. "
-      "Marking clone operation as restoring.",
+      "Triggering restore.",
       pb.source_namespace_id(), pb.clone_request_seq_no());
-  auto target_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(pb.target_snapshot_id()));
-
-  // Check for an existing restoration id. This might have happened if a restoration was submitted
-  // but we crashed / failed over before we were able to persist the clone state as RESTORING.
-  ListSnapshotRestorationsResponsePB resp;
-  RETURN_NOT_OK(external_funcs_->ListRestorations(target_snapshot_id, &resp));
-  if (resp.restorations().empty()) {
-    RETURN_NOT_OK(external_funcs_->Restore(target_snapshot_id, HybridTime(pb.restore_time())));
-  }
+  auto restoration_id = VERIFY_RESULT(external_funcs_->Restore(
+      clone_state->TargetSnapshotId(), HybridTime(lock->pb.restore_time())));
+  clone_state->SetRestorationId(restoration_id);
   pb.set_aggregate_state(SysCloneStatePB::RESTORING);
 
   RETURN_NOT_OK(external_funcs_->Upsert(clone_state));
@@ -551,10 +550,12 @@ Status CloneStateManager::HandleCreatingState(const CloneStateInfoPtr& clone_sta
 
 Status CloneStateManager::HandleRestoringState(const CloneStateInfoPtr& clone_state) {
   auto lock = clone_state->LockForWrite();
-  auto target_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(lock->pb.target_snapshot_id()));
+  SCHECK_EQ(lock->pb.aggregate_state(), SysCloneStatePB::RESTORING, IllegalState,
+      "Expected clone to be in restoring state");
 
   ListSnapshotRestorationsResponsePB resp;
-  RETURN_NOT_OK(external_funcs_->ListRestorations(target_snapshot_id, &resp));
+
+  RETURN_NOT_OK(external_funcs_->ListRestorations(clone_state->RestorationId(), &resp));
   SCHECK_EQ(resp.restorations_size(), 1, IllegalState, "Unexpected number of restorations.");
 
   if (resp.restorations(0).entry().state() != SysSnapshotEntryPB::RESTORED) {
@@ -584,8 +585,7 @@ Status CloneStateManager::Run() {
       case SysCloneStatePB::RESTORING:
         s = HandleRestoringState(clone_state);
         break;
-      case SysCloneStatePB::CLONE_SCHEMA_STARTED:
-        FALLTHROUGH_INTENDED;
+      case SysCloneStatePB::CLONE_SCHEMA_STARTED: FALLTHROUGH_INTENDED;
       case SysCloneStatePB::RESTORED:
         break;
     }
