@@ -1506,5 +1506,10 @@ void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
   RefreshLeaderStateCacheUnlocked(&now);
 }
 
+bool ReplicaState::GetLeaderNoOpCommittedUnlocked() const {
+  DCHECK(IsLocked());
+  return leader_no_op_committed_;
+}
+
 }  // namespace consensus
 }  // namespace yb

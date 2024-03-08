@@ -3252,14 +3252,16 @@ LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lea
 
 ConsensusStatePB RaftConsensus::ConsensusState(
     ConsensusConfigType type,
-    LeaderLeaseStatus* leader_lease_status) const {
+    LeaderLeaseStatus* leader_lease_status, 
+    bool* leader_no_op_committed_) const {
   auto lock = state_->LockForRead();
-  return ConsensusStateUnlocked(type, leader_lease_status);
+  return ConsensusStateUnlocked(type, leader_lease_status, leader_no_op_committed_);
 }
 
 ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
     ConsensusConfigType type,
-    LeaderLeaseStatus* leader_lease_status) const {
+    LeaderLeaseStatus* leader_lease_status,
+    bool* leader_no_op_committed_) const {
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
@@ -3268,6 +3270,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
     }
+    *leader_no_op_committed_ = state_->GetLeaderNoOpCommittedUnlocked();
   }
   return state_->ConsensusStateUnlocked(type);
 }

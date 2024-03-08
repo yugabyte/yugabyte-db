@@ -267,7 +267,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
                          consensus::ConsensusStatePB* consensus_state,
-                         consensus::LeaderLeaseStatus* leader_lease_status = nullptr);
+                         consensus::LeaderLeaseStatus* leader_lease_status = nullptr,
+                         bool* leader_no_op_committed_ = nullptr);
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
@@ -348,7 +349,8 @@ Status GetReplicaStatusAndCheckIfLeader(
     const TabletId& tablet_id,
     const MonoDelta& timeout,
     consensus::LeaderLeaseCheckMode lease_check_mode =
-        consensus::LeaderLeaseCheckMode::NEED_LEASE);
+        consensus::LeaderLeaseCheckMode::NEED_LEASE,
+    bool check_no_op_committed = false);
 
 // Wait until the specified replica is leader.
 Status WaitUntilLeader(

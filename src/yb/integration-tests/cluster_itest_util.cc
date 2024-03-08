@@ -557,7 +557,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
                          ConsensusStatePB* consensus_state,
-                         LeaderLeaseStatus* leader_lease_status) {
+                         LeaderLeaseStatus* leader_lease_status,
+                         bool* leader_no_op_committed_) {
   DCHECK_ONLY_NOTNULL(replica);
 
   GetConsensusStateRequestPB req;
@@ -577,6 +578,7 @@ Status GetConsensusState(const TServerDetails* replica,
     *leader_lease_status = resp.has_leader_lease_status() ?
         resp.leader_lease_status() :
         LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;  // Could be anything but HAS_LEASE.
+    *leader_no_op_committed_ = resp.leader_no_op_committed_();
   }
   return Status::OK();
 }
@@ -867,11 +869,13 @@ Status GetReplicaStatus(
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
-                                        LeaderLeaseCheckMode lease_check_mode) {
+                                        LeaderLeaseCheckMode lease_check_mode,
+                                        bool check_no_op_committed) {
   ConsensusStatePB cstate;
   LeaderLeaseStatus leader_lease_status;
+  bool leader_no_op_committed_;
   Status s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_ACTIVE,
-                               timeout, &cstate, &leader_lease_status);
+                               timeout, &cstate, &leader_lease_status, &leader_no_op_committed_);
   if (PREDICT_FALSE(!s.ok())) {
     VLOG(1) << "Error getting consensus state from replica: "
             << replica->instance_id.permanent_uuid();
@@ -880,7 +884,8 @@ Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
   const string& replica_uuid = replica->instance_id.permanent_uuid();
   if (cstate.has_leader_uuid() && cstate.leader_uuid() == replica_uuid &&
       (lease_check_mode == LeaderLeaseCheckMode::DONT_NEED_LEASE ||
-       leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE)) {
+       leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) && 
+       (!(check_no_op_committed) || (check_no_op_committed && leader_no_op_committed_))) {
     return Status::OK();
   }
   VLOG(1) << "Replica not leader of config: " << replica->instance_id.permanent_uuid();

@@ -2625,8 +2625,13 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
     return;
   }
   LeaderLeaseStatus leader_lease_status;
-  *resp->mutable_cstate() = scope->ConsensusState(req->type(), &leader_lease_status);
+  bool leader_no_op_committed_;
+  *resp->mutable_cstate() = scope->ConsensusState(
+    req->type(), 
+    &leader_lease_status, 
+    &leader_no_op_committed_);
   resp->set_leader_lease_status(leader_lease_status);
+  resp->set_leader_no_op_committed_(leader_no_op_committed_);
 }
 
 void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req,

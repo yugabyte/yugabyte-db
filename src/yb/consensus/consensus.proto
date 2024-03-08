@@ -528,6 +528,9 @@ message GetConsensusStateResponsePB {
   // Allows returning the leader lease status in the same RPC. Useful for waiting for the leader
   // to be allowed to serve requests.
   optional LeaderLeaseStatus leader_lease_status = 3;
+
+  // Checks if the leader has committed the no-op.
+  optional bool leader_no_op_committed_ = 4;
 }
 
 message StartRemoteBootstrapRequestPB {

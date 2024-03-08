@@ -288,13 +288,15 @@ class Consensus {
   // leader lease status captured under the same lock.
   virtual ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
-      LeaderLeaseStatus* leader_lease_status = nullptr) const = 0;
+      LeaderLeaseStatus* leader_lease_status = nullptr,
+      bool* leader_no_op_committed_ = nullptr) const = 0;
 
   // Returns a copy of the committed state of the Consensus system, assuming caller holds the needed
   // locks.
   virtual ConsensusStatePB ConsensusStateUnlocked(
       ConsensusConfigType type,
-      LeaderLeaseStatus* leader_lease_status = nullptr) const = 0;
+      LeaderLeaseStatus* leader_lease_status = nullptr,
+      bool* leader_no_op_committed_ = nullptr) const = 0;
 
   // Returns a copy of the current committed Raft configuration.
   virtual RaftConfigPB CommittedConfig() const = 0;
