@@ -707,11 +707,7 @@ Use the following procedure to install node agent for fully manual provisioning.
 
 {{< note title="Re-provisioning a node" >}}
 
-If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Use the following command:
-
-```sh
-node-agent node unregister
-```
+If you are re-provisioning a node (that is, node agent has previously been installed on the node), you need to unregister the node agent before installing node agent again. Refer to [Unregister node agent](#unregister-node-agent).
 
 {{< /note >}}
 
@@ -719,9 +715,9 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
-   ```sh
-   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
-   ```
+    ```sh
+    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
+    ```
 
     To create an API token, navigate to your **User Profile** and click **Generate Key**.
 
@@ -850,49 +846,7 @@ If you are running v2.18.5 or earlier, the node must be unregistered first. Use 
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 
-1. Run the following command:
-
-    ```sh
-    node-agent node unregister
-    ```
-
-    After running this command, YBA no longer recognizes the node agent. However, if the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
-
-    - Obtain the node agent ID:
-
-        ```sh
-        curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
-        ```
-
-        You should see output similar to the following:
-
-        ```output.json
-        [{
-            "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
-            "name":"node1",
-            "ip":"10.9.82.61",
-            "port":9070,
-            "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
-            "version":"2.18.6.0-PRE_RELEASE",
-            "state":"READY",
-            "updatedAt":"2023-12-19T23:56:43Z",
-            "config":{
-                "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
-                "offloadable":false
-                },
-            "osType":"LINUX",
-            "archType":"AMD64",
-            "home":"/home/yugabyte/node-agent",
-            "versionMatched":true,
-            "reachable":false
-        }]
-        ```
-
-    - Use the value of the field `uuid` as `<node_agent_id>` in the following command:
-
-        ```sh
-        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-        ```
+1. [Unregister node agent](#unregister-node-agent).
 
 1. Stop the systemd service as a sudo user.
 
@@ -922,6 +876,56 @@ If you are running v2.18.5 or earlier, the node must be unregistered first. Use 
 
     ```sh
     node-agent node preflight-check --add_node
+    ```
+
+### Unregister node agent
+
+When performing some tasks, you may need to unregister the node agent from a node.
+
+To unregister node agent, run the following command:
+
+```sh
+node-agent node unregister
+```
+
+After running this command, YBA no longer recognizes the node agent.
+
+If the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
+
+- Obtain the node agent ID:
+
+    ```sh
+    curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
+    ```
+
+    You should see output similar to the following:
+
+    ```output.json
+    [{
+        "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
+        "name":"node1",
+        "ip":"10.9.82.61",
+        "port":9070,
+        "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+        "version":"2.18.6.0-PRE_RELEASE",
+        "state":"READY",
+        "updatedAt":"2023-12-19T23:56:43Z",
+        "config":{
+            "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
+            "offloadable":false
+            },
+        "osType":"LINUX",
+        "archType":"AMD64",
+        "home":"/home/yugabyte/node-agent",
+        "versionMatched":true,
+        "reachable":false
+    }]
+    ```
+
+- Use the value of the field `uuid` as `<node_agent_id>` in the following command:
+
+    ```sh
+    curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
     ```
 
 For more information, refer to [Node agent](../../../../faq/yugabyte-platform/#node-agent) FAQ.
