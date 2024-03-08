@@ -2836,8 +2836,12 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   rpc.set_deadline(deadline);
   master::RestoreSnapshotScheduleRequestPB req;
   master::RestoreSnapshotScheduleResponsePB resp;
+  master::ListSnapshotSchedulesRequestPB list_req;
+  master::ListSnapshotSchedulesResponsePB list_resp;
   req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
   req.set_restore_ht(restore_at.ToUint64());
+  
+  list_req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
 
   Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
   if (!s.ok()) {
@@ -2862,6 +2866,17 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
 
   AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
   AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+
+  auto list_status = master_backup_proxy_->ListSnapshotSchedules(list_req, &list_resp, &rpc);
+  if (list_status.ok() && !list_resp.has_error()) {
+    if (list_resp.schedules_size() > 0) {
+      const auto& filter = list_resp.schedules(0).options().filter();
+      if (filter.tables().tables_size() == 1) {
+        const auto table_name = filter.tables().tables(0).namespace_().name();
+        AddStringField("namespace_restored", table_name, &document, &document.GetAllocator());
+      }
+    }
+  }
 
   return document;
 }
