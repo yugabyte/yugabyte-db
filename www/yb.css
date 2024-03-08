@@ -158,6 +158,13 @@ body {
 
 .table > tbody > tr > td {
   padding: 26px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.table > tbody > tr > th {
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .yb-dashboard-icon {
