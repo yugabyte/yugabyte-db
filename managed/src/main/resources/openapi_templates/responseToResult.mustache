@@ -1,6 +1,7 @@
 {{! Yugabyte modification: 2 space tabs indentation and audit logs below }}
 {{! Yugabyte modification: add audit logs }}
 {{#vendorExtensions.x-yba-api-audit}}
+{{^noAudit}}
 {{#additionalDetails}}
 JsonNode additionalDetails = null;
     if (UpgradeUniverseGFlags.class.isAssignableFrom({{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}}.getClass())) {
@@ -8,6 +9,7 @@ JsonNode additionalDetails = null;
           gFlagsAuditHandler.constructGFlagAuditPayload({{auditTargetId}}, (UpgradeUniverseGFlags) {{#allParams}}{{#-last}}{{paramName}}{{/-last}}{{/allParams}});
     }
 {{/additionalDetails}}
+{{/noAudit}}
 {{/vendorExtensions.x-yba-api-audit}}
 {{! End Yugabyte modification}}
 {{^controllerOnly}}
@@ -66,6 +68,7 @@ JsonNode additionalDetails = null;
 {{/returnType}}
 {{! Yugabyte modification: add audit logs }}
 {{#vendorExtensions.x-yba-api-audit}}
+{{^noAudit}}
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -75,6 +78,7 @@ JsonNode additionalDetails = null;
             request.body().asJson(){{#taskUuid}},
             {{taskUuid}}{{/taskUuid}}{{#additionalDetails}},
             additionalDetails{{/additionalDetails}});
+{{/noAudit}}
 {{/vendorExtensions.x-yba-api-audit}}
 {{! End Yugabyte modification}}
 {{#returnType}}

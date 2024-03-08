@@ -3,9 +3,12 @@ import copy
 import logging
 
 '''
-This script takes the openapi.yaml that contains the complete set of API definitions and generates
-openapi_public.yaml spec. The public version does not include "x-yba-api-visibility: internal"
-parts of the API.
+This script handles the x-yba-api-* vendor extensions.
+See yugabyte-db/managed/src/main/resources/openapi_templates/README.txt for more details.
+
+For parts of the API marked with "x-yba-api-visibility: internal" this script filters out those
+parts and generates a public version openapi_public.yaml spec that is used for Stoplight
+documentation.
 
 For parts of the API marked with "x-yba-api-visibility: preview" this script ensures:
 1. there is also a corresponding "x-yba-api-since: <yba-version>" at the same level
@@ -18,8 +21,6 @@ For parts of the API marked with "x-yba-api-visibility: deprecated" this script 
 3. generates "deprecated : true" if this marker is on a path
 
 TODO: Also handle validation of date-time type is of RFC3339 format.
-
-This openapi_public.yaml is used for Stoplight documentation.
 '''
 
 # Globals
@@ -30,10 +31,12 @@ X_YBA_API_VISIBILITY_INTERNAL = "internal"
 X_YBA_API_VISIBILITY_DEPRECATED = "deprecated"
 X_YBA_API_VISIBILITY_PREVIEW = "preview"
 X_YBA_API_SINCE = "x-yba-api-since"
+X_YBA_API_AUDIT = "x-yba-api-audit"
+X_YBA_API_AUTHZ = "x-yba-api-authz"
 DEPRECATED_MSG_FMT = "<b style=\"color:#ff0000\">Deprecated since YBA version {}.</b></p>"
 PREVIEW_MSG_FMT = ("<b style=\"color:#FFA500\">WARNING: This is a preview API in YBA version {}"
                    " that could change.</b></p>")
-http_methods = ["get", "post", "put", "patch", "delete"]
+http_methods = ["get", "post", "put", "patch", "delete", "options", "head", "trace"]
 global_openapi_dict = {}
 global_tag_list = []
 global_component_list = []
@@ -60,6 +63,8 @@ def remove_internal_paths():
     for path, path_details in global_path_list.items():
         methods_to_remove = []
         for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
             if is_internal(method_details):
                 # collect method to remove
                 methods_to_remove.append(method)
@@ -117,21 +122,25 @@ def remove_internal_schemas_and_properties():
 # 4. generates "deprecated : true" for this path for deprecated paths.
 def process_visibility_in_paths():
     global global_path_list
-    paths_with_errors = []
+    errMsgs = []
     for path, path_details in global_path_list.items():
         for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            if not has_visibility_defined(method_details):
+                errMsgs.append(X_YBA_API_VISIBILITY + " mandatory property is missing in " +
+                               method + " method of " + path)
             for visibility in [X_YBA_API_VISIBILITY_PREVIEW, X_YBA_API_VISIBILITY_DEPRECATED]:
                 if has_visibility(method_details, visibility):
                     if X_YBA_API_SINCE not in method_details:
-                        paths_with_errors.append((path, method, method_details))
+                        errMsgs.append(X_YBA_API_SINCE + ": is missing in " + method +
+                                       " method of " + path)
                         continue
                     # add visibility message to description
                     add_visibility_desc(method_details, visibility)
-    # raise error for paths missing X_YBA_API_SINCE
-    if paths_with_errors:
-        errMsgs = []
-        for (path, method, _) in paths_with_errors:
-            errMsgs.append(X_YBA_API_SINCE + ": is missing in " + method + " method of " + path)
+
+    # raise error if paths missing X_YBA_API_VISIBILITY or X_YBA_API_SINCE
+    if errMsgs:
         raise Exception(", ".join(errMsgs))
     # Update the global_openapi_dict with the updated paths
     global_openapi_dict["paths"] = global_path_list
@@ -178,6 +187,24 @@ def process_visibility_in_schemas_and_properties():
     global_openapi_dict["components"] = global_component_list
 
 
+# Make it mandatory to specify x-yba-api-authz and x-yba-api-audit in every operation
+def process_audit_authz_in_paths():
+    global global_path_list
+    errMsgs = []
+    for path, path_details in global_path_list.items():
+        for method, method_details in path_details.items():
+            if method not in http_methods:
+                continue
+            if X_YBA_API_AUDIT not in method_details:
+                errMsgs.append(X_YBA_API_AUDIT + " mandatory property is missing in " + method +
+                               " method of path " + path)
+            if X_YBA_API_AUTHZ not in method_details:
+                errMsgs.append(X_YBA_API_AUTHZ + " mandatory property is missing in " + method +
+                               " method of path " + path)
+    if errMsgs:
+        raise Exception(", ".join(errMsgs))
+
+
 def generate_openapi_public_file():
     global global_openapi_dict
 
@@ -188,6 +215,11 @@ def generate_openapi_public_file():
 # checks if this object has x-yba-api-visibility set to given visiblity
 def has_visibility(obj, visibility):
     return X_YBA_API_VISIBILITY in obj and obj[X_YBA_API_VISIBILITY] == visibility
+
+
+# checks if this object has the x-yba-api-visibility defined
+def has_visibility_defined(obj):
+    return X_YBA_API_VISIBILITY in obj
 
 
 # adds a deprecated or preview message to given obj's description
@@ -231,6 +263,8 @@ process_visibility_in_paths()
 logger.info(("Processing schemas and properties that are marked 'x-yba-api-vibility: deprecated'"
              " or 'preview'"))
 process_visibility_in_schemas_and_properties()
+logger.info("Processing audit and authz in paths")
+process_audit_authz_in_paths()
 
 # write the openapi_public.yaml file
 generate_openapi_public_file()
