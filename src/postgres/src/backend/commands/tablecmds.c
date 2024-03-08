@@ -599,6 +599,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid			rowTypeId = InvalidOid;
 	bool		relisshared = false;
 	bool		use_initdb_acl = false;
+	ListCell   *opt_cell;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -806,6 +807,27 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	Oid tablegroupId = stmt->tablegroupname
 		? get_tablegroup_oid(stmt->tablegroupname, false)
 		: InvalidOid;
+
+	if (IsYugaByteEnabled())
+	{
+		foreach(opt_cell, stmt->options)
+		{
+			DefElem *def = (DefElem *) lfirst(opt_cell);
+
+			/*
+			 * A check in parse_utilcmd.c makes sure only one of these two options
+			 * can be specified.
+			 */
+			if (strcmp(def->defname, "colocated") == 0 ||
+				strcmp(def->defname, "colocation") == 0)
+			{
+				if (OidIsValid(tablegroupId))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
+			}
+		}
+	}
 
 	/*
 	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
@@ -12086,7 +12108,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
-	if (IsYugaByteEnabled() && tablespacename && 
+	if (IsYugaByteEnabled() && tablespacename &&
 		rel->rd_index &&
 		rel->rd_index->indisprimary) {
 		/*
@@ -12581,7 +12603,7 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/* Notify the user that this command is async */
 	ereport(NOTICE,
-			(errmsg("Data movement for table %s is successfully initiated.", 
+			(errmsg("Data movement for table %s is successfully initiated.",
 					RelationGetRelationName(rel)),
 			 errdetail("Data movement is a long running asynchronous process "
 					   "and can be monitored by checking the tablet placement "
