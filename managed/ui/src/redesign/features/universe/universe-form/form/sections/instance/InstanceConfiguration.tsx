@@ -110,6 +110,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               disabled={isViewMode}
             />
             <VolumeInfoField
+              isNodeResizable={isNodeResizable}
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
               disableVolumeSize={!isNodeResizable || isViewMode}

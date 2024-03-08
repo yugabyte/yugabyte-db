@@ -20,7 +20,7 @@ var releaseNodeCmd = &cobra.Command{
 	Long: "Release a node instance from YugabyteDB Anywhere universe.\n" +
 		"Release the instance to the IaaS/provider. Only for stopped/removed nodes.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

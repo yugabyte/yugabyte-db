@@ -21,7 +21,7 @@ var startNodeCmd = &cobra.Command{
 		"Start the server processes on a previously stopped node.\n" +
 		"Ideally it is added back very soon.",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeName, err := cmd.Flags().GetString("universe-name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}

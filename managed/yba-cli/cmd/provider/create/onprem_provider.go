@@ -225,7 +225,7 @@ func init() {
 			" manually, set to false to provision during universe creation, defaults to false.")
 
 	createOnpremProviderCmd.Flags().Bool("airgap-install", false,
-		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment, "+
+		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
 			" lacking access to the public internet for package downloads, "+
 			"defaults to false.")
 	createOnpremProviderCmd.Flags().Bool("install-node-exporter", true,
@@ -264,14 +264,20 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "latitude":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["latitude"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "longitude":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["longitude"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 
 			}
@@ -327,10 +333,14 @@ func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.
 			case "zone-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["region-name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}

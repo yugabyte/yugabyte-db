@@ -6,6 +6,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -55,6 +56,14 @@ var deleteProviderCmd = &cobra.Command{
 		providerListRequest := authAPI.GetListOfProviders()
 		providerListRequest = providerListRequest.Name(providerName)
 
+		providerCode, err := cmd.Flags().GetString("code")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(strings.TrimSpace(providerCode)) != 0 {
+			providerListRequest = providerListRequest.ProviderCode(providerCode)
+		}
+
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,
@@ -102,6 +111,9 @@ func init() {
 	deleteProviderCmd.Flags().SortFlags = false
 	deleteProviderCmd.Flags().StringP("provider-name", "n", "",
 		"[Required] The name of the provider to be deleted.")
+	deleteProviderCmd.Flags().StringP("code", "c", "",
+		"[Optional] Code of the provider. "+
+			"Allowed values: aws, gcp, azu, onprem, kubernetes.")
 	deleteProviderCmd.MarkFlagRequired("provider-name")
 	deleteProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")

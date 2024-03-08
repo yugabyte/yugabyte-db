@@ -75,7 +75,7 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 	if len(apiToken) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize(
-				"No valid API token detected. Run `yba auth` to "+
+				"No valid API token detected. Run \"yba auth\" or \"yba login\" to "+
 					"authenticate with YugabyteDB Anywhere or run the command with -a flag.",
 				formatter.RedColor))
 	}

@@ -27,7 +27,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	authAPI.GetCustomerUUID()
 	universeListRequest := authAPI.ListUniverses()
 
-	universeName, err := cmd.Flags().GetString("universe-name")
+	universeName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}

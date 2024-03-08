@@ -188,7 +188,7 @@ func init() {
 		"custom-ssh-keypair-file-path")
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
-		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment, "+
+		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
 			" lacking access to the public internet for package downloads, "+
 			"defaults to false.")
 
@@ -254,22 +254,32 @@ func buildAWSRegions(regionStrings, zoneStrings []string, allowed bool,
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "vpc-id":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["vpc-id"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "sg-id":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["sg-id"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "arch":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["arch"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "yb-image":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["yb-image"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}
@@ -334,18 +344,26 @@ func buildAWSZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 			case "zone-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["region-name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["subnet"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "secondary-subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["secondary-subnet"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}
