@@ -87,7 +87,7 @@ body {
             }
 
             .td-search-input {
-              font-weight: 400;
+              font-weight: 500;
               font-size: 13px;
               line-height: 16px;
               color: #0b1117;
@@ -483,7 +483,7 @@ body {
 
             > {
               a {
-                font-weight: 400;
+                font-weight: 500;
                 display: block;
                 font-size: 13px;
                 line-height: 16px;
@@ -492,6 +492,7 @@ body {
                 width: auto;
                 height: 36px;
                 border-bottom: 3px solid transparent;
+                letter-spacing: 0.5px;
               }
 
               .header-submenu {
