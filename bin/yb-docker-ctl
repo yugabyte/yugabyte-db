@@ -384,7 +384,7 @@ class YBDockerControl():
             node_type_first = node_types[0] if isinstance(node_types, list) else next(node_types)
             ui_port = self.YB_MASTER_UI_PORT if \
                 node_type_first == "master" else self.YB_TSERVER_UI_PORT
-            node_ui_host = "http://{}:{}".format(ip, ui_port) if status == 'running' else None
+            node_ui_host = "http://{}:{}".format(ip, ui_port) if status == 'running' else '' 
             state = 'Running' if 'running' in status else 'Stopped'
             print ("{:<15}{:<10} {:<10} {:<20} {:<25} {:<15} {:<20}".format(
                 cid[:12], pid, node_type_first, name, node_ui_host, state, started_at))
