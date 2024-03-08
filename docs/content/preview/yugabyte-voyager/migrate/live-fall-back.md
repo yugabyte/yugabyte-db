@@ -155,16 +155,6 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
-### Create the target database
-
-Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
-
-If you don't provide the target YugabyteDB database name during import, yb-voyager assumes the target YugabyteDB database name is `yugabyte`. To specify the target YugabyteDB database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
-
-```sql
-CREATE DATABASE target_db_name;
-```
-
 {{<note title="Important">}}
 
 Add the following flags to the cluster before starting migration, and revert them after the migration is complete:
@@ -183,6 +173,16 @@ ysql_max_write_restart_attempts = 0
 ```
 
 {{</note>}}
+
+### Create the target database
+
+Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
+
+If you don't provide the target YugabyteDB database name during import, yb-voyager assumes the target YugabyteDB database name is `yugabyte`. To specify the target YugabyteDB database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
+
+```sql
+CREATE DATABASE target_db_name;
+```
 
 ### Create a user
 
