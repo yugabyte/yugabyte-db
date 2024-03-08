@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package onprem
 
 import (
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -20,14 +21,14 @@ import (
 
 // createOnpremProviderCmd represents the provider command
 var createOnpremProviderCmd = &cobra.Command{
-	Use:   "onprem",
+	Use:   "create",
 	Short: "Create an On-premises YugabyteDB Anywhere provider",
 	Long: "Create an On-premises provider in YugabyteDB Anywhere. " +
 		"To utilize the on-premises provider in universes, manage instance types" +
 		" and node instances using the \"yba provider onprem instance-types/node [operation]\" " +
 		"set of commands",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -43,12 +44,12 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerCode := "onprem"
+		providerCode := util.OnpremProviderType
 
 		airgapInstall, err := cmd.Flags().GetBool("airgap-install")
 		if err != nil {
@@ -163,14 +164,15 @@ var createOnpremProviderCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Onprem", "Create")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Provider: On-premises", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		providerUUID := rCreate.GetResourceUUID()
 		taskUUID := rCreate.GetTaskUUID()
 
-		waitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
+		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
 	},
 }
 
@@ -178,8 +180,7 @@ func init() {
 	createOnpremProviderCmd.Flags().SortFlags = false
 
 	createOnpremProviderCmd.Flags().String("ssh-keypair-name", "",
-		"[Required] Provider key pair name to access YugabyteDB nodes. "+
-			"YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.")
+		"[Required] Provider key pair name to access YugabyteDB nodes.")
 	createOnpremProviderCmd.Flags().String("ssh-keypair-file-path", "",
 		fmt.Sprintf("[Optional] Provider key pair file path to access YugabyteDB nodes. %s",
 			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents"+
@@ -265,19 +266,19 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "latitude":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["latitude"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "longitude":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["longitude"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 
 			}
@@ -334,13 +335,13 @@ func buildOnpremZones(zoneStrings []string, regionName string) (res []ybaclient.
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["region-name"] = val
 				} else {
-					valueNotFoundForKeyError(key)
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
 		}
