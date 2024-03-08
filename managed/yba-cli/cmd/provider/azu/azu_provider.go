@@ -18,7 +18,7 @@ var AzureProviderCmd = &cobra.Command{
 	GroupID: "type",
 	Aliases: []string{"az", util.AzureProviderType},
 	Short:   "Manage a YugabyteDB Anywhere Azure provider",
-	Long:    "Create and update an Azure provider in YugabyteDB Anywhere",
+	Long:    "Manage an Azure provider in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -34,7 +34,7 @@ func init() {
 	AzureProviderCmd.AddCommand(deleteAzureProviderCmd)
 
 	AzureProviderCmd.PersistentFlags().StringP("name", "n", "",
-		fmt.Sprintf("[Optional] The name of the provider to be created. %s",
+		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
 				"Required for create, delete, describe.",
 				formatter.GreenColor)))

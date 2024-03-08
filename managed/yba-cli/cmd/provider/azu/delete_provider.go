@@ -25,9 +25,6 @@ var deleteAzureProviderCmd = &cobra.Command{
 
 func init() {
 	deleteAzureProviderCmd.Flags().SortFlags = false
-	deleteAzureProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to be deleted.")
-	deleteAzureProviderCmd.MarkFlagRequired("name")
 	deleteAzureProviderCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }

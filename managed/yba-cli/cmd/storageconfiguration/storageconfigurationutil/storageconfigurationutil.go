@@ -2,9 +2,10 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package update
+package storageconfigurationutil
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -17,7 +18,39 @@ import (
 	storageConfigFormatter "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/storageconfiguration"
 )
 
-func updateStorageConfigurationUtil(
+// CreateStorageConfigurationUtil is util function for task progress
+func CreateStorageConfigurationUtil(
+	authAPI *ybaAuthClient.AuthAPIClient, storageName, storageUUID string,
+) {
+	fmt.Printf("The storage configuration %s (%s) has been created\n",
+		formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
+
+	storageConfigData, response, err := authAPI.GetListOfCustomerConfig().Execute()
+	if err != nil {
+		errMessage := util.ErrorFromHTTPResponse(
+			response,
+			err,
+			"Storage Configuration",
+			"Create - List Storage Configuration")
+		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+	}
+	storageConfigsUUID := make([]ybaclient.CustomerConfigUI, 0)
+	for _, s := range storageConfigData {
+		if strings.Compare(s.GetConfigUUID(), storageUUID) == 0 {
+			storageConfigsUUID = append(storageConfigsUUID, s)
+		}
+	}
+	storageConfigData = storageConfigsUUID
+	storageConfigsCtx := formatter.Context{
+		Output: os.Stdout,
+		Format: storageConfigFormatter.NewStorageConfigFormat(viper.GetString("output")),
+	}
+	storageConfigFormatter.Write(storageConfigsCtx, storageConfigData)
+
+}
+
+// UpdateStorageConfigurationUtil is util function for task progress
+func UpdateStorageConfigurationUtil(
 	authAPI *ybaAuthClient.AuthAPIClient, storageName, storageUUID string,
 ) {
 	storageConfigData, response, err := authAPI.GetListOfCustomerConfig().Execute()

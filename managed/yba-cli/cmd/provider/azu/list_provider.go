@@ -23,5 +23,4 @@ var listAzureProviderCmd = &cobra.Command{
 func init() {
 	listAzureProviderCmd.Flags().SortFlags = false
 
-	listAzureProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
 }

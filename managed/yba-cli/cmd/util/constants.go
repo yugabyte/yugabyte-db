@@ -106,6 +106,9 @@ const (
 
 	// ProviderType resource
 	ProviderType = "provider"
+
+	// StorageConfigurationType resource
+	StorageConfigurationType = "storage configuration"
 )
 
 // Different cloud provider types
@@ -120,6 +123,18 @@ const (
 	K8sProviderType = "kubernetes"
 	// OnpremProviderType type
 	OnpremProviderType = "onprem"
+)
+
+// Different storage configuration types
+const (
+	// util.S3StorageConfigType type
+	S3StorageConfigType = "S3"
+	// AzureStorageConfigType type
+	AzureStorageConfigType = "AZ"
+	// GCSStorageConfigType type
+	GCSStorageConfigType = "GCS"
+	// NFSStorageConfigType type
+	NFSStorageConfigType = "NFS"
 )
 
 // CompletedStates returns set of states that mark the task as completed
