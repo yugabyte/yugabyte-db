@@ -25,7 +25,4 @@ var describeAzureProviderCmd = &cobra.Command{
 
 func init() {
 	describeAzureProviderCmd.Flags().SortFlags = false
-	describeAzureProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to get details.")
-	describeAzureProviderCmd.MarkFlagRequired("name")
 }

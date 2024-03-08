@@ -19,7 +19,7 @@ var K8sProviderCmd = &cobra.Command{
 	Aliases:    []string{"k8s"},
 	SuggestFor: []string{"gke", "eks", "aks"},
 	Short:      "Manage a YugabyteDB Anywhere K8s provider",
-	Long:       "Create and update a K8s provider in YugabyteDB Anywhere",
+	Long:       "Manage a K8s provider in YugabyteDB Anywhere",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -35,7 +35,7 @@ func init() {
 	K8sProviderCmd.AddCommand(deleteK8sProviderCmd)
 
 	K8sProviderCmd.PersistentFlags().StringP("name", "n", "",
-		fmt.Sprintf("[Optional] The name of the provider to be created. %s",
+		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
 				"Required for create, delete, describe.",
 				formatter.GreenColor)))

@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package azure
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -18,11 +19,11 @@ import (
 
 // createAZStorageConfigurationCmd represents the storage config command
 var createAZStorageConfigurationCmd = &cobra.Command{
-	Use:   "azure",
+	Use:   "create",
 	Short: "Create an Azure YugabyteDB Anywhere storage configuration",
 	Long:  "Create an Azure storage configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		storageNameFlag, err := cmd.Flags().GetString("storage-config-name")
+		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -40,7 +41,7 @@ var createAZStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		storageName, err := cmd.Flags().GetString("storage-config-name")
+		storageName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -50,13 +51,13 @@ var createAZStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		storageCode := "AZ"
+		storageCode := util.AzureStorageConfigType
 
 		data := map[string]interface{}{
 			"BACKUP_LOCATION": backupLocation,
 		}
 
-		sasToken, err := cmd.Flags().GetString("az-sas-token")
+		sasToken, err := cmd.Flags().GetString("sas-token")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -82,11 +83,11 @@ var createAZStorageConfigurationCmd = &cobra.Command{
 			Config(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Create AZ")
+				response, err, "Storage Configuration: Azure", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		storageUUID := rCreate.GetConfigUUID()
-		createStorageConfigurationUtil(authAPI, storageName, storageUUID)
+		storageconfigurationutil.CreateStorageConfigurationUtil(authAPI, storageName, storageUUID)
 
 	},
 }
@@ -95,7 +96,11 @@ func init() {
 	createAZStorageConfigurationCmd.Flags().SortFlags = false
 
 	// Flags needed for Azure
-	createAZStorageConfigurationCmd.Flags().String("az-sas-token", "",
+	createAZStorageConfigurationCmd.Flags().String("backup-location", "",
+		"[Required] The complete backup location including "+
+			"\"https://<account-name>.blob.core.windows.net/<container-name>/<blob-name>\".")
+	createAZStorageConfigurationCmd.MarkFlagRequired("backup-location")
+	createAZStorageConfigurationCmd.Flags().String("sas-token", "",
 		fmt.Sprintf("AZ SAS Token. "+
 			"Can also be set using environment variable %s.",
 			util.AzureStorageSasTokenEnv))

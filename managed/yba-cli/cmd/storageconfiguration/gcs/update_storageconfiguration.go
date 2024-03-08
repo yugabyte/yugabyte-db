@@ -2,27 +2,29 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package update
+package gcs
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// updateNFSStorageConfigurationCmd represents the storage config command
-var updateNFSStorageConfigurationCmd = &cobra.Command{
-	Use:   "nfs",
-	Short: "Update an NFS YugabyteDB Anywhere storage configuration",
-	Long:  "Update an NFS storage configuration in YugabyteDB Anywhere",
+// updateGCSStorageConfigurationCmd represents the storage config command
+var updateGCSStorageConfigurationCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Update an GCS YugabyteDB Anywhere storage configuration",
+	Long:  "Update an GCS storage configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		storageNameFlag, err := cmd.Flags().GetString("storage-config-name")
+		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -57,7 +59,7 @@ var updateNFSStorageConfigurationCmd = &cobra.Command{
 		}
 
 		// filter by name and/or by storage-configurations code
-		storageName, err := cmd.Flags().GetString("storage-config-name")
+		storageName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -85,9 +87,9 @@ var updateNFSStorageConfigurationCmd = &cobra.Command{
 
 		storageUUID := storageConfig.GetConfigUUID()
 
-		storageCode := "NFS"
+		storageCode := util.GCSStorageConfigType
 
-		newStorageName, err := cmd.Flags().GetString("update-storage-config-name")
+		newStorageName, err := cmd.Flags().GetString("new-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -103,6 +105,39 @@ var updateNFSStorageConfigurationCmd = &cobra.Command{
 
 		data := storageConfig.GetData()
 
+		updateCredentials, err := cmd.Flags().GetBool("update-credentials")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if updateCredentials {
+			isIAM, err := cmd.Flags().GetBool("use-gcp-iam")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if isIAM {
+				data[util.UseGCPIAM] = strconv.FormatBool(isIAM)
+			} else {
+				gcsFilePath, err := cmd.Flags().GetString("credentials-file-path")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+				var gcsCreds string
+				if len(gcsFilePath) == 0 {
+					gcsCreds, err = util.GcpGetCredentialsAsString()
+					if err != nil {
+						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+					}
+
+				} else {
+					gcsCreds, err = util.GcpGetCredentialsAsStringFromFilePath(gcsFilePath)
+					if err != nil {
+						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+					}
+				}
+				data[util.GCSCredentialsJSON] = gcsCreds
+			}
+		}
+
 		requestBody := ybaclient.CustomerConfig{
 			Name:         storageCode,
 			CustomerUUID: authAPI.CustomerUUID,
@@ -115,19 +150,38 @@ var updateNFSStorageConfigurationCmd = &cobra.Command{
 			Config(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Update NFS")
+				response, err, "Storage Configuration: GCS", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		fmt.Printf("The storage configuration %s (%s) has been updated\n",
 			formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 
-		updateStorageConfigurationUtil(authAPI, storageName, storageUUID)
+		storageconfigurationutil.UpdateStorageConfigurationUtil(authAPI, storageName, storageUUID)
 
 	},
 }
 
 func init() {
-	updateNFSStorageConfigurationCmd.Flags().SortFlags = false
+	updateGCSStorageConfigurationCmd.Flags().SortFlags = false
+
+	// Flags needed for GCS
+	updateGCSStorageConfigurationCmd.PersistentFlags().String("new-name", "",
+		"[Optional] Update name of the storage configuration.")
+	updateGCSStorageConfigurationCmd.Flags().Bool("update-credentials", false,
+		"[Optional] Update credentials of the storage configuration, defaults to false."+
+			" If set to true, provide either credentials-file-path"+
+			" or set use-gcp-iam.")
+	updateGCSStorageConfigurationCmd.Flags().String("credentials-file-path", "",
+		fmt.Sprintf("GCS Credentials File Path. %s "+
+			"Can also be set using environment variable %s.",
+			formatter.Colorize(
+				"Required for non IAM role based storage configurations.",
+				formatter.GreenColor),
+			util.GCPCredentialsEnv))
+	updateGCSStorageConfigurationCmd.Flags().Bool("use-gcp-iam", false,
+		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. "+
+			"Supported for Kubernetes GKE clusters with workload identity. Configuration "+
+			"creation will fail on insufficient permissions on the host, defaults to false.")
 
 }

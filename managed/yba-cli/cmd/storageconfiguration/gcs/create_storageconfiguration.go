@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package create
+package gcs
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -19,11 +20,11 @@ import (
 
 // createGCSStorageConfigurationCmd represents the storage config command
 var createGCSStorageConfigurationCmd = &cobra.Command{
-	Use:   "gcs",
-	Short: "Create an GCS YugabyteDB Anywhere storage configuration",
-	Long:  "Create an GCS storage configuration in YugabyteDB Anywhere",
+	Use:   "create",
+	Short: "Create a GCS YugabyteDB Anywhere storage configuration",
+	Long:  "Create a GCS storage configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		storageNameFlag, err := cmd.Flags().GetString("storage-config-name")
+		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -41,7 +42,7 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		storageName, err := cmd.Flags().GetString("storage-config-name")
+		storageName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -51,7 +52,7 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		storageCode := "GCS"
+		storageCode := util.GCSStorageConfigType
 
 		data := map[string]interface{}{
 			"BACKUP_LOCATION": backupLocation,
@@ -64,7 +65,7 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 		if isIAM {
 			data[util.UseGCPIAM] = strconv.FormatBool(isIAM)
 		} else {
-			gcsFilePath, err := cmd.Flags().GetString("gcs-credentials-file-path")
+			gcsFilePath, err := cmd.Flags().GetString("credentials-file-path")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -96,12 +97,12 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 			Config(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Create GCS")
+				response, err, "Storage Configuration: GCS", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		storageUUID := rCreate.GetConfigUUID()
-		createStorageConfigurationUtil(authAPI, storageName, storageUUID)
+		storageconfigurationutil.CreateStorageConfigurationUtil(authAPI, storageName, storageUUID)
 	},
 }
 
@@ -109,7 +110,11 @@ func init() {
 	createGCSStorageConfigurationCmd.Flags().SortFlags = false
 
 	// Flags needed for GCS
-	createGCSStorageConfigurationCmd.Flags().String("gcs-credentials-file-path", "",
+	createGCSStorageConfigurationCmd.Flags().String("backup-location", "",
+		"[Required] The complete backup location including "+
+			"\"gs://\".")
+	createGCSStorageConfigurationCmd.MarkFlagRequired("backup-location")
+	createGCSStorageConfigurationCmd.Flags().String("credentials-file-path", "",
 		fmt.Sprintf("GCS Credentials File Path. %s "+
 			"Can also be set using environment variable %s.",
 			formatter.Colorize(

@@ -51,7 +51,12 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 	} else if len(strings.TrimSpace(commandCall)) == 0 {
-		codes := []string{util.AWSProviderType, util.GCPProviderType, util.AzureProviderType, util.OnpremProviderType, util.K8sProviderType}
+		codes := []string{
+			util.AWSProviderType,
+			util.GCPProviderType,
+			util.AzureProviderType,
+			util.OnpremProviderType,
+			util.K8sProviderType}
 		for _, c := range codes {
 			providerListRequest = providerListRequest.ProviderCode(c)
 			rCode, response, err := providerListRequest.Execute()

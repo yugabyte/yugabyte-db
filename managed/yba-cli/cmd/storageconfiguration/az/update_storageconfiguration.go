@@ -2,28 +2,28 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package update
+package azure
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// updateS3StorageConfigurationCmd represents the storage config command
-var updateS3StorageConfigurationCmd = &cobra.Command{
-	Use:   "s3",
-	Short: "Update an S3 YugabyteDB Anywhere storage configuration",
-	Long:  "Update an S3 storage configuration in YugabyteDB Anywhere",
+// updateAZStorageConfigurationCmd represents the storage config command
+var updateAZStorageConfigurationCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Update an Azure YugabyteDB Anywhere storage configuration",
+	Long:  "Update an Azure storage configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		storageNameFlag, err := cmd.Flags().GetString("storage-config-name")
+		storageNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -58,7 +58,7 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 		}
 
 		// filter by name and/or by storage-configurations code
-		storageName, err := cmd.Flags().GetString("storage-config-name")
+		storageName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -86,9 +86,9 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 
 		storageUUID := storageConfig.GetConfigUUID()
 
-		storageCode := "S3"
+		storageCode := util.AzureStorageConfigType
 
-		newStorageName, err := cmd.Flags().GetString("update-storage-config-name")
+		newStorageName, err := cmd.Flags().GetString("new-name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -104,39 +104,18 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 
 		data := storageConfig.GetData()
 
-		updateCredentials, err := cmd.Flags().GetBool("update-credentials")
+		sasToken, err := cmd.Flags().GetString("sas-token")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if updateCredentials {
-			isIAM, err := cmd.Flags().GetBool("use-iam-instance-profile")
+		if len(sasToken) == 0 {
+			sasToken, err = util.AzureStorageCredentialsFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-
-			if isIAM {
-				data[util.IAMInstanceProfile] = strconv.FormatBool(isIAM)
-			} else {
-				accessKeyID, err := cmd.Flags().GetString("s3-access-key-id")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				secretAccessKey, err := cmd.Flags().GetString("s3-secret-access-key")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				if len(accessKeyID) == 0 && len(secretAccessKey) == 0 {
-					awsCreds, err := util.AwsCredentialsFromEnv()
-					if err != nil {
-						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-					}
-					data[util.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-					data[util.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
-				} else {
-					data[util.AWSAccessKeyEnv] = accessKeyID
-					data[util.AWSSecretAccessKeyEnv] = secretAccessKey
-				}
-			}
+			data[util.AzureStorageSasTokenEnv] = sasToken
+		} else {
+			data[util.AzureStorageSasTokenEnv] = sasToken
 		}
 
 		requestBody := ybaclient.CustomerConfig{
@@ -151,43 +130,27 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 			Config(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Update S3")
+				response, err, "Storage Configuration: AZ", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		fmt.Printf("The storage configuration %s (%s) has been updated\n",
 			formatter.Colorize(storageName, formatter.GreenColor), storageUUID)
 
-		updateStorageConfigurationUtil(authAPI, storageName, storageUUID)
+		storageconfigurationutil.UpdateStorageConfigurationUtil(authAPI, storageName, storageUUID)
 
 	},
 }
 
 func init() {
-	updateS3StorageConfigurationCmd.Flags().SortFlags = false
+	updateAZStorageConfigurationCmd.Flags().SortFlags = false
 
-	// Flags needed for AWS
-	updateS3StorageConfigurationCmd.Flags().Bool("update-credentials", false,
-		"[Optional] Update credentials of the storage configuration, defaults to false."+
-			" If set to true, provide either (s3-access-key-id,s3-secret-access-key) pair"+
-			" or set use-iam-instance-profile.")
-	updateS3StorageConfigurationCmd.Flags().String("s3-access-key-id", "",
-		fmt.Sprintf("S3 Access Key ID. %s "+
+	// Flags needed for Azure
+	updateAZStorageConfigurationCmd.PersistentFlags().String("new-name", "",
+		"[Optional] Update name of the storage configuration.")
+	updateAZStorageConfigurationCmd.Flags().String("sas-token", "",
+		fmt.Sprintf("AZ SAS Token to be updated. "+
 			"Can also be set using environment variable %s.",
-			formatter.Colorize(
-				"Required for non IAM role based storage configurations.",
-				formatter.GreenColor),
-			util.AWSAccessKeyEnv))
-	updateS3StorageConfigurationCmd.Flags().String("s3-secret-access-key", "",
-		fmt.Sprintf("S3 Secret Access Key. %s "+
-			"Can also be set using environment variable %s.",
-			formatter.Colorize(
-				"Required for non IAM role based storage configurations.",
-				formatter.GreenColor),
-			util.AWSSecretAccessKeyEnv))
-	updateS3StorageConfigurationCmd.MarkFlagsRequiredTogether("s3-access-key-id", "s3-secret-access-key")
-	updateS3StorageConfigurationCmd.Flags().Bool("use-iam-instance-profile", false,
-		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. Configuration "+
-			"creation will fail on insufficient permissions on the host, defaults to false.")
+			util.AzureStorageSasTokenEnv))
 
 }

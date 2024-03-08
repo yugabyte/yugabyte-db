@@ -25,7 +25,4 @@ var describeAWSProviderCmd = &cobra.Command{
 
 func init() {
 	describeAWSProviderCmd.Flags().SortFlags = false
-	describeAWSProviderCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the provider to get details.")
-	describeAWSProviderCmd.MarkFlagRequired("name")
 }

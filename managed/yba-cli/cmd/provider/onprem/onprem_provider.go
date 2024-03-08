@@ -36,7 +36,7 @@ func init() {
 	OnpremProviderCmd.AddCommand(deleteOnpremProviderCmd)
 
 	OnpremProviderCmd.PersistentFlags().StringP("name", "n", "",
-		fmt.Sprintf("[Optional] The name of the provider to be created. %s",
+		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
 				"Required for create, delete, describe, instance-types and nodes.",
 				formatter.GreenColor)))

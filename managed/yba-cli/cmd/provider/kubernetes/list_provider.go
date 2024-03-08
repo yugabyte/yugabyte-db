@@ -21,7 +21,4 @@ var listK8sProviderCmd = &cobra.Command{
 
 func init() {
 	listK8sProviderCmd.Flags().SortFlags = false
-
-	listK8sProviderCmd.Flags().StringP("name", "n", "", "[Optional] Name of the provider.")
-
 }
