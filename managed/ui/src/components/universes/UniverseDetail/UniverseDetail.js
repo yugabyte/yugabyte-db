@@ -64,7 +64,10 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
-import { VM_PATCHING_RUNTIME_CONFIG, isImgBundleSupportedByProvider } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  VM_PATCHING_RUNTIME_CONFIG,
+  isImgBundleSupportedByProvider
+} from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 //icons
@@ -189,6 +192,17 @@ class UniverseDetail extends Component {
     } else {
       this.props.getUniverseInfo(universeUUID);
     }
+  };
+
+  isUniverseDeleting = () => {
+    const updateInProgress = this.props.universe?.currentUniverse?.data?.universeDetails
+      ?.updateInProgress;
+    const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
+    const currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
+    if (currentUniverseTasks?.length > 0 && updateInProgress) {
+      return true;
+    }
+    return false;
   };
 
   showUpgradeMarker = () => {
@@ -777,28 +791,30 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused && isOsPatchingEnabled && isImgBundleSupportedByProvider(provider) && (
-                        <RbacValidator
-                          isControl
-                          accessRequiredOn={{
-                            onResource: uuid,
-                            ...ApiPermissionMap.MODIFY_UNIVERSE
-                          }}
-                        >
-                          <YBMenuItem
-                            disabled={isUniverseStatusPending}
-                            onClick={showLinuxSoftwareUpgradeModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.upgradeSoftware'
-                            )}
+                      {!universePaused &&
+                        isOsPatchingEnabled &&
+                        isImgBundleSupportedByProvider(provider) && (
+                          <RbacValidator
+                            isControl
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.MODIFY_UNIVERSE
+                            }}
                           >
-                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                              Upgrade Linux Version
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        </RbacValidator>
-                      )}
+                            <YBMenuItem
+                              disabled={isUniverseStatusPending}
+                              onClick={showLinuxSoftwareUpgradeModal}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.upgradeSoftware'
+                              )}
+                            >
+                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                                Upgrade Linux Version
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          </RbacValidator>
+                        )}
                       {!universePaused &&
                         runtimeConfigs &&
                         !isOsPatchingEnabled &&
@@ -1170,7 +1186,10 @@ class UniverseDetail extends Component {
                                 modal={modal}
                                 closeModal={closeModal}
                                 button={
-                                  <YBMenuItem onClick={showSupportBundleModal}>
+                                  <YBMenuItem
+                                    onClick={showSupportBundleModal}
+                                    disabled={this.isUniverseDeleting()}
+                                  >
                                     <YBLabelWithIcon icon="fa fa-file-archive-o">
                                       Support Bundles
                                     </YBLabelWithIcon>
@@ -1246,7 +1265,10 @@ class UniverseDetail extends Component {
                                 currentCustomer.data.features,
                                 'universes.details.overview.pausedUniverse'
                               )}
-                              disabled={universePaused && isUniverseStatusPending}
+                              disabled={
+                                (universePaused && isUniverseStatusPending) ||
+                                this.isUniverseDeleting()
+                              }
                             >
                               <YBLabelWithIcon
                                 icon={
