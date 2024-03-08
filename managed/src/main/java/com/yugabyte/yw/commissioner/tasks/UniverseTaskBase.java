@@ -1697,8 +1697,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected Set<NodeDetails> filterUniverseNodes(
       Universe universe, Collection<NodeDetails> nodes, Predicate<NodeDetails> predicate) {
     if (universe != null) {
+      // Node name can be null if the submission of the tasks itself fails.
+      // Any subsequent task like destroy which calls this method will fail.
       Map<String, NodeDetails> universeNodeDetailsMap =
           universe.getNodes().stream()
+              .filter(n -> StringUtils.isNotBlank(n.getNodeName()))
               .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
       return nodes.stream()
           .map(n -> universeNodeDetailsMap.get(n.getNodeName()))
