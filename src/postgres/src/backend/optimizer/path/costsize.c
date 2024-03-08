@@ -6194,7 +6194,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 				ParamPathInfo *param_info)
 {
 	Cost		startup_cost = 0;
-	Cost		total_cost = 0;
+	Cost		run_cost = 0;
 	int32		tuple_width = 0;
 	Oid			reloid = planner_rt_fetch(baserel->relid, root)->relid;
 	int32		num_blocks;
@@ -6220,7 +6220,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	if (!enable_seqscan)
 	{
 		startup_cost += disable_cost;
-		total_cost += disable_cost;
 	}
 
 	/* DocDB costs */
@@ -6229,21 +6228,20 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	/* Block fetch cost from disk */
 	num_blocks = ceil(baserel->tuples * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
-	total_cost += yb_seq_block_cost * num_blocks;
+	run_cost += yb_seq_block_cost * num_blocks;
 
 	/* DocDB costs for merging key-value pairs to form tuples */
 	per_merge_cost = num_key_value_pairs_per_tuple *
 					 yb_docdb_merge_cpu_cycles * cpu_operator_cost;
 
 	/* Seek to first key cost */
-	if (baserel->tuples > 1)
+	if (baserel->tuples > 0)
 	{
 		per_seek_cost = yb_get_lsm_seek_cost(baserel->tuples,
 											 num_key_value_pairs_per_tuple,
 											 num_sst_files) +
 						per_merge_cost;
 	}
-	startup_cost += per_seek_cost;
 
 	/* Next for remaining keys */
 	per_next_cost = (yb_docdb_next_cpu_cycles * cpu_operator_cost) +
@@ -6266,11 +6264,14 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
 	startup_cost += qual_cost.startup;
-	total_cost +=
+	run_cost +=
 		(qual_cost.per_tuple + list_length(pushed_down_clauses) *
 		 yb_docdb_remote_filter_overhead_cycles *
 		 cpu_operator_cost) *
 		baserel->tuples;
+	/* tlist eval costs are paid per output row, not per tuple scanned */
+	startup_cost += path->pathtarget->cost.startup;
+	run_cost += path->pathtarget->cost.per_tuple * path->rows;
 
 	remote_filtered_rows =
 		clamp_row_est(baserel->tuples *
@@ -6293,16 +6294,18 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->yb_estimated_num_nexts = num_nexts;
 	path->yb_estimated_num_seeks = num_seeks;
 
-	total_cost += (num_seeks * per_seek_cost) +
-				  (num_nexts * per_next_cost);
+	run_cost += (num_seeks * per_seek_cost) +
+				(num_nexts * per_next_cost);
 
-	total_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
-												  docdb_result_width);
+	/* Network latency cost is added to startup cost */
+	startup_cost += yb_local_latency_cost;
+	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
+												docdb_result_width);
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
-	total_cost += qual_cost.per_tuple * remote_filtered_rows;
+	run_cost += qual_cost.per_tuple * remote_filtered_rows;
 	all_filter_clauses = list_concat(pushed_down_clauses, local_clauses);
 
 	path->rows =
@@ -6311,7 +6314,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 											 baserel->relid, JOIN_INNER, NULL));
 
 	path->startup_cost = startup_cost;
-	path->total_cost = total_cost;
+	path->total_cost = startup_cost + run_cost;
 	yb_parallel_cost(path);
 }
 
@@ -6409,9 +6412,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	List	   *qpquals;
 	Cost		startup_cost = 0;
 	Cost		run_cost = 0;
-	Cost		cpu_run_cost = 0;
-	Cost		index_startup_cost = 0;
-	Cost		index_total_cost = 0;
 	Selectivity index_selectivity;
 	List	   *qinfos;
 	double		num_index_tuples;
@@ -6815,8 +6815,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		per_next_cost *= yb_backward_seek_cost_factor;
 	}
 
-	index_startup_cost += per_seek_cost;
-	index_total_cost +=
+	run_cost +=
 		num_seeks * per_seek_cost + num_nexts * per_next_cost;
 
 	/* Non index filters will be executed as remote and local filters. */
@@ -6846,8 +6845,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		(yb_docdb_remote_filter_overhead_cycles *
 		 cpu_operator_cost * has_pushed_down_clauses);
 
-	index_startup_cost += qual_cost.startup;
-	index_total_cost += per_tuple_qual_cost * num_index_tuples;
+	startup_cost += qual_cost.startup;
+	run_cost += per_tuple_qual_cost * num_index_tuples;
 
 	/**
 	 * Compute disk fetch costs. We make following assumptions.
@@ -6872,20 +6871,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	index_sequential_pages_fetched =
 		index_pages_fetched - index_random_pages_fetched;
 
-	index_total_cost += index_random_pages_fetched * yb_random_block_cost;
-	index_total_cost += index_sequential_pages_fetched * yb_seq_block_cost;
+	run_cost += index_random_pages_fetched * yb_random_block_cost;
+	run_cost += index_sequential_pages_fetched * yb_seq_block_cost;
 
 	/*
 	 * Save amcostestimate's results for possible use in bitmap scan planning.
 	 * We don't bother to save indexStartupCost or indexCorrelation, because a
 	 * bitmap scan doesn't care about either.
 	 */
-	path->indextotalcost = index_total_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
+	path->indextotalcost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->indexselectivity = index_selectivity;
-
-	/* all costs for touching index itself included here */
-	startup_cost += index_startup_cost;
-	run_cost += index_total_cost - index_startup_cost;
 
 	if (!is_primary_index && !index_only)
 	{
@@ -6913,9 +6908,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 		path->yb_estimated_num_seeks += num_baserel_seeks;
 
-		startup_cost += baserel_per_seek_cost;
 		run_cost += (baserel_per_seek_cost * num_baserel_seeks);
-
 
 		int	num_docdb_blocks_fetched =
 			ceil(remote_filtered_rows * baserel_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
@@ -6926,6 +6919,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
 
+	/* Network latency cost is added to startup cost */
+	startup_cost += yb_local_latency_cost;
 	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
 												docdb_result_width);
 
@@ -6936,9 +6931,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	/* tlist eval costs are paid per output row, not per tuple scanned */
 	startup_cost += path->path.pathtarget->cost.startup;
-	cpu_run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
-
-	run_cost += cpu_run_cost;
+	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
