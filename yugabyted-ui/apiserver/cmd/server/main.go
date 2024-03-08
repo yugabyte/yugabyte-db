@@ -269,6 +269,9 @@ func main() {
     // GetClusterConnections - Get the node address for the current node
     e.GET("/api/node_address", c.GetNodeAddress)
 
+    // GetPITRConfig - Get the PITR configuration for YugabyteDB cluster
+    e.GET("/api/pitr", c.GetPITRConfigurations)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files
