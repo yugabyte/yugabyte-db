@@ -38,7 +38,7 @@ The following steps show how to meet these prerequisites.
 
 - Install [`eksctl`](https://eksctl.io/)
 
-`eksctl` is a simple command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). The following instructions apply to macOS.
+`eksctl` is a basic command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). The following instructions apply to macOS.
 
 ```sh
 $ brew tap weaveworks/tap
@@ -307,7 +307,7 @@ yb-demo-us-east-1c   yb-tserver-service   LoadBalancer   10.100.119.40    a6cd62
 yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>                                                                    7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   55s
 ```
 
-Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
+Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose as all of them will show the same cluster metadata.
 
 ![mz-ybmaster](/images/deploy/kubernetes/aws-multizone-ybmaster.png)
 
@@ -330,9 +330,7 @@ To see the new configuration, go to `http://<external-ip>:7000/cluster-config`.
 
 ## 5. Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell (`ysqlsh`), run the following command.
-
-us-east-1a,us-east-1b,us-east-1c \
+To connect and use the YSQL Shell (`ysqlsh`), run the following command:
 
 ```sh
 $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ysqlsh \
