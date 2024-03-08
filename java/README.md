@@ -1,9 +1,7 @@
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,9 +22,11 @@ System Requirements
 Building the Client
 ------------------------------------------------------------
 
+```
 $ mvn package -DskipTests
+```
 
-The client jar will can then be found at yb-client/target.
+The client jar will can then be found at `yb-client/target`
 
 
 Publishing YB build to S3
@@ -34,7 +34,8 @@ Publishing YB build to S3
 
 You can push YB client package to S3, so yugaware and other
 clients can have the latest changes. This needs the s3 credentials
-in ~/.m2/settings.xml
+in `~/.m2/settings.xml`
+```
   <settings>
     <servers>
       <server>
@@ -49,8 +50,10 @@ in ~/.m2/settings.xml
       </server>
     </servers>
   </settings>
-
+```
+```
 $ mvn deploy  -DskipTests
+```
 
 Running the Tests
 ------------------------------------------------------------
@@ -59,37 +62,40 @@ Most of the unit tests will start their own cluster but it
 is also possible to provide your own.
 
 By default, the unit tests will start a master and a tablet
-server using the flags file located in the src/test/resources/
+server using the flags file located in the `src/test/resources/`
 directory. The tests will locate the master and tablet server
-binaries by looking in 'build/latest/bin' from the root of
+binaries by looking in `build/latest/bin` from the root of
 the git repository. If you have recently built the C++ code
 for YB, those should be present already.
 
 Once everything is setup correctly, run:
-
+```
 $ mvn test
-
+```
 In order to point the unit tests to an existing cluster,
 you need to use a command line like this one:
-
+```
 $ mvn test -DstartCluster=false
-
+```
 If you choose to not start a cluster, the tests will look for
-a master running on localhost:7100. If you would like to run
+a master running on `localhost:7100`
+
+If you would like to run
 against a remote cluster, you can override this using
 -DmasterAddress:
-
+```
 $ mvn test -DstartCluster=false -DmasterAddress=foo.example.com:7100
-
+```
 If for some reason you would like to start a cluster, but use
-binaries other than the ones in build/latest/, you can pass
--DbinDir=/path/to/directory.
+binaries other than the ones in `build/latest/`, 
+
+you can pass `-DbinDir=/path/to/directory`
 
 Integration tests, including tests which cover Hadoop integration,
 may be run with:
-
+```
 $ mvn verify
-
+```
 State of Eclipse integration
 ------------------------------------------------------------
 
@@ -110,10 +116,10 @@ of the complexity comes from how m2e maps maven lifecycle
 phases to Eclipse build actions. The problem is that m2e
 must be told what to do with each maven plugin, and this
 information is either conveyed through explicit mapping
-metadata found in pom.xml, or in an m2e "extension". m2e
+metadata found in `pom.xml`, or in an m2e "extension". m2e
 ships with extensions for some of the common maven plugins,
 but not for maven-antrun-plugin or maven-protoc-plugin. The
-explicit metadata mapping found in yb-client/pom.xml has
+explicit metadata mapping found in `yb-client/pom.xml` has
 placated m2e in both cases (in Eclipse see
 yb-client->Properties->Maven->Lifecycle Mapping).
 Nevertheless, maven-protoc-plugin isn't being run correctly.
@@ -131,29 +137,31 @@ for far more excruciating detail.
 The maven-eclipse-plugin approach, despite being old
 fashioned and largely unsupported, is easier to use. The
 very first time you want to use it, run the following:
-
+```
 $ mvn -Declipse.workspace=<path-to-eclipse-workspace> eclipse:configure-workspace
-
-This will add the M2_REPO classpath variable to Eclipse. You
+```
+This will add the `M2_REPO` classpath variable to Eclipse. You
 can verify this in
 Preferences->Java->Build Path->Classpath Variables. It
-should be set to `/home/<user>/.m2/repository`.
+should be set to `/home/<user>/.m2/repository`
 
 To generate the Eclipse project files, run:
-
+```
 $ mvn eclipse:eclipse
-
+```
 If you want to look at Javadoc/source in Eclipse for
 dependent artifacts, run:
-
+```
 $ mvn eclipse:eclipse -DdownloadJavadocs=true -DdownloadSources=true
-
+```
 So what's the problem with maven-eclipse-plugin? The issue
-lies with maven-protoc-plugin. Because all of our .proto
-files are in src/yb, the "resource path" in
+lies with maven-protoc-plugin. Because all of our `.proto`
+files are in `src/yb`, the "resource path" in
 maven-protoc-plugin must be absolute and prefixed with
-${project.baseDir). This absolute path is copied verbatim
-to an Eclipse .classpath <classpathentry/>, and Eclipse
+`${project.baseDir)`
+
+This absolute path is copied verbatim
+to an Eclipse classpath, and Eclipse
 doesn't know what to do with it, causing it avoid building
 yb-client altogether. Other plugins (like
 maven-avro-plugin) don't seem to have this problem, so it's
