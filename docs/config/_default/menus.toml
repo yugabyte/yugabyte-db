@@ -718,7 +718,7 @@
 
 [[preview_releases]]
   name = "End of life and older previews"
-  parent = "release-notes"
+  parent = "ybdb-releases"
   weight = 9999
   identifier = "end-of-life"
   [preview_releases.params]
