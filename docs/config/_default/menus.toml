@@ -711,7 +711,7 @@
 [[preview_releases]]
   name = "YugabyteDB"
   weight = 4
-  identifier = "release-notes"
+  identifier = "ybdb-releases"
   url = "/preview/releases/ybdb-releases/"
   [preview_releases.params]
     showSection = true

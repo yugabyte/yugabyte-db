@@ -39,7 +39,7 @@ Patch and revision releases in a stable release series (`MAJOR.EVEN`) include bu
 
 {{< note title="Important" >}}
 
-- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../release-notes/) and [YugabyteDB Anywhere releases](../yba-releases/).
+- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
 - For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
 
 {{< /note >}}
