@@ -546,8 +546,8 @@
   to = "/preview/releases/ybdb-release/"
 
 [[redirects]]
-  from = "/preview/releases/release-notes/"
-  to = "/preview/releases/ybdb-release/"
+  from = "/preview/releases/release-notes/*"
+  to = "/preview/releases/ybdb-release/:splat"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
