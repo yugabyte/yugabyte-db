@@ -24,7 +24,7 @@ import static play.inject.Bindings.bind;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -47,6 +47,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -78,7 +79,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   private Config mockConfig;
 
   private final Set<TaskType> RETRYABLE_TASKS =
-      ImmutableSet.of(
+      ImmutableSortedSet.of(
           TaskType.CreateKubernetesUniverse,
           TaskType.InstallYbcSoftwareOnK8s,
           TaskType.DestroyKubernetesUniverse,
@@ -119,7 +120,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.FinalizeUpgrade,
           TaskType.CertsRotate,
           TaskType.SystemdUpgrade,
-          TaskType.ModifyAuditLoggingConfig);
+          TaskType.ModifyAuditLoggingConfig,
+          TaskType.StartMasterOnNode);
 
   @Override
   protected Application provideApplication() {
@@ -584,7 +586,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
-            .collect(Collectors.toSet());
+            .collect(Collectors.toCollection(TreeSet::new));
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }
 
