@@ -37,6 +37,7 @@ JAVA	org.yb.pgsql.TestPgRegressSecondaryIndexScan
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgHintPlan
 JAVA	org.yb.pgsql.TestPgRegressTrigger
+JAVA	org.yb.pgsql.TestPgRegressTypesMisc
 JAVA	org.yb.pgsql.TestPgReplicationSlot
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgWrapper#testNotNullConstraint
