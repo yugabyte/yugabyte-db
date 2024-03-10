@@ -45,6 +45,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/yb_guc.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
@@ -477,6 +478,12 @@ class PgClient::Impl : public BigDataFetcher {
     }
 
     tserver::PgFinishTransactionResponsePB resp;
+
+    if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+      LOG_WITH_PREFIX(INFO) << Format("$0$1 transaction",
+                                      (commit ? "Committing" : "Aborting"),
+                                      (ddl_mode ? " DDL" : ""));
+    }
 
     RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
     return ResponseStatus(resp);
