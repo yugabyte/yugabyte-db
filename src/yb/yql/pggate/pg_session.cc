@@ -278,7 +278,7 @@ class PgSession::RunHelper {
     if (operations_.empty() && pg_session_.buffering_enabled_ &&
         !force_non_bufferable_ && op->is_write()) {
         if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-          LOG(INFO) << "Buffering operation: " << op->ToString();
+          LOG_WITH_PREFIX(INFO) << "Buffering operation: " << op->ToString();
         }
         return buffer.Add(table,
                           PgsqlWriteOpPtr(std::move(op), down_cast<PgsqlWriteOp*>(op.get())),
@@ -315,7 +315,7 @@ class PgSession::RunHelper {
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-      LOG(INFO) << "Applying operation: " << op->ToString();
+      LOG_WITH_PREFIX(INFO) << "Applying operation: " << op->ToString();
     }
 
     const auto row_mark_type = GetRowMarkType(*op);
@@ -342,8 +342,8 @@ class PgSession::RunHelper {
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-      LOG(INFO) << "Flushing collected operations, using session type: "
-                << ToString(session_type_) << " num ops: " << operations_.size();
+      LOG_WITH_PREFIX(INFO) << "Flushing collected operations, using session type: "
+                            << ToString(session_type_) << " num ops: " << operations_.size();
     }
 
     return pg_session_.Perform(
@@ -365,6 +365,10 @@ class PgSession::RunHelper {
 
   inline UseCatalogSession IsCatalog() const {
     return UseCatalogSession(session_type_ == SessionType::kCatalog);
+  }
+
+  inline std::string LogPrefix() const {
+    return pg_session_.LogPrefix();
   }
 
   BufferableOperations operations_;
@@ -646,9 +650,9 @@ Result<bool> PgSession::IsInitDbDone() {
 
 Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-    LOG(INFO) << "Flushing buffered operations, using "
-              << (transactional ? "transactional" : "non-transactional")
-              << " session (num ops: " << ops.size() << ")";
+    LOG_WITH_PREFIX(INFO) << "Flushing buffered operations, using "
+                          << (transactional ? "transactional" : "non-transactional")
+                          << " session (num ops: " << ops.size() << ")";
   }
 
   if (transactional) {
@@ -1028,6 +1032,10 @@ PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
 
 Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {
   return pg_client_.ActiveSessionHistory();
+}
+
+const std::string PgSession::LogPrefix() const {
+  return Format("Session id $0: ", pg_client_.SessionID());
 }
 
 }  // namespace yb::pggate
