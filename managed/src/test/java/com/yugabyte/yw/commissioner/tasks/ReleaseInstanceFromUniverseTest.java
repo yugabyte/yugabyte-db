@@ -148,9 +148,9 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
-          TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
+          TaskType.ModifyBlackList,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
