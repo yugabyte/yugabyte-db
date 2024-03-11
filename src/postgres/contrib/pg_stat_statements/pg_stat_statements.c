@@ -436,8 +436,8 @@ static void enforce_bucket_factor(int * value);
 
 //this may work without extern.
 extern void
-bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
+bundlePgss(int flag, int64 queryId, const char *query, double total_time,
+		   int64 rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
 
 
 void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result);
@@ -3866,8 +3866,8 @@ char* quotedString(const char* str)
 
 
 extern void
-bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result)
+bundlePgss(int flag, int64 queryId, const char *query, double total_time,
+		   int64 rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result)
 {
 	if (flag == 0)
 	{ // stop bundle and print everything
@@ -3882,8 +3882,8 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 					  "dirtied,local_blks_written,temp_blks_read,temp_blks_"
 					  "written,blk_read_time,blk_write_time\n");
 
-		fprintf(fptr,"%d,%d,%lld,%s,%ld,%f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n",
-				result->userid, result->dbid, (int64_t)result->queryid,quotedString(result->query),
+		fprintf(fptr,"%d,%d,%ld,%s,%ld,%f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n",
+				result->userid, result->dbid, (int64)result->queryid,quotedString(result->query),
 				result->calls, result->total_time,
 				result->min_time, result->max_time,
 				result->mean_time,result->sum_var_time,

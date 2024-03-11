@@ -100,7 +100,7 @@ static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
-void dumpAshData(int64_t queryId,TimestampTz start , TimestampTz end,char *result_log_path);
+void dumpAshData(int64 queryId,TimestampTz start , TimestampTz end,char *result_log_path);
 void dumpFullAshData(TimestampTz start , TimestampTz end,char *result_log_path);
 // void fetchSchemaDetails(int flag ,Query *query, MyValue *result);
 
@@ -689,7 +689,7 @@ void print_uuid_to_file(unsigned char uuid[], FILE* fptr) {
 
 
 void
-dumpAshData(int64_t queryId, TimestampTz start, TimestampTz end,char *result_log_path)
+dumpAshData(int64 queryId, TimestampTz start, TimestampTz end,char *result_log_path)
 {
 	char* pgss_log_path = (char*)malloc(strlen(result_log_path) + 30);
 	strcpy(pgss_log_path, result_log_path);
@@ -731,8 +731,8 @@ dumpAshData(int64_t queryId, TimestampTz start, TimestampTz end,char *result_log
 					pgstat_get_wait_event(
 						yb_ash->circular_buffer[i].wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
-			fprintf(fptr, ",%llu,%llu,%s,%s,%f\n",
-					(int64_t)yb_ash->circular_buffer[i].metadata.query_id,
+			fprintf(fptr, ",%ld,%llu,%s,%s,%f\n",
+					(int64)yb_ash->circular_buffer[i].metadata.query_id,
 					yb_ash->circular_buffer[i].metadata.session_id,
 					client_node_ip,
 					yb_ash->circular_buffer[i].aux_info,
@@ -787,8 +787,8 @@ dumpFullAshData(TimestampTz start, TimestampTz end,char *result_log_path)
 					pgstat_get_wait_event(
 						yb_ash->circular_buffer[i].wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
-			fprintf(fptr, ",%llu,%llu,%s,%s,%f\n",
-					(int64_t)yb_ash->circular_buffer[i].metadata.query_id,
+			fprintf(fptr, ",%ld,%llu,%s,%s,%f\n",
+					(int64)yb_ash->circular_buffer[i].metadata.query_id,
 					yb_ash->circular_buffer[i].metadata.session_id,
 					client_node_ip,
 					yb_ash->circular_buffer[i].aux_info,

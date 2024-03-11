@@ -48,7 +48,7 @@ extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,
 							 int *samples_stored);
 
-extern void dumpAshData(int64_t queryId,TimestampTz start , TimestampTz end,char *result_log_path);
+extern void dumpAshData(int64 queryId,TimestampTz start , TimestampTz end,char *result_log_path);
 extern void dumpFullAshData(TimestampTz start , TimestampTz end,char *result_log_path);
 
 #endif							/* YB_ASH_H */

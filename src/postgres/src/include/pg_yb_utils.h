@@ -1152,8 +1152,8 @@ typedef struct MyValue
 
 extern TimestampTz start;
 extern TimestampTz end;
-typedef void (*bundlePgssPtr)(int flag, int64_t queryId, const char *query, double total_time,
-		   int64_t rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
+typedef void (*bundlePgssPtr)(int flag, int64 queryId, const char *query, double total_time,
+		   int64 rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
 extern bundlePgssPtr bundleptr;
 
 

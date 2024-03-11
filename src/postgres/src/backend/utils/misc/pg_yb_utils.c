@@ -4592,14 +4592,12 @@ void remove_from_shared_hashtable(HTAB *htab, int64 key) {
 }
 
 
-char* getPath(int64_t queryid, const char* timeStr)
+char* getPath(int64 queryid, const char* timeStr)
 {
 	char pwd[1024];
 	if(getcwd(pwd, 1024) == NULL)
 	{
-		FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
-		fprintf(fptr, "getcwd phata...\n" );
-		fclose(fptr);
+		ereport(LOG, (errmsg("getcwd phata...")));
 		return NULL;
 	}
 	if (chdir("..") == -1) {
@@ -4609,9 +4607,7 @@ char* getPath(int64_t queryid, const char* timeStr)
 	char dir[1024];
 	if(getcwd(dir, 1024) == NULL)
 	{
-		FILE* fptr = fopen("/Users/ishanchhangani/error.txt","a");
-		fprintf(fptr, "getcwd phata...\n" );
-		fclose(fptr);
+		ereport(LOG, (errmsg("getcwd phata...")));
 		return NULL;
 	}
 	if (chdir(pwd) == -1) {
@@ -4628,7 +4624,7 @@ char* getPath(int64_t queryid, const char* timeStr)
 			return NULL;
 		}
 	}
-	sprintf(dir, "%s/%lld",dir, queryid);
+	sprintf(dir, "%s/%ld",dir, queryid);
 	if(mkdir(dir, 0777) == -1)
 	{
 		if(errno != EEXIST)
@@ -4658,7 +4654,7 @@ my_timestamptz_to_str(TimestampTz dt)
 	time_t		result = (time_t) timestamptz_to_time_t(dt);
 	struct tm  *ltime = localtime(&result);
 
-	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", ltime);
+	strftime(ts, sizeof(ts), "%Y-%m-%d,%H:%M:%S", ltime);
 	// strftime(zone, sizeof(zone), "%Z", ltime);
 
 	// snprintf(buf, sizeof(buf), "%s.%06d %s",
@@ -4701,7 +4697,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	start = GetCurrentTimestamp();
 	const char* timeStr = my_timestamptz_to_str(start);
 	bool is_queryid_null = PG_ARGISNULL(0);
-	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	int64 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 
 	//create shared variables struct
 	if(sharedBundleStruct == NULL)
@@ -4717,7 +4713,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	//check if a bundle is already started for this queryid
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(result){
-		ereport(LOG, (errmsg("Cannot start the bundle for the queryid[ %lld ] as it is already running", queryid)));
+		ereport(LOG, (errmsg("Cannot start the bundle for the queryid[ %ld ] as it is already running", queryid)));
 		PG_RETURN_BOOL(false);
 	}
 
@@ -4753,7 +4749,7 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	// 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 	// 			 (errmsg("only superusers can stop and print bundle details"))));
 	bool is_queryid_null = PG_ARGISNULL(0);
-	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
+	int64 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 	
 
 	//maybe just return false if the shared structs are not

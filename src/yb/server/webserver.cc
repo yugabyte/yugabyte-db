@@ -690,19 +690,21 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(
                   ? "Strict-Transport-Security: max-age=31536000\r\n"
                   : "";
 
+
+
+
+  // handle diagnostics
   if (strcmp(request_info->uri, "/query-diagnostics") == 0) {
+    // const char* query_id = NULL;
+    // if (request_info->query_string &&
+    //     strstr(request_info->query_string, "query_id=") == request_info->query_string) {
+    //   query_id = request_info->query_string + strlen("query_id=");
+    // }
 
-    const char* query_id = NULL;
-    if (request_info->query_string &&
-        strstr(request_info->query_string, "query_id=") == request_info->query_string) {
-      query_id = request_info->query_string + strlen("query_id=");
-    }
 
-    // If the query_id parameter was not found, log an error and return
-    if (query_id == NULL) {
-      LOG(INFO) << "Could not find query_id parameter";
-      // return SQ_HANDLED_CLOSE_CONNECTION;
 
+    if (request_info->query_string == NULL) {
+      LOG(INFO) << "Could not find query_id & timestamp parameter";
       sq_printf(
           connection,
           "HTTP/1.1 200 OK\r\n"
@@ -718,26 +720,58 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(
       sq_write(connection, str.c_str(), str.length());
       return SQ_HANDLED_OK;
     }
-    else 
-    {
 
-    //checking if such a folder exists.
-    char folder_path[1000];
-    snprintf(
-        folder_path, 1000, "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s",
-        query_id);
-    if (chdir(folder_path) != 0) {
-      LOG(ERROR) << "Could not find this folder: " << folder_path;
-        return SQ_HANDLED_CLOSE_CONNECTION;
+    std::string query_string = request_info->query_string;
+    std::string query_id, timestamp;
+    size_t pos = query_string.find("query_id=");
+    if (pos != std::string::npos) {
+      size_t end = query_string.find("&", pos);
+      query_id = query_string.substr(pos + 9, end - pos - 9);
+    }
+    pos = query_string.find("timestamp=");
+    if (pos != std::string::npos) {
+      size_t end = query_string.find("&", pos);
+      timestamp = query_string.substr(pos + 10, end - pos - 10);
     }
 
+    // If the query_id parameter was not found, log an error and return
+    if (query_id.size() == 0 || timestamp.size() == 0) {
+      LOG(INFO) << "Could not find query_id/timestamp parameter";
+      // return SQ_HANDLED_CLOSE_CONNECTION;
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, str.length(), content_encoding, hsts);
 
+      sq_write(connection, str.c_str(), str.length());
+      return SQ_HANDLED_OK;
+    }
+    //query_id and timestamp are now available
+    else {
+      // checking if such a folder exists.
+      char folder_path[1000];
+      snprintf(
+          folder_path, 1000,
+          "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s/%s",
+          query_id.c_str(), timestamp.c_str());
+      if (chdir(folder_path) != 0) {
+        LOG(ERROR) << "Could not find this folder: " << folder_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
 
       content_type = "application/x-tar";
       char tar_file_path[1000];
       snprintf(
-          tar_file_path, 1000, "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s.tar",
-          query_id);
+          tar_file_path, 1000,
+          "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s_%s.tar",
+          query_id.c_str(), timestamp.c_str());
 
       FILE* tar_file = fopen(tar_file_path, "rb");
       if (tar_file == NULL) {
@@ -757,11 +791,12 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(
       fread(buffer, tar_file_size, 1, tar_file);
       fclose(tar_file);
 
-
-      //for naming the file download.
+      // for naming the file download.
       char content_disposition[1024];
-      snprintf(content_disposition, sizeof(content_disposition), "Content-Disposition: attachment; filename=\"%s.tar\"", query_id);
-
+      snprintf(
+          content_disposition, sizeof(content_disposition),
+          "Content-Disposition: attachment; filename=\"%s_%s.tar\"", query_id.c_str(),
+          timestamp.c_str());
 
       sq_printf(
           connection,
@@ -774,7 +809,7 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(
           "%s"
           "Access-Control-Allow-Origin: *\r\n"
           "\r\n",
-          content_type, tar_file_size, content_disposition,content_encoding, hsts);
+          content_type, tar_file_size, content_disposition, content_encoding, hsts);
 
       sq_write(connection, buffer, tar_file_size);
 
