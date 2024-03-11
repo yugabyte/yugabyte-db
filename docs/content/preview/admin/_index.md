@@ -67,10 +67,4 @@ For information about [yugabyted](../reference/configuration/yugabyted/) and con
     href="yb-ts-cli/"
     icon="fa-solid fa-toolbox">}}
 
-  {{<index/item
-    title="yb-docker-ctl"
-    body="Create and manage Docker-based local clusters."
-    href="yb-docker-ctl/"
-    icon="fa-brands fa-docker">}}
-
 {{</index/block>}}
