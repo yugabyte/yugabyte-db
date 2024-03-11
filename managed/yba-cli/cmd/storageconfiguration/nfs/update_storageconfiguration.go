@@ -36,11 +36,8 @@ var updateNFSStorageConfigurationCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 
 		r, response, err := storageConfigListRequest.Execute()

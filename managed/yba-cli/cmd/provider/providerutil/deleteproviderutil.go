@@ -39,11 +39,8 @@ func DeleteProviderValidation(cmd *cobra.Command) {
 }
 
 func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 	providerName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -37,11 +38,8 @@ var addNodesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -186,7 +184,9 @@ func init() {
 		"[Optional] Node configurations. Provide the following "+
 			"comma separated fields as key-value pairs: "+
 			"\"type=<type>,value=<value>\". Each config needs to be "+
-			"added using a separate --node-configs flag.")
+			"added using a separate --node-configs flag. "+
+			"Example: --node-configs type=S3CMD,value=<value> "+
+			"--node-configs type=CPU_CORES,value=<value>")
 
 	addNodesCmd.MarkFlagRequired("instance-type")
 	addNodesCmd.MarkFlagRequired("ip")
@@ -231,10 +231,11 @@ func fetchZoneUUIDFromZoneName(authAPI *ybaAuthClient.AuthAPIClient,
 		" %s of provider %s", azName, regionUUID, providerUUID)
 }
 
-func buildNodeConfig(nodeConfigsStrings []string) (res *[]ybaclient.NodeConfig) {
+func buildNodeConfig(nodeConfigsStrings []string) *[]ybaclient.NodeConfig {
 	if len(nodeConfigsStrings) == 0 {
 		return nil
 	}
+	res := make([]ybaclient.NodeConfig, 0)
 	for _, nodeConfigString := range nodeConfigsStrings {
 		nodeConfig := map[string]string{}
 		for _, nInfo := range strings.Split(nodeConfigString, ",") {
@@ -250,10 +251,14 @@ func buildNodeConfig(nodeConfigsStrings []string) (res *[]ybaclient.NodeConfig) 
 			case "type":
 				if len(strings.TrimSpace(val)) != 0 {
 					nodeConfig["type"] = val
+				} else {
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "value":
 				if len(strings.TrimSpace(val)) != 0 {
 					nodeConfig["value"] = val
+				} else {
+					providerutil.ValueNotFoundForKeyError(key)
 				}
 			}
 		}
@@ -266,15 +271,14 @@ func buildNodeConfig(nodeConfigsStrings []string) (res *[]ybaclient.NodeConfig) 
 			logrus.Fatalln(
 				formatter.Colorize("Value not specified in node config.",
 					formatter.RedColor))
-
 		}
 
 		r := ybaclient.NodeConfig{
 			Type:  nodeConfig["type"],
 			Value: nodeConfig["value"],
 		}
-		*res = append(*res, r)
+		res = append(res, r)
 
 	}
-	return res
+	return &res
 }

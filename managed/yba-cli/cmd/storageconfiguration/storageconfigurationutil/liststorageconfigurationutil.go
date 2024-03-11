@@ -6,7 +6,6 @@ package storageconfigurationutil
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -21,17 +20,11 @@ import (
 )
 
 func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode string) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 	storageListRequest := authAPI.GetListOfCustomerConfig()
 
-	var r []ybaclient.CustomerConfigUI
-	var response *http.Response
-
-	r, response, err = storageListRequest.Execute()
+	r, response, err := storageListRequest.Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
 		if len(strings.TrimSpace(commandCall)) != 0 {
