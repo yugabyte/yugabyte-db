@@ -49,7 +49,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
-
+#include "utils/lsyscache.h"
 /* GUC variables */
 int yb_ash_circular_buffer_size;
 int yb_ash_sampling_interval_ms;
@@ -102,6 +102,9 @@ static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
 void dumpAshData(int64_t queryId,TimestampTz start , TimestampTz end,char *result_log_path);
 void dumpFullAshData(TimestampTz start , TimestampTz end,char *result_log_path);
+// void fetchSchemaDetails(int flag ,Query *query, MyValue *result);
+
+
 void
 YbAshRegister(void)
 {
@@ -211,6 +214,7 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
 					  : yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
 					  							query->stmt_location);
 	yb_set_ash_metadata(query_id);
+
 }
 
 static void

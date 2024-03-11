@@ -648,6 +648,8 @@ void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const strin
 }
 
 void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
+
+  DisplayIconTile(output, "fa-files-o", "query-diagnostics", "/query-diagnostics");
   // Logs.
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.

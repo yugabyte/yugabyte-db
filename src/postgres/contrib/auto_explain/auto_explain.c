@@ -349,6 +349,7 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			es->timing = (es->analyze && auto_explain_log_timing);
 			es->summary = es->analyze;
 			es->format = auto_explain_log_format;
+
 			es->rpc = (es->analyze && auto_explain_log_dist);
 
 			ExplainBeginOutput(es);

@@ -441,7 +441,7 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 
 
 void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result);
-void fetchSchemaDetails(int flag ,Query *query, MyValue *result);
+void fetchSchemaDetails(int flag ,List *rtable, MyValue *result);
 /*
  * Module load callback
  */
@@ -1290,6 +1290,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 				   &jstate);
 
 
+
 	if(map == NULL)
 		create_shared_hashtable();
 
@@ -1297,12 +1298,12 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 		InitSharedStruct();
 
 
-	if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
-		MyValue* result = lookup_in_shared_hashtable(map, query->queryId);
-		if(result){
-			fetchSchemaDetails(1,query,result);
-		}
-	}
+	// if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+	// 	MyValue* result = lookup_in_shared_hashtable(map, query->queryId);
+	// 	if(result){
+	// 		fetchSchemaDetails(1,query,result);
+	// 	}
+	// }
 }
 
 /*
@@ -1337,16 +1338,6 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-
-
-
-		//trying to print explain plan have extra check for SharedBundleStruct itself as NULL
-		if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
-			MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
-			if(result){
-				bundleExplain(1 , queryDesc , result);
-			}
-		}
 
 }
 
@@ -1412,6 +1403,18 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		 * levels of hook all do this.)
 		 */
 		InstrEndLoop(queryDesc->totaltime);
+
+
+		//trying to print explain plan have extra check for SharedBundleStruct itself as NULL
+		if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
+			if(result){
+				bundleExplain(1 , queryDesc , result);
+				fetchSchemaDetails(1,queryDesc->plannedstmt->rtable,result);
+			}
+		}
+
+
 
 		pgss_store(queryDesc->sourceText,
 				   queryId,
@@ -3950,7 +3953,8 @@ bundlePgss(int flag, int64_t queryId, const char *query, double total_time,
 
 
 void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
-
+	int randomNumber = rand() % 100 + 1;
+	static bool printedonce = 0;
 	if(flag == 0){
 		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
 		strcpy(pgss_log_path, result->log_path);
@@ -3959,14 +3963,15 @@ void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
 		fprintf(fptr, "QUERY PLAN:\n%s" ,result->explain_str);
 		fclose(fptr);
 	}
-	else{
+	else if(randomNumber == 1 || !printedonce) {
 		ExplainState *es = NewExplainState();
-
-		es->analyze = false;
-		es->verbose = false;
-		es->buffers = false;
-		es->timing = false;
-		es->summary = false;
+		printedonce = true;
+		es->analyze = true;
+		
+		es->verbose = true;
+		es->buffers = true;
+		es->timing = true;
+		es->summary = true;
 		es->format =EXPLAIN_FORMAT_TEXT;
 		es->rpc = false;
 
@@ -3992,8 +3997,9 @@ void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
 }
 
 
-void fetchSchemaDetails(int flag ,Query *query,MyValue *result)
+void fetchSchemaDetails(int flag ,List *rtable,MyValue *result)
 {
+	// List* rtable = querydesc->plannedstmt->rtable;
 	if(flag == 0){
 		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
 		strcpy(pgss_log_path, result->log_path);
@@ -4004,7 +4010,7 @@ void fetchSchemaDetails(int flag ,Query *query,MyValue *result)
 	}
 	else if(strlen(result->schema_str) == 0){
 		ListCell   *lc;
-		foreach(lc, query->rtable)
+		foreach(lc,rtable)
 		{
 			RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
 			switch (rte->rtekind)
@@ -4041,7 +4047,7 @@ void fetchSchemaDetails(int flag ,Query *query,MyValue *result)
 					{
 						Query *subquery = rte->subquery;
 						// Recursively fetch schema details for the subquery
-						fetchSchemaDetails(1,subquery,result);
+						fetchSchemaDetails(1,subquery->rtable,result);
 					}
 				break;
 
@@ -4049,12 +4055,14 @@ void fetchSchemaDetails(int flag ,Query *query,MyValue *result)
 				case RTE_JOIN:
 					{
 						JoinExpr *joinexpr = (JoinExpr *)rte->joinaliasvars;
+						Query *q = (Query *) joinexpr->larg;
 						switch (joinexpr->jointype) 
 						{
 							case JOIN_INNER:
 								// Handle inner join
-								fetchSchemaDetails(1,(Query *) joinexpr->larg,result);
-								fetchSchemaDetails(1,(Query *) joinexpr->rarg,result);
+								
+								fetchSchemaDetails(1,q->rtable,result);
+								fetchSchemaDetails(1,q->rtable,result);
 							break;
 							case JOIN_LEFT:
 								// Handle left join

@@ -43,6 +43,7 @@
 
 #include "yb/server/default-path-handlers.h"
 
+#include <dirent.h>
 #include <sys/stat.h>
 
 #include <fstream>
@@ -665,7 +666,83 @@ void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* r
 #endif
 }
 
+void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCallbackRegistry::WebResponse* resp) {
+
+    // if (req.parsed_args.find("query_id") == req.parsed_args.end()) {
+    //     resp->output << "<html><body>"
+    //                  << "<h1>Enter Query ID</h1>"
+    //                  << "<form action=\"/query-diagnostics\" method=\"get\">"
+    //                  << "<input type=\"text\" name=\"query_id\">"
+    //                  << "<input type=\"submit\" value=\"Submit\">"
+    //                  << "</form>"
+    //                  << "</body></html>";
+    //     resp->code = 200;
+    //     return;
+    // }
+    std::string query_diagnostics_path = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/";
+    if (req.parsed_args.find("query_id") == req.parsed_args.end()) {
+        DIR* dir = opendir(query_diagnostics_path.c_str());
+        if (dir == NULL) {
+            resp->output << "<html><body><h1>Error: Failed to open query diagnostics directory</h1></body></html>";
+            resp->code = 500; // Internal Server Error
+            return;
+        }
+
+        resp->output << "<html><body><h1>Select Query ID</h1>";
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_type == DT_DIR) {
+                resp->output << "<form action=\"/query-diagnostics\" method=\"get\">"
+                             << "<input type=\"hidden\" name=\"query_id\" value=\"" << entry->d_name << "\">"
+                             << "<input type=\"submit\" value=\"" << entry->d_name << "\">"
+                             << "</form>";
+            }
+        }
+        closedir(dir);
+        resp->output << "</body></html>";
+        resp->code = 200;
+        return;
+    }
+
+
+    // std::string query_id = req.parsed_args.find("query_id")->second;
+    // std::string timestamp = req.parsed_args.find("timestamp")->second;
+    // std::string query_directory_path = query_diagnostics_path + query_id + "/" + timestamp;
+    // std::string tar_file_path = query_diagnostics_path + query_id + "_" + timestamp + ".tar";
+    // std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
+
+
+
+
+
+
+    std::string query_id = req.parsed_args.at("query_id");
+    // Change directory to the query diagnostics folder
+    if (chdir(query_diagnostics_path.c_str()) != 0) {
+        resp->output << "<html><body><h1>Error: Failed to access query diagnostics folder</h1></body></html>";
+        resp->code = 500; 
+        return;
+    }
+    // Create the tar file using the system command
+    std::string tar_file_path = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/" + query_id + ".tar";
+    std::string tar_command = "tar -cf " + tar_file_path + " -- " + query_id;
+
+
+
+
+
+    int result = system(tar_command.c_str());
+    if (result != 0) {
+        resp->output << "<html><body><h1>Error: Failed to create tar file</h1></body></html>";
+        resp->code = 500; // Internal Server Error
+        return;
+    }
+    resp->code = 200;
+}
+
+
 void AddDefaultPathHandlers(Webserver* webserver) {
+  webserver->RegisterPathHandler("/query-diagnostics", "ishan", QueryDiagnosticsHandler, true, false);
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
   webserver->RegisterPathHandler(
       "/varz", "Flags", std::bind(&FlagsHandler, _1, _2, webserver), true, false);

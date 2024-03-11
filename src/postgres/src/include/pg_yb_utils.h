@@ -1104,7 +1104,7 @@ typedef struct
 
 typedef struct MyValue
 {
-	char       query[1024];
+	char       query[2024];
 	TimestampTz start_time;
 	char 	   log_path[1024];
 	// pgssEntry pgss_entry;
@@ -1142,10 +1142,11 @@ typedef struct MyValue
 	double		blk_write_time; /* time spent writing, in msec */
 	double		usage;			/* usage factor */
 	//for explain
-	char        explain_str[1024];
+	char        explain_str[8024];
 
 	//for schema
 	char        schema_str[1024];
+	// Query 		*schema_query;
 } MyValue;
 
 
@@ -1159,7 +1160,7 @@ extern bundlePgssPtr bundleptr;
 typedef void (*bundleExplainPtr)(int flag , QueryDesc *queryDesc,MyValue *result);
 extern bundleExplainPtr explainptr;
 
-typedef void (*bundleSchemaPtr)(int flag , Query *query,MyValue *result);
+typedef void (*bundleSchemaPtr)(int flag , List *rtable,MyValue *result);
 extern bundleSchemaPtr schemaptr;
 
 extern HTAB *map;

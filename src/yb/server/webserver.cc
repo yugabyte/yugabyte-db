@@ -580,9 +580,9 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
   return result;
 }
 
-sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
-                                                     struct sq_connection* connection,
-                                                     struct sq_request_info* request_info) {
+sq_callback_result_t Webserver::Impl::RunPathHandler(
+    const PathHandler& handler, struct sq_connection* connection,
+    struct sq_request_info* request_info) {
   // Should we render with css styles?
   bool use_style = true;
 
@@ -602,8 +602,7 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
   if (req.request_method == "POST") {
     const char* content_len_str = sq_get_header(connection, "Content-Length");
     int32_t content_len = 0;
-    if (content_len_str == nullptr ||
-        !safe_strto32(content_len_str, &content_len)) {
+    if (content_len_str == nullptr || !safe_strto32(content_len_str, &content_len)) {
       sq_printf(connection, "HTTP/1.1 411 Length Required\r\n");
       return SQ_HANDLED_OK;
     }
@@ -620,9 +619,8 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
     while (rem > 0) {
       int n = sq_read(connection, buf, std::min<int>(sizeof(buf), rem));
       if (n <= 0) {
-        LOG(WARNING) << "error reading POST data: expected "
-                     << content_len << " bytes but only read "
-                     << req.post_data.size();
+        LOG(WARNING) << "error reading POST data: expected " << content_len
+                     << " bytes but only read " << req.post_data.size();
         sq_printf(connection, "HTTP/1.1 500 Internal Server Error\r\n");
         return SQ_HANDLED_CLOSE_CONNECTION;
       }
@@ -640,7 +638,7 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
   WebResponse* resp_ptr = &resp;
   // Default response code should be OK.
   resp_ptr->code = 200;
-  stringstream *output = &resp_ptr->output;
+  stringstream* output = &resp_ptr->output;
   if (use_style) {
     BootstrapPageHeader(output);
   }
@@ -669,9 +667,10 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
       }
 
       std::ostringstream oss;
-      int level = FLAGS_webserver_zlib_compression_level > 0 &&
-        FLAGS_webserver_zlib_compression_level <= 9 ?
-        FLAGS_webserver_zlib_compression_level : 1;
+      int level =
+          FLAGS_webserver_zlib_compression_level > 0 && FLAGS_webserver_zlib_compression_level <= 9
+              ? FLAGS_webserver_zlib_compression_level
+              : 1;
       Status s = zlib::CompressLevel(uncompressed, level, &oss);
       if (s.ok()) {
         resp_ptr->output.str(oss.str());
@@ -691,21 +690,115 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
                   ? "Strict-Transport-Security: max-age=31536000\r\n"
                   : "";
 
-  sq_printf(
-      connection,
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Type: %s\r\n"
-      "Content-Length: %zd\r\n"
-      "X-Content-Type-Options: nosniff\r\n"
-      "%s"
-      "%s"
-      "Access-Control-Allow-Origin: *\r\n"
-      "\r\n",
-      content_type, str.length(), content_encoding, hsts);
+  if (strcmp(request_info->uri, "/query-diagnostics") == 0) {
 
-  // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
-  sq_write(connection, str.c_str(), str.length());
-  return SQ_HANDLED_OK;
+    const char* query_id = NULL;
+    if (request_info->query_string &&
+        strstr(request_info->query_string, "query_id=") == request_info->query_string) {
+      query_id = request_info->query_string + strlen("query_id=");
+    }
+
+    // If the query_id parameter was not found, log an error and return
+    if (query_id == NULL) {
+      LOG(INFO) << "Could not find query_id parameter";
+      // return SQ_HANDLED_CLOSE_CONNECTION;
+
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, str.length(), content_encoding, hsts);
+
+      sq_write(connection, str.c_str(), str.length());
+      return SQ_HANDLED_OK;
+    }
+    else 
+    {
+
+    //checking if such a folder exists.
+    char folder_path[1000];
+    snprintf(
+        folder_path, 1000, "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s",
+        query_id);
+    if (chdir(folder_path) != 0) {
+      LOG(ERROR) << "Could not find this folder: " << folder_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+    }
+
+
+
+      content_type = "application/x-tar";
+      char tar_file_path[1000];
+      snprintf(
+          tar_file_path, 1000, "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/%s.tar",
+          query_id);
+
+      FILE* tar_file = fopen(tar_file_path, "rb");
+      if (tar_file == NULL) {
+        LOG(ERROR) << "Could not open tar file: " << tar_file_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
+
+      fseek(tar_file, 0, SEEK_END);
+      size_t tar_file_size = ftell(tar_file);
+      rewind(tar_file);
+
+      char* buffer = (char*)malloc(tar_file_size + 1);
+      if (buffer == NULL) {
+        LOG(ERROR) << "Could not allocate buffer for tar file: " << tar_file_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
+      fread(buffer, tar_file_size, 1, tar_file);
+      fclose(tar_file);
+
+
+      //for naming the file download.
+      char content_disposition[1024];
+      snprintf(content_disposition, sizeof(content_disposition), "Content-Disposition: attachment; filename=\"%s.tar\"", query_id);
+
+
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s\r\n"  // Content-Disposition header
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, tar_file_size, content_disposition,content_encoding, hsts);
+
+      sq_write(connection, buffer, tar_file_size);
+
+      free(buffer);
+      return SQ_HANDLED_OK;
+    }
+
+  } else {
+    sq_printf(
+        connection,
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zd\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "%s"
+        "%s"
+        "Access-Control-Allow-Origin: *\r\n"
+        "\r\n",
+        content_type, str.length(), content_encoding, hsts);
+
+    // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
+    sq_write(connection, str.c_str(), str.length());
+    return SQ_HANDLED_OK;
+  }
 }
 
 void Webserver::Impl::RegisterPathHandler(const string& path,

@@ -4689,14 +4689,14 @@ InitSharedStruct(void)
 
 
 Datum
-yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
+yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
 	//This function is mainly for setting variables.
 	//do we want this superuser thing?
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("only superusers can generate bundles"))));
+	// if (!superuser())
+	// 	ereport(ERROR,
+	// 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+	// 			 (errmsg("only superusers can generate bundles"))));
 
 	start = GetCurrentTimestamp();
 	const char* timeStr = my_timestamptz_to_str(start);
@@ -4713,7 +4713,7 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 	if(map == NULL)
 		create_shared_hashtable();
 
-
+	srand(108);
 	//check if a bundle is already started for this queryid
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(result){
@@ -4723,7 +4723,14 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 
 
 	//I am not handling the case when same queryid is called again.
-	MyValue value = {"", 0,"",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,""};
+	MyValue value = {"", 0,"",0,0,0,0,
+	0,0,0,0,
+	0,0,0,0,0,0,
+	0,0,0,0,
+	0,0,0,
+	0,0,0,
+	0,0,0,
+	0,"",""};
 	
 	char *log_path_ptr = getPath(queryid,timeStr);
 	if(log_path_ptr == NULL) {
@@ -4738,19 +4745,18 @@ yb_pg_generate_bundle(PG_FUNCTION_ARGS) //allows geneartion of bundle for a spec
 }
 
 Datum
-yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details acquired for a specific query id
+yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all details acquired for a specific query id
 {
-
 	// This is for logging.
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("only superusers can stop and print bundle details"))));
+	// if (!superuser())
+	// 	ereport(ERROR,
+	// 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+	// 			 (errmsg("only superusers can stop and print bundle details"))));
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64_t queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
 	
 
-
+	//maybe just return false if the shared structs are not
 	if(map == NULL)
 		create_shared_hashtable();
 
@@ -4763,10 +4769,11 @@ yb_pg_stop_bundle(PG_FUNCTION_ARGS) //stops the bundle and prints all details ac
 		PG_RETURN_BOOL(false);
 	}
 	
-	if(!sharedBundleStruct->debuggingBundle){
-		ereport(LOG, (errmsg("bundle did not start yet")));
-		PG_RETURN_BOOL(false);
-	}
+	// if(!sharedBundleStruct->debuggingBundle){
+	// 	ereport(LOG, (errmsg("bundle did not start yet")));
+	// 	PG_RETURN_BOOL(false);
+	// }
+
 
 
 	end = GetCurrentTimestamp();
