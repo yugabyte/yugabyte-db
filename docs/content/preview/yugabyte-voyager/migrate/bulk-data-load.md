@@ -20,7 +20,7 @@ The following page describes the steps to import data in CSV or TEXT format from
 
 ## Prepare the target database
 
-Prepare your target YugabyteDB database cluster by creating a user for your cluster.
+Prepare your target YugabyteDB database cluster by creating a user.
 
 ### Create a user
 
