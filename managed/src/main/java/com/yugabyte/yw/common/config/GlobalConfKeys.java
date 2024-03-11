@@ -1288,4 +1288,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the new releases design",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableTroubleshooting =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_troubleshooting",
+          ScopeType.GLOBAL,
+          "Enables Troubleshooting for the Universe",
+          "Enables Troubleshooting for the Universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

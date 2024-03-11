@@ -370,6 +370,11 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === VM_PATCHING_RUNTIME_CONFIG)
         ?.value === 'true';
 
+    const isTroubleshootingEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING
+      )?.value === 'true';
+
     if (
       getPromiseState(currentUniverse).isLoading() ||
       getPromiseState(currentUniverse).isInit() ||
@@ -540,29 +545,27 @@ class UniverseDetail extends Component {
             />
           </Tab.Pane>
         ),
-        isHidden(currentCustomer.data.features, 'universes.details.troubleshooting') && (
-          <Tab.Pane
-            eventKey={'troubleshoot'}
-            tabtitle="Troubleshoot"
-            key="troubleshoot-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(
-              currentCustomer.data.features,
-              'universes.details.troubleshooting'
-            )}
-          >
-            {featureFlags.released.enableTroubleshooting &&
-              featureFlags.test.enableTroubleshooting && (
-                <TroubleshootAdvisor
-                  universeUuid={currentUniverse.data.universeUUID}
-                  universeData={currentUniverse.data.universeDetails}
-                  appName={'YBA'}
-                  timezone={currentUser.data.timezone}
-                />
+        isNotHidden(currentCustomer.data.features, 'universes.details.troubleshooting') &&
+          isTroubleshootingEnabled && (
+            <Tab.Pane
+              eventKey={'troubleshoot'}
+              tabtitle="Troubleshoot"
+              key="troubleshoot-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(
+                currentCustomer.data.features,
+                'universes.details.troubleshooting'
               )}
-          </Tab.Pane>
-        )
+            >
+              <TroubleshootAdvisor
+                universeUuid={currentUniverse.data.universeUUID}
+                universeData={currentUniverse.data.universeDetails}
+                appName={'YBA'}
+                timezone={currentUser.data.timezone}
+              />
+            </Tab.Pane>
+          )
       ],
       //tabs relevant for non-imported universes only
       ...(isReadOnlyUniverse
