@@ -76,6 +76,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
 
   const hideModal = () => dispatch(closeDialog());
 
+  const allowedTasks = universeQuery.data?.allowedTasks;
   const universeHasTxnXCluster = xClusterConfigQueries.some(
     (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
   );
@@ -135,6 +136,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
         <Col lg={12}>
           <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
           <CreateConfigModal
+            allowedTasks={allowedTasks}
             sourceUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}

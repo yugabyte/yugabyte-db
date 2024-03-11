@@ -68,7 +68,8 @@ import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
@@ -158,6 +159,10 @@ class UniverseDetail extends Component {
       universe: { currentUniverse },
       universeTables
     } = this.props;
+    // Always refresh universe info on Overview tab
+    if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
+      this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+    }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
       !getPromiseState(prevProps.universe.currentUniverse).isSuccess()
@@ -392,6 +397,7 @@ class UniverseDetail extends Component {
 
     const width = this.state.dimensions.width;
     const universeInfo = currentUniverse.data;
+    const allowedTasks = currentUniverse.data.allowedTasks;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
     const hasAsymmetricPrimaryCluster = !!isAsymmetricCluster(
@@ -430,7 +436,6 @@ class UniverseDetail extends Component {
               universe={universe}
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
-              tabRef={this.ybTabPanel}
             />
           </Tab.Pane>
         ),
@@ -718,7 +723,8 @@ class UniverseDetail extends Component {
                           <YBMenuItem
                             disabled={
                               isUniverseStatusPending ||
-                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
+                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_SOFTWARE)
                             }
                             onClick={showSoftwareUpgradesModal}
                             availability={getFeatureState(
@@ -748,7 +754,8 @@ class UniverseDetail extends Component {
                           <YBMenuItem
                             disabled={
                               isUniverseStatusPending ||
-                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
+                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_DB_VERSION)
                             }
                             onClick={showSoftwareUpgradesNewModal}
                             availability={getFeatureState(
@@ -776,7 +783,10 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending}
+                            disabled={
+                              isUniverseStatusPending ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.ROLLBACK_UPGRADE)
+                            }
                             onClick={showRollbackModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -805,7 +815,10 @@ class UniverseDetail extends Component {
                             }}
                           >
                             <YBMenuItem
-                              disabled={isUniverseStatusPending}
+                              disabled={
+                                isUniverseStatusPending ||
+                                isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_LINUX_VERSION)
+                              }
                               onClick={showLinuxSoftwareUpgradeModal}
                               availability={getFeatureState(
                                 currentCustomer.data.features,
@@ -833,7 +846,10 @@ class UniverseDetail extends Component {
                             }}
                           >
                             <YBMenuItem
-                              disabled={isUniverseStatusPending}
+                              disabled={
+                                isUniverseStatusPending ||
+                                isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_VM_IMAGE)
+                              }
                               onClick={showVMImageUpgradeModal}
                             >
                               <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
@@ -851,7 +867,11 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending || onPremSkipProvisioning}
+                            disabled={
+                              isUniverseStatusPending ||
+                              onPremSkipProvisioning ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_TO_SYSTEMD)
+                            }
                             onClick={showUpgradeSystemdModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -873,7 +893,13 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending}
+                            disabled={
+                              isUniverseStatusPending ||
+                              isActionFrozen(
+                                allowedTasks,
+                                UNIVERSE_TASKS.UPGRADE_THIRD_PARTY_SOFTWARE
+                              )
+                            }
                             onClick={showThirdpartyUpgradeModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -914,7 +940,11 @@ class UniverseDetail extends Component {
                                     currentCustomer.data.features,
                                     'universes.details.overview.editUniverse'
                                   )}
-                                  disabled={isUniverseStatusPending || hasAsymmetricPrimaryCluster}
+                                  disabled={
+                                    isUniverseStatusPending ||
+                                    hasAsymmetricPrimaryCluster ||
+                                    isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_UNIVERSE)
+                                  }
                                 >
                                   <YBLabelWithIcon icon="fa fa-pencil">
                                     Edit Universe
@@ -948,7 +978,8 @@ class UniverseDetail extends Component {
                                   ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
                                     !isGFlagAllowDuringPrefinalize) ||
                                   hasAsymmetricPrimaryCluster ||
-                                  hasAsymmetricAsyncCluster
+                                  hasAsymmetricAsyncCluster ||
+                                  isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_FLAGS)
                                 }
                                 onClick={showGFlagsModal}
                                 availability={getFeatureState(
@@ -988,7 +1019,8 @@ class UniverseDetail extends Component {
                                   ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
                                     !isGFlagAllowDuringPrefinalize) ||
                                   hasAsymmetricPrimaryCluster ||
-                                  hasAsymmetricAsyncCluster
+                                  hasAsymmetricAsyncCluster ||
+                                  isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_FLAGS)
                                 }
                                 onClick={showGFlagsNewModal}
                                 availability={getFeatureState(
@@ -1014,7 +1046,10 @@ class UniverseDetail extends Component {
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
-                            onClick={showHelmOverridesModal}
+                            onClick={
+                              showHelmOverridesModal ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_KUBERNETES_OVERRIDES)
+                            }
                           >
                             <YBLabelWithIcon icon="fa fa-pencil-square">
                               Edit Kubernetes Overrides
@@ -1054,7 +1089,10 @@ class UniverseDetail extends Component {
                           isControl
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending}
+                            disabled={
+                              isUniverseStatusPending ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_YSQL_CONFIG)
+                            }
                             onClick={showEnableYSQLModal}
                           >
                             <YBLabelWithIcon icon="fa fa-database fa-fw">
@@ -1072,7 +1110,10 @@ class UniverseDetail extends Component {
                           isControl
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending}
+                            disabled={
+                              isUniverseStatusPending ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_YCQL_CONFIG)
+                            }
                             onClick={showEnableYCQLModal}
                           >
                             <YBLabelWithIcon icon="fa fa-database fa-fw">
@@ -1090,7 +1131,10 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={isUniverseStatusPending}
+                            disabled={
+                              isUniverseStatusPending ||
+                              isActionFrozen(allowedTasks, UNIVERSE_TASKS.INITIATE_ROLLING_RESTART)
+                            }
                             onClick={showRollingRestartModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -1124,7 +1168,16 @@ class UniverseDetail extends Component {
                           >
                             <span>
                               <YBMenuItem
-                                disabled={isUniverseStatusPending || hasAsymmetricAsyncCluster}
+                                disabled={
+                                  isUniverseStatusPending ||
+                                  hasAsymmetricAsyncCluster ||
+                                  isActionFrozen(
+                                    allowedTasks,
+                                    this.hasReadReplica(universeInfo)
+                                      ? UNIVERSE_TASKS.EDIT_RR
+                                      : UNIVERSE_TASKS.ADD_RR
+                                  )
+                                }
                                 to={
                                   this.isNewUIEnabled()
                                     ? `/universes/${uuid}/${
@@ -1191,7 +1244,10 @@ class UniverseDetail extends Component {
                                 button={
                                   <YBMenuItem
                                     onClick={showSupportBundleModal}
-                                    disabled={this.isUniverseDeleting()}
+                                    disabled={
+                                      this.isUniverseDeleting() ||
+                                      isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES)
+                                    }
                                   >
                                     <YBLabelWithIcon icon="fa fa-file-archive-o">
                                       Support Bundles
@@ -1270,7 +1326,8 @@ class UniverseDetail extends Component {
                               )}
                               disabled={
                                 (universePaused && isUniverseStatusPending) ||
-                                this.isUniverseDeleting()
+                                this.isUniverseDeleting() ||
+                                isActionFrozen(allowedTasks, UNIVERSE_TASKS.PAUSE_UNIVERSE)
                               }
                             >
                               <YBLabelWithIcon
@@ -1296,6 +1353,7 @@ class UniverseDetail extends Component {
                             currentCustomer.data.features,
                             'universes.details.overview.deleteUniverse'
                           )}
+                          disabled={isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_UNIVERSE)}
                         >
                           <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                             Delete Universe
@@ -1309,6 +1367,7 @@ class UniverseDetail extends Component {
                       <>
                         <SecurityMenu
                           backToMainMenu={backToMainMenu}
+                          allowedTasks={allowedTasks}
                           showTLSConfigurationModal={showTLSConfigurationModal}
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
