@@ -6,20 +6,24 @@ import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
+import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
+import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
+import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
-import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
-import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
-
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 
 interface InitiateSwitchoverModalProps {
   drConfig: DrConfig;
   modalProps: YBModalProps;
+  allowedTasks: AllowedTasks;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -60,7 +64,11 @@ const useStyles = makeStyles((theme) => ({
 const MODAL_NAME = 'InitiateSwitchoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.switchover.initiateModal';
 
-export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitchoverModalProps) => {
+export const InitiateSwitchoverModal = ({
+  drConfig,
+  modalProps,
+  allowedTasks
+}: InitiateSwitchoverModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmationText, setConfirmationText] = useState<string>('');
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -200,8 +208,10 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
     initiateSwitchoverMutation.mutate(drConfig, { onSettled: () => resetModal() });
   };
 
+  const isSwitchoverActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.SWITCHIVER_DR);
   const targetUniverseName = targetUniverseQuery.data.name;
-  const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
+  const isFormDisabled =
+    isSubmitting || confirmationText !== targetUniverseName || isSwitchoverActionFrozen;
 
   return (
     <YBModal
