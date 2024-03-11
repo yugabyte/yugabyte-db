@@ -1529,6 +1529,9 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	bool end_inclusive[max_idx];	/* VLA - scratch space */
 	memset(end_inclusive, 0, sizeof(bool) * max_idx);
 
+	FmgrInfo *start_cmp_fn[max_idx];
+	FmgrInfo *end_cmp_fn[max_idx];
+
 	/*
 	 * find an order of relevant keys such that for the same column, an EQUAL
 	 * condition is encountered before IN or BETWEEN. is_column_bound is then
@@ -1699,6 +1702,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 					{
 						start[idx] = key->sk_argument;
 						start_inclusive[idx] = bound_inclusive;
+						start_cmp_fn[idx] = &key->sk_func;
 					}
 				}
 				else
@@ -1706,6 +1710,22 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 					start[idx] = key->sk_argument;
 					start_inclusive[idx] = bound_inclusive;
 					start_valid[idx] = true;
+					start_cmp_fn[idx] = &key->sk_func;
+				}
+
+				if (end_valid[idx])
+				{
+					bool is_lt = DatumGetBool(FunctionCall2Coll(
+						end_cmp_fn[idx], key->sk_collation,
+							start[idx], end[idx]));
+					if (!is_lt)
+						return false;
+
+					bool is_gt = DatumGetBool(FunctionCall2Coll(
+						start_cmp_fn[idx], key->sk_collation,
+							end[idx], start[idx]));
+					if (!is_gt)
+						return false;
 				}
 				break;
 
@@ -1732,6 +1752,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 					{
 						end[idx] = key->sk_argument;
 						end_inclusive[idx] = bound_inclusive;
+						end_cmp_fn[idx] = &key->sk_func;
 					}
 				}
 				else
@@ -1739,6 +1760,22 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 					end[idx] = key->sk_argument;
 					end_inclusive[idx] = bound_inclusive;
 					end_valid[idx] = true;
+					end_cmp_fn[idx] = &key->sk_func;
+				}
+
+				if (start_valid[idx])
+				{
+					bool is_gt = DatumGetBool(FunctionCall2Coll(
+						start_cmp_fn[idx], key->sk_collation,
+							end[idx], start[idx]));
+					if (!is_gt)
+						return false;
+
+					bool is_lt = DatumGetBool(FunctionCall2Coll(
+						end_cmp_fn[idx], key->sk_collation,
+							start[idx], end[idx]));
+					if (!is_lt)
+						return false;
 				}
 				break;
 
