@@ -280,7 +280,7 @@ GetGeographyFromWKB(const bytea *wkbBuffer)
 
 /*
  * Appends the buffer with 4 bytes, setting values to 0 at the new space and
- * returns the pointer to the starting of the 4 byte space which can be filled later
+ * returns the starting position of the 4 bytes space which can be filled later
  * with the actual value.
  *
  * This is used in cases where we don't know the multi components length at the begining
@@ -291,15 +291,15 @@ GetGeographyFromWKB(const bytea *wkbBuffer)
  * After skipping 4 bytes
  * Buffer => 0x1111001100000000
  *                    ^
- *                    | => This is the returned pointer
+ *                    | => This is the returned position of the 4byte space
  */
-static inline uint8 *
-WKBBufferAppend4EmptyBytes(StringInfo buffer)
+static inline int32
+WKBBufferAppend4EmptyBytesForNums(StringInfo buffer)
 {
 	int32 num = 0;
-	uint8 *current = (uint8 *) (buffer->data + buffer->len);
+	int32 currentLength = buffer->len;
 	appendBinaryStringInfoNT(buffer, (char *) &num, WKB_BYTE_SIZE_NUM);
-	return current;
+	return currentLength;
 }
 
 
@@ -334,13 +334,14 @@ WritePointToWKBBuffer(StringInfo buffer, const Point *point)
 
 
 /*
- * Write `num` (number of components to the buffer).
+ * Write `num` (number of components to the buffer) at the relative position from start of buffer.
  * `num` can represent number of points in multipoint, number of rings in polygon, number of geometries in collection etc
  */
 static inline void
-WriteNumToWKBBuffer(uint8 *buffer, int32 num)
+WriteNumToWKBBufferAtPosition(StringInfo buffer, int32 relativePosition, int32 num)
 {
-	memcpy(buffer, (void *) &num, WKB_BYTE_SIZE_NUM);
+	Assert(buffer->len > relativePosition + WKB_BYTE_SIZE_NUM);
+	memcpy(buffer->data + relativePosition, (void *) &num, WKB_BYTE_SIZE_NUM);
 }
 
 

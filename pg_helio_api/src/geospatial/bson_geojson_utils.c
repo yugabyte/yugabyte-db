@@ -44,11 +44,11 @@ static bool WriteBufferGeoJsonCore(const bson_value_t *value,
 static bool WriteBufferGeoJsonCoordinates(const bson_value_t *value,
 										  GeoJsonType geoJsonType,
 										  bool insideGeometryCollection,
-										  StringInfo geoJsonWKT,
+										  StringInfo geoJsonWKB,
 										  GeoJsonParseState *parseState);
 static bool WriteBufferGeoJsonMultiPoints(const bson_value_t *value,
 										  const GeoJsonType type,
-										  StringInfo geoJsonWKT,
+										  StringInfo geoJsonWKB,
 										  GeoJsonParseState *state);
 static bool ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue,
 										GeoJsonType geoJsonType,
@@ -174,7 +174,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 			WriteHeaderToWKBBuffer(polygonWKB, WKBGeometryType_Polygon);
 
 			/* Leave the space for num of rings which will be filled later after we are done looping the array */
-			uint8 *numOfRings = WKBBufferAppend4EmptyBytes(polygonWKB);
+			int32 numOfRingsPos = WKBBufferAppend4EmptyBytesForNums(polygonWKB);
 
 			while (bson_iter_next(&coordinatesIter))
 			{
@@ -201,7 +201,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 			}
 
 			/* Fill the number of rings found */
-			WriteNumToWKBBuffer(numOfRings, totalRings);
+			WriteNumToWKBBufferAtPosition(polygonWKB, numOfRingsPos, totalRings);
 
 			/* First append the polygon buffer into the main WKB for geoJson geometry */
 			WriteStringInfoBufferToWKBBufferWithOffset(geoJsonWKB, polygonWKB, VARHDRSZ);
@@ -231,7 +231,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 
 			int32 totalPoints = 0;
 			WriteHeaderToWKBBuffer(geoJsonWKB, WKBGeometryType_MultiPoint);
-			uint8 *numOfPoints = WKBBufferAppend4EmptyBytes(geoJsonWKB);
+			int32 numOfPointsPos = WKBBufferAppend4EmptyBytesForNums(geoJsonWKB);
 
 			while (bson_iter_next(&coordinatesIter))
 			{
@@ -258,7 +258,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 				totalPoints++;
 			}
 
-			WriteNumToWKBBuffer(numOfPoints, totalPoints);
+			WriteNumToWKBBufferAtPosition(geoJsonWKB, numOfPointsPos, totalPoints);
 			break;
 		}
 
@@ -279,7 +279,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 
 			int32 totalLineStrings = 0;
 			WriteHeaderToWKBBuffer(geoJsonWKB, WKBGeometryType_MultiLineString);
-			uint8 *numOfLines = WKBBufferAppend4EmptyBytes(geoJsonWKB);
+			int32 numOfLinesPos = WKBBufferAppend4EmptyBytesForNums(geoJsonWKB);
 
 			while (bson_iter_next(&coordinatesIter))
 			{
@@ -297,7 +297,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 				totalLineStrings++;
 			}
 
-			WriteNumToWKBBuffer(numOfLines, totalLineStrings);
+			WriteNumToWKBBufferAtPosition(geoJsonWKB, numOfLinesPos, totalLineStrings);
 
 			break;
 		}
@@ -319,7 +319,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 
 			WriteHeaderToWKBBuffer(geoJsonWKB, WKBGeometryType_MultiPolygon);
 			int32 totalPolygons = 0;
-			uint8 *numOfPolygon = WKBBufferAppend4EmptyBytes(geoJsonWKB);
+			int32 numOfPolygonPos = WKBBufferAppend4EmptyBytesForNums(geoJsonWKB);
 
 			while (bson_iter_next(&coordinatesIter))
 			{
@@ -336,7 +336,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 				totalPolygons++;
 			}
 
-			WriteNumToWKBBuffer(numOfPolygon, totalPolygons);
+			WriteNumToWKBBufferAtPosition(geoJsonWKB, numOfPolygonPos, totalPolygons);
 
 			break;
 		}
@@ -369,7 +369,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 			insideGeometryCollection = true;
 			int32 totalGeometries = 0;
 			WriteHeaderToWKBBuffer(geoJsonWKB, WKBGeometryType_GeometryCollection);
-			uint8 *numOfGeometries = WKBBufferAppend4EmptyBytes(geoJsonWKB);
+			int32 numOfGeometriesPos = WKBBufferAppend4EmptyBytesForNums(geoJsonWKB);
 
 			while (bson_iter_next(&coordinatesIter))
 			{
@@ -414,7 +414,8 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
 				totalGeometries++;
 			}
 
-			WriteNumToWKBBuffer(numOfGeometries, totalGeometries);
+			WriteNumToWKBBufferAtPosition(geoJsonWKB, numOfGeometriesPos,
+										  totalGeometries);
 			break;
 		}
 
@@ -457,7 +458,7 @@ WriteBufferGeoJsonCoordinates(const bson_value_t *coordinatesValue,
  */
 static bool
 WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJsonType type,
-							  StringInfo geoJsonWKT, GeoJsonParseState *state)
+							  StringInfo geoJsonWKB, GeoJsonParseState *state)
 {
 	Assert(multiPointValue->value_type == BSON_TYPE_ARRAY);
 	Assert(type == GeoJsonType_LINESTRING || type == GeoJsonType_POLYGON);
@@ -484,7 +485,7 @@ WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJson
 	/*
 	 * Advance the buffer by 4bytes to later store the number of found points.
 	 */
-	uint8 *totalNumOfPoints = WKBBufferAppend4EmptyBytes(geoJsonWKT);
+	int32 totalNumOfPointsPos = WKBBufferAppend4EmptyBytesForNums(geoJsonWKB);
 	Point first, last = { .x = INFINITY, .y = INFINITY }, point;
 
 	bson_iter_t multiPointsValueIter;
@@ -587,7 +588,7 @@ WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJson
 			last.x = point.x;
 			last.y = point.y;
 		}
-		WritePointToWKBBuffer(geoJsonWKT, &point);
+		WritePointToWKBBuffer(geoJsonWKB, &point);
 		index++;
 	}
 
@@ -652,7 +653,7 @@ WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJson
 	}
 
 	/* If all good write the number of points at the buffer which advanced earlier */
-	WriteNumToWKBBuffer(totalNumOfPoints, index);
+	WriteNumToWKBBufferAtPosition(geoJsonWKB, totalNumOfPointsPos, index);
 	return true;
 }
 
@@ -778,7 +779,7 @@ ValidateCoordinatesNotArray(const bson_value_t *coordinatesValue, GeoJsonType ge
 
 /*
  * AdditionalPolygonValidation validates the given polygon rings so that they form a valid polygon.
- * This method creates a polygon "geometry" from the Polygon WKT and runs the 'ST_IsValidReason' for
+ * This method creates a polygon "geometry" from the Polygon WKB and runs the 'ST_IsValidReason' for
  * the polygon.
  *
  * Unfortunately we can't validate the "geography" polygon as there is no Postgis Native support,
@@ -899,7 +900,7 @@ AdditionalPolygonValidation(StringInfo polygonWKB, GeoJsonParseState *parseState
 
 /*
  * Recursively traverse a GeoJSON document value performing validation
- * for types and values and also keeps creating the WKT for the geography
+ * for types and values and also keeps creating the WKB for the geography
  */
 static bool
 WriteBufferGeoJsonCore(const bson_value_t *value, bool insideGeoJsonGeometryCollection,
