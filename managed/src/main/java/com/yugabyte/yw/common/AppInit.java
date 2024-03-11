@@ -10,6 +10,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -76,6 +77,7 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       PitrConfigPoller pitrConfigPoller,
+      AutomatedMasterFailover automatedMasterFailover,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       RefreshKmsService refreshKmsService,
@@ -319,6 +321,7 @@ public class AppInit {
         shellLogsManager.startLogsGC();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
+        automatedMasterFailover.start();
 
         ybcUpgrade.start();
 
