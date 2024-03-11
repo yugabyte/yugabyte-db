@@ -10,8 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -22,6 +24,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
@@ -71,8 +74,16 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Execute the ansible command.
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (node == null) {
+      log.warn("Node {} is not found", taskParams().nodeName);
+      return;
+    }
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     try {
+      // Execute the ansible command.
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
           .processErrors();
@@ -80,6 +91,14 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       if (!taskParams().isForceDelete) {
         throw e;
       } else {
+        // TODO Temporary change to be replaced by the decommission state changes.
+        if (userIntent.providerType == CloudType.onprem) {
+          ObjectNode objNode = Json.newObject();
+          objNode.put(ModifyBlackList.PERMANENT_BLACKLIST_CACHE_KEY, true);
+          getTaskCache().put(taskParams().getNodeName(), objNode);
+          log.info(
+              "Node {} has been marked to be blacklisted permanently", taskParams().getNodeName());
+        }
         log.debug(
             "Ignoring error deleting instance {} due to isForceDelete being set.",
             taskParams().nodeName,
@@ -87,14 +106,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    UserIntent userIntent =
-        u.getUniverseDetails()
-            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
-            .userIntent;
-
-    if (taskParams().deleteRootVolumes
-        && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (taskParams().deleteRootVolumes && userIntent.providerType != Common.CloudType.onprem) {
       try {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, taskParams())
@@ -111,10 +123,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
-
     try {
-      deleteNodeAgent(univNodeDetails);
+      deleteNodeAgent(node);
     } catch (Exception e) {
       if (!taskParams().isForceDelete) {
         throw e;
@@ -126,8 +136,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem)
-        && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {
+    if (userIntent.providerType == Common.CloudType.onprem
+        && node.state != NodeDetails.NodeState.Decommissioned) {
       // Free up the node.
       try {
         NodeInstance providerNode = NodeInstance.getByName(taskParams().nodeName);

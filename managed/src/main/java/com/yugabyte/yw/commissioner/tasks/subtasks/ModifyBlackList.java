@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.Util;
@@ -19,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -30,6 +33,9 @@ import org.yb.client.YBClient;
 // on the master leader.
 @Slf4j
 public class ModifyBlackList extends UniverseTaskBase {
+
+  // TODO Temporary change to be replaced by the decommission state changes.
+  public static final String PERMANENT_BLACKLIST_CACHE_KEY = "permanent_blacklist";
 
   @Inject
   protected ModifyBlackList(BaseTaskDependencies baseTaskDependencies) {
@@ -68,17 +74,45 @@ public class ModifyBlackList extends UniverseTaskBase {
         + ")";
   }
 
+  // TODO Temporary change to be replaced by the decommission state changes.
+  private Collection<NodeDetails> filterPermanentBlacklistedNodes() {
+    if (taskParams().isLeaderBlacklist || CollectionUtils.isEmpty(taskParams().removeNodes)) {
+      return taskParams().removeNodes;
+    }
+    return taskParams().removeNodes.stream()
+        .filter(
+            n -> {
+              JsonNode node = getTaskCache().get(n.getNodeName());
+              if (!(node instanceof ObjectNode) || node.isNull()) {
+                return true;
+              }
+              JsonNode valueNode = ((ObjectNode) node).get(PERMANENT_BLACKLIST_CACHE_KEY);
+              if (valueNode == null || valueNode.isNull() || !valueNode.asBoolean()) {
+                return true;
+              }
+              log.info("Blacklisting node {} permanently", n.getNodeName());
+              return false;
+            })
+        .collect(Collectors.toList());
+  }
+
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
+    log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
+    taskParams().removeNodes = filterPermanentBlacklistedNodes();
+    if (!taskParams().isLeaderBlacklist
+        && CollectionUtils.isEmpty(taskParams().addNodes)
+        && CollectionUtils.isEmpty(taskParams().removeNodes)) {
+      log.info("No nodes to be added or removed from blacklist");
+      return;
+    }
+    List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
+    List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
+    YBClient client = ybService.getClient(masterHostPorts, certificate);
     try {
-      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
-      List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
-      List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
-      client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
           new ModifyMasterClusterConfigBlacklist(
               client, addHosts, removeHosts, taskParams().isLeaderBlacklist);

@@ -85,32 +85,26 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().nodeUuid = currentNode.nodeUuid;
       Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
 
-      // Wait for Master Leader before doing Master operations, like blacklisting.
-      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      // If the node fails in Adding state during ADD action, IP may not be available.
-      // Check to make sure that the node IP is available.
-      if (Util.getNodeIp(universe, currentNode) != null) {
-        // Create a task for removal of this server from blacklist on master leader.
-        createModifyBlackListTask(
-                currentNodeDetails, false /* isAdd */, false /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      }
       UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      boolean instanceExists = instanceExists(taskParams());
       // Method instanceExists also checks for on-prem.
-      if (instanceExists(taskParams())) {
-        if (userIntent.providerType == CloudType.onprem) {
-          // Stop master and tservers.
-          createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
+      if (instanceExists && userIntent.providerType == CloudType.onprem) {
+        // Stop master and tservers.
+        createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        if (universe.isYbcEnabled()) {
+          createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          if (universe.isYbcEnabled()) {
-            createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
         }
+      }
 
+      // Wait for Master Leader before doing Master operations, like blacklisting.
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
+      if (instanceExists) {
         // Set the node states to Removing.
         createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
@@ -121,6 +115,17 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                 true /* isForceDelete */,
                 false /* deleteNode */,
                 true /* deleteRootVolumes */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
+
+      // If the node fails in Adding state during ADD action, IP may not be available.
+      // Check to make sure that the node IP is available.
+      if (Util.getNodeIp(universe, currentNode) != null) {
+        // Create a task for removal of this server from blacklist on master leader.
+        createModifyBlackListTask(
+                null /* addNodes */,
+                currentNodeDetails /* removeNodes */,
+                false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 
