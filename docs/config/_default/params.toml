@@ -77,6 +77,8 @@ version_menu_pagelinks = true
   preview_version_slug = "preview"
   # To disable heading/title icons for particular page, define `hideHeadingIcon: true` on that page params.
   heading_icons = true
+	# To disable list icons for particular page, define `hideListIcons: true` on that page params.
+  list_icons = true
 
 # Header logo link
 [yb.navbar_logo]

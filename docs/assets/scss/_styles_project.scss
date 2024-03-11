@@ -287,7 +287,14 @@ html {
         min-height: 40px;
         justify-content: center;
         align-items: flex-start;
-        padding-left: 40px;
+
+        &.list-icon-with-title {
+          padding-left: 40px;
+
+          .title {
+            margin-left: 16px;
+          }
+        }
 
         .icon {
           width: 40px;
@@ -322,7 +329,6 @@ html {
 
         .title {
           margin: 0;
-          margin-left: 16px;
           font-weight: 600;
           font-size: 16px;
           line-height: 24px;
