@@ -594,4 +594,50 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream.close();
   }
+
+  @Test
+  public void testInnerLSNValues() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn =
+        getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    String slotName = "test_inner_lsn_values";
+    createStreamAndWaitForSnapshotTimeToPass(replConnection, slotName);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES(1, 'abcd')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // The LSN of the BEGIN record is the LSN value of the first operation within the transaction.
+    receiveMessage(stream, 1);
+    assertEquals(LogSequenceNumber.valueOf(3L), stream.getLastReceiveLSN());
+
+    // RELATION records don't have an LSN.
+    receiveMessage(stream, 1);
+    assertEquals(LogSequenceNumber.valueOf(0L), stream.getLastReceiveLSN());
+
+    // INSERT record.
+    receiveMessage(stream, 1);
+    assertEquals(LogSequenceNumber.valueOf(3L), stream.getLastReceiveLSN());
+
+    // The LSN of the COMMIT record is the end_lsn i.e. commit_lsn + 1. This points to the next
+    // record after the transaction.
+    receiveMessage(stream, 1);
+    assertEquals(LogSequenceNumber.valueOf(5L), stream.getLastReceiveLSN());
+
+    stream.close();
+  }
 }
