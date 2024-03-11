@@ -1279,13 +1279,15 @@ Status SetValueFromQLBinaryHelper(
     case NUMERICOID: {
       func_name = "numeric_out";
       util::Decimal decimal;
+      string string_val;
 
-      Status s = decimal.DecodeFromComparable(ql_value.decimal_value());
-      if (!s.ok())
-        return STATUS_SUBSTITUTE(
-            InternalError, "Failed to deserialize DECIMAL from $1", ql_value.decimal_value());
-      string numeric_val = decimal.ToString();
-      cdc_datum_message->set_datum_double(std::stod(numeric_val));
+      RETURN_NOT_OK(decimal.DecodeFromComparable(ql_value.decimal_value()));
+      RETURN_NOT_OK(decimal.ToPointString(&string_val, std::numeric_limits<int32_t>::max()));
+
+      size = string_val.size();
+      val = const_cast<char *>(string_val.c_str());
+      uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
+      set_string_value(datum, func_name, cdc_datum_message);
       break;
     }
     case REGPROCEDUREOID: {
