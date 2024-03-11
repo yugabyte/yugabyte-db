@@ -20,7 +20,8 @@ import (
 
 // WaitForCreateProviderTask is a util task for create provider
 func WaitForCreateProviderTask(
-	authAPI *ybaAuthClient.AuthAPIClient, providerName, providerUUID, taskUUID string) {
+	authAPI *ybaAuthClient.AuthAPIClient,
+	providerName, providerUUID, providerCode, taskUUID string) {
 
 	var providerData []ybaclient.Provider
 	var response *http.Response
@@ -41,7 +42,8 @@ func WaitForCreateProviderTask(
 		fmt.Printf("The provider %s (%s) has been created\n",
 			formatter.Colorize(providerName, formatter.GreenColor), providerUUID)
 
-		providerData, response, err = authAPI.GetListOfProviders().Name(providerName).Execute()
+		providerData, response, err = authAPI.GetListOfProviders().
+			Name(providerName).ProviderCode(providerCode).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Create - Fetch Provider")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
