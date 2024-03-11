@@ -23,11 +23,8 @@ var listReleasesCmd = &cobra.Command{
 	Short: "List YugabyteDB version releases",
 	Long:  "List YugabyteDB version releases",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		releasesListRequest := authAPI.GetListOfReleases(true)
 
 		r, response, err := releasesListRequest.Execute()

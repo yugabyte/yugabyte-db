@@ -42,11 +42,8 @@ var deleteUniverseCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		universeNameFlag, _ := cmd.Flags().GetString("name")
 		var universeName string
 		if len(args) > 0 {
