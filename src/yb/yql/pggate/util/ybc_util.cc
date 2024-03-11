@@ -321,6 +321,10 @@ bool YBCIsTxnDeadlockError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kDeadlock);
 }
 
+bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
+}
+
 uint16_t YBCGetTxnConflictErrorCode() {
   return to_underlying(TransactionErrorCode::kConflict);
 }
