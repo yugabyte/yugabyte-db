@@ -76,7 +76,8 @@ public class GraphServiceTest {
     expectedResponseStr =
         expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -103,7 +104,8 @@ public class GraphServiceTest {
     expectedResponseStr =
         expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -142,7 +144,8 @@ public class GraphServiceTest {
 
     String expectedResponseStr = CommonUtils.readResource("query/overall_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -188,7 +191,8 @@ public class GraphServiceTest {
 
     String expectedResponseStr = CommonUtils.readResource("query/overall_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -263,7 +267,8 @@ public class GraphServiceTest {
     String expectedResponseStr =
         CommonUtils.readResource("query/outlier_node_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -285,6 +290,7 @@ public class GraphServiceTest {
             Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds - 10))
         .setActualTimestamp(Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds))
         .setNodeName(nodeName)
+        .setDbId("12345")
         .setQueryId(queryId)
         .setRps(value)
         .setRowsAvg(value * 2)

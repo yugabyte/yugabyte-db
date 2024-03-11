@@ -1,10 +1,7 @@
-package com.yugabyte.troubleshoot.ts.service;
+package com.yugabyte.troubleshoot.ts.service.anomaly;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.troubleshoot.ts.models.GraphAnomaly;
-import com.yugabyte.troubleshoot.ts.models.GraphData;
-import com.yugabyte.troubleshoot.ts.models.GraphPoint;
-import java.time.Duration;
+import com.yugabyte.troubleshoot.ts.models.*;
 import java.util.*;
 import java.util.function.Supplier;
 import lombok.AllArgsConstructor;
@@ -18,22 +15,18 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AnomalyDetectionService {
+public class GraphAnomalyDetectionService {
+  public static final String LINE_NAME = "line_name";
 
-  IncreaseDetectionSettings DEFAULT_INCREASE_DETECTION_SETTINGS = new IncreaseDetectionSettings();
-  IncreaseDetectionSettings UNEVEN_DISTRIBUTION_DETECTION_SETTINGS =
-      new IncreaseDetectionSettings()
-          .setAnomalyType(GraphAnomaly.GraphAnomalyType.UNEVEN_DISTRIBUTION)
-          .setWindowMinSize(Duration.ofHours(1).toSeconds())
-          .setWindowMaxSize(Duration.ofHours(2).toSeconds());
-
-  public List<GraphAnomaly> getAnomalies(GraphAnomaly.GraphAnomalyType type, GraphData graphData) {
-    return getAnomalies(type, ImmutableList.of(graphData));
+  public List<GraphAnomaly> getAnomalies(
+      GraphAnomaly.GraphAnomalyType type, GraphData graphData, AnomalyDetectionSettings settings) {
+    return getAnomalies(type, ImmutableList.of(graphData), settings);
   }
 
   public List<GraphAnomaly> getAnomalies(
-      GraphAnomaly.GraphAnomalyType type, List<GraphData> graphDatas) {
-
+      GraphAnomaly.GraphAnomalyType type,
+      List<GraphData> graphDatas,
+      AnomalyDetectionSettings settings) {
     List<GraphAnomaly> result = new ArrayList<>();
     switch (type) {
       case INCREASE:
@@ -41,8 +34,9 @@ public class AnomalyDetectionService {
           if (CollectionUtils.isEmpty(graphData.getPoints())) {
             continue;
           }
-          GraphData baseline = getIncreaseBaseline(graphData, DEFAULT_INCREASE_DETECTION_SETTINGS);
-          result.addAll(getIncreases(baseline, graphData, DEFAULT_INCREASE_DETECTION_SETTINGS));
+          GraphData baseline =
+              getIncreaseBaseline(graphData, settings.getIncreaseDetectionSettings());
+          result.addAll(getIncreases(type, baseline, graphData, settings));
         }
         break;
       case UNEVEN_DISTRIBUTION:
@@ -53,7 +47,7 @@ public class AnomalyDetectionService {
           if (CollectionUtils.isEmpty(graphData.getPoints())) {
             continue;
           }
-          result.addAll(getIncreases(baseline, graphData, UNEVEN_DISTRIBUTION_DETECTION_SETTINGS));
+          result.addAll(getIncreases(type, baseline, graphData, settings));
         }
         break;
       default:
@@ -126,7 +120,11 @@ public class AnomalyDetectionService {
   }
 
   private List<GraphAnomaly> getIncreases(
-      GraphData beselineGraph, GraphData graphData, IncreaseDetectionSettings settings) {
+      GraphAnomaly.GraphAnomalyType anomalyType,
+      GraphData beselineGraph,
+      GraphData graphData,
+      AnomalyDetectionSettings detectionSettings) {
+    IncreaseDetectionSettings settings = detectionSettings.getIncreaseDetectionSettings();
     SlidingWindow currentWindow = new SlidingWindow();
     Long currentAnomalyStartTime = null;
     List<GraphAnomaly> result = new ArrayList<>();
@@ -141,7 +139,7 @@ public class AnomalyDetectionService {
       }
       Long timestamp = graphPoint.getX();
       if (currentWindow.isEmpty()) {
-        if (value > baseline * settings.thresholdRatio) {
+        if (value > getThreshold(baseline, detectionSettings)) {
           currentWindow.addPoint(timestamp, value, baseline);
         }
         // Until we hit increase threshold - w don't start window.
@@ -153,7 +151,7 @@ public class AnomalyDetectionService {
         } else {
           if (currentAnomalyStartTime == null) {
             if (currentWindow.getWindowAverage()
-                > currentWindow.getBaselineAverage() * settings.thresholdRatio) {
+                > getThreshold(currentWindow.getBaselineAverage(), detectionSettings)) {
               // Start an anomaly
               currentAnomalyStartTime = currentWindowStartTime;
               // Continue to grow window until max size is reached.
@@ -165,7 +163,7 @@ public class AnomalyDetectionService {
                 currentWindow.removeFirstPoint();
               } while (!currentWindow.isEmpty()
                   && currentWindow.getFirstValue()
-                      <= currentWindow.getFirstBaselineValue() * settings.thresholdRatio);
+                      <= getThreshold(currentWindow.getFirstBaselineValue(), detectionSettings));
             }
           } else {
             if (timestamp - currentWindowStartTime < settings.windowMaxSize) {
@@ -173,7 +171,7 @@ public class AnomalyDetectionService {
               currentWindow.addPoint(timestamp, value, baseline);
             } else {
               if (currentWindow.getWindowAverage()
-                  > currentWindow.getBaselineAverage() * settings.thresholdRatio) {
+                  > getThreshold(currentWindow.getBaselineAverage(), detectionSettings)) {
                 // Move window further
                 currentWindow.addPointAndMove(timestamp, value, baseline);
               } else {
@@ -184,13 +182,14 @@ public class AnomalyDetectionService {
                   i--;
                 } while (!currentWindow.isEmpty()
                     && currentWindow.getLastValue()
-                        <= currentWindow.getLastBaselineValue() * settings.thresholdRatio);
+                        <= getThreshold(currentWindow.getLastBaselineValue(), detectionSettings));
                 result.add(
-                    new GraphAnomaly()
-                        .setGraphName(graphData.getName())
-                        .setType(settings.getAnomalyType())
-                        .setStartTime(currentAnomalyStartTime)
-                        .setEndTime(currentWindow.getEndTime()));
+                    fillLabels(
+                        new GraphAnomaly()
+                            .setType(anomalyType)
+                            .setStartTime(currentAnomalyStartTime)
+                            .setEndTime(currentWindow.getEndTime()),
+                        graphData));
                 currentAnomalyStartTime = null;
                 currentWindow.clear();
               }
@@ -201,13 +200,51 @@ public class AnomalyDetectionService {
     }
     // Anomaly end is in the end of graph
     if (currentAnomalyStartTime != null) {
+      boolean anomalyInProgress = true;
+      while (!currentWindow.isEmpty()
+          && currentWindow.getLastValue()
+              <= getThreshold(currentWindow.getLastBaselineValue(), detectionSettings)) {
+        currentWindow.removeLastPoint();
+        anomalyInProgress = false;
+      }
       result.add(
-          new GraphAnomaly()
-              .setGraphName(graphData.getName())
-              .setType(settings.getAnomalyType())
-              .setStartTime(currentAnomalyStartTime));
+          fillLabels(
+              new GraphAnomaly()
+                  .setType(anomalyType)
+                  .setStartTime(currentAnomalyStartTime)
+                  .setEndTime(
+                      anomalyInProgress
+                          ? null
+                          : currentWindow.isEmpty()
+                              ? currentWindow.getLastMovedOutPointTimestamp()
+                              : currentWindow.getEndTime()),
+              graphData));
     }
     return result;
+  }
+
+  private Double getThreshold(Double baseline, AnomalyDetectionSettings settings) {
+    double minAnomalyValue =
+        settings.getMinimalAnomalyValue() != null
+            ? settings.getMinimalAnomalyValue()
+            : Double.MIN_VALUE;
+    return Math.max(
+        baseline * settings.getIncreaseDetectionSettings().thresholdRatio, minAnomalyValue);
+  }
+
+  private GraphAnomaly fillLabels(GraphAnomaly anomaly, GraphData graphData) {
+    if (graphData.getLabels() != null) {
+      anomaly.addLabelsMap(graphData.getLabels());
+    }
+    Map<String, String> additionalLabels = new HashMap<>();
+    if (graphData.getInstanceName() != null) {
+      additionalLabels.put(GraphFilter.instanceName.name(), graphData.getInstanceName());
+    }
+    if (graphData.getName() != null) {
+      additionalLabels.put(LINE_NAME, graphData.getName());
+    }
+    anomaly.addLabelsMap(additionalLabels);
+    return anomaly;
   }
 
   @Getter
@@ -215,6 +252,7 @@ public class AnomalyDetectionService {
     private final LinkedList<WindowEntry> window = new LinkedList<>();
     private Double windowAverage = 0.0;
     private Double baselineAverage = 0.0;
+    private Long lastMovedOutPointTimestamp = null;
 
     public void addPoint(Long timestamp, Double value, Double baseline) {
       window.add(new WindowEntry(timestamp, value, baseline));
@@ -224,7 +262,10 @@ public class AnomalyDetectionService {
 
     public void addPointAndMove(Long timestamp, Double value, Double baseline) {
       addPoint(timestamp, value, baseline);
-      removeFirstPoint();
+      WindowEntry removedPoint = removeFirstPoint();
+      if (removedPoint != null) {
+        lastMovedOutPointTimestamp = removedPoint.getTimestamp();
+      }
     }
 
     public WindowEntry removeLastPoint() {
@@ -304,6 +345,28 @@ public class AnomalyDetectionService {
     }
   }
 
+  public List<GraphAnomaly> mergeAnomalies(List<GraphAnomaly> anomalies) {
+    List<GraphAnomaly> sortedAnomalies =
+        anomalies.stream().sorted(Comparator.comparing(GraphAnomaly::getStartTime)).toList();
+
+    List<GraphAnomaly> result = new ArrayList<>();
+    for (GraphAnomaly anomaly : sortedAnomalies) {
+      if (result.isEmpty()) {
+        result.add(anomaly);
+      } else {
+        GraphAnomaly last = result.get(result.size() - 1);
+        if (last.getEndTime() == null
+            || anomaly.getEndTime() == null
+            || last.getEndTime() >= anomaly.getStartTime()) {
+          last.merge(anomaly);
+        } else {
+          result.add(anomaly);
+        }
+      }
+    }
+    return result;
+  }
+
   @Value
   @AllArgsConstructor
   private static class WindowEntry {
@@ -314,11 +377,17 @@ public class AnomalyDetectionService {
 
   @Data
   @Accessors(chain = true)
+  public static class AnomalyDetectionSettings {
+    Double minimalAnomalyValue;
+    IncreaseDetectionSettings increaseDetectionSettings = new IncreaseDetectionSettings();
+  }
+
+  @Data
+  @Accessors(chain = true)
   public static class IncreaseDetectionSettings {
-    GraphAnomaly.GraphAnomalyType anomalyType = GraphAnomaly.GraphAnomalyType.INCREASE;
     double baselinePointsRatio = 0.25;
     double thresholdRatio = 1.5;
-    long windowMinSize = Duration.ofMinutes(30).toSeconds();
-    long windowMaxSize = Duration.ofHours(1).toSeconds();
+    long windowMinSize;
+    long windowMaxSize;
   }
 }

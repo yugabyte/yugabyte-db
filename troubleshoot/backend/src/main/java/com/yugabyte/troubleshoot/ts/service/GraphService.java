@@ -63,6 +63,7 @@ public class GraphService {
     UniverseMetadata universeMetadata = universeMetadataService.get(universeUuid);
     UniverseDetails universeDetails = universeDetailsService.get(universeUuid);
     if (universeMetadata == null || universeDetails == null) {
+      log.warn("Universe information for " + universeUuid + " is missing");
       return queries.stream()
           .map(
               q ->
@@ -97,6 +98,7 @@ public class GraphService {
         }
       }
       if (!sourceFound) {
+        log.warn("No graph named: " + query.getName());
         responses.add(
             new GraphResponse()
                 .setSuccessful(false)

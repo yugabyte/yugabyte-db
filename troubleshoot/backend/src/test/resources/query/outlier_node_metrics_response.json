@@ -23,6 +23,7 @@
         "tickformat": null
       }
     },
+    "stepSeconds": 120,
     "data": [
       {
         "name": "Insert",
@@ -32,6 +33,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -237,8 +239,7 @@
           "305551.47058823524",
           "434670.0",
           "502568.00000000006"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Insert",
@@ -248,6 +249,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -453,8 +455,7 @@
           "406663.0",
           "426224.6666666666",
           "426644.0"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Select",
@@ -464,6 +465,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -669,8 +671,7 @@
           "101037.82401466544",
           "105062.962821735",
           "105415.89533777355"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Select",
@@ -680,6 +681,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -885,8 +887,7 @@
           "127536.5",
           "133957.0",
           "132345.5"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Update",
@@ -896,6 +897,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -1101,8 +1103,7 @@
           "NaN",
           "NaN",
           "NaN"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Update",
@@ -1112,6 +1113,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -1317,8 +1319,7 @@
           "NaN",
           "NaN",
           "NaN"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Delete",
@@ -1328,6 +1329,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -1533,8 +1535,7 @@
           "249593.00000000003",
           "266686.3333333333",
           "258232.99999999997"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Delete",
@@ -1544,6 +1545,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -1749,8 +1751,7 @@
           "4.068223493333333E8",
           "240147.33333333334",
           "236054.0"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Delete",
@@ -1760,6 +1761,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -1965,8 +1967,7 @@
           "1.357420367777778E8",
           "226859.44444444444",
           "219814.16666666666"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Insert",
@@ -1976,6 +1977,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -2181,8 +2183,7 @@
           "285281.31145211705",
           "340101.5720164609",
           "361262.8141025641"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Select",
@@ -2192,6 +2193,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706272080000,
           1706272200000,
@@ -2397,8 +2399,7 @@
           "97054.84133822181",
           "115867.487607245",
           "102680.43733481341"
-        ],
-        "labels": null
+        ]
       },
       {
         "name": "Update",
@@ -2408,6 +2409,7 @@
         "namespaceName": null,
         "namespaceId": null,
         "type": "scatter",
+        "labels": null,
         "x": [
           1706274600000,
           1706274720000,
@@ -2431,8 +2433,7 @@
           "76079.0",
           "123917.00000000001",
           "72205.0"
-        ],
-        "labels": null
+        ]
       }
     ]
   }
