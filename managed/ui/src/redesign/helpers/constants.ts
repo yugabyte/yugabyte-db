@@ -51,7 +51,8 @@ export const RuntimeConfigKey = {
   GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',
   RELEASES_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.releases_redesign',
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
-  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled'
+  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
+  ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting'
 } as const;
 
 /**

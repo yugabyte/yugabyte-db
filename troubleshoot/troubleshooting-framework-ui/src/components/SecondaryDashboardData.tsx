@@ -1,8 +1,7 @@
 import { useEffect, useState, ChangeEvent } from 'react';
 import { usePrevious } from 'react-use';
-import { useQuery } from 'react-query';
+import { useMutation } from 'react-query';
 import { Box, Typography } from '@material-ui/core';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { YBPanelItem } from '../common/YBPanelItem';
@@ -10,24 +9,25 @@ import { SecondaryDashboardHeader } from './SecondaryDashboardHeader';
 import { SecondaryDashboard } from './SecondaryDashboard';
 import { CPU_USAGE_OUTLIER_DATA, SQL_QUERY_LATENCY_OUTLIER_DATA } from './GraphMockOutlierData';
 import { CPU_USAGE_OVERALL_DATA, SQL_QUERY_LATENCY_OVERALL_DATA } from './GraphMockOverallData';
-import { QUERY_KEY, TroubleshootAPI } from '../api';
+import { TroubleshootAPI } from '../api';
 import {
   Anomaly,
   AnomalyCategory,
   AppName,
   GraphQuery,
   GraphResponse,
+  GraphType,
   MetricMeasure,
+  TroubleshootingRecommendations,
   Universe
 } from '../helpers/dtos';
-import { isNonEmptyArray, isNonEmptyObject } from '../helpers/ObjectUtils';
+import { isNonEmptyArray, isNonEmptyObject } from '../helpers/objectUtils';
 import {
   getAnomalyMetricMeasure,
   getAnomalyOutlierType,
   getAnomalyNumNodes,
   getAnomalyStartDate,
-  getAnomalyEndTime,
-  getGraphRequestParams
+  getAnomalyEndTime
 } from '../helpers/utils';
 import {
   ALL,
@@ -36,39 +36,43 @@ import {
   ALL_REGIONS,
   ALL_ZONES
 } from '../helpers/constants';
-import { useStyles } from './styles';
+import { useHelperStyles } from './styles';
+
+import TraingleDownIcon from '../assets/traingle-down.svg';
+import TraingleUpIcon from '../assets/traingle-up.svg';
 
 export interface SecondaryDashboardDataProps {
-  anomalyData: Anomaly | undefined;
+  anomalyData: Anomaly | null;
   universeUuid: string;
   universeData: Universe | any;
   appName: AppName;
+  graphParams: GraphQuery[] | null;
   timezone?: string;
+  recommendationMetrics: any;
 }
 
 export const SecondaryDashboardData = ({
   universeUuid,
   universeData,
   anomalyData,
+  graphParams,
   appName,
-  timezone
+  timezone,
+  recommendationMetrics
 }: SecondaryDashboardDataProps) => {
-  const classes = useStyles();
-
+  const classes = useHelperStyles();
   // Get default values to be populated on page
   const anomalyMetricMeasure = getAnomalyMetricMeasure(anomalyData!);
   const anomalyOutlierType = getAnomalyOutlierType(anomalyData!);
   const anomalyOutlierNumNodes = getAnomalyNumNodes(anomalyData!);
   const anomalyStartDate = getAnomalyStartDate(anomalyData!);
   const anomalyEndDate = getAnomalyEndTime(anomalyData!);
-  const [graphRequestParams, setGraphRequestParams] = useState<GraphQuery[]>(
-    getGraphRequestParams(anomalyData!)
-  );
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
   // State variables
+  const [openTiles, setOpenTiles] = useState<string[]>([]);
   const [clusterRegionItem, setClusterRegionItem] = useState<string>(ALL_REGIONS);
   const [zoneNodeItem, setZoneNodeItem] = useState<string>(ALL_ZONES);
   const [isPrimaryCluster, setIsPrimaryCluster] = useState<boolean>(true);
@@ -90,7 +94,6 @@ export const SecondaryDashboardData = ({
   const previousMetricMeasure = usePrevious(metricMeasure);
 
   // Make use of useMutation to call fetchGraphs and onSuccess of it, ensure to set setChartData
-
   useEffect(() => {
     if (previousMetricMeasure && previousMetricMeasure !== metricMeasure) {
       setChartData(null);
@@ -109,11 +112,9 @@ export const SecondaryDashboardData = ({
     }
   }, [numNodes, metricMeasure, filterDuration, outlierType, node, zone, region, cluster]);
 
-  const { isLoading, isError, isIdle } = useQuery(
-    [QUERY_KEY.fetchGraphs, universeUuid],
-    () => TroubleshootAPI.fetchGraphs(universeUuid, graphRequestParams),
+  const fetchAnomalyGraphs = useMutation(
+    () => TroubleshootAPI.fetchGraphs(universeUuid, graphParams),
     {
-      enabled: isNonEmptyObject(anomalyData),
       onSuccess: (graphData: GraphResponse[]) => {
         setGraphData(graphData);
       },
@@ -134,7 +135,7 @@ export const SecondaryDashboardData = ({
     if (anomalyData?.category === AnomalyCategory.SQL) {
       data = SQL_QUERY_LATENCY_OVERALL_DATA;
     }
-
+    fetchAnomalyGraphs.mutate();
     setChartData(data);
   }, []);
 
@@ -157,14 +158,16 @@ export const SecondaryDashboardData = ({
   const formatRecommendations = (cell: any, row: any) => {
     return (
       <Box>
-        {row.troubleshootingRecommendations.map((recommendation: string, idx: number) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <Box key={idx} mt={idx > 0 ? 2 : 0}>
-            <Typography variant="body2">
-              <li>{recommendation}</li>
-            </Typography>
-          </Box>
-        ))}
+        {row.troubleshootingRecommendations?.map(
+          (recommendation: TroubleshootingRecommendations, idx: number) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <Box key={idx} mt={idx > 0 ? 2 : 0}>
+              <Typography variant="body2">
+                <li>{recommendation.recommendation}</li>
+              </Typography>
+            </Box>
+          )
+        )}
       </Box>
     );
   };
@@ -218,6 +221,42 @@ export const SecondaryDashboardData = ({
     setEndDateTime(new Date(e.target.value));
   };
 
+  const handleOpenBox = (metricName: string) => {
+    let openTilesCopy = [...openTiles];
+
+    if (!openTilesCopy.includes(metricName)) {
+      openTilesCopy.push(metricName);
+      setOpenTiles(openTilesCopy);
+    } else if (openTilesCopy.includes(metricName)) {
+      const openTileIndex = openTilesCopy.indexOf(metricName);
+      if (openTileIndex >= 0) {
+        openTilesCopy.splice(openTileIndex, 1);
+      }
+      setOpenTiles(openTilesCopy);
+    }
+  };
+
+  const renderSupportingGraphs = (metricData: any, uniqueOperations: any, graphType: GraphType) => {
+    return (
+      <Box mt={3} mr={8}>
+        <SecondaryDashboard
+          metricData={metricData}
+          metricKey={metricData.name}
+          containerWidth={null}
+          prometheusQueryEnabled={true}
+          metricMeasure={metricMeasure}
+          operations={uniqueOperations}
+          shouldAbbreviateTraceName={true}
+          isMetricLoading={false}
+          anomalyData={anomalyData}
+          appName={appName}
+          timezone={timezone}
+          graphType={graphType}
+        />
+      </Box>
+    );
+  };
+
   return (
     <Box>
       <SecondaryDashboardHeader
@@ -250,18 +289,10 @@ export const SecondaryDashboardData = ({
       <YBPanelItem
         body={
           <>
-            <Box ml={0.5} className={classes.troubleshootBox}>
-              <span className={clsx(classes.troubleshootTitle, classes.tagGreen)}>
-                {`${anomalyData?.category} ISSUE`}
-              </span>
-              <span>
-                <b>{anomalyData?.summary}</b>
-              </span>
-            </Box>
-            {/* <Box m={3} id="nodeIssueGraph"></Box> */}
-            {chartData &&
-              chartData?.length > 0 &&
-              chartData?.map((metricData: any) => {
+            {isNonEmptyArray(chartData) &&
+              isNonEmptyArray(anomalyData?.mainGraphs) &&
+              anomalyData?.mainGraphs.map((graph: any, graphIdx: number) => {
+                const metricData = chartData.find((data: any) => data.name === graph.name);
                 let uniqueOperations: any = new Set();
 
                 if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
@@ -270,66 +301,101 @@ export const SecondaryDashboardData = ({
                   });
                 }
                 uniqueOperations = Array.from(uniqueOperations);
+
                 return (
-                  <Box mt={2}>
-                    <SecondaryDashboard
-                      metricData={metricData}
-                      metricKey={metricData.name}
-                      containerWidth={null}
-                      prometheusQueryEnabled={true}
-                      metricMeasure={metricMeasure}
-                      operations={uniqueOperations}
-                      shouldAbbreviateTraceName={true}
-                      isMetricLoading={false}
-                      anomalyData={anomalyData}
-                      appName={appName}
-                      timezone={timezone}
-                    />
+                  <Box className={classes.secondaryDashboard}>
+                    {graphIdx === 0 && (
+                      <Box mt={1} ml={0.5}>
+                        <span className={clsx(classes.largeBold)}>
+                          {`${anomalyData?.category} Issue: ${anomalyData?.summary} `}
+                        </span>
+                      </Box>
+                    )}
+                    {renderSupportingGraphs(metricData, uniqueOperations, GraphType.MAIN)}
                   </Box>
                 );
               })}
-            {anomalyData && (
-              <Box mt={6} ml={1} mr={7} mb={4}>
-                <Typography variant="h2" style={{ marginBottom: '16px' }}>
-                  {'Recommendations'}
-                </Typography>
-                <BootstrapTable
-                  data={anomalyData.rcaGuidelines}
-                  pagination={anomalyData.rcaGuidelines.length > 10}
-                  containerClass={classes.guidelineBox}
-                >
-                  <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
-                  <TableHeaderColumn
-                    width="25%"
-                    tdStyle={{ whiteSpace: 'normal', verticalAlign: 'middle' }}
-                    thStyle={{ textAlign: 'center', fontWeight: 600 }}
-                    dataField="possibleCause"
-                    // dataFormat={formatDisplayName}
-                    dataSort
-                  >
-                    <span>{'Possible Cause'}</span>
-                  </TableHeaderColumn>
-                  <TableHeaderColumn
-                    width="45%"
-                    tdStyle={{ whiteSpace: 'normal', verticalAlign: 'middle' }}
-                    thStyle={{ textAlign: 'center', fontWeight: 600 }}
-                    // dataFormat={formatDisplayName}
-                    dataField="possibleCauseDescription"
-                    dataSort
-                  >
-                    <span>{'Description'}</span>
-                  </TableHeaderColumn>
-                  <TableHeaderColumn
-                    width="30%"
-                    thStyle={{ textAlign: 'center', fontWeight: 600 }}
-                    dataFormat={formatRecommendations}
-                    dataSort
-                  >
-                    <span>{'Recommendations'}</span>
-                  </TableHeaderColumn>
-                </BootstrapTable>
-              </Box>
-            )}
+            {isNonEmptyArray(chartData) &&
+              // Display metrics in the same order based on request params tp graph
+              // This will help us to group metrics together based on RCA Guidelines
+              recommendationMetrics?.map((reason: any, reasonIdx: number) => {
+                let renderItems: any = [];
+                return reason?.name?.map((metricName: string, idx: number) => {
+                  let uniqueOperations: any = new Set();
+                  const numReasons = reason.name.length - 1;
+                  const metricData = chartData.find((data: any) => data.name === metricName);
+
+                  if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metricData)) {
+                    metricData.data.forEach((metricItem: any) => {
+                      uniqueOperations.add(metricItem.name);
+                    });
+                  }
+                  uniqueOperations = Array.from(uniqueOperations);
+                  return (
+                    <>
+                      {idx === 0 && reasonIdx === 0 && (
+                        <Box mt={2} mb={2}>
+                          <Typography variant="h4">{'Possible Causes'}</Typography>
+                        </Box>
+                      )}
+                      {isNonEmptyObject(metricData) && (
+                        <>
+                          <Box hidden={true}>
+                            {renderItems.push(
+                              renderSupportingGraphs(
+                                metricData,
+                                uniqueOperations,
+                                GraphType.SUPPORTING
+                              )
+                            )}
+                          </Box>
+                          {idx === numReasons && (
+                            <Box
+                              onClick={() => handleOpenBox(metricData.name)}
+                              className={classes.secondaryDashboard}
+                              key={metricData.name}
+                            >
+                              <Box>
+                                <span className={classes.smallBold}>{reason.cause}</span>
+                              </Box>
+                              <Box mt={1}>
+                                <span className={classes.mediumNormal}>{reason.description}</span>
+                              </Box>
+                              {openTiles.includes(metricData.name) ? (
+                                <img
+                                  src={TraingleDownIcon}
+                                  alt="expand"
+                                  className={classes.arrowIcon}
+                                />
+                              ) : (
+                                <img
+                                  src={TraingleUpIcon}
+                                  alt="shrink"
+                                  className={classes.arrowIcon}
+                                />
+                              )}
+                              {openTiles.includes(metricData.name) && (
+                                <Box mt={3}>
+                                  <span className={classes.smallNormal}>
+                                    {'SUPPORTING METRICS'}
+                                  </span>
+                                </Box>
+                              )}
+                              {openTiles.includes(metricData.name) && (
+                                <Box className={clsx(classes.metricGroupItems)}>
+                                  {renderItems?.map((item: any) => {
+                                    return item;
+                                  })}
+                                </Box>
+                              )}
+                            </Box>
+                          )}
+                        </>
+                      )}
+                    </>
+                  );
+                });
+              })}
           </>
         }
       />

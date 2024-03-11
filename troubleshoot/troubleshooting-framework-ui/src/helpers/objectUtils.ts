@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { timeFormatterISO8601 } from './DateUtils';
+import { timeFormatterISO8601 } from './dateUtils';
 
 export function isDefinedNotNull(obj: any) {
   return typeof obj !== 'undefined' && obj !== null;
