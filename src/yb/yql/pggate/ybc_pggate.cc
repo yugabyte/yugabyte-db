@@ -2195,6 +2195,19 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   return YBCStatusOK();
 }
 
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn) {
+  const auto result =
+      pgapi->UpdateAndPersistLSN(std::string(stream_id), restart_lsn_hint, confirmed_flush);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *DCHECK_NOTNULL(restart_lsn) = result->restart_lsn();
+  return YBCStatusOK();
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

@@ -4458,15 +4458,20 @@ void CDCServiceImpl::UpdateAndPersistLSN(
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
   auto confirmed_flush_lsn = req->confirmed_flush_lsn();
   auto restart_lsn = req->restart_lsn();
-  Status s = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
-  if (!s.ok()) {
+  auto res = virtual_wal->UpdateAndPersistLSNInternal(stream_id, confirmed_flush_lsn, restart_lsn);
+  if (!res.ok()) {
     std::string error_msg = Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id);
     LOG(WARNING) << error_msg;
     RPC_STATUS_RETURN_ERROR(
-        s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+        res.status().CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+        context);
   }
 
-  VLOG(4) << "LSN succesfully persisted for stream_id: " << stream_id;
+  resp->set_restart_lsn(*res);
+
+  VLOG(4) << "Succesfully persisted LSN values for stream_id: " << stream_id
+          << ", confirmed_flush_lsn = " << confirmed_flush_lsn
+          << ", restart_lsn = " << *res;
   context.RespondSuccess();
 }
 
