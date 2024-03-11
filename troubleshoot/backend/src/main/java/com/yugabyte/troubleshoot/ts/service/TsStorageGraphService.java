@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class TsStorageGraphService implements GraphSourceIF {
-  private static final String ALIAS = "alias";
+  public static final String ALIAS = "alias";
   private final NamedParameterJdbcTemplate jdbcTemplate;
   private final Map<String, TsStorageGraphConfig> tsStorageGraphConfigs;
 
@@ -59,6 +59,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     response.setSuccessful(true);
     response.setName(query.getName());
     response.setLayout(config.getLayout());
+    response.setStepSeconds(query.getStepSeconds());
 
     // Generate SQL statement
     String sql = "SELECT ";

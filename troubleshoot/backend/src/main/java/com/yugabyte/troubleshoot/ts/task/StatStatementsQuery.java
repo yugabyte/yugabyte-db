@@ -32,6 +32,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 @Component
 @Configuration
@@ -197,8 +198,8 @@ public class StatStatementsQuery {
                           .setId(
                               new PgStatStatementsQueryId()
                                   .setUniverseId(metadata.getId())
+                                  .setDbId(e.getKey().getDatabaseId())
                                   .setQueryId(e.getKey().getQueryId()))
-                          .setDbId(e.getKey().getDatabaseId())
                           .setDbName(e.getValue().getDbName())
                           .setQuery(e.getValue().getQuery()))
               .toList();
@@ -248,6 +249,9 @@ public class StatStatementsQuery {
           ybaClient.runSqlQuery(metadata, SYSTEM_PLATFORM, query, node.getNodeName());
 
       List<PgStatStatements> statStatementsList = new ArrayList<>();
+      if (CollectionUtils.isEmpty(result.getResult())) {
+        return nodeResult;
+      }
       for (JsonNode statsJson : result.getResult()) {
         String dbId = statsJson.get(DB_ID).asText();
         String dbName = statsJson.get(DB_NAME).asText();
@@ -269,6 +273,7 @@ public class StatStatementsQuery {
                   .setNodeName(node.getNodeName())
                   .setActualTimestamp(newTimestamp)
                   .setScheduledTimestamp(Instant.ofEpochMilli(progress.scheduleTimestamp))
+                  .setDbId(dbId)
                   .setQueryId(statsJson.get(QUERY_ID).asLong());
           fillStats(
               previousStats,
