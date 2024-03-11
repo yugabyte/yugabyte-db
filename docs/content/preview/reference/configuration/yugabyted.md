@@ -1021,6 +1021,7 @@ The following example shows how to create a multi-region cluster. If the `~/yb_d
 
 
 ```sh
+rm -rf ~/yb_docker_data
 mkdir ~/yb_docker_data
 
 docker network create custom-network
