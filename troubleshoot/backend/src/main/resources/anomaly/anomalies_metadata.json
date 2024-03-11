@@ -191,14 +191,14 @@
     },
     "rcaGuidelines": [
       {
-        "possibleCause": "Uneven data distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes have significantly more data then the other nodes",
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check Disk Usage graph across DB nodes",
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
             "supportingGraphs": [
               {
-                "name": "disk_usage",
+                "name": "ysql_server_rpc_per_second",
                 "filters": {
                   "universeUuid": []
                 }
@@ -219,28 +219,113 @@
         ]
       },
       {
-        "possibleCause": "Uneven query distribution",
-        "possibleCauseDescription": "Particular DB node or set of nodes process more SQL queries than the other nodes",
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
         "troubleshootingRecommendations": [
           {
-            "recommendation": "Check YSQL RPC distribution across DB nodes",
-            "supportingGraphs": [
-              {
-                "name": "ysql_server_rpc_per_second",
-                "filters": {
-                  "universeUuid": []
-                }
-              }
-            ]
+            "recommendation": "Check TServer/Master logs for evidence of background activities"
           }
         ]
       },
       {
         "possibleCause": "3rd party processes",
-        "possibleCauseDescription": "Some process is running on the DB nodes which consumes CPU",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
         "troubleshootingRecommendations": [
           {
             "recommendation": "Check top command output on the affected DB nodes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "0b83923d-c712-47b4-ae64-59f79f5117ca",
+    "category": "NODE",
+    "type": "HOT_NODE_READS_WRITES",
+    "title": "Uneven TServer Reads/Writes distribution across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "tserver_rpcs_per_sec_by_universe",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB node(s) are storing data, accessed more often",
+        "possibleCauseDescription": "Data for particular table/set of tables is partitioned across DB nodes the way that particular node gets more read/write requests consistently",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check reads/writes for particular tables too see - which table is causing uneven distribution"
+          },
+          {
+            "recommendation": "Check affected tables partitioning logic - maybe there is a better way to spread load across DB nodes"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Load balancing is not in progress or load is not balanced",
+        "possibleCauseDescription": "We can turn off load balancing during some DB operations. Also, load balancing may not be able to catch up on changed data, etc.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check load balancing status in Master UI"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "17a0c2e0-5823-43b6-a940-3714c5b0f8f8",
+    "category": "NODE",
+    "type": "HOT_NODE_YSQL_QUERIES",
+    "title": "Uneven distribution of YSQL queries across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "ysql_server_rpc_per_second",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB clients prefer particular set of nodes",
+        "possibleCauseDescription": "DB clients have more connections to particular set of nodes, or are sending more queries to particular set of nodes",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check if connecition count is even across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_connections",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "ysql_connections_per_sec",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check query stats UI to see - which query/set of queries is distributed unevenly"
           }
         ]
       }

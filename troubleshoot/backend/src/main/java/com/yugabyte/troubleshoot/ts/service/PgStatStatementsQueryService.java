@@ -49,6 +49,10 @@ public class PgStatStatementsQueryService
         .toList();
   }
 
+  public List<PgStatStatementsQuery> listByUniverseId(UUID universeUuid) {
+    return new QPgStatStatementsQuery().id.universeId.eq(universeUuid).findList();
+  }
+
   public List<PgStatStatementsQuery> listAll() {
     return new QPgStatStatementsQuery().findList();
   }
