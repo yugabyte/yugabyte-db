@@ -208,6 +208,8 @@ static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
                                            cypher_clause *clause);
+static Query *transform_cypher_sub_query(cypher_parsestate *cpstate,
+                                         cypher_clause *clause);
 // set and remove clause
 static Query *transform_cypher_set(cypher_parsestate *cpstate,
                                    cypher_clause *clause);
@@ -224,6 +226,8 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
                                                List *delete_item_list,
                                                Query *query);
 //set operators
+static cypher_clause *make_cypher_clause(List *stmt);
+
 static Query *transform_cypher_union(cypher_parsestate *cpstate,
                                      cypher_clause *clause);
 
@@ -386,6 +390,10 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     else if (is_ag_node(self, cypher_sub_pattern))
     {
         result = transform_cypher_sub_pattern(cpstate, clause);
+    }
+    else if (is_ag_node(self, cypher_sub_query))
+    {
+        result = transform_cypher_sub_query(cpstate, clause);
     }
     else if (is_ag_node(self, cypher_unwind))
     {
@@ -2765,6 +2773,54 @@ static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
     return qry;
 }
 
+static Query *transform_cypher_sub_query(cypher_parsestate *cpstate,
+                                           cypher_clause *clause)
+{
+    cypher_clause *c;
+    Query *qry;
+    ParseState *pstate =(ParseState *)cpstate;
+    cypher_sub_query *sub_query = (cypher_sub_query*)clause->self;
+    ParseNamespaceItem *pnsi;
+    cypher_parsestate *child_parse_state = make_cypher_parsestate(cpstate);
+    ParseState *p_child_parse_state = (ParseState *) child_parse_state;
+    p_child_parse_state->p_expr_kind = pstate->p_expr_kind;
+
+    c = make_cypher_clause((List *)sub_query->query);
+
+    qry = makeNode(Query);
+    qry->commandType = CMD_SELECT;
+
+    child_parse_state->subquery_where_flag = true;
+
+    pnsi = transform_cypher_clause_as_subquery(child_parse_state,
+                                               transform_cypher_clause,
+                                               c,
+                                               NULL, true);
+
+    qry->targetList = makeTargetListFromPNSItem(p_child_parse_state, pnsi);
+
+    markTargetListOrigins(p_child_parse_state, qry->targetList);
+
+    qry->rtable = p_child_parse_state->p_rtable;
+    qry->jointree = makeFromExpr(p_child_parse_state->p_joinlist, NULL);
+
+    /* the state will be destroyed so copy the data we need */
+    qry->hasSubLinks = p_child_parse_state->p_hasSubLinks;
+    qry->hasTargetSRFs = p_child_parse_state->p_hasTargetSRFs;
+    qry->hasAggs = p_child_parse_state->p_hasAggs;
+
+    if (qry->hasAggs)
+    {
+        parse_check_aggregates(p_child_parse_state, qry);
+    }
+
+    assign_query_collations(p_child_parse_state, qry);
+
+    free_cypher_parsestate(child_parse_state);
+
+    return qry;
+}
+
 /*
  * Code borrowed and inspired by PG's transformFromClauseItem. This function
  * will transform the VLE function, depending on type. Currently, only
@@ -4872,8 +4928,20 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
         /*
          * If we are in a WHERE clause transform, we don't want to create new
          * variables, we want to use the existing ones. So, error if otherwise.
+         * If we are in a subquery transform, we are allowed to create new variables
+         * in the match, and all variables outside are visible to
+         * the subquery. Since there is no existing SQL logic that allows
+         * subqueries to alter variables of outer queries, we bypass this
+         * logic we would normally use to process WHERE clauses.
+         *
+         * Currently, the EXISTS subquery logic is naive. It returns a boolean
+         * result on the outer queries, but does not restrict the results set.
+         *
+         * TODO: Implement logic to alter outer scope results.
+         *
          */
-        if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+        if (pstate->p_expr_kind == EXPR_KIND_WHERE &&
+            cpstate->subquery_where_flag == false)
         {
             cypher_parsestate *parent_cpstate =
                (cypher_parsestate *)pstate->parentParseState->parentParseState;
@@ -5132,8 +5200,20 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
         /*
          * If we are in a WHERE clause transform, we don't want to create new
          * variables, we want to use the existing ones. So, error if otherwise.
+         * If we are in a subquery transform, we are allowed to create new variables
+         * in the match, and all variables outside are visible to
+         * the subquery. Since there is no existing SQL logic that allows
+         * subqueries to alter variables of outer queries, we bypass this
+         * logic we would normally use to process WHERE clauses.
+         *
+         * Currently, the EXISTS subquery logic is naive. It returns a boolean
+         * result on the outer queries, but does not restrict the results set.
+         *
+         * TODO: Implement logic to alter outer scope results.
+         *
          */
-        if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+        if (pstate->p_expr_kind == EXPR_KIND_WHERE &&
+            cpstate->subquery_where_flag == false)
         {
             cypher_parsestate *parent_cpstate =
                (cypher_parsestate *)pstate->parentParseState->parentParseState;

@@ -61,8 +61,9 @@ void out_cypher_typecast(StringInfo str, const ExtensibleNode *node);
 // integer constant
 void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
 
-// sub pattern
+// sub patterns/queries
 void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node);
+void out_cypher_sub_query(StringInfo str, const ExtensibleNode *node);
 
 // procedure call
 

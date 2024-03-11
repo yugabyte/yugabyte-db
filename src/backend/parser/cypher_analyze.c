@@ -711,6 +711,7 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
     cpstate->params = params;
     cpstate->default_alias_num = 0;
     cpstate->entities = NIL;
+    cpstate->subquery_where_flag = false;
     /*
      * install error context callback to adjust an error position since
      * locations in stmt are 0 based

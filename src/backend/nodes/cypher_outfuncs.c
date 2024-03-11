@@ -320,6 +320,15 @@ void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node)
     WRITE_NODE_FIELD(pattern);
 }
 
+// serialization function for the cypher_sub_pattern ExtensibleNode.
+void out_cypher_sub_query(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_sub_query);
+
+    WRITE_ENUM_FIELD(kind, csp_kind);
+    WRITE_NODE_FIELD(query);
+}
+
 // serialization function for the cypher_call ExtensibleNode.
 void out_cypher_call(StringInfo str, const ExtensibleNode *node)
 {

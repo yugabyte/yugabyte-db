@@ -59,6 +59,7 @@ cypher_parsestate *make_cypher_parsestate(cypher_parsestate *parent_cpstate)
         cpstate->graph_name = parent_cpstate->graph_name;
         cpstate->graph_oid = parent_cpstate->graph_oid;
         cpstate->params = parent_cpstate->params;
+        cpstate->subquery_where_flag = parent_cpstate->subquery_where_flag;
     }
 
     return cpstate;
@@ -105,7 +106,7 @@ static void errpos_ecb(void *arg)
 }
 
 /*
- * Generates a default alias name for when a query needs on and the parse
+ * Generates a default alias name for when a query needs one and the parse
  * state does not provide one.
  */
 char *get_next_default_alias(cypher_parsestate *cpstate)

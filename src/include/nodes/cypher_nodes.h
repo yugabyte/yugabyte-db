@@ -22,7 +22,7 @@
 
 #include "nodes/ag_nodes.h"
 
-/* cypher sub patterns */
+/* cypher sub patterns/queries */
 typedef enum csp_kind
 {
         CSP_EXISTS,
@@ -36,6 +36,13 @@ typedef struct cypher_sub_pattern
         csp_kind kind;
         List *pattern;
 } cypher_sub_pattern;
+
+typedef struct cypher_sub_query
+{
+        ExtensibleNode extensible;
+        csp_kind kind;
+        List *query;
+} cypher_sub_query;
 
 /*
  * clauses

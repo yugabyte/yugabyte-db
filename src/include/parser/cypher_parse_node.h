@@ -40,6 +40,7 @@ typedef struct cypher_parsestate
     int default_alias_num;
     List *entities;
     List *property_constraint_quals;
+    bool subquery_where_flag; // flag for knowing we are in a subquery where
     /*
      * To flag when an aggregate has been found in an expression during an
      * expression transform. This is used during the return_item list transform
