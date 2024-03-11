@@ -120,8 +120,9 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
 
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+
 	change->action = REORDER_BUFFER_CHANGE_INSERT;
-	change->lsn = yb_record->lsn;
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
@@ -155,8 +156,9 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	HeapTuple					tuple;
 	ReorderBufferTupleBuf		*tuple_buf;
 
+	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
+
 	change->action = REORDER_BUFFER_CHANGE_DELETE;
-	change->lsn = yb_record->lsn;
 	/*
 	 * We do not send the replication origin information. So any dummy value is
 	 * sufficient here.
