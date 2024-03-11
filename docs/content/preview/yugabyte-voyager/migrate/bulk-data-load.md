@@ -18,29 +18,21 @@ The following page describes the steps to import data in CSV or TEXT format from
 
 * Before you perform a bulk load, in your target YugabyteDB database, create the schema of the tables into which the data in the flat files will be imported.
 
-### Prepare the target database
+## Prepare the target database
 
-Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
+Prepare your target YugabyteDB database cluster by creating a user for your cluster.
 
-#### Create the target database
-
-Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target YugabyteDB database name is not provided, yb-voyager assumes the target YugabyteDB database name to be `yugabyte`. If you do not want to import to the default `yugabyte` database, specify the name of the target YugabyteDB database using the `--target-db-name` argument of the `yb-voyager import` command.
-
-```sql
-CREATE DATABASE target_db_name;
-```
-
-#### Create a user
+### Create a user
 
 Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
 
-- For a local YugabyteDB cluster or YugabyteDB Anywhere, create a user and role with the superuser privileges using the following command:
+* For a local YugabyteDB cluster or YugabyteDB Anywhere, create a user and role with the superuser privileges using the following command:
 
      ```sql
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-- For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+* For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
