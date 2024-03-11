@@ -18,7 +18,7 @@ YugabyteDB ships with a variety of tools to interact with, manage and configure 
 ![Tools and their purpose](/images/admin/tools_functionalities.png)
 
 {{<note title="Note">}}
-For information about configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 {{</note>}}
 
 ## Tools
