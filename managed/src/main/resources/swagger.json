@@ -4783,7 +4783,7 @@
           "type" : "integer"
         },
         "volumeSize" : {
-          "description" : "The size of each volume in each instance",
+          "description" : "The size of each volume in each instance. Could be modified in payload for /resize_node API call",
           "format" : "int32",
           "type" : "integer"
         }
@@ -14434,7 +14434,8 @@
           "type" : "boolean"
         },
         "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device specification that is used for tserver nodes in current cluster"
         },
         "enableClientToNodeEncrypt" : {
           "type" : "boolean"
@@ -14481,6 +14482,7 @@
           "type" : "object"
         },
         "instanceType" : {
+          "description" : "Instance type that is used for tserver nodes in current cluster. Could be modified in payload for /resize_node API call",
           "type" : "string"
         },
         "kubernetesOperatorVersion" : {
@@ -14488,7 +14490,8 @@
           "type" : "integer"
         },
         "masterDeviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device specification that is used for master nodes in current cluster (in dedicated masters mode)"
         },
         "masterGFlags" : {
           "additionalProperties" : {
@@ -14498,6 +14501,7 @@
           "type" : "object"
         },
         "masterInstanceType" : {
+          "description" : "Instance type that is used for master nodes in current cluster (in dedicated masters mode). Could be modified in payload for /resize_node API call",
           "type" : "string"
         },
         "masterK8SNodeResourceSpec" : {
