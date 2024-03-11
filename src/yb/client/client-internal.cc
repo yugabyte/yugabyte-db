@@ -339,18 +339,6 @@ bool SyncClientMasterRpc<master::MasterAdminProxy,
   return status.IsTryAgain();
 }
 
-template<class ProxyClass, class RespClass>
-bool SyncClientMasterRpc<ProxyClass, RespClass>::ShouldRetry(const Status& status) {
-  return internal::ClientMasterRpcBase::ShouldRetry(status);
-}
-
-template<>
-bool SyncClientMasterRpc<master::MasterAdminProxy,
-                         WaitForYsqlBackendsCatalogVersionResponsePB>::ShouldRetry(
-    const Status& status) {
-  return status.IsTryAgain();
-}
-
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),
