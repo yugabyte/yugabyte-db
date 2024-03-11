@@ -99,7 +99,7 @@ public class DestroyUniverse extends UniverseTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
 
       // Delete xCluster configs involving this universe and put the locked universes to
@@ -347,7 +347,10 @@ public class DestroyUniverse extends UniverseTaskBase {
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
             createDeleteXClusterConfigSubtasks(
-                xClusterConfig, false /* keepEntry */, params().isForceDelete);
+                xClusterConfig,
+                false /* keepEntry */,
+                params().isForceDelete,
+                true /* deletePitrConfigs */);
             if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
               createDeleteDrConfigEntryTask(drConfig)
                   .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);

@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -623,6 +624,16 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of node in given cluster for this universe.
+   *
+   * @return a list of Nodes
+   */
+  public List<NodeDetails> getServerTypeNodesInCluster(ServerType serverType, UUID placementUuid) {
+    List<NodeDetails> servers = getServers(serverType);
+    return servers.parallelStream().filter(nD -> nD.placementUuid.equals(placementUuid)).toList();
+  }
+
+  /**
    * Return the list of live TServers in the primary cluster. TODO: junit tests for this
    * functionality (UniverseTest.java)
    *
@@ -1001,10 +1012,26 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return the host (private_ip) and port of the current master leader in the universe or null if
-   *     not found
+   *     not found, catches Exceptions and returns null in case of exceptions.
    */
   @JsonIgnore
   public HostAndPort getMasterLeader() {
+    try {
+      return getMasterLeaderInternal();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader", e);
+      return null;
+    }
+  }
+
+  /**
+   * Find the current master leader in the universe
+   *
+   * @return the host (private_ip) and port of the current master leader in the universe or null if
+   *     not found, does not do any exception handling.
+   */
+  @JsonIgnore
+  private HostAndPort getMasterLeaderInternal() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService =
@@ -1033,13 +1060,20 @@ public class Universe extends Model {
    * Find the current master leader in the universe
    *
    * @return a String of the private_ip of the current master leader in the universe or an empty
-   *     string if not found
+   *     string if not found, returns empty string if master leader is missing due to an exception
    */
   @JsonIgnore
   public String getMasterLeaderHostText() {
-    final HostAndPort masterLeader = getMasterLeader();
-    if (masterLeader == null) return "";
-    return masterLeader.getHost();
+    try {
+      final HostAndPort masterLeader = getMasterLeader();
+      if (masterLeader == null) {
+        return "";
+      }
+      return masterLeader.getHost();
+    } catch (Exception e) {
+      LOG.error("Error getting master leader host text", e);
+      return "";
+    }
   }
 
   public void updateUniverseSoftwareUpgradeState(
@@ -1177,6 +1211,21 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @JsonIgnore
+  public Map<NodeDetails, ProxyConfig> getNodeProxyConfigMap() {
+    Map<NodeDetails, ProxyConfig> nodeProxyConfigMap = new HashMap<>();
+    getNodes().stream()
+        .forEach(
+            nD ->
+                nodeProxyConfigMap.put(
+                    nD,
+                    getUniverseDetails()
+                        .getClusterByUuid(nD.placementUuid)
+                        .userIntent
+                        .getProxyConfig(nD.getAzUuid())));
+    return nodeProxyConfigMap;
   }
 
   @PostRemove

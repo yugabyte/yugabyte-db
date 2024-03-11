@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -280,8 +281,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   // Test failure of alter statement with multiple subcommands.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
       " ALTER COLUMN num TYPE text USING num::text"));
-  VerifyTableNotExists(client.get(), "yugabyte", table_name + "_temp_old", 10);
-  VerifyTableExists(client.get(), "yugabyte", table_name, 20);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(table_name)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.
@@ -321,8 +325,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify failure case.
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   // Insert duplicate rows.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                alter_test));
@@ -330,8 +337,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify success case.
   ASSERT_OK(conn.Execute(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for old DocDB table to be dropped."));
   ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                 alter_test));
 }
@@ -983,43 +993,49 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithDropTableTest) {
 // Test that we are able to rollback DROP COLUMN on a column with a missing
 // default value.
 TEST_F(PgDdlAtomicitySanityTest, DropColumnWithMissingDefaultTest) {
-  const string& table = "drop_column_missing_default_test";
-  CreateTable(table);
+  static const std::string kTable = "drop_column_missing_default_test";
+  CreateTable(kTable);
   auto conn = ASSERT_RESULT(Connect());
   // Write some rows to the table.
-  ASSERT_OK(conn.Execute("INSERT INTO " + table + "(key) VALUES (generate_series(1, 3))"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0(key) VALUES (generate_series(1, 3))", kTable));
   // Add column with missing default value.
-  ASSERT_OK(conn.Execute(Format(AddColumnStmt(table, "value2", "default"))));
+  ASSERT_OK(conn.Execute(Format(AddColumnStmt(kTable, "value2", "default"))));
   // Insert rows with the new column set to null.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(4, 6), null)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0(key, value2) VALUES (generate_series(4, 6), null)", kTable));
   // Insert rows with the new column set to a non-default value.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(7, 9), 'not default')"));
-  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
-  // Verify data.
-  auto check_result = [&res] {
-    for (int i = 1; i <= 9; ++i) {
-      const auto value1 = ASSERT_RESULT(GetValue<int32_t>(res.get(), i - 1, 0));
-      ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetValue<std::string>(res.get(), i - 1, 1));
-      if (i <= 3) {
-        ASSERT_EQ(value2, "default");
-      } else if (i <= 6) {
-        ASSERT_EQ(value2, "");
-      } else {
-        ASSERT_EQ(value2, "not default");
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0(key, value2) VALUES (generate_series(7, 9), 'not default')", kTable));
+  auto check_table_rows = [&conn] {
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::optional<std::string>>(Format(
+        "SELECT key, value2 FROM $0 ORDER BY key", kTable))));
+    size_t idx = 0;
+    for (const auto& [key, value] : rows) {
+      ASSERT_EQ(key, idx + 1);
+      switch(key) {
+        case 4: [[fallthrough]];
+        case 5: [[fallthrough]];
+        case 6:
+          ASSERT_EQ(value, std::nullopt);
+          break;
+        case 7: [[fallthrough]];
+        case 8: [[fallthrough]];
+        case 9:
+          ASSERT_EQ(value, "not default");
+          break;
+        default:
+          ASSERT_EQ(value, "default");
+          break;
       }
+      ++idx;
     }
   };
-  check_result();
+  check_table_rows();
   // Fail drop column.
-  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(table)));
+  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(kTable)));
   // Insert more rows.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key) VALUES (generate_series(10, 12))"));
-  res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
-  check_result();
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0(key) VALUES (generate_series(10, 12))", kTable));
+  check_table_rows();
 }
 
 class PgDdlAtomicityColocatedTestBase : public PgDdlAtomicitySanityTest {
@@ -1467,12 +1483,13 @@ TEST_P(PgLibPqTableRewrite,
   ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
   ASSERT_NOK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
   ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTable));
   ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
 
   // Verify that we created orphaned DocDB tables.
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
   vector<client::YBTableName> tables = ASSERT_RESULT(client->ListTables(kTable));
-  ASSERT_EQ(tables.size(), 2);
+  ASSERT_EQ(tables.size(), 3);
   tables = ASSERT_RESULT(client->ListTables(kIndex));
   ASSERT_EQ(tables.size(), 2);
   tables = ASSERT_RESULT(client->ListTables(kMaterializedView));

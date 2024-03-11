@@ -2953,25 +2953,19 @@ TEST_F_EX(PgLibPqTest,
   auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   ASSERT_OK(conn->ExecuteFormat(
     "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
-  ASSERT_OK(conn->ExecuteFormat(
-    "CREATE TABLE $0 (id $1)",
-    kTableName,
-    kEnumTypeName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("CREATE TABLE $0 (id $1)", kTableName, kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a'), ('b'), ('c')", kTableName));
 
   // Do table scan to verify contents the table with an ORDER BY clause. This
   // ensures that old enum values which did not have sort order can be read back,
   // sorted and displayed correctly.
-  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  const auto query = Format("SELECT id::text AS text_id FROM $0 ORDER BY id", kTableName);
   ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
   auto values = ASSERT_RESULT(conn->FetchRows<std::string>(query));
   ASSERT_EQ(values, (decltype(values){"b", "c", "a"}));
 
   // Now alter the gflag so any new values will have sort order added.
-  ASSERT_OK(cluster_->SetFlagOnTServers(
-              "TEST_do_not_add_enum_sort_order", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_do_not_add_enum_sort_order", "false"));
 
   // Disconnect from the database so we don't have a case where the
   // postmaster dies while clients are still connected.
@@ -2988,9 +2982,7 @@ TEST_F_EX(PgLibPqTest,
 
   // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
   // The new enum values will have sort order added.
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
-  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d'), ('e'), ('f')", kTableName));
 
   // Do table scan again to verify contents the table with an ORDER BY clause.
   // This ensures that old enum values which did not have sort order, mixed
@@ -3009,7 +3001,7 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(values, (decltype(values){"b", "e", "f", "c", "a", "d"}));
 
   // Test where clause.
-  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  const std::string query2 = Format("SELECT id::text FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
   ASSERT_EQ(ASSERT_RESULT(conn->FetchRow<std::string>(query2)), "b");
 }
@@ -3063,7 +3055,7 @@ TEST_F_EX(PgLibPqTest,
   // We fix the syntax error by rewriting it to
   // BACKFILL INDEX -2147467255 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
   // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
-  query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  query = Format("SELECT id::text as text_id FROM $0 ORDER BY id", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
   {
     auto values = ASSERT_RESULT(conn.FetchRows<std::string>(query));
@@ -3673,17 +3665,20 @@ TEST_P(PgOidCollisionCreateDatabaseTest, CreateDatabasePgOidCollisionFromTserver
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
   auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  auto db_oid_fetcher = [&conn2] (const std::string& db_name) {
+    return conn2.FetchRow<PGOid>(
+        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db_name));
+  };
   auto status = conn2.ExecuteFormat("CREATE DATABASE $0", db3);
   if (ysql_enable_pg_per_database_oid_allocator) {
     ASSERT_OK(status);
     // Verify no OID collision and the expected OID is used.
-    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
-        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    const auto db3_oid = ASSERT_RESULT(db_oid_fetcher(db3));
     ASSERT_EQ(db3_oid, 16640);
   } else if (ysql_enable_create_database_oid_collision_retry) {
+    ASSERT_OK(status);
     // Verify internally retry CREATE DATABASE works.
-    int db3_oid = ASSERT_RESULT(conn2.FetchRow<int32_t>(
-        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    const auto db3_oid = ASSERT_RESULT(db_oid_fetcher(db3));
     ASSERT_EQ(db3_oid, 16386);
   } else {
     // Verify the keyspace already exists issue still exists if we disable retry.

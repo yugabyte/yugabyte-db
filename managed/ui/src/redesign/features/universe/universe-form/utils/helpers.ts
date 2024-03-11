@@ -62,20 +62,32 @@ export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
 
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
-  const structuredError = payload?.response?.data?.error;
-  if (structuredError) {
-    if (typeof structuredError == 'string') {
-      return structuredError;
+  try {
+
+
+    const structuredError = payload?.response?.data?.error;
+    if (structuredError) {
+      if (typeof structuredError === 'string') {
+        return structuredError;
+      }
+      if (_.has(structuredError, 'message')) {
+        return _.get(structuredError, 'message');
+      }
+
+      const message = (Object.keys(structuredError)
+        ?.map((fieldName) => {
+          const messages = structuredError[fieldName];
+          return fieldName + ': ' + (messages?.join(', ') ?? '');
+        })
+        ?.join('\n')) ?? 'Something went wrong. Please try again';
+      return message;
     }
-    const message = (Object.keys(structuredError)
-      ?.map((fieldName) => {
-        const messages = structuredError[fieldName];
-        return fieldName + ': ' + (messages?.join(', ') ?? '');
-      })
-      ?.join('\n')) ?? 'Something went wrong. Please try again';
-    return message;
+    return payload.message;
   }
-  return payload.message;
+  catch (e) {
+    console.error(e);
+    return 'Something went wrong. Please try again';
+  }
 };
 
 //Filter form data by cluster type
@@ -207,7 +219,9 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     gFlags: userIntent?.specificGFlags
       ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
       : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
-    azOverrides: userIntent.azOverrides,
+    azOverrides: userIntent.userIntentOverrides?.azOverrides,
+    proxyConfig: userIntent.proxyConfig,
+    specificGFlagsAzOverrides: userIntent.specificGFlags?.perAZ ?? {},
     universeOverrides: userIntent.universeOverrides,
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
@@ -242,8 +256,10 @@ export const getUserIntent = (
     instanceTags,
     gFlags,
     azOverrides,
+    proxyConfig,
     universeOverrides,
-    inheritFlagsFromPrimary
+    inheritFlagsFromPrimary,
+    specificGFlagsAzOverrides
   } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
@@ -292,7 +308,7 @@ export const getUserIntent = (
             TSERVER: tserverGFlags
           }
         },
-        perAZ: {}
+        perAZ: specificGFlagsAzOverrides ?? {}
       };
     }
   } else {
@@ -302,7 +318,8 @@ export const getUserIntent = (
 
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
-  if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;
+  if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
+  if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
   if (

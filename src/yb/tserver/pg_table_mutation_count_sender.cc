@@ -19,6 +19,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
@@ -61,7 +62,7 @@ Status TableMutationCountSender::Stop() {
   {
     std::lock_guard lock(mutex_);
     stopped_ = true;
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
 
   decltype(thread_) thread;
@@ -80,7 +81,9 @@ Status TableMutationCountSender::DoSendMutationCounts() {
 
   if (!client_) {
     auto client = std::make_unique<client::PgAutoAnalyzeServiceClient>();
-    RETURN_NOT_OK(client->Init(&server_));
+    RETURN_NOT_OK(client->Init(
+        server_.options().HostsString(), *server_.options().GetMasterAddresses(),
+        server_.fs_manager()->GetDefaultRootDir()));
     client_.swap(client);
   }
 

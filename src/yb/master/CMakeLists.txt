@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX master)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
@@ -77,12 +76,16 @@ set(MASTER_SRCS
   catalog_manager.cc
   catalog_manager_ext.cc
   catalog_manager_util.cc
+  catalog_entity_base.cc
   catalog_entity_info.cc
+  catalog_entity_tasks.cc
   catalog_manager_bg_tasks.cc
   catalog_loaders.cc
   xcluster_consumer_registry_service.cc
   xcluster_rpc_tasks.cc
   scoped_leader_shared_lock.cc
+  clone/clone_state_manager.cc
+  clone/clone_state_entity.cc
   cluster_balance.cc
   cluster_balance_util.cc
   encryption_manager.cc
@@ -104,6 +107,7 @@ set(MASTER_SRCS
   master_service_base.cc
   master_tablet_service.cc
   master_test_service.cc
+  master_types.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
@@ -122,7 +126,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
-  tablet_limits.cc
+  tablet_creation_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   test_async_rpc_manager.cc
@@ -130,12 +134,14 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
+  xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_manager.cc
   xcluster/xcluster_outbound_replication_group.cc
+  xcluster/xcluster_outbound_replication_group_tasks.cc
   xcluster/xcluster_replication_group.cc
   xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_source_manager.cc
@@ -237,17 +243,19 @@ set(YB_TEST_LINK_LIBS master
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
+ADD_YB_TEST(clone/clone_state_manager-test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(master_xrepl-test)
+ADD_YB_TEST(multi_step_monitored_task-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
 ADD_YB_TEST(table_index_test)
-ADD_YB_TEST(tablet_limits_test)
+ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 

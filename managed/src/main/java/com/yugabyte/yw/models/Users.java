@@ -110,7 +110,10 @@ public class Users extends Model {
     local,
 
     @EnumValue("ldap")
-    ldap;
+    ldap,
+
+    @EnumValue("oidc")
+    oidc;
   }
 
   // A globally unique UUID for the Users.
@@ -232,7 +235,26 @@ public class Users extends Model {
   public static Users create(
       String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     try {
-      return createInternal(email, password, role, customerUUID, isPrimary);
+      return createInternal(email, password, role, customerUUID, isPrimary, UserType.local);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "User already exists");
+    }
+  }
+
+  /**
+   * Create new Users, we encrypt the password before we store it in the DB
+   *
+   * @return Newly Created Users
+   */
+  public static Users create(
+      String email,
+      String password,
+      Role role,
+      UUID customerUUID,
+      boolean isPrimary,
+      UserType userType) {
+    try {
+      return createInternal(email, password, role, customerUUID, isPrimary, userType);
     } catch (DuplicateKeyException pe) {
       throw new PlatformServiceException(Status.CONFLICT, "User already exists");
     }
@@ -246,14 +268,19 @@ public class Users extends Model {
    */
   public static Users createPrimary(String email, String password, Role role, UUID customerUUID) {
     try {
-      return createInternal(email, password, role, customerUUID, true);
+      return createInternal(email, password, role, customerUUID, true, UserType.local);
     } catch (DuplicateKeyException pe) {
       throw new PlatformServiceException(Status.CONFLICT, "Customer already registered.");
     }
   }
 
   static Users createInternal(
-      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
+      String email,
+      String password,
+      Role role,
+      UUID customerUUID,
+      boolean isPrimary,
+      UserType userType) {
     Users users = new Users();
     users.setEmail(email.toLowerCase());
     users.setPassword(password);
@@ -261,7 +288,7 @@ public class Users extends Model {
     users.setCreationDate(new Date());
     users.setRole(role);
     users.setPrimary(isPrimary);
-    users.setUserType(UserType.local);
+    users.setUserType(userType);
     users.setLdapSpecifiedRole(false);
     users.save();
     return users;

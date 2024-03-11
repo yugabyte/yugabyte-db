@@ -118,7 +118,7 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
-						ExplainState *es);
+						int yb_estimated_docdb_result_width, ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
 static void ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
@@ -2155,6 +2155,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexscan->indexorderdir,
 										indexscan->yb_estimated_num_nexts,
 										indexscan->yb_estimated_num_seeks,
+										indexscan->yb_estimated_docdb_result_width,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2167,6 +2168,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexonlyscan->indexorderdir,
 										indexonlyscan->yb_estimated_num_nexts,
 										indexonlyscan->yb_estimated_num_seeks,
+										indexonlyscan->yb_estimated_docdb_result_width,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2395,15 +2397,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during Distinct Index Scan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexScan *) plan)->yb_distinct_prefixlen, es);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
-						   "Remote Index Filter", planstate, ancestors, es);
+						   "Storage Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2418,6 +2420,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((IndexScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -2430,16 +2435,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Order By", planstate, ancestors, es);
 			/*
 			 * YB: Distinct prefix during HybridScan.
-			 * Shown after ORDER BY clause and before remote filters since
+			 * Shown after ORDER BY clause and before storage filters since
 			 * that's currently the order of operations in DocDB.
 			 */
 			YbExplainDistinctPrefixLen(
 				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2457,6 +2462,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -2496,10 +2504,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		case T_YbSeqScan:
 			/*
-			 * Remote filter is applied first, so it is output first.
+			 * Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((YbSeqScan *) plan)->yb_pushdown.quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
@@ -2514,6 +2522,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((YbSeqScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_Gather:
@@ -2646,7 +2657,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
-						   "Remote Filter", planstate, ancestors, es);
+						   "Storage Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
@@ -3946,7 +3957,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
-						ExplainState *es)
+						int yb_estimated_docdb_result_width, ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
 
@@ -3981,6 +3992,7 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		{
 			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
 			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);
+			ExplainPropertyInteger("Estimated Docdb Result Width", NULL, yb_estimated_docdb_result_width, es);
 		}
 	}
 }
@@ -4954,17 +4966,19 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 		yb_instr->tbl_reads.rows_scanned + yb_instr->index_reads.rows_scanned;
 
 	// RPC Storage Metrics
-	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
-		es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
-		es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
-	}
-	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
-		YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
-		const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
-		agg->sum += val->sum;
-		agg->count += val->count;
+	if (es->yb_debug) {
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			es->yb_stats.storage_gauge_metrics[i] += yb_instr->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			es->yb_stats.storage_counter_metrics[i] += yb_instr->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YbPgEventMetric* agg = &es->yb_stats.storage_event_metrics[i];
+			const YbPgEventMetric* val = &yb_instr->storage_event_metrics[i];
+			agg->sum += val->sum;
+			agg->count += val->count;
+		}
 	}
 }
 

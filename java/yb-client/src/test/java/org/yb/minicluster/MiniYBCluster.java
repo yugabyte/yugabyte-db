@@ -511,7 +511,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     final List<String> cmdLine = Lists.newArrayList(
-        TestUtils.findBinary("../ybc/yb-controller-server"),
+        TestUtils.findBinary("../../ybc/yb-controller-server"),
         "--log_dir=" + logDir,
         "--tmp_dir=" + tmpDir,
         "--server_address=" + bindAddress,
@@ -912,6 +912,11 @@ public class MiniYBCluster implements AutoCloseable {
           "port" + rpcPort;
       args.add("--fatal_details_path_prefix=" + fatalDetailsPathPrefix);
       args.addAll(getCommonDaemonFlags());
+      if (type == MiniYBDaemonType.MASTER) {
+        // Given how little memory DAEMON_MEMORY_LIMIT_HARD_BYTES_[NON_]TSAN provides, we turn off
+        // here checking if we have too many tablets for the allocated amount of per-tablet memory.
+        args.add("--tablet_replicas_per_gib_limit=0");
+      }
       command = args.toArray(command);
     }
 

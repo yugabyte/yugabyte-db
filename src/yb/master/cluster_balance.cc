@@ -566,7 +566,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     state_->SortLoad();
 
     VLOG(2) << "Per table state for table: " << table->id() << ", " << state_->ToString();
-    VLOG(2) << "Global state: " << table->id() << ", " << state_->ToString();
+    VLOG(2) << "Global state: " << global_state_->ToString();
     VLOG(2) << "Sorted load: " << table->id() << ", " << GetSortedLoad();
     VLOG(2) << "Global load: " << table->id() << ", " << GetSortedLeaderLoad();
 
@@ -821,6 +821,7 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
       RETURN_NOT_OK(UpdateTabletInfo(tablet.get()));
     }
   }
+  state_->SetInitialized();
 
   // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
   // load and are ready to apply the load balancing rules.
@@ -1664,11 +1665,6 @@ void ClusterLoadBalancer::InitializeTSDescriptors() {
 }
 
 // CatalogManager indirection methods that are set as virtual to be bypassed in testing.
-//
-void ClusterLoadBalancer::GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const {
-  catalog_manager_->master_->ts_manager()->GetAllReportedDescriptors(ts_descs);
-}
-
 void ClusterLoadBalancer::GetAllDescriptors(TSDescriptorVector* ts_descs) const {
   catalog_manager_->master_->ts_manager()->GetAllDescriptors(ts_descs);
 }

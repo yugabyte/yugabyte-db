@@ -220,7 +220,7 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
   if (backup.expiryTime) {
     formValues['retention_interval'] = Math.ceil(
       (backup.hasIncrementalBackups
-        ? Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime
+        ? Date.parse(backup.expiryTime) - Date.parse(backup.lastIncrementalBackupTime)
         : Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) /
         MILLISECONDS_IN[backup.expiryTimeUnit]
     );

@@ -218,14 +218,14 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.7.0.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -235,7 +235,7 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mkdir -p /tmp/yugabyte/metrics
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar.gz  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.7.0.linux-amd64.tar.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
@@ -243,7 +243,7 @@ On each node, perform the following as a user with sudo access:
     sudo chown -R prometheus:prometheus /var/run/prometheus
     sudo chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
     sudo chmod -R 755 /tmp/yugabyte/metrics
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar.gz
+    sudo chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
 
@@ -251,7 +251,7 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
+    tar zxf node_exporter-1.7.0.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
@@ -278,7 +278,7 @@ On each node, perform the following as a user with sudo access:
     User=prometheus
     Group=prometheus
 
-    ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+    ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     ```
 
 1. Exit from vi, and continue, as follows:
@@ -858,24 +858,24 @@ If you need to reconfigure a node agent, you can use the following procedure:
     ```
 
     ```output
-    * The current value of Node Name is set to node1; Enter new value or enter to skip: 
-    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip: 
+    * The current value of Node Name is set to node1; Enter new value or enter to skip:
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip:
     * Select your Onprem Provider.
     1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
     * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Instance Type.
     1. Instance Code: c5.large
     * The current value is Instance Code: c5.large.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Region.
     1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
     * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     * Select your Zone.
     1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
     * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
-        Enter new option number or enter to skip: 
+        Enter new option number or enter to skip:
     • Completed Node Agent Configuration
     • Node Agent Registration Successful
     ```

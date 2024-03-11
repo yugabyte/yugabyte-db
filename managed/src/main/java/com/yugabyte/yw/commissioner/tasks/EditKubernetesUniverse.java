@@ -35,7 +35,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -79,10 +78,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       verifyParams(UniverseOpType.EDIT);
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
+      addBasicPrecheckTasks();
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -658,7 +657,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     String softwareVersion = userIntent.ybSoftwareVersion;
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
-    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
 
       UUID azUUID = entry.getKey();
@@ -667,9 +665,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               ? AvailabilityZone.getOrBadRequest(azUUID).getCode()
               : null;
 
+      Map<String, String> azConfig = entry.getValue();
       String namespace =
           KubernetesUtil.getKubernetesNamespace(
-              taskParams().nodePrefix, azName, config, newNamingStyle, isReadOnlyCluster);
+              taskParams().nodePrefix, azName, azConfig, newNamingStyle, isReadOnlyCluster);
 
       String helmReleaseName =
           KubernetesUtil.getHelmReleaseName(
@@ -682,10 +681,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               "yb-tserver",
               newNamingStyle,
               newDiskSizeGi,
-              config,
+              azConfig,
               kubernetesManagerFactory);
 
-      Map<String, String> azConfig = entry.getValue();
       PlacementInfo azPI = new PlacementInfo();
       int rf = placement.masters.getOrDefault(azUUID, 0);
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);

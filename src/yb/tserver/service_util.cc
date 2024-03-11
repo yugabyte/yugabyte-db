@@ -350,9 +350,10 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
         if (follower_staleness_us > FLAGS_max_stale_read_bound_time_ms * 1000) {
           VLOG(1) << "Rejecting stale read with staleness "
                      << follower_staleness_us << "us";
-          return STATUS(
-              IllegalState, "Stale follower",
-              TabletServerError(TabletServerErrorPB::STALE_FOLLOWER));
+          return STATUS_EC_FORMAT(
+              IllegalState, TabletServerError(TabletServerErrorPB::STALE_FOLLOWER),
+              "Stale follower $0 with staleness $1 us", tablet_peer->LogPrefix(),
+              follower_staleness_us);
         }
         if (PREDICT_FALSE(
             FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {

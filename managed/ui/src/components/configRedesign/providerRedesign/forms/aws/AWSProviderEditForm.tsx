@@ -8,11 +8,12 @@ import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
-import { Provider, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { AxiosError } from 'axios';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -88,7 +89,10 @@ import {
   AWSRegionMutation,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
@@ -106,6 +110,7 @@ export interface AWSProviderEditFormFieldValues {
   editAccessKey: boolean;
   editSSHKeypair: boolean;
   enableHostedZone: boolean;
+  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -190,6 +195,7 @@ export const AWSProviderEditForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<AWSProviderEditFormFieldValues>({
     defaultValues: defaultValues,
@@ -204,13 +210,20 @@ export const AWSProviderEditForm = ({
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
+
   if (
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
@@ -363,7 +376,8 @@ export const AWSProviderEditForm = ({
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
     getIsFormDisabled(formMethods.formState, providerConfig) ||
-    isForceSubmitting;
+    isForceSubmitting ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -510,6 +524,24 @@ export const AWSProviderEditForm = ({
                   />
                 </FormField>
               )}
+              <FormField>
+                <FieldLabel
+                  infoTitle="Use IMDSv2"
+                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
+                >
+                  Use IMDSv2
+                </FieldLabel>
+                <YBToggleField
+                  name="useIMDSv2"
+                  control={formMethods.control}
+                  disabled={getIsFieldDisabled(
+                    ProviderCode.AWS,
+                    'useIMDSv2',
+                    isFormDisabled,
+                    isProviderInUse
+                  )}
+                />
+              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -517,10 +549,7 @@ export const AWSProviderEditForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -579,7 +608,12 @@ export const AWSProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.aws} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={CloudType.aws}
+              viewMode="EDIT"
+              providerStatus={providerConfig.usabilityState}
+            />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
@@ -742,7 +776,7 @@ export const AWSProviderEditForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -793,7 +827,10 @@ export const AWSProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />
@@ -822,7 +859,7 @@ export const AWSProviderEditForm = ({
           ybImageType={ybImageType}
           imageBundles={imagebundles}
           onImageBundleSubmit={(images) => {
-            formMethods.setValue("imageBundles", images);
+            formMethods.setValue('imageBundles', images);
           }}
         />
       )}
@@ -843,6 +880,7 @@ const constructDefaultFormValues = (
   editAccessKey: false,
   editSSHKeypair: false,
   enableHostedZone: !!providerConfig.details.cloudInfo.aws.awsHostedZoneId,
+  useIMDSv2: !!providerConfig.details.cloudInfo.aws.useIMDSv2,
   hostedZoneId: providerConfig.details.cloudInfo.aws.awsHostedZoneId,
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
@@ -850,7 +888,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.aws.awsAccessKeySecret
     ? AWSProviderCredentialType.ACCESS_KEY
     : AWSProviderCredentialType.HOST_INSTANCE_IAM_ROLE,
-  imageBundles: providerConfig.imageBundles as unknown as ImageBundle[],
+  imageBundles: (providerConfig.imageBundles as unknown) as ImageBundle[],
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
@@ -877,13 +915,13 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+      formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
@@ -922,7 +960,8 @@ const constructProviderPayload = async (
               ? formValues.secretAccessKey
               : providerConfig.details.cloudInfo.aws.awsAccessKeySecret
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
+          useIMDSv2: formValues.useIMDSv2
         }
       },
       ntpServers: formValues.ntpServers,
@@ -948,18 +987,18 @@ const constructProviderPayload = async (
               [ProviderCode.AWS]: {
                 ...(existingRegion
                   ? {
-                    ...(existingRegion.details.cloudInfo.aws.ybImage && {
-                      ybImage: existingRegion.details.cloudInfo.aws.ybImage
-                    }),
-                    ...(existingRegion.details.cloudInfo.aws.arch && {
-                      arch: existingRegion.details.cloudInfo.aws.arch
-                    })
-                  }
+                      ...(existingRegion.details.cloudInfo.aws.ybImage && {
+                        ybImage: existingRegion.details.cloudInfo.aws.ybImage
+                      }),
+                      ...(existingRegion.details.cloudInfo.aws.arch && {
+                        arch: existingRegion.details.cloudInfo.aws.arch
+                      })
+                    }
                   : regionFormValues.ybImage
-                    ? {
+                  ? {
                       ybImage: regionFormValues.ybImage
                     }
-                    : {
+                  : {
                       arch:
                         providerConfig.regions[0]?.details.cloudInfo.aws.arch ?? YBImageType.X86_64
                     }),

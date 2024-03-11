@@ -26,6 +26,8 @@
 #include "yb/docdb/lock_batch.h"
 
 #include "yb/dockv/intent.h"
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -317,7 +319,7 @@ void LockedBatchEntry::Unlock(IntentTypeSet lock_types) {
     std::lock_guard lock(mutex);
   }
 
-  cond_var.notify_all();
+  YB_PROFILE(cond_var.notify_all());
 }
 
 bool SharedLockManager::Impl::Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline) {

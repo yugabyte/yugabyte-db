@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -101,6 +102,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -273,6 +275,16 @@ public class UniverseCRUDHandler {
       }
     }
     return true;
+  }
+
+  private boolean proxyConfigChanged(
+      UserIntent newIntent, UserIntent currentIntent, NodeDetails node) {
+    if (!Objects.equals(
+        newIntent.getProxyConfig(node.getAzUuid()),
+        currentIntent.getProxyConfig(node.getAzUuid()))) {
+      return true;
+    }
+    return false;
   }
 
   private Cluster getClusterFromTaskParams(UniverseConfigureTaskParams taskParams) {
@@ -589,9 +601,6 @@ public class UniverseCRUDHandler {
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
-      taskParams.otelCollectorEnabled =
-          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
-
       if (c.userIntent.specificGFlags != null) {
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
@@ -611,13 +620,13 @@ public class UniverseCRUDHandler {
       UniverseDefinitionTaskParams.UserIntent userIntent =
           taskParams.getPrimaryCluster().userIntent;
 
-      if (taskParams.isEnableYbc()) {
-        Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      if (confGetter.getConfForScope(p, ProviderConfKeys.ybcEnabledForProvider)) {
         if (userIntent.providerType.equals(Common.CloudType.kubernetes)) {
-          if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
-              && Util.compareYbVersions(
-                      userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
-                  >= 0) {
+          if (Util.compareYbVersions(
+                  userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+              >= 0) {
+            taskParams.setEnableYbc(true);
             taskParams.setYbcSoftwareVersion(
                 StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                     ? taskParams.getYbcSoftwareVersion()
@@ -638,11 +647,15 @@ public class UniverseCRUDHandler {
               "Ybc installation is skipped on VM universe with DB version lower than "
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
+          taskParams.setEnableYbc(true);
           taskParams.setYbcSoftwareVersion(
               StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
                   ? taskParams.getYbcSoftwareVersion()
                   : ybcManager.getStableYbcVersion());
         }
+      } else {
+        taskParams.setEnableYbc(false);
+        taskParams.setYbcSoftwareVersion(null);
       }
 
       if (taskParams.isEnableYbc()) {
@@ -670,14 +683,14 @@ public class UniverseCRUDHandler {
           }
         } else {
           for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
-            ReleaseManager.ReleaseMetadata ybReleaseMetadata =
+            ReleaseContainer release =
                 releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
             AvailabilityZone az = AvailabilityZone.getOrBadRequest(nodeDetails.azUuid);
             String ybServerPackage;
             if (taskParams.arch != null) {
-              ybServerPackage = ybReleaseMetadata.getFilePath(taskParams.arch);
+              ybServerPackage = release.getFilePath(taskParams.arch);
             } else {
-              ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
+              ybServerPackage = release.getFilePath(az.getRegion());
             }
             Pair<String, String> ybcPackageDetails =
                 Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
@@ -746,6 +759,18 @@ public class UniverseCRUDHandler {
       }
       for (Cluster readOnlyCluster : taskParams.getReadOnlyClusters()) {
         validateConsistency(taskParams.getPrimaryCluster(), readOnlyCluster);
+      }
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorEnabled);
+
+      // update otel port
+      int otelPort = confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorMetricsPort);
+      taskParams.communicationPorts.otelCollectorMetricsPort = otelPort;
+      if (taskParams.nodeDetailsSet != null) {
+        for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+          nodeDetails.otelCollectorMetricsPort = otelPort;
+        }
       }
     }
 
@@ -2183,7 +2208,8 @@ public class UniverseCRUDHandler {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
-      for (NodeDetails nodeDetails : taskParams.getNodesInCluster(newCluster.uuid)) {
+      Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
+      for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded
             && nodeDetails.state != NodeState.ToBeRemoved) {
           String newInstanceType = newIntent.getInstanceTypeForNode(nodeDetails);
@@ -2260,7 +2286,21 @@ public class UniverseCRUDHandler {
                         + " through EditUniverse: from %s to %s",
                     nodeDetails.nodeName, curIntent.useSystemd, newIntent.useSystemd));
           }
+          if (proxyConfigChanged(newIntent, curIntent, nodeDetails)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change proxy config for existing node %s" + " through EditUniverse",
+                    nodeDetails.nodeName));
+          }
         }
+      }
+      Set<NodeDetails> toBeAdded =
+          nodeDetailsSet.stream()
+              .filter(nD -> nD.state.equals(NodeState.ToBeAdded))
+              .collect(Collectors.toSet());
+      if (CollectionUtils.isNotEmpty(toBeAdded)) {
+        newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
   }

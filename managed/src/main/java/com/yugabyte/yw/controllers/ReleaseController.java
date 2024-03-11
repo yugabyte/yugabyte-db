@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
@@ -100,7 +101,7 @@ public class ReleaseController extends AuthenticatedController {
       releases.forEach(
           (version, metadata) -> {
             releaseManager.addReleaseWithMetadata(version, metadata);
-            gFlagsValidation.addDBMetadataFiles(version, metadata);
+            gFlagsValidation.addDBMetadataFiles(version);
           });
       releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
@@ -212,8 +213,8 @@ public class ReleaseController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     ObjectNode formData;
-    ReleaseManager.ReleaseMetadata m = releaseManager.getReleaseByVersion(version);
-    if (m == null) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(version);
+    if (release == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
     formData = (ObjectNode) request.body().asJson();
@@ -222,15 +223,17 @@ public class ReleaseController extends AuthenticatedController {
     if (formData.has("state")) {
       String stateValue = formData.get("state").asText();
       LOG.info("Updating release state for version {} to {}", version, stateValue);
-      m.state = ReleaseManager.ReleaseState.valueOf(stateValue);
-      releaseManager.updateReleaseMetadata(version, m);
+      release.setState(stateValue);
+      if (release.isLegacy()) {
+        releaseManager.updateReleaseMetadata(version, release.getMetadata());
+      }
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Missing Required param: State");
     }
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Release, version, Audit.ActionType.Update);
-    return PlatformResults.withData(m);
+    return PlatformResults.withData(release.getMetadata());
   }
 
   @ApiOperation(value = "Refresh a release", response = YBPSuccess.class)

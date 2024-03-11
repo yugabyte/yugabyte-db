@@ -26,10 +26,12 @@
 
 #include "yb_ash.h"
 
+#include "access/hash.h"
 #include "executor/executor.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/analyze.h"
+#include "parser/scansup.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
@@ -49,6 +51,8 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 
 /* GUC variables */
+bool yb_ash_enable_infra;
+bool yb_enable_ash;
 int yb_ash_circular_buffer_size;
 int yb_ash_sampling_interval_ms;
 int yb_ash_sample_size;
@@ -74,8 +78,10 @@ typedef struct YbAsh
 static YbAsh *yb_ash = NULL;
 
 static int yb_ash_cb_max_entries(void);
-static void yb_set_ash_metadata(uint64_t query_id);
+static void yb_set_ash_metadata(uint64 query_id);
 static void yb_unset_ash_metadata();
+static uint64 yb_ash_utility_query_id(const char *query, int query_len,
+									  int query_location);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 
@@ -96,6 +102,17 @@ static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
+
+bool
+yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
+{
+	if (*newval && !yb_ash_enable_infra)
+	{
+		GUC_check_errdetail("ysql_yb_ash_enable_infra must be enabled.");
+		return false;
+	}
+	return true;
+}
 
 void
 YbAshRegister(void)
@@ -191,8 +208,24 @@ yb_ash_post_parse_analyze(ParseState *pstate, Query *query)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
 
-	/* query_id will be set to zero if pg_stat_statements is disabled. */
-	yb_set_ash_metadata(query->queryId);
+	/*
+	 * query->queryId will be zero when it's a utility statement, in that case
+	 * pg_stat_statements calculates a query id based on the redacted query
+	 * string and stores that on it's hash table, but it doesn't set it in
+	 * query->queryId. We need to store the same query id in ASH metadata,
+	 * so that we can join the ASH view with pg_stat_statements.
+	 * yb_ash_utility_query_id calculates the query id in the same way that
+	 * pg_stat_statements does. query_id can also be zero when pg_stat_statements
+	 * is disabled, then this field won't be useful for ASH users at all.
+	 */
+	if (yb_enable_ash)
+	{
+		uint64 query_id = query->queryId != 0
+						? query->queryId
+						: yb_ash_utility_query_id(pstate->p_sourcetext, query->stmt_len,
+													query->stmt_location);
+		yb_set_ash_metadata(query_id);
+	}
 }
 
 static void
@@ -202,8 +235,16 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * In case of prepared statements, the 'Parse' phase might be skipped.
 	 * We set the ASH metadata here if it's not been set yet.
 	 */
-	if (MyProc->yb_is_ash_metadata_set == false)
-		yb_set_ash_metadata(queryDesc->plannedstmt->queryId);
+	if (yb_enable_ash && MyProc->yb_is_ash_metadata_set == false)
+	{
+		/* Query id can be zero here only if pg_stat_statements is disabled */
+		uint64 query_id = queryDesc->plannedstmt->queryId != 0
+						  ? queryDesc->plannedstmt->queryId
+						  : yb_ash_utility_query_id(queryDesc->sourceText,
+					   								queryDesc->plannedstmt->stmt_len,
+													queryDesc->plannedstmt->stmt_location);
+		yb_set_ash_metadata(query_id);
+	}
 
 	if (prev_ExecutorStart)
 		prev_ExecutorStart(queryDesc, eflags);
@@ -223,7 +264,8 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 	 * Unset ASH metadata. Utility statements do not go through this
 	 * code path.
 	 */
-	yb_unset_ash_metadata();
+	if (yb_enable_ash)
+		yb_unset_ash_metadata();
 }
 
 static void
@@ -245,12 +287,12 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * Unset ASH metadata in case of utility statements. This function
 	 * might recurse, and we only want to unset in the last step.
 	 */
-	if (YBGetDdlNestingLevel() == 0)
+	if (yb_enable_ash && YBGetDdlNestingLevel() == 0)
 		yb_unset_ash_metadata();
 }
 
 static void
-yb_set_ash_metadata(uint64_t query_id)
+yb_set_ash_metadata(uint64 query_id)
 {
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 
@@ -273,6 +315,51 @@ yb_unset_ash_metadata()
 	MyProc->yb_is_ash_metadata_set = false;
 
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Calculate the query id for utility statements. This takes parts of pgss_store
+ * from pg_stat_statements.
+ */
+static uint64
+yb_ash_utility_query_id(const char *query, int query_len, int query_location)
+{
+	const char *redacted_query;
+	int			redacted_query_len;
+
+	Assert(query != NULL);
+
+	if (query_location >= 0)
+	{
+		Assert(query_location <= strlen(query));
+		query += query_location;
+		/* Length of 0 (or -1) means "rest of string" */
+		if (query_len <= 0)
+			query_len = strlen(query);
+		else
+			Assert(query_len <= strlen(query));
+	}
+	else
+	{
+		/* If query location is unknown, distrust query_len as well */
+		query_location = 0;
+		query_len = strlen(query);
+	}
+
+	/*
+	 * Discard leading and trailing whitespace, too.  Use scanner_isspace()
+	 * not libc's isspace(), because we want to match the lexer's behavior.
+	 */
+	while (query_len > 0 && scanner_isspace(query[0]))
+		query++, query_location++, query_len--;
+	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
+		query_len--;
+
+	/* Use the redacted query for checking purposes. */
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+
+	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
+											redacted_query_len, 0));
 }
 
 static void
@@ -350,7 +437,7 @@ YbAshMain(Datum main_arg)
 					(errmsg("bgworker yb_ash signal: processed SIGHUP")));
 		}
 
-		if (yb_ash_sample_size > 0)
+		if (yb_enable_ash && yb_ash_sample_size > 0)
 		{
 			sample_time = GetCurrentTimestamp();
 
@@ -418,12 +505,11 @@ copy_pgproc_sample_fields(PGPROC *proc)
 {
 	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
 
-	/* TODO: Add aux info to circular buffer once it's available */
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
 	LWLockRelease(&proc->yb_ash_metadata_lock);
 
-	cb_sample->wait_event_code = proc->wait_event_info;
+	cb_sample->encoded_wait_event_code = proc->wait_event_info;
 }
 
 static void
@@ -439,6 +525,8 @@ copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
+	/* TODO(asaha): Add aux info to circular buffer once it's available */
+	cb_sample->aux_info[0] = '\0';
 	cb_sample->sample_weight = sample_weight;
 	cb_sample->sample_time = sample_time;
 }
@@ -470,7 +558,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	if (!yb_ash)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("TEST_yb_enable_ash gflag must be enabled")));
+				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -531,9 +619,12 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		else
 			nulls[j++] = true;
 
-		values[j++] = CStringGetTextDatum(YBCGetWaitEventComponent(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event_type(sample->wait_event_code));
-		values[j++] = CStringGetTextDatum(pgstat_get_wait_event(sample->wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			YBCGetWaitEventComponent(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+		values[j++] = CStringGetTextDatum(
+			pgstat_get_wait_event(sample->encoded_wait_event_code));
 
 		uchar_to_uuid(sample->yql_endpoint_tserver_uuid, &yql_endpoint_tserver_uuid);
 		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);

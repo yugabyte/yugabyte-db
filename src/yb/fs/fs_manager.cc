@@ -118,7 +118,6 @@ const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
 
-YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
@@ -129,7 +128,6 @@ const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
 const char kTmpInfix[] = ".tmp";
 const char kCheckFileTemplate[] = "check.XXXXXX";
-const char kSecureCertsDirName[] = "certs";
 const char kPrefixMetricId[] = "drive:";
 
 std::string DataDir(const std::string& root, const std::string& server_type) {
@@ -319,7 +317,6 @@ Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
       "AutoFlags config file path not initialized. Please check the --fs_data_dirs parameter.");
 
   // OVERWRITE mode will atomically replace the old contents of the file with the new data.
-  SCOPED_WAIT_STATUS(WriteAutoFlagsConfigToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(
       env_, auto_flags_config_path_, *msg, pb_util::OVERWRITE, pb_util::SYNC));
 
@@ -621,7 +618,6 @@ Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
                                         const string& path) {
   // The instance metadata is written effectively once per TS, so the
   // durability cost is negligible.
-  SCOPED_WAIT_STATUS(WriteInstanceMetadataToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(env_, path,
                                                 metadata,
                                                 pb_util::NO_OVERWRITE,
@@ -836,10 +832,6 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
 std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
   return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
-}
-
-std::string FsManager::GetCertsDir(const std::string& root_dir) {
-  return JoinPathSegments(root_dir, kSecureCertsDirName);
 }
 
 std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {

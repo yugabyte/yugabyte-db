@@ -83,8 +83,7 @@ struct ExternalTableSnapshotData {
   size_t num_tablets = 0;
   typedef std::pair<std::string, std::string> PartitionKeys;
   typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
-  typedef std::vector<PartitionPB> Partitions;
-  Partitions partitions;
+  std::vector<std::pair<TabletId, PartitionPB>> old_tablets;
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
   std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
@@ -164,6 +163,8 @@ struct TabletReplica {
   TabletLeaderLeaseInfo leader_lease_info;
 
   FullCompactionStatus full_compaction_status;
+
+  uint32_t last_attempted_clone_seq_no;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -357,6 +358,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Only used when FLAGS_use_parent_table_id_field is set.
   std::vector<TableId> table_ids_ GUARDED_BY(lock_);
 
+  uint32_t last_attempted_clone_seq_no_ GUARDED_BY(lock_) = 0;
+
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
 
@@ -503,7 +506,8 @@ struct TabletWithSplitPartitions {
 // Currently indexed values:
 //     colocated
 class TableInfo : public RefCountedThreadSafe<TableInfo>,
-                  public MetadataCowWrapper<PersistentTableInfo> {
+                  public MetadataCowWrapper<PersistentTableInfo>,
+                  public CatalogEntityWithTasks {
  public:
   explicit TableInfo(
       TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker = nullptr);
@@ -708,20 +712,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   Status GetCreateTableErrorStatus() const;
 
   std::size_t NumLBTasks() const;
-  std::size_t NumTasks() const;
-  bool HasTasks() const;
-  bool HasTasks(server::MonitoredTaskType type) const;
-  void AddTask(std::shared_ptr<server::MonitoredTask> task);
-
-  // Returns true if no running tasks left.
-  bool RemoveTask(const std::shared_ptr<server::MonitoredTask>& task);
-
-  void AbortTasks();
-  void AbortTasksAndClose();
-  void WaitTasksCompletion();
-
-  // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -756,15 +746,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       const TableId& tablet_id,
       DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
 
-  void AbortTasksAndCloseIfRequested(bool close);
-
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
 
   const TableId table_id_;
-
-  scoped_refptr<TasksTracker> tasks_tracker_;
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
@@ -777,11 +763,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // 2) Tablets that are marked as HIDDEN for PITR.
   std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
-  // Protects partitions_, tablets_ and pending_tasks_.
+  // Protects partitions_ and tablets_.
   mutable rw_spinlock lock_;
-
-  // If closing, requests to AddTask will be promptly aborted.
-  bool closing_ = false;
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
@@ -789,9 +772,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   const bool colocated_;
-
-  // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -863,9 +843,10 @@ struct PersistentNamespaceInfo : public Persistent<
 // This object uses copy-on-write techniques similarly to TabletInfo.
 // Please see the TabletInfo class doc above for more information.
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
-                      public MetadataCowWrapper<PersistentNamespaceInfo> {
+                      public MetadataCowWrapper<PersistentNamespaceInfo>,
+                      public CatalogEntityWithTasks {
  public:
-  explicit NamespaceInfo(NamespaceId ns_id);
+  explicit NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker);
 
   virtual const NamespaceId& id() const override { return namespace_id_; }
 
@@ -878,6 +859,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   ::yb::master::SysNamespaceEntryPB_State state() const;
 
   std::string ToString() const override;
+
+  uint32_t FetchAndIncrementCloneSeqNo();
 
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;

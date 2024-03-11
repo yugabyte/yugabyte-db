@@ -41,12 +41,12 @@ public class OnPremValidator extends ProviderFieldsValidator {
     String code = zone.getCode();
     if (!name.matches(zoneNameRegex)) {
       throwBeanProviderValidatorError(
-          key, "Zone name cannot contain any special characters except '-' and '_'.");
+          key, "Zone name cannot contain any special characters except '-' and '_'.", null);
     }
 
     if (!code.matches(zoneNameRegex)) {
       throwBeanProviderValidatorError(
-          key, "Zone code cannot contain any special characters except '-' and '_'.");
+          key, "Zone code cannot contain any special characters except '-' and '_'.", null);
     }
   }
 

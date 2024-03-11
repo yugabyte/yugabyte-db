@@ -76,7 +76,7 @@
 
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -313,6 +313,10 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
                         common_extra_flags.begin(),
                         common_extra_flags.end());
   }
+  // Given how little memory kDefaultMemoryLimitHardBytes provides, we will need to use more of
+  // our memory for per-tablet overhead.
+  opts_.extra_tserver_flags.insert(
+      opts_.extra_tserver_flags.begin(), "--tablet_overhead_size_percentage=30"s);
   AddExtraFlagsFromEnvVar("YB_EXTRA_MASTER_FLAGS", &opts_.extra_master_flags);
   AddExtraFlagsFromEnvVar("YB_EXTRA_TSERVER_FLAGS", &opts_.extra_tserver_flags);
 }
@@ -409,7 +413,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
       vector<string> extra_flags;
       for (const auto& flag : opts_.extra_tserver_flags) {
         if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back(flag);
+          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
         }
       }
       // we need 1 yb controller server for each tserver
@@ -1867,13 +1871,16 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
   return master(0);
 }
 
-Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(const yb::TabletId& tablet_id) {
+Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
+    const yb::TabletId& tablet_id, bool require_lease) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
-        if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
+        if (tablet.tablet_id() == tablet_id &&
+            tablet.is_leader() &&
+            (!require_lease || tablet.has_leader_lease())) {
           return i;
         }
       }
@@ -2472,7 +2479,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 requi
   bound_rpc_ = bound_rpc_hostport();
   bound_http_ = bound_http_hostport();
 
-  LOG_WITH_PREFIX(INFO) << "Starting Shutdown()";
+  LOG_WITH_PREFIX(INFO) << "Starting Shutdown() of daemon with id " << id();
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;
@@ -3016,8 +3023,8 @@ void StartSecure(
     std::unique_ptr<rpc::Messenger>* messenger,
     const std::vector<std::string>& master_flags) {
   rpc::MessengerBuilder messenger_builder("test_client");
-  *secure_context = ASSERT_RESULT(server::SetupSecureContext(
-      "", "127.0.0.100", server::SecureContextType::kInternal, &messenger_builder));
+  *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
+      /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
   (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 

@@ -73,6 +73,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -300,6 +301,10 @@ Status TableInfo::MergeSchemaPackings(
         << " but version is " << schema_version;
   }
   RETURN_NOT_OK(doc_read_context->MergeWithRestored(pb, overwrite));
+  VLOG_WITH_PREFIX(1) << Format("After merging schema packings, latest schema version of"
+                                "table $0($1) is $2",
+                                table_name, table_id, schema_version);
+
   // After the merge, the latest packing should be in sync with
   // the latest schema.
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
@@ -350,8 +355,24 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
   }
   auto packing = self->doc_read_context->schema_packing_storage.GetPacking(schema_version);
   if (!packing.ok()) {
-    return STATUS_FORMAT(Corruption, "Cannot find packing for table: $0, schema version: $1",
-                         self->table_id, schema_version);
+    Status s = STATUS_FORMAT(Corruption, "Cannot find packing with version $0 for table $1 "
+                             "(table_id=$2 schema version=$3 cotable_id=$4$5): $6",
+                             schema_version,
+                             self->table_name,
+                             self->table_id,
+                             self->schema_version,
+                             self->cotable_id,
+                             self->schema().has_colocation_id()
+                                 ? Format(" colocation_id=$0", self->schema().colocation_id())
+                                 : "",
+                             packing.status());
+    if (VLOG_IS_ON(2)) {
+      LOG(INFO) << self->LogPrefix() << "Get packing failed: " << s << ". Failure stack trace: "
+                << GetStackTrace();
+      // It's important for debugging, make sure all INFO level logs are flushed to log file.
+      google::FlushLogFiles(google::INFO);
+    }
+    return s;
   }
   docdb::ColumnIds deleted_before_history_cutoff;
   for (const auto& deleted_col : self->deleted_cols) {
@@ -410,6 +431,7 @@ Status KvStoreInfo::LoadTablesFromPB(
     if (schema.has_colocation_id()) {
       colocation_to_table.emplace(schema.colocation_id(), table_info);
     }
+    VLOG(1) << tablet_log_prefix << "Loaded table " << AsString(table_info);
   }
   return Status::OK();
 }
@@ -582,6 +604,8 @@ void KvStoreInfo::UpdateColocationMap(const TableInfoPtr& table_info) {
   auto colocation_id = table_info->schema().colocation_id();
   if (colocation_id) {
     colocation_to_table.emplace(colocation_id, table_info);
+    VLOG(1) << table_info->LogPrefix() << Format("Updated colocation map: $0 -> {$1}",
+                                                 colocation_id, table_info);
   }
 }
 
@@ -764,7 +788,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
   docdb::InitRocksDBOptions(
-      &rocksdb_options, log_prefix_, nullptr /* statistics */, tablet_options);
+      &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
@@ -978,6 +1002,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       }
     }
 
+    last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
+
     if (!superblock.active_restorations().empty()) {
       active_restorations_.reserve(superblock.active_restorations().size());
       for (const auto& id : superblock.active_restorations()) {
@@ -1156,6 +1182,8 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
       *split_child_table_ids.Add() = split_child_tablet_id;
     }
   }
+
+  pb.set_last_attempted_clone_seq_no(last_attempted_clone_seq_no_);
 
   if (!active_restorations_.empty()) {
     auto& active_restorations = *pb.mutable_active_restorations();
@@ -1358,6 +1386,9 @@ void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) 
   if (it != tables.end()) {
     auto colocation_id = it->second->schema().colocation_id();
     if (colocation_id) {
+      VLOG(1) << it->second->LogPrefix()
+              << Format("Removing from colocation map: $0 -> {$1}",
+                        colocation_id, it->second);
       kv_store_.colocation_to_table.erase(colocation_id);
     }
     tables.erase(it);
@@ -1624,6 +1655,22 @@ void RaftGroupMetadata::SetSplitDone(
   split_child_tablet_ids_[1] = child2;
 }
 
+void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  DCHECK(last_attempted_clone_seq_no_ < clone_request_seq_no);
+  last_attempted_clone_seq_no_ = clone_request_seq_no;
+}
+
+bool RaftGroupMetadata::HasAttemptedClone(uint32_t clone_request_seq_no) {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_ >= clone_request_seq_no;
+}
+
+uint32_t RaftGroupMetadata::LastAttemptedCloneSeqNo() {
+  std::lock_guard lock(data_mutex_);
+  return last_attempted_clone_seq_no_;
+}
+
 bool RaftGroupMetadata::has_active_restoration() const {
   std::lock_guard lock(data_mutex_);
   return !active_restorations_.empty();
@@ -1714,6 +1761,9 @@ Status RaftGroupMetadata::OldSchemaGC(
       auto new_value = std::make_shared<TableInfo>(
           *it->second, schema_version);
       it->second = new_value;
+      VLOG_WITH_PREFIX(1)
+          << Format("After old schema GC, latest schema version of table $0($1) is $2",
+                    it->second->table_name, it->second->table_id, it->second->schema_version);
       need_flush = true;
     }
   }
@@ -1736,18 +1786,28 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::CotablePacking(
         NotFound, "Cannot find table info for: $0, raft group id: $1",
         cotable_id, raft_group_id_);
   }
+  LOG_IF_WITH_PREFIX(FATAL, cotable_id != (*res)->cotable_id) << "Cotable id mismatch: "
+      << cotable_id.ToHexString() << " vs " << (*res)->cotable_id.ToHexString();
   return TableInfo::Packing(*res, schema_version, history_cutoff);
 }
 
 Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
     ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) {
-  auto it = kv_store_.colocation_to_table.find(colocation_id);
-  if (it == kv_store_.colocation_to_table.end()) {
-    return STATUS_FORMAT(
-        NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
-        colocation_id, raft_group_id_);
+  TableInfoPtr table_info;
+  {
+    std::lock_guard lock(data_mutex_);
+    auto it = kv_store_.colocation_to_table.find(colocation_id);
+    if (it == kv_store_.colocation_to_table.end()) {
+      return STATUS_FORMAT(
+          NotFound, "Cannot find table info for colocation: $0, raft group id: $1",
+          colocation_id, raft_group_id_);
+    }
+    table_info = it->second;
   }
-  return TableInfo::Packing(it->second, schema_version, history_cutoff);
+  LOG_IF_WITH_PREFIX(FATAL, colocation_id != table_info->schema().colocation_id())
+      << "Colocation id mismatch: " << colocation_id << " vs "
+      << table_info->schema().colocation_id();
+  return TableInfo::Packing(table_info, schema_version, history_cutoff);
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {

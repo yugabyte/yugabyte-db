@@ -14,12 +14,21 @@
 #include "yb/master/xcluster/xcluster_replication_group.h"
 
 #include "yb/client/client.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/cdc/xcluster_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/result.h"
+
+DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_string(certs_for_cdc_dir);
 
 namespace yb::master {
 
@@ -235,4 +244,201 @@ Status HandleLocalAutoFlagsConfigChange(
 
   return Status::OK();
 }
+
+std::optional<NamespaceId> GetProducerNamespaceIdInternal(
+    const SysUniverseReplicationEntryPB& universe_pb, const NamespaceId& consumer_namespace_id) {
+  const auto& namespace_infos = universe_pb.db_scoped_info().namespace_infos();
+  auto it = std::find_if(
+      namespace_infos.begin(), namespace_infos.end(),
+      [&consumer_namespace_id](const auto& namespace_info) {
+        return namespace_info.consumer_namespace_id() == consumer_namespace_id;
+      });
+
+  if (it == namespace_infos.end()) {
+    return std::nullopt;
+  }
+
+  return it->producer_namespace_id();
+}
+
+Result<bool> ShouldAddTableToReplicationGroup(
+    UniverseReplicationInfo& universe, const TableInfo& table_info,
+    CatalogManager& catalog_manager) {
+  const auto& table_pb = table_info.old_pb();
+
+  // Only user created YSQL tables should be automatically added to xCluster replication.
+  if (table_pb.colocated() || table_pb.table_type() != PGSQL_TABLE_TYPE ||
+      !catalog_manager.IsUserCreatedTable(table_info)) {
+    return false;
+  }
+
+  auto l = universe.LockForRead();
+  const auto& universe_pb = l->pb;
+  if (l->is_deleted_or_failed()) {
+    VLOG(1) << "Skip adding table " << table_info.ToString()
+            << " to xCluster replication as the universe " << universe.ReplicationGroupId()
+            << " is in a deleted or failed state";
+    return false;
+  }
+
+  // Handle v1 API, transactional xcluster replication for indexes. If the indexed table is under
+  // replication then we need to add the index to replication as well.
+  if (!universe_pb.has_db_scoped_info() && !(universe_pb.transactional() && IsIndex(table_pb))) {
+    return false;
+  }
+
+  if (universe_pb.has_db_scoped_info()) {
+    if (!IncludesConsumerNamespace(universe, table_info.namespace_id())) {
+      return false;
+    }
+  } else {
+    const auto& indexed_table_id = GetIndexedTableId(table_pb);
+    auto indexed_table_stream_ids =
+        catalog_manager.GetXClusterConsumerStreamIdsForTable(indexed_table_id);
+    if (indexed_table_stream_ids.empty()) {
+      return false;
+    }
+  }
+
+  // Check if the table has already been added to this replication group.
+  auto cluster_config = catalog_manager.ClusterConfig();
+  {
+    auto l = cluster_config->LockForRead();
+    const auto& consumer_registry = l->pb.consumer_registry();
+    // Only add if we are in a transactional replication with STANDBY mode.
+    if (consumer_registry.role() != cdc::XClusterRole::STANDBY ||
+        !consumer_registry.transactional()) {
+      return false;
+    }
+
+    auto producer_entry =
+        FindOrNull(consumer_registry.producer_map(), universe.ReplicationGroupId().ToString());
+    if (producer_entry) {
+      SCHECK(
+          !producer_entry->disable_stream(), IllegalState,
+          "Table belongs to xCluster replication group $0 which is currently disabled",
+          universe.ReplicationGroupId());
+      for (auto& [stream_id, stream_info] : producer_entry->stream_map()) {
+        if (stream_info.consumer_table_id() == table_info.id()) {
+          VLOG(1) << "Table " << table_info.ToString()
+                  << " is already part of xcluster replication " << stream_id;
+
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+Result<NamespaceId> GetProducerNamespaceId(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
+  auto l = universe.LockForRead();
+  SCHECK(
+      l->pb.has_db_scoped_info(), IllegalState, "Replication group $0 is not db-scoped",
+      universe.ToString());
+
+  auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
+  SCHECK_FORMAT(
+      opt_namespace_id, NotFound, "Namespace $0 not found in replication group $1",
+      consumer_namespace_id, universe.ToString());
+
+  return *opt_namespace_id;
+}
+
+bool IncludesConsumerNamespace(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
+  auto l = universe.LockForRead();
+  if (!l->pb.has_db_scoped_info()) {
+    return false;
+  }
+
+  auto opt_namespace_id = GetProducerNamespaceIdInternal(l->pb, consumer_namespace_id);
+  return opt_namespace_id.has_value();
+}
+
+Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+    UniverseReplicationInfo& universe) {
+  auto master_addresses = universe.LockForRead()->pb.producer_master_addresses();
+  std::vector<HostPort> hp;
+  HostPortsFromPBs(master_addresses, &hp);
+  auto xcluster_client = std::make_shared<client::XClusterRemoteClient>(
+      FLAGS_certs_for_cdc_dir, MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
+  RETURN_NOT_OK(xcluster_client->Init(universe.ReplicationGroupId(), hp));
+
+  return xcluster_client;
+}
+
+Result<bool> IsSafeTimeReady(
+    const SysUniverseReplicationEntryPB& universe_pb, const XClusterManagerIf& xcluster_manager) {
+  if (!universe_pb.has_db_scoped_info()) {
+    // Only valid in Db scoped replication.
+    return true;
+  }
+
+  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
+  for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
+    const auto& namespace_id = namespace_info.consumer_namespace_id();
+    auto* it = FindOrNull(safe_time_map, namespace_id);
+    if (!it || it->is_special()) {
+      VLOG_WITH_FUNC(1) << "Safe time for namespace " << namespace_id
+                        << " is not yet ready: " << (it ? it->ToString() : "NA");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager) {
+  // Cases for completion:
+  //  - For AlterUniverseReplication, we need to wait until the .ALTER universe gets merged with
+  //    the main universe - at which point the .ALTER universe is deleted.
+  //  - For regular SetupUniverseReplication, we want to wait for the universe to become ACTIVE.
+  //      - If this is a brand new Db scoped replication group then we also have to wait for the
+  //        xcluster safe time to be ready.
+
+  const auto is_alter_request = xcluster::IsAlterReplicationGroupId(replication_group_id);
+  auto universe = catalog_manager.GetUniverseReplication(replication_group_id);
+
+  auto state = SysUniverseReplicationEntryPB::DELETED;
+  if (universe) {
+    state = universe->LockForRead()->pb.state();
+  }
+  if (state == SysUniverseReplicationEntryPB::DELETED) {
+    Status status;
+    if (!is_alter_request) {
+      status = STATUS(NotFound, "Could not find xCluster replication group");
+    }
+    return IsOperationDoneResult::Done(std::move(status));
+  }
+
+  CHECK(universe);
+
+  if (state == SysUniverseReplicationEntryPB::DELETED_ERROR ||
+      state == SysUniverseReplicationEntryPB::FAILED) {
+    auto setup_error = universe->GetSetupUniverseReplicationErrorStatus();
+    if (setup_error.ok()) {
+      LOG(WARNING) << "Did not find setup error status for universe " << replication_group_id
+                   << " in state " << SysUniverseReplicationEntryPB::State_Name(state);
+      setup_error = STATUS(InternalError, "unknown error");
+    }
+
+    // Add failed universe to GC now that we've responded to the user.
+    catalog_manager.MarkUniverseForCleanup(replication_group_id);
+
+    return IsOperationDoneResult::Done(std::move(setup_error));
+  }
+
+  bool is_done = false;
+  if (!is_alter_request && state == SysUniverseReplicationEntryPB::ACTIVE) {
+    auto l = universe->LockForRead();
+    is_done = VERIFY_RESULT(IsSafeTimeReady(l->pb, *catalog_manager.GetXClusterManager()));
+  }
+
+  return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
+}
+
 }  // namespace yb::master

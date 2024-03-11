@@ -58,7 +58,6 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
                                    uint64_t* last_breaking_version) const override;
-
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
@@ -76,9 +75,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void SetPublisher(rpc::Publisher service) override;
 
+  void SetCQLServer(yb::server::RpcAndWebServerBase* server) override {
+    LOG_WITH_FUNC(FATAL) << "should not be called on the master";
+  }
+
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  rpc::Messenger* GetMessenger() const override;
+  rpc::Messenger* GetMessenger(ash::Component component) const override;
 
  private:
   Master* master_ = nullptr;

@@ -476,6 +476,10 @@ Settings related to managing geo-distributed clusters:
 
 The name of the availability zone, or rack, where this instance is deployed.
 
+{{<tip title="Rack awareness">}}
+For on-premises deployments, consider racks as zones to treat them as fault domains.
+{{</tip>}}
+
 Default: `rack1`
 
 ##### --placement_region
@@ -608,12 +612,12 @@ Deprecated. Use `--ysql_pg_conf_csv` instead.
 
 ##### --ysql_pg_conf_csv
 
-Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file.
+Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file. If internal quotation marks are required, surround each configuration pair having single quotation marks with double quotation marks.
 
 For example:
 
 ```sh
---ysql_pg_conf_csv="suppress_nonpg_logs=true,log_connections=on"
+--ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
 ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
@@ -1019,7 +1023,7 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
 
 ```sh
---ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
 ```
 
 ## Packed row flags
@@ -1287,6 +1291,20 @@ You can modify these parameters in the following ways:
     SET LOCAL temp_file_limit=-1;
     ```
 
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
@@ -1338,7 +1356,7 @@ Default: -1, where the system automatically calculates the value to be approxima
 
 ##### backfill_index_write_batch_size
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 
 Default: 128
 

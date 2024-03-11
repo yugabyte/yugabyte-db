@@ -38,7 +38,7 @@ public class SetUniverseKey extends UniverseTaskBase {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
       preTaskActions();
 
       // Manage encryption at rest

@@ -56,6 +56,7 @@ import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -68,6 +69,17 @@ import static org.yb.AssertionWrappers.fail;
 @RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
+
+  private static final String PERMISSION_DENIED = "permission denied";
+
+  // This constant must be synced with the same variable in `yb_backup.py` script.
+  // This temporary constant enables the features:
+  // 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+  // 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+  //    instead of old 'use_tablespaces'
+  // 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
+  //    with '--no-privileges' flag.
+  private static final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
 
   @Before
   public void initYBBackupUtil() {
@@ -1150,7 +1162,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean backupTablespaces)
       throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
@@ -1198,8 +1210,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
       String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
-      if (useTablespaces) {
-        args.add("--use_tablespaces");
+      if (backupTablespaces) {
+        args.add("--backup_tablespaces");
+
+        if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+          args.add("--use_tablespaces");
+        }
       }
 
       switch (numRegions) {
@@ -1239,12 +1255,12 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doTestGeoPartitionedBackup(
-      String targetDB, int numRegions, boolean useTablespaces, boolean dropTablespaces,
-      String restoreFlag) throws Exception {
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces, boolean dropTablespaces,
+      String restoreFlag, boolean useTablespaces) throws Exception {
     String output = null;
     try (Statement stmt = connection.createStatement()) {
-      output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+      output = doCreateGeoPartitionedBackup(numRegions, backupAndRestoreTablespaces);
       JSONObject json = new JSONObject(output);
       String backupDir = json.getString("snapshot_url");
 
@@ -1255,12 +1271,20 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
       List<String> args = new ArrayList<>();
-      if (useTablespaces) {
-        args.add("--use_tablespaces");
+      if (backupAndRestoreTablespaces) {
+        args.add("--restore_tablespaces");
       }
 
       if (restoreFlag != null) {
         args.add(restoreFlag);
+      }
+
+      if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+        useTablespaces = backupAndRestoreTablespaces;
+      }
+
+      if (useTablespaces) {
+        args.add("--use_tablespaces");
       }
 
       if (!targetDB.equals("yugabyte")) {
@@ -1297,13 +1321,15 @@ public class TestYbBackup extends BasePgSQLTest {
       assertEquals(null, getTablespaceForTable(stmt, "tbl"));
       // Check global TABLESPACEs.
       Set<Row> expectedTablespaces = asSet(new Row("pg_default"), new Row("pg_global"));
-      if (useTablespaces || targetDB.equals("yugabyte")) {
+      if (backupAndRestoreTablespaces || targetDB.equals("yugabyte")) {
+        expectedTablespaces.addAll(
+            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
+      }
+
+      if ((backupAndRestoreTablespaces && useTablespaces) || targetDB.equals("yugabyte")) {
         assertEquals("region1_ts", getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
         assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
-
-        expectedTablespaces.addAll(
-            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
       } else {
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r2"));
@@ -1322,60 +1348,59 @@ public class TestYbBackup extends BasePgSQLTest {
     return output;
   }
 
-  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
-      throws Exception {
-    return doTestGeoPartitionedBackup(
-        targetDB, numRegions, useTablespaces, /* dropTablespaces */ true, /* restoreFlag */ null);
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces) throws Exception {
+    return doTestGeoPartitionedBackupAndRestore(
+        targetDB, numRegions, backupAndRestoreTablespaces, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ true);
   }
 
   @Test
   public void testGeoPartitioning() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 3, false);
   }
 
   @Test
   public void testGeoPartitioningNoRegions() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 0, false);
   }
 
   @Test
   public void testGeoPartitioningOneRegion() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, false);
+    doTestGeoPartitionedBackupAndRestore("db2", 1, false);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, false);
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, false);
   }
 
   @Test
   public void testGeoPartitioningWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 3, true);
   }
 
   @Test
   public void testGeoPartitioningNoRegionsWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 0, true);
   }
 
   @Test
   public void testGeoPartitioningOneRegionWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, true);
+    doTestGeoPartitionedBackupAndRestore("db2", 1, true);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, true);
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, true);
   }
 
   @Test
   public void testFailureOnExistingTablespaces() throws Exception {
-    // This value must be synced with the same variable in `yb_backup.py` script.
-    final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
-
     try {
-      doTestGeoPartitionedBackup("db2", 3,
-          /* useTablespaces */ true, /* dropTablespaces */ false, /* restoreFlag */ null);
+      doTestGeoPartitionedBackupAndRestore(
+          "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+          /* restoreFlag */ null, /* useTablespaces */ true);
 
       if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
         fail("Backup restoring did not fail as expected");
@@ -1388,13 +1413,22 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testIgnoreExistingTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3,
-        /* useTablespaces */ true, /* dropTablespaces */ false, "--ignore_existing_tablespaces");
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+        "--ignore_existing_tablespaces", /* useTablespaces */ true);
+  }
+
+  @Test
+  public void testBackupRestoreTablespaces() throws Exception {
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ false);
+    // Case with useTablespaces = true: testGeoPartitioningWithTablespaces().
   }
 
   @Test
   public void testGeoPartitioningDeleteBackup() throws Exception {
-    String output = doCreateGeoPartitionedBackup(3, false);
+    String output = doCreateGeoPartitionedBackup(3, /* backupTablespaces */ false);
     JSONObject json = new JSONObject(output);
     String backupDir = json.getString("snapshot_url");
     List<String> backupDirs = new ArrayList<String>(Arrays.asList(
@@ -1418,6 +1452,97 @@ public class TestYbBackup extends BasePgSQLTest {
       assertFalse(dir.exists());
       assertEquals(dir.length(), 0L);
     }
+  }
+
+  public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
+      throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table(id INT PRIMARY KEY)");
+      stmt.execute("INSERT INTO test_table (id) VALUES (1)");
+
+      stmt.execute("CREATE ROLE admin LOGIN NOINHERIT");
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("GRANT SELECT ON TABLE test_table TO admin");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte", "--backup_roles");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withUser("admin").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("DROP ROLE admin");
+    }
+
+    List<String> args = new ArrayList<>(Arrays.asList(
+        "--keyspace", "ysql.yb2", "--ignore_existing_roles"));
+    if (restoreRoles) {
+      args.add("--restore_roles");
+    }
+    if (useRoles) {
+      args.add("--use_roles");
+    }
+
+    try {
+      YBBackupUtil.runYbBackupRestore(backupDir, args);
+    } catch (YBBackupException ex) {
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && !restoreRoles) {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
+        return;
+      } else {
+        throw ex;
+      }
+    }
+
+    try (Connection connection3 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection3.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+    }
+
+    try (Connection connection4 =
+             getConnectionBuilder().withDatabase("yb2").withUser("admin").connect();
+         Statement stmt = connection4.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    } catch (PSQLException ex) {
+      if (restoreRoles) {
+        throw ex;
+      } else {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
+     }
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testBackupRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ true);
+  }
+
+  @Test
+  public void testBackupRolesWithoutUseRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ false);
+  }
+
+  @Test
+  public void testBackupRolesWithoutRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ false, /* useRoles */ false);
   }
 
   @Test
@@ -1753,7 +1878,7 @@ public class TestYbBackup extends BasePgSQLTest {
                    " '', 'SeqScan(tbl1)')");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),
@@ -1776,10 +1901,10 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl2 WHERE tbl2.k = 3",
                   new Row("Seq Scan on tbl2"),
-                  new Row("  Remote Filter: (k = 3)"));
+                  new Row("  Storage Filter: (k = 3)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),

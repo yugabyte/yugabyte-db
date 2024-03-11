@@ -96,6 +96,8 @@
 
 /* YB includes. */
 #include "pg_yb_utils.h"
+#include "commands/ybccmds.h"
+#include "replication/yb_virtual_wal_client.h"
 
 /*
  * Maximum data payload in a WAL data message.  Must be >= XLOG_BLCKSZ.
@@ -306,6 +308,9 @@ WalSndErrorCleanup(void)
 		close(sendFile);
 		sendFile = -1;
 	}
+
+	if (IsYugaByteEnabled() && MyReplicationSlot != NULL)
+		YBCDestroyVirtualWal();
 
 	if (MyReplicationSlot != NULL)
 		ReplicationSlotRelease();
@@ -846,7 +851,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("CreateReplicationSlot is unavailable"),
 				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
+						   "system upgrade is in progress")));
 
 	const char *snapshot_name = NULL;
 	char		xloc[MAXFNAMELEN];
@@ -885,7 +890,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 					 errmsg("YSQL only supports logical replication slots")));
 
 		ReplicationSlotCreate(cmd->slotname, false,
-							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT);
+							  cmd->temporary ? RS_TEMPORARY : RS_PERSISTENT,
+							  snapshot_action, NULL);
 	}
 	else
 	{
@@ -906,7 +912,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 * beginning as they get dropped on error as well.
 			 */
 			ReplicationSlotCreate(cmd->slotname, true,
-								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL);
+								  cmd->temporary ? RS_TEMPORARY : RS_EPHEMERAL,
+								  snapshot_action, NULL);
 		}
 	}
 
@@ -965,12 +972,16 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 		if (IsYugaByteEnabled())
 		{
-			if (cmd->plugin == NULL || 
-				strcmp(cmd->plugin, YB_OUTPUT_PLUGIN) != 0)
+			/*
+			 * TODO(#20756): Support other plugins such as test_decoding once we
+			 * store replication slot metadata in yb-master.
+			 */
+			if (cmd->plugin == NULL ||
+				strcmp(cmd->plugin, PG_OUTPUT_PLUGIN) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid output plugin"),
-						 errdetail("Only yboutput plugin is supported")));
+						 errdetail("Only 'pgoutput' plugin is supported")));
 
 			if (cmd->temporary)
 				ereport(ERROR,
@@ -981,7 +992,20 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 							 	 "issues/19263. React with thumbs up to raise"
 								 " its priority")));
 
-			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT);
+			/*
+			 * 23 digits is an upper bound for the decimal representation of a uint64
+			 */
+			char consistent_snapshot_time_string[24];
+			uint64_t consistent_snapshot_time;
+			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
+								  snapshot_action, &consistent_snapshot_time);
+
+			if (snapshot_action == CRS_USE_SNAPSHOT)
+			{
+				snprintf(consistent_snapshot_time_string, sizeof(consistent_snapshot_time_string),
+						 "%llu", (unsigned long long)consistent_snapshot_time);
+				snapshot_name = pstrdup(consistent_snapshot_time_string);
+			}
 
 			/*
 			 * Signal that we don't need the timeout mechanism. We're just
@@ -999,7 +1023,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 								logical_read_xlog_page,
 								WalSndPrepareWrite, WalSndWriteData,
 								WalSndUpdateProgress);
-			
+
 			/*
 			 * Signal that we don't need the timeout mechanism. We're just
 			 * creating the replication slot and don't yet accept feedback
@@ -1048,13 +1072,17 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			ReplicationSlotSave();
 	}
 
-	/* 
-	 * Send "0/0" as the consistent wal location instead of a NULL value. This
-	 * is so that the drivers which have a NULL check on the value continue to
-	 * work. 
+	/*
+	 * Send "0/2" as the consistent wal location. The LSN "0/1" is reserved for
+	 * the records to be streamed as part of the snapshot consumption. The first
+	 * change record is always streamed with LSN "0/2".
+	 *
+	 * This value should be kept in sync with the confirmed_flush_lsn value
+	 * being set during the creation of the CDC stream in the
+	 * PopulateCDCStateTable function of xrepl_catalog_manager.cc.
 	 */
 	if (IsYugaByteEnabled())
-		snprintf(xloc, sizeof(xloc), "%X/%X", 0, 0);
+		snprintf(xloc, sizeof(xloc), "%X/%X", 0, 2);
 	else
 		snprintf(xloc, sizeof(xloc), "%X/%X",
 				 (uint32) (MyReplicationSlot->data.confirmed_flush >> 32),
@@ -1111,8 +1139,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 
-	if (!IsYugaByteEnabled())
-		ReplicationSlotRelease();
+if (!IsYugaByteEnabled())
+	ReplicationSlotRelease();
 }
 
 /*
@@ -1146,6 +1174,8 @@ static void
 StartLogicalReplication(StartReplicationCmd *cmd)
 {
 	StringInfoData buf;
+
+	elog(DEBUG1, "StartLogicalReplication");
 
 	/* make sure that our requirements are still fulfilled */
 	CheckLogicalDecodingRequirements();
@@ -1207,11 +1237,17 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 
 	SyncRepInitConfig();
 
+	if (IsYugaByteEnabled())
+		YBCInitVirtualWal(logical_decoding_ctx->options.yb_publication_names);
+
 	/* Main loop of walsender */
 	WalSndLoop(XLogSendLogical);
 
 	FreeDecodingContext(logical_decoding_ctx);
 	ReplicationSlotRelease();
+
+	if (IsYugaByteEnabled())
+		YBCDestroyVirtualWal();
 
 	replication_active = false;
 	if (got_STOPPING)
@@ -1658,11 +1694,13 @@ exec_replication_command(const char *cmd_string)
 
 		case T_StartReplicationCmd:
 			{
-				if (IsYugaByteEnabled())
+				if (IsYugaByteEnabled()
+					&& !yb_enable_replication_slot_consumption)
 					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Consuming changes via Walsender is not yet"
-									" supported")));
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("StartReplication is unavailable"),
+							 errdetail("yb_enable_replication_slot_consumption "
+									   "is false.")));
 
 				StartReplicationCmd *cmd = (StartReplicationCmd *) cmd_node;
 
@@ -2891,6 +2929,8 @@ XLogSendLogical(void)
 	XLogRecord *record;
 	char	   *errm;
 
+	YBCPgVirtualWalRecord *yb_record;
+
 	/*
 	 * Don't know whether we've caught up yet. We'll set WalSndCaughtUp to
 	 * true in WalSndWaitForWal, if we're actually waiting. We also set to
@@ -2899,17 +2939,33 @@ XLogSendLogical(void)
 	 */
 	WalSndCaughtUp = false;
 
-	record = XLogReadRecord(logical_decoding_ctx->reader, logical_startptr, &errm);
+	if (IsYugaByteEnabled())
+	{
+		yb_record = YBCReadRecord(logical_decoding_ctx->reader, logical_startptr,
+								  &errm);
+
+		/*
+		 * Explicitly set record to NULL so that the NULL check below is only
+		 * dependent on yb_record.
+		 */
+		record = NULL;
+	}
+	else
+	{
+		record = XLogReadRecord(logical_decoding_ctx->reader, logical_startptr,
+								&errm);
+	}
 	logical_startptr = InvalidXLogRecPtr;
 
 	/* xlog record was invalid */
 	if (errm != NULL)
 		elog(ERROR, "%s", errm);
 
-	if (record != NULL)
+	if ((IsYugaByteEnabled() && yb_record != NULL) || record != NULL)
 	{
 		/* XXX: Note that logical decoding cannot be used while in recovery */
-		XLogRecPtr	flushPtr = GetFlushRecPtr();
+		XLogRecPtr flushPtr = IsYugaByteEnabled() ? YBCGetFlushRecPtr() :
+													GetFlushRecPtr();
 
 		/*
 		 * Note the lack of any call to LagTrackerWrite() which is handled by
@@ -2933,7 +2989,8 @@ XLogSendLogical(void)
 		 * If the record we just wanted read is at or beyond the flushed
 		 * point, then we're caught up.
 		 */
-		if (logical_decoding_ctx->reader->EndRecPtr >= GetFlushRecPtr())
+		if (logical_decoding_ctx->reader->EndRecPtr >=
+			(IsYugaByteEnabled() ? YBCGetFlushRecPtr() : GetFlushRecPtr()))
 		{
 			WalSndCaughtUp = true;
 

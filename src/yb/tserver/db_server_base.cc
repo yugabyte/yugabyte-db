@@ -13,7 +13,7 @@
 
 #include "yb/tserver/db_server_base.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 

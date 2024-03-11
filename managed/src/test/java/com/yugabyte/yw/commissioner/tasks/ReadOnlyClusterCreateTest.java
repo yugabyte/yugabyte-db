@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -80,9 +81,14 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+
+      mockLocaleCheckResponse(mockNodeUniverseManager);
+
+      when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
     }
     mockWaits(mockClient);
+    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -99,6 +105,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -106,6 +113,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
           TaskType.RunHooks,
+          TaskType.CheckLocale,
+          TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeStatus,
@@ -120,6 +129,9 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

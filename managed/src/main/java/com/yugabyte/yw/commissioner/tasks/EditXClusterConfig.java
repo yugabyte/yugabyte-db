@@ -46,10 +46,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     XClusterConfigEditFormData editFormData = taskParams().getEditFormData();
 
     // Lock the source universe.
-    lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+    lockAndFreezeUniverseForUpdate(
+        sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
     try {
       // Lock the target universe.
-      lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
       try {
 
         // Check Auto flags on source and target universes while resuming xCluster.
@@ -182,7 +184,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 taskParams().getTableIdsToAdd(),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
-                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+                false /*isForceBootstrap*/);
 
     // Add the subtasks to set up replication for tables that do not need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
@@ -242,7 +245,10 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
         // Delete the xCluster config.
         createDeleteXClusterConfigSubtasks(
-            xClusterConfig, true /* keepEntry */, taskParams().isForced());
+            xClusterConfig,
+            true /* keepEntry */,
+            taskParams().isForced(),
+            false /* deletePitrConfigs */);
 
         if (xClusterConfig.isUsedForDr()) {
           createSetDrStatesTask(

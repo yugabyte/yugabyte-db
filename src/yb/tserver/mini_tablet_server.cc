@@ -128,6 +128,13 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);
 }
 
+Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServer(
+    const std::vector<string>& fs_roots, uint16_t rpc_port, int index) {
+  auto options_result = TabletServerOptions::CreateTabletServerOptions();
+  RETURN_NOT_OK(options_result);
+  return std::make_unique<MiniTabletServer>(fs_roots, fs_roots, rpc_port, *options_result, index);
+}
+
 Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
   TEST_SetThreadPrefixScoped prefix_se(ToString());
@@ -233,12 +240,12 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   if (!server_) {
     return Status::OK();
   }
-  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
+  return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) -> Status {
     auto tablet = tablet_peer->shared_tablet();
-    if (tablet) {
-      CHECK_OK(tablet->ForceManualRocksDBCompact(skip_flush));
+    if (!tablet) {
+      return Status::OK();
     }
-    return Status::OK();
+    return tablet->ForceManualRocksDBCompact(skip_flush);
   });
 }
 

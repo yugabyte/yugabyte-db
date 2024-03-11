@@ -30,12 +30,14 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -113,9 +115,11 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
   protected RuntimeConfigFactory runtimeConfigFactory;
+  protected ReleaseContainer mockReleaseContainer;
   protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
   protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
   protected KubernetesManagerFactory kubernetesManagerFactory;
+  protected CloudUtilFactory mockCloudUtilFactory;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -141,6 +145,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     healthChecker = mock(HealthChecker.class);
     mockQueryHelper = mock(QueryHelper.class);
     kubernetesManagerFactory = mock(KubernetesManagerFactory.class);
+    mockCloudUtilFactory = mock(CloudUtilFactory.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -252,10 +257,11 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     authToken = user.createAuthToken();
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
-    mockReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
-    when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseMetadata);
+    mockReleaseContainer =
+        spy(new ReleaseContainer(mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig));
+    when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseContainer);
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
-        .when(mockReleaseMetadata)
+        .when(mockReleaseContainer)
         .getFilePath(Architecture.x86_64);
     // when(mockReleaseMetadata.getFilePath(any()))
     //     .thenReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz");

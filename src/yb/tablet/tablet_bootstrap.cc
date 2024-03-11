@@ -39,6 +39,7 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -73,6 +74,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/split_operation.h"
@@ -98,7 +100,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status.h"
@@ -987,6 +988,9 @@ class TabletBootstrap {
       case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
         return PlayChangeAutoFlagsConfigRequest(replicate);
 
+      case consensus::CLONE_OP:
+        return PlayCloneOpRequest(replicate);
+
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
         return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
@@ -1040,6 +1044,19 @@ class TabletBootstrap {
     // - tablet bootstrap of original tablet which has been already successfully split and replaying
     // split operation.
     // - tablet bootstrap of new after-split tablet replaying split operation.
+  }
+
+  Status PlayCloneOpRequest(consensus::LWReplicateMsg* replicate_msg) {
+    CloneOperation operation(
+        tablet_, data_.tablet_init_data.tablet_splitter, replicate_msg->mutable_clone_tablet());
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    // We might be asked to replay CLONE_OP even if it was applied and flushed when
+    // FLAGS_force_recover_flushed_frontier is set. ApplyCloneTablet will still succeed in this case
+    // because it is a no-op if a clone with the same seq_no is already applied according to the
+    // source tablet's metadata.
+    return data_.tablet_init_data.tablet_splitter->ApplyCloneTablet(
+        &operation, log_.get(), cmeta_->committed_config());
   }
 
   Status PlayChangeAutoFlagsConfigRequest(consensus::LWReplicateMsg* replicate_msg) {

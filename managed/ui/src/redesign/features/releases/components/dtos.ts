@@ -1,5 +1,5 @@
 export interface Releases {
-  uuid?: string;
+  release_uuid?: string;
   release_tag: string;
   schema?: string;
   version: string;
@@ -7,44 +7,43 @@ export interface Releases {
   artifacts: ReleaseArtifacts[];
   release_type: ReleaseType | string,
   release_date: string;
-  in_use: boolean;
   release_notes: string;
   state: ReleaseState;
   universes: ReleaseUniverses[];
 }
 
 export interface ReleaseArtifacts {
-  location: ReleaseArtifactLocation
+  package_file_id?: string;
+  file_name?: string | any;
+  signature_file_path?: string | any;
+  package_url?: string;
+  signature_url?: string;
   sha256: string;
   platform: ReleasePlatform;
-  architecture: ReleasePlatformArchitecture | string;
+  architecture: ReleasePlatformArchitecture | string | null;
   signature: string;
 }
 
-export interface ReleaseArtifactLocation {
-  fileID?: string;
-  package_file_path?: string;
-  signature_file_path?: string;
-  package_url?: string;
-  signature_url?: string;
+export enum ReleasePlatform {
+  LINUX = 'LINUX',
+  KUBERNETES = 'KUBERNETES'
 }
 
-export enum ReleasePlatform {
-  LINUX = 'linux',
-  KUBERNETES = 'kubernetes'
+export enum ReleaseYBType {
+  YUGABYTEDB = 'YBDB',
+  YUGAWARE = 'YUGAWARE'
 }
 
 export enum ReleasePlatformArchitecture {
   X86 = 'x86_64',
-  ARM = 'aarch64',
-  KUBERNETES = 'kubernetes'
+  ARM = 'aarch64'
 }
 
 export enum ReleaseType {
   ALL = 'All',
   STS = 'STS',
   LTS = 'LTS',
-  PREVIEW = 'Preview'
+  PREVIEW = 'PREVIEW (DEFAULT)'
 }
 
 export enum ReleaseState {
@@ -53,8 +52,17 @@ export enum ReleaseState {
   DELETED = 'DELETED'
 }
 
+export enum UrlArtifactStatus {
+  EMPTY = '',
+  WAITING = 'waiting',
+  SUCCESS =  'success',
+  RUNNING = 'running',
+  FAILURE = 'failure'
+}
+
 export interface ReleaseUniverses {
   name: string;
+  uuid: string;
   creation_date: string;
 }
 
@@ -82,12 +90,14 @@ export interface ReleaseSpecificArtifact {
 export interface ReleaseFormFields {
   importMethod: string | AddReleaseImportMethod;
   installationPackageUrl?: string;
+  ybType?: string;
+  sha256?: string;
   signatureUrl?: string;
-  installationPackageFile?: File | undefined | string;
-  signatureFile?: File | undefined | string;
+  installationPackageFile?: File | undefined;
+  signatureFile?: File | undefined;
   releaseTag?: string,
   version?: string,
-  architecture?: string,
+  architecture?: string | null,
   platform?: string,
   releaseDate?: string;
   releaseNotes? : string;
@@ -111,3 +121,13 @@ export const ModalTitle = {
   EDIT_AARCH: 'Edit VM ARM',
   EDIT_RELEASE_TAG: 'Edit Release Tag'
 } as const;
+
+export interface ReleasePlatformButtonProps {
+  label: string;
+  value: ReleasePlatform;
+}
+
+export interface ReleaseArchitectureButtonProps {
+  label: string;
+  value: ReleasePlatformArchitecture;
+}

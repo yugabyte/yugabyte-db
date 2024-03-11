@@ -35,7 +35,7 @@ public class OidcGroupToYbaRoles extends Model {
       UUID customerUUID, String groupName, List<UUID> ybaRoles) {
     OidcGroupToYbaRoles entity = new OidcGroupToYbaRoles();
     entity.customerUUID = customerUUID;
-    entity.groupName = groupName;
+    entity.groupName = groupName.toLowerCase();
     entity.ybaRoles = ybaRoles;
     entity.save();
     return entity;

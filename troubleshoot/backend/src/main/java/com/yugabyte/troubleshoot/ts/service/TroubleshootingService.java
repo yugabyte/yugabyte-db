@@ -2,6 +2,7 @@ package com.yugabyte.troubleshoot.ts.service;
 
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import io.ebean.Database;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +18,7 @@ public class TroubleshootingService {
     this.database = database;
   }
 
-  public List<Anomaly> findAnomalies(UUID universeUuid) {
+  public List<Anomaly> findAnomalies(UUID universeUuid, Instant startTime, Instant endTime) {
     throw new UnsupportedOperationException();
   }
 }

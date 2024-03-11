@@ -65,6 +65,7 @@ class PgMutationCounter;
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
+    (GetReplicationSlot) \
     (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \

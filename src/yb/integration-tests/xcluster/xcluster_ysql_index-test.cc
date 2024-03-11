@@ -29,6 +29,7 @@ DECLARE_string(vmodule);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
+DECLARE_bool(TEST_enable_xcluster_api_v2);
 
 using std::string;
 using namespace std::chrono_literals;
@@ -52,10 +53,8 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     google::SetVLOGLevel("xrepl*", 4);
     google::SetVLOGLevel("xcluster*", 4);
     google::SetVLOGLevel("add_table*", 4);
+    google::SetVLOGLevel("multi_step*", 4);
     google::SetVLOGLevel("catalog*", 4);
-    google::SetVLOGLevel("table_creation_task*", 4);
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
@@ -126,23 +125,35 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     return conn.Execute(Format("CREATE INDEX $0 ON $1 (id2 ASC)", kIndexName, kTableName));
   }
 
-  virtual Status WaitForSafeTimeToAdvanceToNow() {
-    HybridTime now = producer_master_->clock()->Now();
-    for (auto ts : producer_cluster()->mini_tablet_servers()) {
-      now.MakeAtLeast(ts->server()->clock()->Now());
-    }
-    return WaitForSafeTime(namespace_id_, now);
-  }
-
   auto GetAllRows(pgwrapper::PGConn* conn) {
     return conn->FetchRows<int32_t, int32_t>(kSelectAllId12Stmt);
   }
 
   Status ValidateRows() {
+    // With should be less than or equal to row_count_ since some inserts may fail due to
+    // transactions aborted by the DDLs.
+    const auto all_prod_rows = VERIFY_RESULT(GetAllRows(producer_conn_.get()));
+    SCHECK_LE(all_prod_rows.size(), row_count_, IllegalState, "Producer row count mismatch.");
+    const auto actual_count = all_prod_rows.size();
+
+    const auto all_cons_rows = VERIFY_RESULT(GetAllRows(consumer_conn_.get()));
     SCHECK_EQ(
-        VERIFY_RESULT(GetAllRows(producer_conn_.get())),
-        VERIFY_RESULT(GetAllRows(consumer_conn_.get())), IllegalState,
-        "Producer and consumer have different rows.");
+        all_prod_rows, all_cons_rows, IllegalState, "Producer and consumer have different rows.");
+
+    const auto producer_count1 =
+        VERIFY_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(kId1CountStmt));
+    SCHECK_EQ(producer_count1, actual_count, IllegalState, "Id1 count mismatch in producer");
+    const auto producer_count2 =
+        VERIFY_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(kId2CountStmt));
+    SCHECK_EQ(producer_count2, actual_count, IllegalState, "Id2 count mismatch in producer");
+
+    const auto consumer_count1 =
+        VERIFY_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(kId1CountStmt));
+    SCHECK_EQ(consumer_count1, actual_count, IllegalState, "Id1 count mismatch in consumer");
+    const auto consumer_count2 =
+        VERIFY_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(kId2CountStmt));
+    SCHECK_EQ(consumer_count2, actual_count, IllegalState, "Id2 count mismatch in consumer");
+
     return Status::OK();
   }
 
@@ -216,6 +227,9 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
       SleepFor(3s * kTimeMultiplier);
 
       RETURN_NOT_OK(CreateIndex(*consumer_conn_));
+
+      // Keep running for a while with the index.
+      SleepFor(3s * kTimeMultiplier);
     }
 
     SCHECK(
@@ -223,6 +237,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
         "Index scan should be present on Consumer col id2.");
 
     RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+
     RETURN_NOT_OK(ValidateRows());
 
     for (int i = 0; i < 20; row_count_++, i++) {
@@ -237,7 +252,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   client::YBTableName yb_table_name_;
   NamespaceId namespace_id_;
   std::unique_ptr<pgwrapper::PGConn> producer_conn_, consumer_conn_;
-  int row_count_ = 0;
+  uint row_count_ = 0;
 };
 
 TEST_F(XClusterYsqlIndexTest, CreateIndex) {
@@ -283,20 +298,22 @@ TEST_F(XClusterYsqlIndexTest, CreateIndexWithWorkload) {
 
 TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   // Create index on consumer before producer should fail.
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "not found");
 
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   // Create index while replication is paused should fail.
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(CreateIndex(*consumer_conn_), "is currently disabled");
+
   ASSERT_OK(
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
-  ASSERT_NOK(CreateIndex(*consumer_conn_));
+  ASSERT_QUERY_FAIL(
+      CreateIndex(*consumer_conn_), "FLAGS_TEST_xcluster_fail_table_create_during_bootstrap");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -309,6 +326,8 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
 }
 
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
+
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   SyncPoint::GetInstance()->LoadDependency(
@@ -436,6 +455,49 @@ TEST_F(XClusterColocatedNonTransactionalIndexTest, CreateIndexWithWorkload) {
 
   // We should only have 1 stream
   ASSERT_EQ(resp.entry().table_streams_size(), 1);
+}
+
+class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
+  Status SetupUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<TableId>& producer_table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_xcluster_api_v2) = true;
+    RETURN_NOT_OK(CheckpointReplicationGroup());
+    RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    return Status::OK();
+  }
+  Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster) override {
+    // No-op for Db scoped repl groups.
+    return Status::OK();
+  }
+};
+
+TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndex) {
+  ASSERT_OK(CreateIndex(*producer_conn_));
+  ASSERT_FALSE(ASSERT_RESULT(producer_conn_->HasIndexScan(kId1CountStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn_->HasIndexScan(kId2CountStmt)));
+
+  ASSERT_OK(ValidateRows());
+
+  ASSERT_OK(CreateIndex(*consumer_conn_));
+  ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId1CountStmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId2CountStmt)));
+
+  ASSERT_OK(ValidateRows());
+
+  // Insert more rows and validate.
+  for (int i = 0; i < 10; i++, row_count_++) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
+  }
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(ValidateRows());
+}
+
+TEST_F(XClusterDbScopedYsqlIndexTest, CreateIndexWithWorkload) {
+  ASSERT_OK(TestCreateIndexConcurrentWorkload());
 }
 
 }  // namespace yb

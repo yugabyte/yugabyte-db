@@ -63,6 +63,7 @@ using std::make_shared;
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_bool(TEST_create_table_in_running_state);
+DECLARE_uint32(tablet_replicas_per_gib_limit);
 
 namespace yb {
 namespace master {
@@ -80,6 +81,8 @@ void MasterTestBase::SetUp() {
   // In this test, we create tables to test catalog manager behavior,
   // but we have no tablet servers. Typically this would be disallowed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = false;
+  // no tablet servers means allowed tablet limit is 0 so disable that check
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_gib_limit) = 0;
   // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_cdc_state_insert_on_setup) = true;
   // Since this is a master-only test, don't wait for tablet creation of tables.

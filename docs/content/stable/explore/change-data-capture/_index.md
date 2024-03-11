@@ -11,7 +11,7 @@ menu:
   stable:
     identifier: explore-change-data-capture
     parent: explore
-    weight: 299
+    weight: 280
 type: indexpage
 ---
 

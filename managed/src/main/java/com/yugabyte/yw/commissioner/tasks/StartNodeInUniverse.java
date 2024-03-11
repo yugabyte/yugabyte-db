@@ -72,9 +72,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   public void run() {
@@ -137,7 +135,8 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
           saveNodeStatus(
               taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
         }
-        createStartMasterOnNodeTasks(universe, currentNode, null, false);
+        createStartMasterOnNodeTasks(
+            universe, currentNode, null, false /* stoppable */, false /* ignore stop error */);
       }
 
       if (startTserver) {

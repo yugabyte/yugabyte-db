@@ -11,7 +11,6 @@ public class AnomalyMetadata {
   private AnomalyType type;
   private String title;
   private List<GraphMetadata> mainGraphs;
-  private List<GraphMetadata> supportingGraphs;
   private GraphSettings defaultSettings;
   private List<RCAGuideline> rcaGuidelines;
 
@@ -35,7 +34,13 @@ public class AnomalyMetadata {
   public static class RCAGuideline {
     private String possibleCause;
     private String possibleCauseDescription;
-    private List<String> troubleshootingRecommendations;
+    private List<Recommendation> troubleshootingRecommendations;
+  }
+
+  @Data
+  public static class Recommendation {
+    private String recommendation;
+    private List<GraphMetadata> supportingGraphs;
   }
 
   @Data

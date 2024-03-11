@@ -1,8 +1,8 @@
 - block:
     - name: Control OpenTelemetry collector | Determine system or user scope
       stat:
-        path: /etc/systemd/system/otel-collector.service
-      register: systemd_system
+        path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/otel-collector.service"
+      register: user_systemd
 
     - name: Control OpenTelemetry collector | User mode systemd | Stop existing running OpenTelemetry Collector
       systemd:
@@ -10,7 +10,7 @@
         state: stopped
         enabled: no
         scope: user
-      when: not systemd_system.stat.exists
+      when: user_systemd.stat.exists
 
     - name: Control OpenTelemetry collector | System mode systemd | Stop and disable OpenTelemetry collector
       block:
@@ -21,7 +21,7 @@
         - name: Control OpenTelemetry collector | System mode systemd | Stop existing running OpenTelemetry collector
           shell:
             cmd: "sudo systemctl disable otel-collector"
-      when: systemd_system.stat.exists
+      when: not user_systemd.stat.exists
 
     - name: Control OpenTelemetry collector | Remove existing OpenTelemetry collector conf file
       file:
@@ -80,7 +80,7 @@
         state: started
         enabled: yes
         scope: user
-      when: not systemd_system.stat.exists and otel_col_config_file_local is defined
+      when: user_systemd.stat.exists and otel_col_config_file_local is defined
 
     - name: Control OpenTelemetry collector | System mode systemd | Enable and start OpenTelemetry collector
       block:
@@ -91,7 +91,7 @@
         - name: Control OpenTelemetry collector | System mode systemd | Run otel-collector.service to start the OpenTelemetry collector
           shell:
             cmd: "sudo systemctl start otel-collector"
-      when: systemd_system.stat.exists and otel_col_config_file_local is defined
+      when: not user_systemd.stat.exists and otel_col_config_file_local is defined
 
     - name: Control OpenTelemetry collector | Write logs cleanup settings for export enabled systems
       blockinfile:

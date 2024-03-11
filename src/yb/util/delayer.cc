@@ -17,6 +17,7 @@
 
 #include <cds/init.h>
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 
@@ -28,14 +29,14 @@ void Delayer::Delay(MonoTime when, std::function<void()> action) {
     CHECK_OK(yb::Thread::Create("delayer", "delay", &Delayer::Execute, this, &thread_));
   }
   queue_.emplace_back(when, std::move(action));
-  cond_.notify_one();
+  YB_PROFILE(cond_.notify_one());
 }
 
 Delayer::~Delayer() {
   {
     std::lock_guard lock(mutex_);
     stop_ = true;
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
   if (thread_) {
     thread_->Join();

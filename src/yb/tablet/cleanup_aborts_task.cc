@@ -17,6 +17,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -159,7 +160,7 @@ void CleanupAbortsTask::FilterTransactions() {
                                 << transaction_id << ", " << result;
           }
           if (--left_wait == 0) {
-            cond_.notify_one();
+            YB_PROFILE(cond_.notify_one());
           }
         }
     };

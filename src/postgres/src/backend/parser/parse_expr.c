@@ -2983,7 +2983,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 	rcexpr->opfamilies = opfamilies;
 	rcexpr->inputcollids = NIL; /* assign_expr_collations will fix this */
 	rcexpr->largs = largs;
-	rcexpr->rargs = rargs;
+	rcexpr->rargs = (Node *) rargs;
 
 	return (Node *) rcexpr;
 }

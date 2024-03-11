@@ -562,6 +562,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			   Oid colocationId, Oid tablespaceId, Oid pgTableId,
 			   Oid oldRelfileNodeId)
 {
+	bool is_internal_rewrite = oldRelfileNodeId != InvalidOid;
 	if (relkind != RELKIND_RELATION && relkind != RELKIND_PARTITIONED_TABLE &&
 		relkind != RELKIND_MATVIEW)
 	{
@@ -688,7 +689,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (strcmp(def->defname, "colocated") == 0 ||
 			strcmp(def->defname, "colocation") == 0)
 		{
-			if (OidIsValid(tablegroupId))
+			/*
+			 * If this is a table rewrite we don't need to emit this error as
+			 * this isn't a user supplied TABLEGROUP clause.
+			 */
+			if (!is_internal_rewrite && OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
@@ -721,7 +726,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	/*
 	 * Lazily create an underlying tablegroup in a colocated database if needed.
 	 */
-	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy
+		&& !is_internal_rewrite)
 	{
 		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
 		/* Default tablegroup doesn't exist, so create it. */
@@ -1831,15 +1837,32 @@ YBCValidatePlacement(const char *placement_info)
 /*  Replication Slot Functions. */
 
 void
-YBCCreateReplicationSlot(const char *slot_name)
+YBCCreateReplicationSlot(const char *slot_name,
+						 CRSSnapshotAction snapshot_action,
+						 uint64_t *consistent_snapshot_time)
 {
 	YBCPgStatement handle;
 
+	YBCPgReplicationSlotSnapshotAction repl_slot_snapshot_action;
+	switch (snapshot_action)
+	{
+		case CRS_NOEXPORT_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_NOEXPORT_SNAPSHOT;
+			break;
+		case CRS_USE_SNAPSHOT:
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
+			break;
+		case CRS_EXPORT_SNAPSHOT:
+			/* We return an 'Unsupported' error earlier. */
+			pg_unreachable();
+	}
+
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 MyDatabaseId,
+												 repl_slot_snapshot_action,
 												 &handle));
 
-	YBCStatus status = YBCPgExecCreateReplicationSlot(handle);
+	YBCStatus status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
 	if (YBCStatusIsAlreadyPresent(status))
 	{
 		YBCFreeStatus(status);
@@ -1870,32 +1893,50 @@ YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 }
 
 void
-YBCGetReplicationSlotStatus(const char *slot_name,
-							bool *active)
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot)
 {
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(
-		YBCPgGetReplicationSlotStatus(slot_name, active),
-		&not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
+
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgGetReplicationSlot(slot_name, replication_slot), error_message);
 }
 
 void
 YBCDropReplicationSlot(const char *slot_name)
 {
 	YBCPgStatement handle;
+	char error_message[NAMEDATALEN + 64] = "";
+	snprintf(error_message, sizeof(error_message),
+			 "replication slot \"%s\" does not exist", slot_name);
 
 	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
 											   &handle));
+	HandleYBStatusWithCustomErrorForNotFound(
+		YBCPgExecDropReplicationSlot(handle), error_message);
+}
 
-	bool not_found = false;
-	HandleYBStatusIgnoreNotFound(YBCPgExecDropReplicationSlot(handle),
-								 &not_found);
-	if (not_found)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("replication slot \"%s\" does not exist", slot_name)));
+void
+YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
+						size_t numrelations)
+{
+	Assert(MyDatabaseId);
+
+	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
+											 numrelations));
+}
+
+void
+YBCDestroyVirtualWalForCDC()
+{
+	HandleYBStatus(YBCPgDestroyVirtualWalForCDC());
+}
+
+void
+YBCGetCDCConsistentChanges(const char *stream_id,
+						   YBCPgChangeRecordBatch **record_batch)
+{
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
 }

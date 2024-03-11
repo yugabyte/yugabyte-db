@@ -30,6 +30,7 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -60,6 +61,16 @@ namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
+
+namespace {
+
+Result<master::MasterReplicationProxy> GetMasterProxy(XClusterTestBase::Cluster& cluster) {
+  return master::MasterReplicationProxy(
+      &cluster.client_->proxy_cache(),
+      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+}
+
+}  // namespace
 
 Status XClusterTestBase::PostSetUp() {
   if (!producer_tables_.empty()) {
@@ -890,6 +901,24 @@ Status XClusterTestBase::WaitForSafeTime(
   return Status::OK();
 }
 
+Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow() {
+  auto producer_master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
+  HybridTime now = producer_master->clock()->Now();
+  for (auto ts : producer_cluster()->mini_tablet_servers()) {
+    now.MakeAtLeast(ts->server()->clock()->Now());
+  }
+
+  master::GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
+      std::string() /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  auto namespace_id = resp.namespace_().id();
+
+  return WaitForSafeTime(namespace_id, now);
+}
+
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
     const std::vector<xrepl::StreamId>& stream_ids, bool is_paused) {
   master::PauseResumeXClusterProducerStreamsRequestPB req;
@@ -999,5 +1028,9 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
   }
   // Colocated database
   return GetTablegroupParentTable(&producer_cluster_, namespace_name);
+}
+
+Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy() {
+  return GetMasterProxy(producer_cluster_);
 }
 } // namespace yb

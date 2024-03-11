@@ -66,7 +66,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 			}
 			err = util.ConfirmCommand(
 				fmt.Sprintf("Are you sure you want to upgrade %s: %s from version %s to version %s",
-					"universe", universeName, oldYBDBVersion, ybdbVersion),
+					util.UniverseType, universeName, oldYBDBVersion, ybdbVersion),
 				viper.GetBool("force"))
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -75,7 +75,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		}
 		err = util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to upgrade %s: %s to version %s",
-				"universe", universeName, ybdbVersion),
+				util.UniverseType, universeName, ybdbVersion),
 			viper.GetBool("force"))
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -94,7 +94,8 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade Software")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Upgrade Software - Fetch Universes")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
@@ -120,11 +121,23 @@ var upgradeSoftwareCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 
+		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+
+		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+
 		req := ybaclient.SoftwareUpgradeParams{
-			YbSoftwareVersion:    ybdbVersion,
-			Clusters:             clusters,
-			UpgradeOption:        upgradeOption,
-			UpgradeSystemCatalog: upgradeSysCatalog,
+			YbSoftwareVersion:              ybdbVersion,
+			Clusters:                       clusters,
+			UpgradeOption:                  upgradeOption,
+			UpgradeSystemCatalog:           upgradeSysCatalog,
+			SleepAfterTServerRestartMillis: tserverDelay,
+			SleepAfterMasterRestartMillis:  masterDelay,
 		}
 
 		rUpgrade, response, err := authAPI.UpgradeSoftware(universeUUID).
@@ -152,4 +165,8 @@ func init() {
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime)")
 	upgradeSoftwareCmd.Flags().Bool("upgrade-system-catalog", true,
 		"[Optional] Upgrade System Catalog after software upgrade, defaults to true.")
+	upgradeSoftwareCmd.Flags().Int32("delay-between-master-servers",
+		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+	upgradeSoftwareCmd.Flags().Int32("delay-between-tservers",
+		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 }

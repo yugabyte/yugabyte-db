@@ -172,6 +172,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
     "Sets the maximum number of transactions for which to return rows in pg_locks.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
@@ -222,6 +225,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false, true,
+    "Push supported scalar array operations from ysql down to DocDB for evaluation.");
+
 // TODO(#19211): Convert this to an auto-flag.
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
@@ -243,6 +249,15 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
 
 using gflags::CommandLineFlagInfo;
 using std::string;

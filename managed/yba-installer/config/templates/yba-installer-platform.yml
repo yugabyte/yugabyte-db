@@ -98,6 +98,7 @@ services:
         seedData = false
         multiTenant = false
         releases.path = "{{ .DataDir }}/releases"
+        releases.artifacts.upload_path = "{{ .DataDir }}/upload/release_artifacts"
         thirdparty.packagePath = "{{ installVersionDir }}/third-party"
         ha.prometheus_config_dir = "{{ installRoot }}/prometheus/conf"
         # Interval at which to check the status of every universe. Default: 5 minutes.

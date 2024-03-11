@@ -95,7 +95,6 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -251,10 +250,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.azUuid = testData.zone.getUuid();
     params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
-    Iterator<NodeDetails> iter = universe.getNodes().iterator();
-    if (iter.hasNext()) {
-      params.nodeUuid = iter.next().nodeUuid;
-    }
+    params.nodeUuid = testData.node.getNodeUuid();
     params.setUniverseUUID(universe.getUniverseUUID());
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     params.currentClusterType = ClusterType.PRIMARY;
@@ -515,8 +511,10 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
+    ReleaseContainer release =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig);
     releaseMetadata.filePath = "/yb/release.tar.gz";
-    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
     when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfGetter.getConfForScope(
@@ -882,12 +880,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(setupParams.instanceType);
         }
 
-        if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.getYbImage();
-          if (ybImage != null && !ybImage.isEmpty()) {
-            expectedCommand.add("--machine_image");
-            expectedCommand.add(ybImage);
-          }
+        String ybImage = testData.region.getYbImage();
+        if (ybImage != null && !ybImage.isEmpty()) {
+          expectedCommand.add("--machine_image");
+          expectedCommand.add(ybImage);
         }
 
         if ((cloud.equals(Common.CloudType.aws) || cloud.equals(Common.CloudType.gcp))
@@ -2345,10 +2341,6 @@ public class NodeManagerTest extends FakeDBApplication {
 
         verify(shellProcessHandler, times(3)).run(captor.capture(), any(ShellProcessContext.class));
 
-        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
-        assertEquals(
-            new TreeMap<>(params.gflags), new TreeMap<>(cloudGflags)); // Not processed at all.
-
         Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,master_join_existing_universe,enable_ysql");
@@ -2405,6 +2397,9 @@ public class NodeManagerTest extends FakeDBApplication {
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
+
+        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
+        assertEquals(copy2, new TreeMap<>(cloudGflags)); // Non filtered as well
       }
     }
   }

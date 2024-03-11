@@ -19,6 +19,26 @@ On this page:
 
 ## Change log
 
+### February 8, 2024
+
+**New Features**
+
+- Support for PingOne [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their PingOne identity.
+
+    Blog: [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
+
+### January 31, 2024
+
+**New Features**
+
+- Support for Okta [federated authentication](../managed-security/managed-authentication/), which allows single sign-on access for your account users using their Okta identities.
+
+    Blog: [Enhanced Identity Security with Okta and PingOne Single Sign-On Integrations](https://www.yugabyte.com/blog/single-sign-on-okta-pingone/)
+
+**Database**
+
+- Innovation track updated to 2.18.5.0.
+
 ### December 27, 2023
 
 **New Features**
@@ -113,7 +133,7 @@ On this page:
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.19.0](../../releases/release-notes/v2.19/#v2.19.0.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.19.0](../../releases/ybdb-releases/v2.19/#v2.19.0.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 30, 2023
 
@@ -139,7 +159,7 @@ On this page:
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.3](../../releases/release-notes/v2.17/#v2.17.3.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.3](../../releases/ybdb-releases/v2.17/#v2.17.3.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 7, 2023
 
@@ -151,7 +171,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/release-notes/v2.14/#v2.14.9.0). New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/ybdb-releases/v2.14/#v2.14.9.0). New clusters use this version by default.
 
 ### April 28, 2023
 
@@ -163,7 +183,7 @@ On this page:
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.2](../../releases/release-notes/v2.17/#v2.17.2.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.2](../../releases/ybdb-releases/v2.17/#v2.17.2.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### March 27, 2023
 
@@ -182,21 +202,21 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.7](../../releases/release-notes/v2.14/#v2.14.7.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.7](../../releases/ybdb-releases/v2.14/#v2.14.7.0) for dedicated clusters. New clusters use this version by default.
 
 ### March 1, 2023
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/end-of-life/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/ybdb-releases/end-of-life/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
 
 ### February 13, 2023
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version [2.17.1](../../releases/release-notes/v2.17/#v2.17.1.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version [2.17.1](../../releases/ybdb-releases/v2.17/#v2.17.1.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.14.6](../../releases/ybdb-releases/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use this version by default.
 
 ### February 8, 2023
 
@@ -206,7 +226,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.1](../../releases/release-notes/v2.16/#v2.16.1.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.1](../../releases/ybdb-releases/v2.16/#v2.16.1.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### January 27, 2023
 
@@ -218,7 +238,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/release-notes/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/ybdb-releases/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 **Infrastructure**
 
@@ -228,7 +248,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.6](../../releases/ybdb-releases/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### December 21, 2022
 
@@ -239,7 +259,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.5](../../releases/release-notes/v2.14/#v2.14.5.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.5](../../releases/ybdb-releases/v2.14/#v2.14.5.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### December 12, 2022
 

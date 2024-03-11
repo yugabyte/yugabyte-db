@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
@@ -54,14 +55,18 @@ public class EditDrConfig extends CreateXClusterConfig {
         Universe.getOrBadRequest(newXClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
         try {
           // Lock the new target universe.
-          lockUniverseForUpdate(
-              newTargetUniverse.getUniverseUUID(), newTargetUniverse.getVersion());
+          lockAndFreezeUniverseForUpdate(
+              newTargetUniverse.getUniverseUUID(),
+              newTargetUniverse.getVersion(),
+              null /* Txn callback */);
 
           addSubtasksToUseNewXClusterConfig(
               currentXClusterConfig,
@@ -104,6 +109,16 @@ public class EditDrConfig extends CreateXClusterConfig {
               X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
       newXClusterConfig.updateStatusForTables(
           tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+      // Prevent all other DR tasks except delete from running.
+      log.info(
+          "Setting the dr config state of xCluster config {} to {} from {}",
+          newXClusterConfig.getUuid(),
+          State.Error,
+          drConfig.getState());
+      drConfig.setState(State.Error);
+      drConfig.update();
+
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
       for (Restore restore : restoreList) {
@@ -133,13 +148,16 @@ public class EditDrConfig extends CreateXClusterConfig {
       XClusterConfig currentXClusterConfig,
       XClusterConfig newXClusterConfig,
       boolean forceDeleteCurrentXClusterConfig) {
+
     // Delete the main replication config.
     createDeleteXClusterConfigSubtasks(
-        currentXClusterConfig, false /* keepEntry */, forceDeleteCurrentXClusterConfig);
+        currentXClusterConfig,
+        false /* keepEntry */,
+        forceDeleteCurrentXClusterConfig,
+        true /* deletePitrConfig */);
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
-    // Create the new xCluster config.
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
     createXClusterConfigSetStatusForTablesTask(

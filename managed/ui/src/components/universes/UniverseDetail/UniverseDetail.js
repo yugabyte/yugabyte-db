@@ -5,6 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
+import { TroubleshootAdvisor } from '@yugabytedb/troubleshoot-ui';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -43,6 +44,7 @@ import {
   isNonAvailable,
   isDisabled,
   isNotHidden,
+  isHidden,
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
@@ -57,11 +59,15 @@ import { EditGflagsModal } from '../../../redesign/features/universe/universe-ac
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
+import { ReplicationSlotTable } from '../../../redesign/features/universe/universe-tabs/replication-slots/ReplicationSlotTable';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
-import { VM_PATCHING_RUNTIME_CONFIG } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  VM_PATCHING_RUNTIME_CONFIG,
+  isImgBundleSupportedByProvider
+} from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 //icons
@@ -132,7 +138,6 @@ class UniverseDetail extends Component {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
-        this.props.fetchProviderRunTimeConfigs(providerUUID);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -189,6 +194,17 @@ class UniverseDetail extends Component {
     }
   };
 
+  isUniverseDeleting = () => {
+    const updateInProgress = this.props.universe?.currentUniverse?.data?.universeDetails
+      ?.updateInProgress;
+    const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
+    const currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
+    if (currentUniverseTasks?.length > 0 && updateInProgress) {
+      return true;
+    }
+    return false;
+  };
+
   showUpgradeMarker = () => {
     const {
       updateAvailable,
@@ -240,6 +256,7 @@ class UniverseDetail extends Component {
       modal,
       modal: { showModal, visibleModal },
       universe,
+      tasks,
       universe: { currentUniverse, supportedReleases },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
@@ -278,11 +295,6 @@ class UniverseDetail extends Component {
     //universe state to show Rollback optin in uniiverse actions
     const isRollBackAllowed =
       universe?.currentUniverse?.data?.universeDetails?.isSoftwareRollbackAllowed;
-    const universeHasXcluster =
-      universe?.currentUniverse?.data?.universeDetails?.xclusterInfo?.sourceXClusterConfigs
-        ?.length > 0 ||
-      universe?.currentUniverse?.data?.universeDetails?.xclusterInfo?.targetXClusterConfigs
-        ?.length > 0;
     const backupRestoreInProgress =
       updateInProgress &&
       ['BackupTable', 'MultiTableBackup', 'CreateBackup', 'RestoreBackup'].includes(
@@ -325,9 +337,6 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
     const isDrEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_UI_FEATURE_FLAG
-      )?.value === 'true' &&
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
       )?.value === 'true';
@@ -488,7 +497,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
           <Tab.Pane
             eventKey={'recovery'}
-            tabtitle="Disaster Recovery"
+            tabtitle="xCluster Disaster Recovery"
             key="recovery-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -530,6 +539,29 @@ class UniverseDetail extends Component {
               visibleModal={visibleModal}
             />
           </Tab.Pane>
+        ),
+        isHidden(currentCustomer.data.features, 'universes.details.troubleshooting') && (
+          <Tab.Pane
+            eventKey={'troubleshoot'}
+            tabtitle="Troubleshoot"
+            key="troubleshoot-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(
+              currentCustomer.data.features,
+              'universes.details.troubleshooting'
+            )}
+          >
+            {featureFlags.released.enableTroubleshooting &&
+              featureFlags.test.enableTroubleshooting && (
+                <TroubleshootAdvisor
+                  universeUuid={currentUniverse.data.universeUUID}
+                  universeData={currentUniverse.data.universeDetails}
+                  appName={'YBA'}
+                  timezone={currentUser.data.timezone}
+                />
+              )}
+          </Tab.Pane>
         )
       ],
       //tabs relevant for non-imported universes only
@@ -552,7 +584,21 @@ class UniverseDetail extends Component {
                 )}
               </Tab.Pane>
             ),
-
+            (featureFlags.released.showReplicationSlots ||
+              featureFlags.test.showReplicationSlots) && (
+              <Tab.Pane
+                eventKey={'replication-slots'}
+                tabtitle="Replication Slots"
+                key="ReplicationSlots-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <ReplicationSlotTable
+                  universeUUID={currentUniverse.data.universeUUID}
+                  nodePrefix={currentUniverse.data.universeDetails.nodePrefix}
+                />
+              </Tab.Pane>
+            ),
             isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
               <Tab.Pane
                 eventKey={'health'}
@@ -710,11 +756,11 @@ class UniverseDetail extends Component {
                             <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade Database Version
                             </YBLabelWithIcon>
-                            {this.showUpgradeMarker() && (
+                            {/* {this.showUpgradeMarker() && (
                               <span className="badge badge-pill badge-red pull-right">
                                 {updateAvailable}
                               </span>
-                            )}
+                            )} */}
                           </YBMenuItem>
                         </RbacValidator>
                       )}
@@ -745,28 +791,30 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused && isOsPatchingEnabled && (
-                        <RbacValidator
-                          isControl
-                          accessRequiredOn={{
-                            onResource: uuid,
-                            ...ApiPermissionMap.MODIFY_UNIVERSE
-                          }}
-                        >
-                          <YBMenuItem
-                            disabled={isUniverseStatusPending}
-                            onClick={showLinuxSoftwareUpgradeModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.upgradeSoftware'
-                            )}
+                      {!universePaused &&
+                        isOsPatchingEnabled &&
+                        isImgBundleSupportedByProvider(provider) && (
+                          <RbacValidator
+                            isControl
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.MODIFY_UNIVERSE
+                            }}
                           >
-                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                              Upgrade Linux Version
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        </RbacValidator>
-                      )}
+                            <YBMenuItem
+                              disabled={isUniverseStatusPending}
+                              onClick={showLinuxSoftwareUpgradeModal}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.upgradeSoftware'
+                              )}
+                            >
+                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                                Upgrade Linux Version
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          </RbacValidator>
+                        )}
                       {!universePaused &&
                         runtimeConfigs &&
                         !isOsPatchingEnabled &&
@@ -1065,7 +1113,7 @@ class UniverseDetail extends Component {
                         >
                           <YBTooltip
                             title={
-                              hasAsymmetricPrimaryCluster
+                              hasAsymmetricAsyncCluster
                                 ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                                 : ''
                             }
@@ -1138,7 +1186,10 @@ class UniverseDetail extends Component {
                                 modal={modal}
                                 closeModal={closeModal}
                                 button={
-                                  <YBMenuItem onClick={showSupportBundleModal}>
+                                  <YBMenuItem
+                                    onClick={showSupportBundleModal}
+                                    disabled={this.isUniverseDeleting()}
+                                  >
                                     <YBLabelWithIcon icon="fa fa-file-archive-o">
                                       Support Bundles
                                     </YBLabelWithIcon>
@@ -1214,7 +1265,10 @@ class UniverseDetail extends Component {
                                 currentCustomer.data.features,
                                 'universes.details.overview.pausedUniverse'
                               )}
-                              disabled={universePaused && isUniverseStatusPending}
+                              disabled={
+                                (universePaused && isUniverseStatusPending) ||
+                                this.isUniverseDeleting()
+                              }
                             >
                               <YBLabelWithIcon
                                 icon={

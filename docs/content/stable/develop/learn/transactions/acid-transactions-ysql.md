@@ -134,6 +134,8 @@ During transaction processing, failures can happen due to the strong [ACID](../.
 
 {{<tip>}}
 For more details on how to handle failures and retry, see [Transaction retries](../transactions-retries-ysql/).
+
+For an example application and try it out yourself, see [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/).
 {{</tip>}}
 
 ## Tuning for high performance
@@ -143,7 +145,7 @@ All applications need to be tuned to get the best performance. YugabyteDB suppor
 - Convert a multi-statement transaction affecting a single row into a [fast-path](../transactions-performance-ysql/#fast-single-row-transactions) transaction.
 - [Avoid long waits](../transactions-performance-ysql/#avoid-long-waits) with the right timeouts.
 - [Minimize conflict errors](../transactions-performance-ysql/#minimize-conflict-errors) with `ON CONFLICT` clause.
-- [Uninterrupted long scans](../transactions-performance-ysql/#long-scans-and-batch-jobs)
+- [Uninterrupted long scans](../transactions-performance-ysql/#large-scans-and-batch-jobs)
 - [Minimize round trips](../transactions-performance-ysql/#stored-procedures-minimize-round-trips) with stored procedures.
 
 {{<tip>}}
@@ -176,7 +178,7 @@ These settings impact all transactions in the current session only.
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-performance-ysql/#read-from-followers).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-global-apps/#read-from-followers).
 
 ```plpgsql
 SET default_transaction_read_only = TRUE;

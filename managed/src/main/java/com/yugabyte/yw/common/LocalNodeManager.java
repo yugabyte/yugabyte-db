@@ -635,7 +635,7 @@ public class LocalNodeManager {
       NodeInfo nodeInfo)
       throws IOException {
     Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
-    if (additionalGFlags != null) {
+    if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
     log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
@@ -752,6 +752,10 @@ public class LocalNodeManager {
     return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
   }
 
+  public NodeInfo getNodeInfo(NodeDetails nodeDetails) {
+    return nodesByNameMap.get(nodeDetails.nodeName);
+  }
+
   private String getNodeFSRoot(
       UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String res = getNodeRoot(userIntent, nodeInfo) + "/data/";
@@ -769,7 +773,7 @@ public class LocalNodeManager {
     return res;
   }
 
-  private String getNodeGFlagsFile(
+  public String getNodeGFlagsFile(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {

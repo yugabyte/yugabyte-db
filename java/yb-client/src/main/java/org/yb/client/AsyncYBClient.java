@@ -87,15 +87,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.Executor;
@@ -1473,6 +1465,22 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * It returns information about a database/namespace after we pass in the databse name.
+   * @param keyspaceName database name to get details about.
+   * @param databaseType the type of database the database name is in.
+   * @return details about the database, including the namespace id, etc.
+   */
+  public Deferred<GetNamespaceInfoResponse> getNamespaceInfo(
+      String keyspaceName,
+      YQLDatabase databaseType) {
+    checkIsClosed();
+    GetNamespaceInfoRequest request = new GetNamespaceInfoRequest(
+        this.masterTable, keyspaceName, databaseType);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It sets the universe role for transactional xClusters.
    *
    * @param role The role to set the universe to
@@ -2046,7 +2054,7 @@ public class AsyncYBClient implements AutoCloseable {
     if (request instanceof GetTabletListToPollForCDCRequest ||
         request instanceof SplitTabletRequest ||
         request instanceof FlushTableRequest) {
-      tablet = getFirstTablet(tableId);
+      tablet = getRandomActiveTablet(tableId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.
@@ -2409,7 +2417,7 @@ public class AsyncYBClient implements AutoCloseable {
       YBTable table, byte[] partitionKey, boolean includeInactive) {
     final boolean has_permit = acquireMasterLookupPermit();
     String tableId = table.getTableId();
-    if (!has_permit) {
+    if (!has_permit && partitionKey != null) {
       // If we failed to acquire a permit, it's worth checking if someone
       // looked up the tablet we're interested in.  Every once in a while
       // this will save us a Master lookup.
@@ -2786,6 +2794,33 @@ public class AsyncYBClient implements AutoCloseable {
 
   }
 
+  /**
+   * @param tableId table UUID to which the {@link RemoteTablet} should belong
+   * @return a {@link RemoteTablet} for which there are active tservers available
+   */
+  RemoteTablet getRandomActiveTablet(String tableId) {
+    ConcurrentSkipListMap<byte[], RemoteTablet> tablets = tabletsCache.get(tableId);
+
+    if (tablets == null) {
+      LOG.debug("Tablets cache does not have any information for table " + tableId);
+      return null;
+    }
+
+    if (tablets.firstEntry() == null) {
+      LOG.debug("Tablets cache map empty for table " + tableId);
+      return null;
+    }
+
+    for (Map.Entry<byte[], RemoteTablet> entry : tablets.entrySet()) {
+      if (!entry.getValue().tabletServers.isEmpty()) {
+        return entry.getValue();
+      }
+    }
+
+    LOG.debug("No remote tablet found with a tablet server for table " + tableId);
+    return null;
+  }
+
   RemoteTablet getTablet(String tableId, String tabletId) {
     ConcurrentSkipListMap<byte[], RemoteTablet> tablets = tabletsCache.get(tableId);
     if (tablets == null) {
@@ -3034,13 +3069,13 @@ public class AsyncYBClient implements AutoCloseable {
       synchronized (ip2client) {
         copy = new HashMap<String, TabletClient>(ip2client);
       }
-      LOG.error("WTF?  Should never happen!  Couldn't find " + client
+      LOG.error("Should never happen! Couldn't find " + client
           + " in " + copy);
       return null;
     }
     final int colon = hostport.indexOf(':', 1);
     if (colon < 1) {
-      LOG.error("WTF?  Should never happen!  No `:' found in " + hostport);
+      LOG.error("Should never happen! No `:' found in " + hostport);
       return null;
     }
     final String host = getIP(hostport.substring(0, colon));
@@ -3054,7 +3089,7 @@ public class AsyncYBClient implements AutoCloseable {
       port = parsePortNumber(hostport.substring(colon + 1,
           hostport.length()));
     } catch (NumberFormatException e) {
-      LOG.error("WTF?  Should never happen!  Bad port in " + hostport, e);
+      LOG.error("Should never happen! Bad port in " + hostport, e);
       return null;
     }
     return new InetSocketAddress(host, port);
@@ -3077,15 +3112,15 @@ public class AsyncYBClient implements AutoCloseable {
       final InetSocketAddress sock = (InetSocketAddress) remote;
       final InetAddress addr = sock.getAddress();
       if (addr == null) {
-        LOG.error("WTF?  Unresolved IP for " + remote
-            + ".  This shouldn't happen.");
+        LOG.error("Unresolved IP for " + remote
+            + ". This shouldn't happen.");
         return;
       } else {
         hostport = addr.getHostAddress() + ':' + sock.getPort();
       }
     } else {
-      LOG.error("WTF?  Found a non-InetSocketAddress remote: " + remote
-          + ".  This shouldn't happen.");
+      LOG.error("Found a non-InetSocketAddress remote: " + remote
+          + ". This shouldn't happen.");
       return;
     }
 

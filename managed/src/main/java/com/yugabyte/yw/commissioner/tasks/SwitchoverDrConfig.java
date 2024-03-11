@@ -57,12 +57,12 @@ public class SwitchoverDrConfig extends EditDrConfig {
         Universe.getOrBadRequest(currentXClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
-
-        // Todo: After DB support, put the old primary in read-only mode.
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
         createSetDrStatesTask(
                 currentXClusterConfig,
@@ -72,12 +72,36 @@ public class SwitchoverDrConfig extends EditDrConfig {
                 null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
+        createXClusterConfigSetStatusTask(
+            switchoverXClusterConfig, XClusterConfigStatusType.Updating);
+
+        createXClusterConfigSetStatusForTablesTask(
+            switchoverXClusterConfig,
+            getTableIds(taskParams().getTableInfoList()),
+            XClusterTableConfig.Status.Updating);
+
+        // Create new primary -> old primary (this will set old primary's role to be STANDBY)
+        addSubtasksToCreateXClusterConfig(
+            switchoverXClusterConfig,
+            taskParams().getTableInfoList(),
+            taskParams().getMainTableIndexTablesMap(),
+            taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+            taskParams().getPitrParams());
+
         createWaitForReplicationDrainTask(currentXClusterConfig);
 
-        addSubtasksToUseNewXClusterConfig(
+        createPromoteSecondaryConfigToMainConfigTask(switchoverXClusterConfig);
+
+        // Delete old primary -> new primary (this will set new primary's role to be ACTIVE)
+        createDeleteXClusterConfigSubtasks(
             currentXClusterConfig,
-            switchoverXClusterConfig,
-            false /* forceDeleteCurrentXClusterConfig */);
+            false /* keepEntry */,
+            false /*forceDelete*/,
+            true /*deletePitrConfigs*/);
+
+        createXClusterConfigSetStatusTask(
+                switchoverXClusterConfig, XClusterConfigStatusType.Running)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

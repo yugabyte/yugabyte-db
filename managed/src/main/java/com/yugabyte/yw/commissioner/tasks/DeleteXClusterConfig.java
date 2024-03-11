@@ -45,12 +45,16 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     try {
       if (sourceUniverse != null) {
         // Lock the source universe.
-        lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       }
       try {
         if (targetUniverse != null) {
           // Lock the target universe.
-          lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+          lockAndFreezeUniverseForUpdate(
+              targetUniverse.getUniverseUUID(),
+              targetUniverse.getVersion(),
+              null /* Txn callback */);
         }
 
         createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
@@ -104,7 +108,10 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
     // to them if any.
     createDeleteXClusterConfigSubtasks(
-        xClusterConfig, false /* keepEntry */, taskParams().isForced());
+        xClusterConfig,
+        false /* keepEntry */,
+        taskParams().isForced(),
+        true /* deletePitrConfigs */);
 
     // Fetch all universes that are connected through xCluster config to source and
     // target universe.

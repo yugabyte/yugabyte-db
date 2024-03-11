@@ -11,7 +11,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -20,13 +19,15 @@ import (
 
 // createAWSProviderCmd represents the provider command
 var createAWSProviderCmd = &cobra.Command{
-	Use:   "aws [provider-name]",
+	Use:   "aws",
 	Short: "Create an AWS YugabyteDB Anywhere provider",
 	Long:  "Create an AWS provider in YugabyteDB Anywhere",
-	Args:  cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		if !(len(args) > 0 || len(providerNameFlag) > 0) {
+		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(providerNameFlag) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to create\n", formatter.RedColor))
@@ -38,12 +39,9 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		authAPI.GetCustomerUUID()
-		providerNameFlag, _ := cmd.Flags().GetString("name")
-		var providerName string
-		if len(args) > 0 {
-			providerName = args[0]
-		} else if len(providerNameFlag) > 0 {
-			providerName = providerNameFlag
+		providerName, err := cmd.Flags().GetString("provider-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		allowed, version, err := authAPI.NewProviderYBAVersionCheck()
@@ -115,7 +113,7 @@ var createAWSProviderCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Create AWS")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -128,9 +126,6 @@ var createAWSProviderCmd = &cobra.Command{
 
 func init() {
 	createAWSProviderCmd.Flags().SortFlags = false
-
-	createAWSProviderCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the provider to be created.")
 
 	// Flags needed for AWS
 	createAWSProviderCmd.Flags().String("aws-access-key-id", "",
@@ -161,7 +156,9 @@ func init() {
 				formatter.GreenColor)+
 			" YB Image (AMI) and Architecture (Default to x86_84, accepted in YugabyteDB "+
 			"Anywhere versions >= 2.18.0) are optional. "+
-			"Each region needs to be added using a separate --region flag.")
+			"Each region needs to be added using a separate --region flag. "+
+			"Example: --region region-name=us-west-2,vpc-id=<vpc-id>,sg-id=<security-group> "+
+			"--region region-name=us-east-2,vpc-id=<vpc-id>,sg-id=<security-group>")
 	createAWSProviderCmd.Flags().StringArray("zone", []string{},
 		"[Required] Zone associated to the AWS Region defined. "+
 			"Provide the following comma separated fields as key-value pairs:"+
@@ -172,33 +169,29 @@ func init() {
 			"Secondary subnet ID is optional. Each --region definition "+
 			"must have atleast one corresponding --zone definition. Multiple --zone definitions "+
 			"can be provided per region."+
-			"Each zone needs to be added using a separate --zone flag.")
+			"Each zone needs to be added using a separate --zone flag. "+
+			"Example: --zone zone-name=us-west-2a,region-name=us-west-2,subnet=<subnet-id>"+
+			" --zone zone-name=us-west-2b,region-name=us-west-2,subnet=<subnet-id>")
 
 	createAWSProviderCmd.Flags().String("ssh-user", "",
 		"[Optional] SSH User to access the YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes, defaults to 22.")
+		"[Optional] SSH Port to access the YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().String("custom-ssh-keypair-name", "",
-		"[Optional] Provider custom key pair name to access YugabyteDB nodes. "+
+		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.")
 	createAWSProviderCmd.Flags().String("custom-ssh-keypair-file-path", "",
-		fmt.Sprintf("[Optional] Provider custom key pair file path to access YugabyteDB nodes. %s",
+		fmt.Sprintf("[Optional] Provide custom key pair file path to access YugabyteDB nodes. %s",
 			formatter.Colorize("Required with --custom-ssh-keypair-name.",
 				formatter.GreenColor)))
 	createAWSProviderCmd.MarkFlagsRequiredTogether("custom-ssh-keypair-name",
 		"custom-ssh-keypair-file-path")
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
-		"[Optional] Do YugabyteDB nodes have access to public internet to download packages.")
+		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
+			" lacking access to the public internet for package downloads, "+
+			"defaults to false.")
 
-	setAWSDefaults()
-
-}
-
-func setAWSDefaults() {
-	viper.SetDefault("use-iam-instance-profile", false)
-	viper.SetDefault("ssh-port", 22)
-	viper.SetDefault("airgap-install", false)
 }
 
 func buildAWSConfig(cmd *cobra.Command) (map[string]interface{}, error) {
@@ -261,22 +254,32 @@ func buildAWSRegions(regionStrings, zoneStrings []string, allowed bool,
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "vpc-id":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["vpc-id"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "sg-id":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["sg-id"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "arch":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["arch"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "yb-image":
 				if len(strings.TrimSpace(val)) != 0 {
 					region["yb-image"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}
@@ -341,18 +344,26 @@ func buildAWSZones(zoneStrings []string, regionName string) (res []ybaclient.Ava
 			case "zone-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "region-name":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["region-name"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["subnet"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			case "secondary-subnet":
 				if len(strings.TrimSpace(val)) != 0 {
 					zone["secondary-subnet"] = val
+				} else {
+					valueNotFoundForKeyError(key)
 				}
 			}
 		}

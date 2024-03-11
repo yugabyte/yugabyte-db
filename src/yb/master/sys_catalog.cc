@@ -81,6 +81,8 @@
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
@@ -177,6 +179,10 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("inform_removed_master").Build(&inform_removed_master_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+    .name = "raft_notifications",
+    .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+  });
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
   CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   CHECK_OK(ThreadPoolBuilder("log-sync")
@@ -438,7 +444,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
-    auto client_future = master_->async_client_initializer().get_client_future();
+    auto client_future = master_->client_future();
 
     // Check if client was already initialized, otherwise we don't have to refresh master leader,
     // since it will be fetched as part of initialization.
@@ -545,14 +551,10 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata,
-      local_peer_pb_,
-      scoped_refptr<server::Clock>(master_->clock()),
+      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_,
-      nullptr /* tablet_splitter */,
-      master_->async_client_initializer().get_client_future());
+      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -593,7 +595,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = master_->async_client_initializer().get_client_future(),
+      .client_future = master_->client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
@@ -651,6 +653,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTableMetricsEntity(),
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
+          raft_notifications_pool(),
           tablet_prepare_pool(),
           &retryable_requests_manager /* retryable_requests_manager */,
           nullptr,

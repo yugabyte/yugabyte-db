@@ -42,7 +42,6 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/async_initializer.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
@@ -169,6 +168,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  rpc::ThreadPool* raft_notifications_pool() const {
+    return raft_notifications_pool_.get();
+  }
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
@@ -198,6 +200,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
       boost::optional<consensus::RaftConfigPB> committed_raft_config) override;
+
+  Status ApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -371,6 +377,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
+  // Background task that emits metrics.
+  void EmitMetrics();
+
   // Background task that Retires old metrics.
   void CleanupOldMetrics();
 
@@ -389,6 +398,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Get the metadata cache object.
   client::YBMetaDataCache* YBMetaDataCache() const;
+
+  MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -515,6 +526,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status DoHandleNonReadyTabletOnStartup(
       const tablet::RaftGroupMetadataPtr& meta,
       const scoped_refptr<TransitionInProgressDeleter>& deleter);
+
+  Status CleanUpSubtabletIfExistsOnDisk(
+      const tablet::RaftGroupMetadata& source_tablet_meta, const TabletId& tablet_id, Env* env);
 
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
@@ -674,6 +688,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for Raft-related operations, shared between all tablets.
   std::unique_ptr<ThreadPool> raft_pool_;
 
+  // Thread pool for Raft replication callback operations.
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;
 
@@ -705,6 +722,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for verifying tablet metadata data integrity.
   std::unique_ptr<TabletMetadataValidator> tablet_metadata_validator_;
 
+  std::unique_ptr<rpc::Poller> metrics_emitter_;
+
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
@@ -733,8 +752,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
-  // Gauge for the count of live tablet peers running on this tserver.
+  // Gauge for the count of live tablet peers running on this TServer
   scoped_refptr<yb::AtomicGauge<uint32_t>> ts_live_tablet_peers_metric_;
+
+  // Gauge for the number of tablet peers this TServer can support
+  scoped_refptr<yb::AtomicGauge<int64_t>> ts_supportable_tablet_peers_metric_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>

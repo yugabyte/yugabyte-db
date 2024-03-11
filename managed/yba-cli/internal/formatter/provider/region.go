@@ -196,6 +196,17 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 			return err
 		}
 		r.PostFormat(tmpl, kubernetes.NewRegionContext())
+
+		tmpl, err = r.startSubsection(kubernetes.Region6)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := r.ContextFormat(tmpl, rc.KubeRegion); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		r.PostFormat(tmpl, kubernetes.NewRegionContext())
 	}
 
 	// Zones Subsection

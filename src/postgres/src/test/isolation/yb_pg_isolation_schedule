@@ -48,3 +48,4 @@ test: skip-locked-3
 test: tuplelock-conflict
 test: multixact-no-forget
 test: drop-probe-waiting-on-aborted-blocker-subtxn
+test: yb_conflict_with_index_only_scan_in_serializable

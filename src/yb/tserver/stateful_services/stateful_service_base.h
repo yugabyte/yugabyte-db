@@ -22,6 +22,7 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 
@@ -177,7 +178,7 @@ class StatefulRpcServiceBase : public StatefulServiceBase, public RpcServiceIf {
       status = method_impl();
 
       if (active_rpcs_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        no_rpcs_cond_.notify_all();
+        YB_PROFILE(no_rpcs_cond_.notify_all());
       }
     }
 

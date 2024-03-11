@@ -125,6 +125,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -443,6 +444,15 @@ TEST_F(
       ListActiveTabletIdsForTable(producer_cluster(), producer_table_->id()).size();
   auto consumer_tablets_size =
       ListActiveTabletIdsForTable(consumer_cluster(), consumer_table_->id()).size();
+
+  // Setting low phase shards count per node explicitly to guarantee a table can split at least
+  // up to max(producer_tablets_size, consumer_tablets_size) tablets within the low phase.
+  const auto low_phase_shard_count_per_node = std::ceil(
+      static_cast<double>(std::max(producer_tablets_size, consumer_tablets_size)) /
+      std::min(producer_cluster_.mini_cluster_->num_tablet_servers(),
+               consumer_cluster_.mini_cluster_->num_tablet_servers()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node)
+      = low_phase_shard_count_per_node;
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
       100, 50, producer_table_, consumer_table_, true /* commit_all_transactions */,
@@ -2395,8 +2405,8 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
       auto table = ASSERT_RESULT(CreateYsqlTable(
           &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
           boost::none /* tablegroup */, kNTabletsPerTable));
-      // For now, only replicate the second table for test_namespace.
-      if (is_replicated_producer && i == 1) {
+      // For now, skip the first table and replicate the rest.
+      if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
         ASSERT_OK(producer_client()->OpenTable(table, &yb_table));
         producer_tables_.push_back(yb_table);
@@ -2424,6 +2434,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
+  // Delete a table on the source and target so that there are dropped tables in syscatalog.
+  ASSERT_OK(producer_client()->DeleteTable(producer_tables_[0]->id()));
+  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables_[0]->id()));
   ASSERT_NOK(producer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_NOK(consumer_client()->DeleteNamespace(namespace_name, YQL_DATABASE_PGSQL));
   ASSERT_OK(producer_client()->DeleteNamespace(kNamespaceName2, YQL_DATABASE_PGSQL));
@@ -2666,14 +2679,14 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
     ASSERT_NOK(res);
     ASSERT_STR_CONTAINS(
         res.ToString(),
-        "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+        "cannot rewrite a table that is a part of CDC or XCluster replication");
     ASSERT_OK(
         conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 varchar(10)", kTableName, kColumnName));
     res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
     ASSERT_NOK(res);
     ASSERT_STR_CONTAINS(
         res.ToString(),
-        "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+        "cannot rewrite a table that is a part of CDC or XCluster replication");
     res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
     ASSERT_NOK(res);
     ASSERT_STR_CONTAINS(

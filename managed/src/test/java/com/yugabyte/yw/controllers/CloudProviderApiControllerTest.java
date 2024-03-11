@@ -66,6 +66,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -806,7 +807,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result, "data.IAM", "AWS access and secret keys validation failed: Invalid role");
+        result, "IAM", "AWS access and secret keys validation failed: Invalid role");
     assertAuditEntry(0, customer.getUuid());
     awsCloudInfoJson.put("AWS_SECRET_ACCESS_KEY", "secret_value");
     cloudInfoJson.set("aws", awsCloudInfoJson);
@@ -815,7 +816,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result, "data.KEYS", "Please provide both access key and its secret");
+        result, "KEYS", "Please provide both access key and its secret");
     assertAuditEntry(0, customer.getUuid());
     awsCloudInfoJson.put("AWS_ACCESS_KEY_ID", "key_value");
     cloudInfoJson.set("aws", awsCloudInfoJson);
@@ -824,7 +825,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result, "data.KEYS", "AWS access and secret keys validation failed: Not found");
+        result, "KEYS", "AWS access and secret keys validation failed: Not found");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -853,7 +854,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result, "data.HOSTED_ZONE", "Hosted Zone validation failed: Invalid ID");
+        result, "HOSTED_ZONE", "Hosted Zone validation failed: Invalid ID");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -868,15 +869,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     cloudInfoJson.set("aws", awsCloudInfoJson);
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
-    bodyJson.put("sshPrivateKeyContent", "key_content");
+    bodyJson.put("sshPrivateKeyContent", CertificateHelperTest.getDSAKeyContent());
     bodyJson.put("keyPairName", "test1");
     when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
         .thenReturn(new GetCallerIdentityResult());
-    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(anyString())).thenReturn("DSA");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result, "data.SSH_PRIVATE_KEY_CONTENT", "Please provide a valid RSA key");
+        result, "SSH_PRIVATE_KEY_CONTENT", "Please provide a valid RSA key");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -1007,21 +1007,21 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         result,
         Util.convertStringToJson(
             "{\"success\":false,\"error\":{"
-                + "\"data.REGION.us-west-2.VPC\": [\""
+                + "\"REGION.us-west-2.VPC\": [\""
                 + "Vpc details extraction failed: Invalid VPC ID\"],"
-                + "\"data.REGION.us-west-2.DRY_RUN\":[\""
-                + "Dry run of AWS DescribeInstances failed: Invalid region, "
-                + "Dry run of AWS Security Group failed: Invalid region, "
-                + "Dry run of AWS DescribeImage failed: Invalid region, "
-                + "Dry run of AWS DescribeInstanceTypes failed: Invalid region, "
-                + "Dry run of AWS Key pair failed: Invalid region, "
-                + "Dry run of AWS DescribeVpc failed: Invalid region, "
-                + "Dry run of AWS DescribeSubnet failed: Invalid region\"],"
-                + "\"data.REGION.us-west-2.SECURITY_GROUP\":[\""
+                + "\"REGION.us-west-2.DRY_RUN\":["
+                + "\"Dry run of AWS DescribeInstances failed: Invalid region\","
+                + "\"Dry run of AWS Security Group failed: Invalid region\","
+                + "\"Dry run of AWS DescribeImage failed: Invalid region\","
+                + "\"Dry run of AWS DescribeInstanceTypes failed: Invalid region\","
+                + "\"Dry run of AWS Key pair failed: Invalid region\","
+                + "\"Dry run of AWS DescribeVpc failed: Invalid region\","
+                + "\"Dry run of AWS DescribeSubnet failed: Invalid region\"],"
+                + "\"REGION.us-west-2.SECURITY_GROUP\":[\""
                 + "Security group extraction failed: Invalid SG ID\"],"
-                + "\"data.REGION.us-west-2.SUBNETS\":[\""
+                + "\"REGION.us-west-2.SUBNETS\":[\""
                 + "Subnet details extraction failed: Invalid Id\"],"
-                + "\"data.REGION.us-west-2.IMAGE\":[\"AMI details extraction failed: Not found\"],"
+                + "\"REGION.us-west-2.IMAGE\":[\"AMI details extraction failed: Not found\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
     result = assertPlatformException(() -> createProvider(bodyJson));
@@ -1029,13 +1029,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         result,
         Util.convertStringToJson(
             "{\"success\":false,\"error\":{"
-                + "\"data.REGION.us-west-2.SECURITY_GROUP\":[\"No vpc is attached to SG: sg_id\"],"
-                + "\"data.REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a,"
-                + " Please provide non-overlapping CIDR blocks subnets\"],"
-                + "\"data.REGION.us-west-2.IMAGE\":[\""
-                + "random_arch arch on image image_id is not supported, "
-                + "random_device_type root device type on image image_id is not supported, "
-                + "windows platform on image image_id is not supported\"],"
+                + "\"REGION.us-west-2.SECURITY_GROUP\":[\"No vpc is attached to SG: sg_id\"],"
+                + "\"REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a\","
+                + "\"Please provide non-overlapping CIDR blocks subnets\"],"
+                + "\"REGION.us-west-2.IMAGE\":["
+                + "\"random_arch arch on image image_id is not supported\","
+                + "\"random_device_type root device type on image image_id is not supported\","
+                + "\"windows platform on image image_id is not supported\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
     image.setArchitecture("x86_64");
@@ -1048,10 +1048,10 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         result,
         Util.convertStringToJson(
             "{\"success\":false,\"error\":{"
-                + "\"data.REGION.us-west-2.SECURITY_GROUP\":[\""
-                + "22 is not open on security group sg_id, "
-                + "sg_id is not attached to vpc: vpc_id\"],"
-                + "\"data.REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"],"
+                + "\"REGION.us-west-2.SECURITY_GROUP\":["
+                + "\"22 is not open on security group sg_id\","
+                + "\"sg_id is not attached to vpc: vpc_id\"],"
+                + "\"REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
     UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
@@ -1108,9 +1108,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
-        result,
-        "data.ZONE.0",
-        "Zone name cannot contain any special characters except '-' and '_'.");
+        result, "ZONE.0", "Zone name cannot contain any special characters except '-' and '_'.");
   }
 
   @Test
@@ -1230,7 +1228,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     JsonNode errorNode =
         Json.parse(
             "{\"errorSource\":[\"providerValidation\"],"
-                + "\"data.HOSTED_ZONE\":[\"Hosted Zone validation failed: Invalid ID\"]}");
+                + "\"HOSTED_ZONE\":[\"Hosted Zone validation failed: Invalid ID\"]}");
     assertEquals(errorNode, createdProvider.getLastValidationErrors().get("error"));
   }
 

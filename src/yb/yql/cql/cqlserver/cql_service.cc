@@ -202,6 +202,8 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
   DVLOG(4) << "Handling " << cql_call->ToString();
+  ADOPT_WAIT_STATE(cql_call->wait_state());
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
   // Process the call.
   MonoTime start = MonoTime::Now();
@@ -211,6 +213,17 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     inbound_call->RespondFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, processor.status());
     return;
   }
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    ash::AshMetadata metadata{
+        .root_request_id = Uuid::Generate(),
+        .client_host_port = HostPort(inbound_call->remote_address())};
+    auto uuid_res = Uuid::FromHexString(server_->instance_pb().permanent_uuid());
+    if (uuid_res.ok()) {
+      metadata.yql_endpoint_tserver_uuid = *uuid_res;
+    }
+    wait_state->UpdateMetadata(metadata);
+  }
+
   MonoTime got_processor = MonoTime::Now();
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());

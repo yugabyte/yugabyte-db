@@ -34,22 +34,28 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <optional>
 #include <string>
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class FsManager;
 class ServerRegistrationPB;
+
+struct CloneSourceInfo {
+  uint32_t seq_no;
+  TabletId tablet_id;
+};
 
 namespace consensus {
 
@@ -116,6 +122,10 @@ class ConsensusMetadata {
   bool has_split_parent_tablet_id() const;
   const TabletId& split_parent_tablet_id() const;
   void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
+
+  // CloneSourceInfo contains info about the clone request that created this tablet.
+  const std::optional<CloneSourceInfo> clone_source_info() const;
+  void set_clone_source_info(uint32_t seq_no, const TabletId& tablet_id);
 
   // Returns whether a pending configuration is set.
   bool has_pending_config() const;

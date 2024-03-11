@@ -69,7 +69,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
 
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -84,9 +84,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       }
 
       preTaskActions();
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
+      addBasicPrecheckTasks();
 
       // We support only one readonly cluster, so using the first one in the list.
       Cluster cluster = roClusters.get(0);

@@ -27,7 +27,10 @@ import {
 import { useSectionStyles } from '../../../universeMainStyle';
 import { CPUArchField } from '../../fields/CPUArchField/CPUArchField';
 import { LinuxVersionField } from '../../fields/LinuxVersionField/LinuxVersionField';
-import { VM_PATCHING_RUNTIME_CONFIG } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  VM_PATCHING_RUNTIME_CONFIG,
+  isImgBundleSupportedByProvider
+} from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 
 const CONTAINER_WIDTH = '605px';
 
@@ -107,6 +110,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               disabled={isViewMode}
             />
             <VolumeInfoField
+              isNodeResizable={isNodeResizable}
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
               disableVolumeSize={!isNodeResizable || isViewMode}
@@ -141,16 +145,14 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     >
       <Typography variant="h4">{t('universeForm.instanceConfig.title')}</Typography>
       <Box width="100%" display="flex" flexDirection="column" mt={2}>
-        {
-          osPatchingEnabled === 'true' && (
-            <Grid lg={6} item container>
-              <CPUArchField disabled={!isCreatePrimary} />
-              <Box mt={2} width={"100%"}>
-                <LinuxVersionField disabled={!isCreateMode} />
-              </Box>
-            </Grid>
-          )
-        }
+        {osPatchingEnabled === 'true' && isImgBundleSupportedByProvider(provider) && (
+          <Grid lg={6} item container>
+            <CPUArchField disabled={!isCreatePrimary} />
+            <Box mt={2} width={'100%'}>
+              <LinuxVersionField disabled={!isCreateMode} />
+            </Box>
+          </Grid>
+        )}
       </Box>
       <Box width="100%" display="flex" flexDirection="column" mt={2}>
         <Grid container spacing={3}>

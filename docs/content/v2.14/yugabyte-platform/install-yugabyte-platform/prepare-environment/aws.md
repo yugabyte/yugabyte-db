@@ -43,7 +43,7 @@ type: docs
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
@@ -157,8 +157,9 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 
 You need to create an instance to run the YugabyteDB Anywhere server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
-- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
-![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
+- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration:
+
+  ![Ubuntu Server boot disk image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
 
@@ -167,6 +168,8 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
   Ensure that **Auto-assign Public IP** is enabled (if it is disabled, the instance would not be accessible from outside AWS).
 
   If you created an IAM role, as described in [Create an IAM role](#create-an-iam-role-optional), or already had the IAM role that you would like to use, include this information under **IAM role**. See [Deploy the YugabyteDB universe using an IAM role](#deploy-the-yugabytedb-universe-using-an-iam-role) for more information.
+
+- If you are operating YBA and deploying universes in airgapped mode, create endpoints (**VPC > Endpoints**) for EC2, S3 (for backup), and KMS (for encryption at rest) services so that they can connect through the internal network.
 
 - Increase the root storage volume size to at least 100GiB.
 
@@ -180,9 +183,9 @@ You need to create an instance to run the YugabyteDB Anywhere server. To do this
 
 - Click **Launch** to launch the YugabyteDB Anywhere server.
 
-  You should see an instance being created, as shown in the following illustration:<br><br>
+  You should see an instance being created, as shown in the following illustration:
 
-  ![Image](/images/ee/aws-setup/yugaware-machine-creation.png)
+  ![Launch instance](/images/ee/aws-setup/yugaware-machine-creation.png)
 
 ### Deploy the YugabyteDB universe using an IAM role
 
@@ -192,7 +195,7 @@ If you are planning to use an IAM role while deploying the universe in your AWS 
 - Set the **IAM role** field to your IAM role (for example, ec2-admin-access).
 - Set the **Metadata accessible** field to Enabled.
 - Set the **Metadata version** field to V1 and V2 (token optional).
-- Set the **Metadata token response hop limit** field to 3, as per the following illustration:<br><br>
+- Set the **Metadata token response hop limit** field to 3, as per the following illustration:
 
   ![AIM for AWS](/images/ee/aws-setup/iam-for-aws.png)
 

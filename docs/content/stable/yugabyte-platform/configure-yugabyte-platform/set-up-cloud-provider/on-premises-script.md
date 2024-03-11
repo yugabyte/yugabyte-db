@@ -1,34 +1,34 @@
 ---
 title: Manually provision on-premises nodes using a script
 headerTitle: Manually provision on-premises nodes
-linkTitle: Manually provision on-prem nodes
+linkTitle: Manually provision nodes
 description: Provision the on-premises nodes using a script.
 headContent: Your SSH user has sudo privileges that require a password
 menu:
   stable_yugabyte-platform:
     identifier: on-premises-manual-1
-    parent: configure-yugabyte-platform
+    parent: set-up-on-premises
     weight: 20
 type: docs
 ---
 
-Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
+Use the following procedure to manually provision nodes for your YugabyteDB Anywhere (YBA) on-premises provider configuration:
 
-- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
-- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
+- Your [SSH user](../on-premises-provider/#ssh-key-pairs) has sudo privileges that require a password - **Assisted manual**.
+- Your SSH user does not have sudo privileges at all - **Fully manual**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../on-premises-script/" class="nav-link active">
       <i class="fa-regular fa-scroll"></i>
-      Manual setup with script
+      Assisted manual
     </a>
   </li>
 
   <li>
     <a href="../on-premises-manual/" class="nav-link">
       <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual setup
+      Fully manual
     </a>
   </li>
 </ul>
@@ -45,15 +45,15 @@ If the SSH user does not have any sudo privileges at all, you can't use the scri
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
-1. Log in to the YugabyteDB Anywhere virtual machine via SSH.
+1. Log in to the YBA virtual machine via SSH.
 
-1. If you installed YugabyteDB Anywhere using Replicated, access the Docker `yugaware` container, as follows:
+1. If you installed YBA using Replicated, access the Docker `yugaware` container, as follows:
 
     ```sh
     sudo docker exec -it yugaware bash
     ```
 
-1. In YugabyteDB Anywhere, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the on-prem configuration you created, and choose **Instances**.
+1. In YBA, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the on-prem configuration you created, and choose **Instances**.
 
     ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
@@ -64,9 +64,9 @@ You can manually provision each node using the pre-provisioning Python script, a
     - `--ask_password` - this flag instructs the script to prompt for a password, which is required if the sudo user requires password authentication.
     - `--ip` - enter the IP address of the node.
     - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
-    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
+    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YBA to communicate with the instance.
     - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
-    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `http://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
+    - `--yba_url` - enter the URL of the machine where you are running YBA, with port 9000. For example, `http://ybahost.company.com:9000`. The node must be able to communicate with YBA at this address.
     - `--node_name` - enter a name for the node.
     - `--instance_type` - enter the name of the [instance type](../on-premises/#add-instance-types) to use for the node. The name must match the name of an existing instance type.
     - `--zone_name` - enter a zone name for the node.
@@ -99,4 +99,4 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 1. Repeat steps 4-6 for every node that will participate in the on-prem configuration.
 
-After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
+After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises-nodes/#add-instances).

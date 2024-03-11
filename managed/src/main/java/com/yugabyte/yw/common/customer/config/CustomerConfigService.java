@@ -20,7 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -119,10 +119,16 @@ public class CustomerConfigService {
                 drConfigsByConfigUuid.values().stream()
                     .flatMap(Collection::stream)
                     .map(
-                        drConfig ->
-                            Arrays.asList(
-                                drConfig.getActiveXClusterConfig().getTargetUniverseUUID(),
-                                drConfig.getActiveXClusterConfig().getSourceUniverseUUID()))
+                        drConfig -> {
+                          List<UUID> uuids = new ArrayList<>();
+                          if (drConfig.getActiveXClusterConfig().getTargetUniverseUUID() != null) {
+                            uuids.add(drConfig.getActiveXClusterConfig().getTargetUniverseUUID());
+                          }
+                          if (drConfig.getActiveXClusterConfig().getSourceUniverseUUID() != null) {
+                            uuids.add(drConfig.getActiveXClusterConfig().getSourceUniverseUUID());
+                          }
+                          return uuids;
+                        })
                     .flatMap(Collection::stream))
             .flatMap(Function.identity())
             .collect(Collectors.toSet());
@@ -143,10 +149,18 @@ public class CustomerConfigService {
                       .map(this::getUniverseUuid),
                   drConfigsByConfigUuid.getOrDefault(storageUUID, Collections.emptyList()).stream()
                       .map(
-                          drConfig ->
-                              Arrays.asList(
-                                  drConfig.getActiveXClusterConfig().getTargetUniverseUUID(),
-                                  drConfig.getActiveXClusterConfig().getSourceUniverseUUID()))
+                          drConfig -> {
+                            List<UUID> uuids = new ArrayList<>();
+                            if (drConfig.getActiveXClusterConfig().getTargetUniverseUUID()
+                                != null) {
+                              uuids.add(drConfig.getActiveXClusterConfig().getTargetUniverseUUID());
+                            }
+                            if (drConfig.getActiveXClusterConfig().getSourceUniverseUUID()
+                                != null) {
+                              uuids.add(drConfig.getActiveXClusterConfig().getSourceUniverseUUID());
+                            }
+                            return uuids;
+                          })
                       .flatMap(Collection::stream))
               .flatMap(Function.identity())
               .collect(Collectors.toSet());

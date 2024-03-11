@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.17.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.17.1.0-b0
+-- Dumped from database version 11.2-YB-2.21.1.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -17,7 +17,21 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
-SET default_tablespace = '';
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces true
+\endif
+
+-- Set variable use_roles (if not already set)
+\if :{?use_roles}
+\else
+\set use_roles true
+\endif
+
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 SET default_with_oids = false;
 
@@ -44,7 +58,9 @@ PARTITION BY HASH (k1)
 WITH (colocation_id='123456');
 
 
-ALTER TABLE public.htest OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.htest OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: htest_1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -63,7 +79,9 @@ FOR VALUES WITH (modulus 2, remainder 0)
 WITH (colocation_id='234567');
 
 
-ALTER TABLE public.htest_1 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.htest_1 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -85,7 +103,9 @@ CREATE TABLE public.tbl (
 WITH (colocation_id='20001');
 
 
-ALTER TABLE public.tbl OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -108,7 +128,9 @@ CREATE TABLE public.tbl2 (
 WITH (colocation_id='20002');
 
 
-ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -131,7 +153,9 @@ WITH (colocation='false')
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -155,7 +179,9 @@ WITH (colocation='false')
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Data for Name: htest_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
@@ -236,18 +262,22 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) W
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --

@@ -16,7 +16,6 @@ import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -59,9 +58,9 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         } catch (PlatformServiceException e) {
           if (e.getHttpStatus() == BAD_REQUEST) {
             if (awsCloudImpl.checkKeysExists(provider)) {
-              throwBeanProviderValidatorError("KEYS", e.getMessage());
+              throwBeanProviderValidatorError("KEYS", e.getMessage(), null);
             } else {
-              throwBeanProviderValidatorError("IAM", e.getMessage());
+              throwBeanProviderValidatorError("IAM", e.getMessage(), null);
             }
           }
           throw e;
@@ -76,12 +75,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     // validate SSH private key content
     try {
       if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
-        for (AccessKey accessKey : provider.getAllAccessKeys()) {
-          String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
-          if (!awsCloudImpl.getPrivateKeyAlgoOrBadRequest(privateKeyContent).equals("RSA")) {
-            throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid RSA key");
-          }
-        }
+        validatePrivateKey(provider.getAllAccessKeys());
       }
     } catch (PlatformServiceException e) {
       if (e.getHttpStatus() == BAD_REQUEST) {
@@ -134,7 +128,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
 
     if (!validationErrorsMap.isEmpty()) {
-      throwMultipleProviderValidatorError(validationErrorsMap);
+      throwMultipleProviderValidatorError(validationErrorsMap, null);
     }
   }
 
@@ -335,7 +329,8 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     String accessKeySecret = cloudInfo.awsAccessKeySecret;
     if ((StringUtils.isEmpty(accessKey) && !StringUtils.isEmpty(accessKeySecret))
         || (!StringUtils.isEmpty(accessKey) && StringUtils.isEmpty(accessKeySecret))) {
-      throwBeanProviderValidatorError("KEYS", "Please provide both access key and its secret");
+      throwBeanProviderValidatorError(
+          "KEYS", "Please provide both access key and its secret", null);
     }
   }
 

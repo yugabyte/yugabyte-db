@@ -64,7 +64,7 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
     params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;
     params.releaseMetadata = defaultReleaseMetadata;
     params.version = DEFAULT_VERSION;
-    when(mockReleaseManager.getTarGZipDBPackageInputStream(any(), any()))
+    when(mockReleaseManager.getTarGZipDBPackageInputStream(any()))
         .thenReturn(new FileInputStream(tempFilePath));
     doNothing()
         .when(mockGFlagsValidation)
@@ -79,7 +79,7 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
     params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;
     params.releaseMetadata = defaultReleaseMetadata;
     params.version = DEFAULT_VERSION;
-    when(mockReleaseManager.getTarGZipDBPackageInputStream(any(), any()))
+    when(mockReleaseManager.getTarGZipDBPackageInputStream(any()))
         .thenThrow(new RuntimeException("File does not exists"));
     TaskInfo taskInfo = submitTask(TaskType.AddGFlagMetadata, params, false);
     assertEquals(Failure, taskInfo.getTaskState());
@@ -91,7 +91,7 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
     params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;
     params.releaseMetadata = defaultReleaseMetadata;
     params.version = DEFAULT_VERSION;
-    when(mockReleaseManager.getTarGZipDBPackageInputStream(any(), any()))
+    when(mockReleaseManager.getTarGZipDBPackageInputStream(any()))
         .thenReturn(new FileInputStream(tempFilePath));
     doThrow(new IOException("Error-Message"))
         .when(mockGFlagsValidation)

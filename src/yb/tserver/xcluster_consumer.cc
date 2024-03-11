@@ -13,9 +13,11 @@
 
 #include <chrono>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/cdc/xcluster_util.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -43,7 +45,9 @@
 #include "yb/rocksdb/util/rate_limiter.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
+
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
@@ -82,6 +86,9 @@ DEFINE_validator(xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeT
 DEFINE_test_flag(bool, xcluster_disable_delete_old_pollers, false,
     "Disables the deleting of old xcluster pollers that are no longer needed.");
 
+DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
+    "Enables xCluster automatic DDL replication.");
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(use_node_to_node_encryption);
@@ -117,8 +124,8 @@ void XClusterClient::Shutdown() {
 }
 
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
-    std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-    TabletServer* tserver) {
+    std::function<int64_t(const TabletId&)> get_leader_term, ConnectToPostgresFunc connect_to_pg,
+    GetNamespaceInfoFunc get_namespace_info, rpc::ProxyCache* proxy_cache, TabletServer* tserver) {
   auto master_addrs = tserver->options().GetMasterAddresses();
   std::vector<std::string> hostport_strs;
   hostport_strs.reserve(master_addrs->size());
@@ -130,8 +137,8 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
   rpc::MessengerBuilder messenger_builder("xcluster-consumer");
 
   if (FLAGS_use_node_to_node_encryption) {
-    local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
-        "", "", server::SecureContextType::kInternal, &messenger_builder));
+    local_client->secure_context = VERIFY_RESULT(rpc::SetupSecureContext(
+        /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal, &messenger_builder));
   }
   local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
 
@@ -144,7 +151,8 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
 
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto xcluster_consumer = std::make_unique<XClusterConsumer>(
-      std::move(get_leader_term), proxy_cache, tserver->permanent_uuid(), std::move(local_client));
+      std::move(get_leader_term), proxy_cache, tserver->permanent_uuid(), std::move(local_client),
+      std::move(connect_to_pg), std::move(get_namespace_info));
 
   RETURN_NOT_OK(xcluster_consumer->Init());
 
@@ -153,12 +161,15 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
 
 XClusterConsumer::XClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-    const string& ts_uuid, std::unique_ptr<XClusterClient> local_client)
+    const string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
+    ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func)
     : get_leader_term_func_(std::move(get_leader_term)),
       rpcs_(new rpc::Rpcs),
       log_prefix_(Format("[TS $0]: ", ts_uuid)),
       local_client_(std::move(local_client)),
-      last_safe_time_published_at_(MonoTime::Now()) {
+      last_safe_time_published_at_(MonoTime::Now()),
+      connect_to_pg_func_(std::move(connect_to_pg_func)),
+      get_namespace_info_func_(std::move(get_namespace_info_func)) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
       GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
@@ -193,7 +204,7 @@ void XClusterConsumer::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutting down XClusterConsumer";
   is_shutdown_ = true;
 
-  run_thread_cond_.notify_all();
+  YB_PROFILE(run_thread_cond_.notify_all());
 
   // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
@@ -321,7 +332,7 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
-    run_thread_cond_.notify_all();
+    YB_PROFILE(run_thread_cond_.notify_all());
     return;
   }
 
@@ -330,6 +341,7 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
 
   consumer_role_ = consumer_registry->role();
   streams_with_local_tserver_optimization_.clear();
+  ddl_queue_streams_.clear();
   stream_schema_version_map_.clear();
   stream_colocated_schema_version_map_.clear();
   stream_to_schema_version_.clear();
@@ -352,7 +364,7 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
     UpdateReplicationGroupInMemState(replication_group_id, producer_entry_pb);
   }
   // Wake up the background thread to stop old pollers and start new ones.
-  run_thread_cond_.notify_all();
+  YB_PROFILE(run_thread_cond_.notify_all());
 }
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
@@ -374,6 +386,10 @@ void XClusterConsumer::UpdateReplicationGroupInMemState(
     if (stream_entry_pb.local_tserver_optimized()) {
       LOG_WITH_PREFIX(INFO) << Format("Stream $0 will use local tserver optimization", stream_id);
       streams_with_local_tserver_optimization_.insert(stream_id);
+    }
+    if (stream_entry_pb.is_ddl_queue_table()) {
+      LOG(INFO) << Format("Stream $0 is a ddl_queue stream", stream_id);
+      ddl_queue_streams_.insert(stream_id);
     }
     if (stream_entry_pb.has_producer_schema()) {
       stream_to_schema_version_[stream_id] = std::make_pair(
@@ -513,8 +529,9 @@ void XClusterConsumer::TriggerPollForNewTablets() {
                   xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
             }
 
-            auto secure_context_result = server::SetupSecureContext(
-                dir, "", "", server::SecureContextType::kInternal, &messenger_builder);
+            auto secure_context_result = rpc::SetupSecureContext(
+                dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
+                &messenger_builder);
             if (!secure_context_result.ok()) {
               LOG(WARNING) << "Could not create secure context for " << replication_group_id << ": "
                            << secure_context_result.status().ToString();
@@ -557,14 +574,28 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         // Now create the poller.
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.contains(producer_tablet_info.stream_id);
-
-        std::shared_ptr<XClusterPoller> xcluster_poller = std::make_unique<XClusterPoller>(
+        auto xcluster_poller = std::make_shared<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info,
             auto_flags_version_handler_->GetAutoFlagsCompatibleVersion(
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
             this, last_compatible_consumer_schema_version, leader_term, get_leader_term_func_);
-        xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
+
+        if (FLAGS_TEST_xcluster_enable_ddl_replication &&
+            ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
+          auto namespace_info_res = get_namespace_info_func_(consumer_tablet_info.table_id);
+          if (!namespace_info_res.ok()) {
+            LOG(WARNING) << "Could not get ddl_queue namespace info for " << replication_group_id
+                         << ": " << namespace_info_res.status().ToString();
+            continue;  // Don't finish creation.  Try again on the next RunThread().
+          }
+          const auto& [namespace_id, namespace_name] = *namespace_info_res;
+          xcluster_poller->InitDDLQueuePoller(
+              use_local_tserver, rate_limiter_.get(), namespace_name, namespace_id,
+              connect_to_pg_func_);
+        } else {
+          xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
+        }
 
         UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
 
@@ -704,9 +735,9 @@ int32_t XClusterConsumer::cluster_config_version() const {
 
 Status XClusterConsumer::ReloadCertificates() {
   if (local_client_->secure_context) {
-    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
         local_client_->secure_context.get(), "" /* node_name */, "" /* root_dir*/,
-        server::SecureContextType::kInternal));
+        rpc::SecureContextType::kInternal));
   }
 
   SharedLock read_lock(pollers_map_mutex_);
@@ -721,7 +752,7 @@ Status XClusterConsumer::ReloadCertificates() {
           FLAGS_certs_for_cdc_dir,
           xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
-    RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));
   }
 

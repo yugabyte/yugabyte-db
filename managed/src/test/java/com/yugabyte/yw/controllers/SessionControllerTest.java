@@ -20,21 +20,31 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.scheduler.Scheduler;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -50,6 +60,7 @@ import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.client.OidcClient;
 import org.pac4j.oidc.config.OidcConfiguration;
+import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.java.SecureAction;
 import org.pac4j.play.store.PlayCacheSessionStore;
@@ -71,13 +82,47 @@ public class SessionControllerTest {
     public HandlerWithEmailFromCtx(
         Environment env,
         PlaySessionStore playSessionStore,
-        RuntimeConfigFactory runtimeConfFactory) {
-      super(env, playSessionStore, runtimeConfFactory);
+        RuntimeConfGetter confGetter,
+        RoleBindingUtil roleBindingUtil,
+        ApiHelper apiHelper) {
+      super(env, playSessionStore, confGetter, roleBindingUtil, apiHelper);
     }
 
     @Override
     public String getEmailFromCtx(Request request) {
       return "test@yugabyte.com";
+    }
+
+    @Override
+    public CommonProfile getProfile(Request request) {
+      OidcProfile oidcProfile = new OidcProfile();
+      try {
+        String email = "test@yugabyte.com";
+        String issuer = "https://random-oidc-issuer.com";
+
+        JWTClaimsSet claimsSet =
+            new JWTClaimsSet.Builder()
+                .issuer(issuer)
+                .claim("email", email)
+                .claim("groups", ImmutableList.of("Admin Group", "BackupAdmin Group"))
+                .build();
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        PrivateKey privateKey = keyPair.getPrivate();
+
+        SignedJWT jwtToken =
+            new SignedJWT(
+                new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("keyID").build(), claimsSet);
+        jwtToken.sign(new RSASSASigner(privateKey));
+
+        oidcProfile.setIdTokenString(jwtToken.serialize());
+        oidcProfile.addAttribute("issuer", issuer);
+      } catch (Exception e) {
+        fail("Creating OidcProfile failed with error: " + e.getMessage());
+      }
+      return oidcProfile;
     }
   }
 
@@ -141,6 +186,9 @@ public class SessionControllerTest {
     startApp(false);
     authorizeUserMockSetup(); // authorize "test@yugabyte.com"
 
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.oidc_enable_auto_create_users", "false");
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer, "not.matching@yugabyte.com");
 
@@ -158,12 +206,46 @@ public class SessionControllerTest {
     startApp(false);
     authorizeUserMockSetup(); // authorize "test@yugabyte.com"
 
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.oidc_enable_auto_create_users", "false");
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users user = ModelFactory.testUser(customer, "test@yugabyte.com");
 
     Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
     assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
     assertEquals("/", result.headers().get("Location")); // Redirect
+  }
+
+  @Test
+  public void testAutoCreateUserOnSSO() throws Exception {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+
+    // create group mappings
+    com.yugabyte.yw.models.rbac.Role role1 =
+        com.yugabyte.yw.models.rbac.Role.create(
+            customer.getUuid(), "Admin", "Admin role", RoleType.System, null);
+    com.yugabyte.yw.models.rbac.Role role2 =
+        com.yugabyte.yw.models.rbac.Role.create(
+            customer.getUuid(), "BackupAdmin", "BackupAdmin role", RoleType.System, null);
+    OidcGroupToYbaRoles group1 =
+        OidcGroupToYbaRoles.create(
+            customer.getUuid(), "Admin Group", ImmutableList.of(role1.getRoleUUID()));
+    OidcGroupToYbaRoles group2 =
+        OidcGroupToYbaRoles.create(
+            customer.getUuid(), "BackupAdmin Group", ImmutableList.of(role2.getRoleUUID()));
+
+    Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
+    assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
+    assertEquals("/", result.headers().get("Location")); // Redirect
+
+    Users user = Users.find.query().where().eq("email", "test@yugabyte.com").findOne();
+    // assert user created
+    assertNotNull(user);
+    // assert correct role assigned
+    assertEquals(Role.Admin, user.getRole());
   }
 
   public void authorizeUserMockSetup() {

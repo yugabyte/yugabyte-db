@@ -737,6 +737,14 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 			YbGetTableProperties(OldHeap);
 			dummyStmt->split_options = YbGetSplitOptions(OldHeap);
 		}
+		bool is_null;
+		HeapTuple tuple = SearchSysCache1(RELOID,
+			ObjectIdGetDatum(RelationGetRelid(OldHeap)));
+		Datum datum = SysCacheGetAttr(RELOID,
+			tuple, Anum_pg_class_reloptions, &is_null);
+		if (!is_null)
+			dummyStmt->options = untransformRelOptions(datum);
+		ReleaseSysCache(tuple);
 		YBCCreateTable(dummyStmt, RelationGetRelationName(OldHeap),
 					   OldHeap->rd_rel->relkind, OldHeapDesc, OIDNewHeap,
 					   namespaceid,
@@ -1685,7 +1693,8 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 	 * The new relation is local to our transaction and we know nothing
 	 * depends on it, so DROP_RESTRICT should be OK.
 	 */
-	performDeletion(&object, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+	if (!(IsYugaByteEnabled() && yb_test_table_rewrite_keep_old_table))
+		performDeletion(&object, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
 
 	/* performDeletion does CommandCounterIncrement at end */
 

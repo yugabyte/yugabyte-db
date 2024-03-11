@@ -230,19 +230,15 @@ public class CloudProviderApiController extends AuthenticatedController {
        */
       KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
       k8sInfo.setLegacyK8sProvider(false);
-      providerEbean =
-          Provider.create(
-              customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
-    } else {
-      providerEbean =
-          cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.getName(),
-              reqProvider,
-              validate,
-              ignoreValidationErrors);
     }
+    providerEbean =
+        cloudProviderHandler.createProvider(
+            customer,
+            providerCode,
+            reqProvider.getName(),
+            reqProvider,
+            validate,
+            ignoreValidationErrors);
 
     if (providerCode.isRequiresBootstrap()) {
       UUID taskUUID = null;

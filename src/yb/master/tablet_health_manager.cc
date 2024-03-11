@@ -49,6 +49,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -117,7 +118,7 @@ void AreNodesSafeToTakeDownCallbackHandler::ReportHealthCheck(
   }
 
   if (DoneProcessing()) {
-    cv_.notify_one();
+    YB_PROFILE(cv_.notify_one());
   }
 }
 
@@ -312,7 +313,7 @@ Status TabletHealthManager::AreNodesSafeToTakeDown(
     const AreNodesSafeToTakeDownRequestPB* req, AreNodesSafeToTakeDownResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Processing AreNodesSafeToTakeDown call";
-  AreNodesSafeToTakeDownDriver driver(*req, resp, master_, catalog_manager_);
+  AreNodesSafeToTakeDownDriver driver(*req, master_, catalog_manager_);
   auto status = driver.StartCallAndWait(rpc->GetClientDeadline());
   if (!status.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Abortable
 public class ConfigureDBApis extends UpgradeTaskBase {
 
   @Inject
@@ -40,9 +42,7 @@ public class ConfigureDBApis extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   @Override

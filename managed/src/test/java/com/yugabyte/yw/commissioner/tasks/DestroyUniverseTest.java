@@ -175,6 +175,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
                       + "    Root dispersion : 0.000101734 seconds\n"
                       + "    Update interval : 32.3 seconds\n"
                       + "    Leap status     : Normal"));
+      mockLocaleCheckResponse(mockNodeUniverseManager);
       doAnswer(inv -> Json.newObject())
           .when(mockYsqlQueryExecutor)
           .executeQueryInNodeShell(any(), any(), any(), anyBoolean());

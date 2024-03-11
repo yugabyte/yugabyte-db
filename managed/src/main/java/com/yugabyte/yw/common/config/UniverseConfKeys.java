@@ -850,6 +850,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "runtime configuration.",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> validateLocalRelease =
+      new ConfKeyInfo<>(
+          "yb.universe.validate_local_release",
+          ScopeType.UNIVERSE,
+          "Validate filepath for local release",
+          "For certain tasks validates the existence of local filepath for the universe software "
+              + "version.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableRollbackSupport =
       new ConfKeyInfo<>(
           "yb.upgrade.enable_rollback_support",
@@ -936,14 +945,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
-      new ConfKeyInfo<>(
-          "yb.edit.allow_volume_decrease",
-          ScopeType.UNIVERSE,
-          "Allow decrease volume size",
-          "Allow decrease volume size for universe during full move",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
       new ConfKeyInfo<>(
           "yb.node_agent.reinstall_parallelism",
@@ -1020,5 +1021,45 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Wait time for xcluster/DR replication setup and edit RPCs.",
           "Wait time for xcluster/DR replication setup and edit RPCs.",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.enabled",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check enabled",
+          " Whether to run CheckLeaderlessTablets subtask before running universe tasks",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> leaderlessTabletsTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.leaderless_tablets.timeout",
+          ScopeType.UNIVERSE,
+          "Leaderless tablets check timeout",
+          "Controls the max time out when performing the CheckLeaderlessTablets subtask",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockSyncCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clock Sync check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYbcForUniverse =
+      new ConfKeyInfo<>(
+          "ybc.universe.enabled",
+          ScopeType.UNIVERSE,
+          "Enable YBC",
+          "Enable YBC for universes during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> targetNodeDiskUsagePercentage =
+      new ConfKeyInfo<>(
+          "yb.checks.node_disk_size.target_usage_percentage",
+          ScopeType.UNIVERSE,
+          "Target Node Disk Usage Percentage",
+          "Percentage of current disk usage that may consume on the target nodes",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

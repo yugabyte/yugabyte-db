@@ -615,13 +615,13 @@ if [[ ${YB_BUILD_SKIP_RC_FILES:-0} != "1" ]]; then
   # Load configuration files now so we can change some of the default values.
   for buildrc_file_path in $HOME/.yb_buildrc $YB_SRC_ROOT/.git/yb_buildrc; do
     if [[ -f $buildrc_file_path ]]; then
+      log "Sourcing $buildrc_file_path"
       if [[ $YB_BUILD_DEBUG_RC_FILE == "1" ]]; then
-        log "Sourcing $buildrc_file_path"
-        if [[ $YB_BUILD_DEBUG_RC_FILE == "1" ]]; then
-          set -x
-        fi
-        # shellcheck disable=SC1090
-        . "$buildrc_file_path"
+        set -x
+      fi
+      # shellcheck disable=SC1090
+      . "$buildrc_file_path"
+      if [[ $YB_BUILD_DEBUG_RC_FILE == "1" ]]; then
         set +x
       fi
     fi
