@@ -122,7 +122,8 @@ var createK8sProviderCmd = &cobra.Command{
 		providerUUID := rCreate.GetResourceUUID()
 		taskUUID := rCreate.GetTaskUUID()
 
-		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
+		providerutil.WaitForCreateProviderTask(authAPI,
+			providerName, providerUUID, providerCode, taskUUID)
 	},
 }
 
