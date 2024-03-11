@@ -23,6 +23,8 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -66,8 +68,19 @@ class TestTask final : public ThreadPoolTask {
     latch_ = latch;
   }
 
+  void SetSuccessCounter(std::atomic<size_t>* success_counter) {
+    success_counter_ = success_counter;
+  }
+
+  void SetDelayMicros(size_t delay_micros) {
+    delay_micros_ = delay_micros;
+  }
+
  private:
   void Run() override {
+    if (delay_micros_) {
+      std::this_thread::sleep_for(1us * delay_micros_);
+    }
     auto expected = TestTaskState::IDLE;
     ASSERT_TRUE(state_.compare_exchange_strong(expected, TestTaskState::EXECUTED));
     ASSERT_EQ(expected, TestTaskState::IDLE);
@@ -80,10 +93,15 @@ class TestTask final : public ThreadPoolTask {
     if (latch_) {
       latch_->CountDown();
     }
+    if (status.ok() && success_counter_) {
+      success_counter_->fetch_add(1, std::memory_order_acq_rel);
+    }
   }
 
   CountDownLatch* latch_ = nullptr;
   std::atomic<TestTaskState> state_ = { TestTaskState::IDLE };
+  std::atomic<size_t>* success_counter_ = nullptr;
+  size_t delay_micros_ = 0;
 };
 
 TEST_F(ThreadPoolTest, TestSingleThread) {
@@ -378,6 +396,93 @@ TEST_F(ThreadPoolTest, StrandShutdownAndDestroyRace) {
     strand.EnqueueFunctor(task);
 
     strand.Shutdown();
+  }
+}
+
+// Create multiple subpools in a thread pool and round-robin tasks between subpools. Shut down the
+// subpools sequentially. We may fail to submit some tasks to some subpools. Shutting down a
+// subpool should wait for all tasks in that subpool to complete.
+TEST_F(ThreadPoolTest, SubPool) {
+  constexpr size_t kTotalWorkers = 4;
+  constexpr size_t kTasksPerSubPool = RegularBuildVsSanitizers(5000, 1000);
+  constexpr size_t kNumSubPools = 5;
+  constexpr size_t kTotalTasks = kNumSubPools * kTasksPerSubPool;
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
+  struct SubPoolData {
+    size_t index;
+    std::unique_ptr<ThreadSubPool> subpool;
+    std::unique_ptr<CountDownLatch> latch;
+    std::unique_ptr<std::atomic<size_t>> num_successes;
+    std::unique_ptr<std::atomic<size_t>> num_unsubmitted_tasks;
+
+    SubPoolData(size_t index_, ThreadPool* pool, size_t num_tasks)
+        : index(index_),
+          subpool(std::make_unique<ThreadSubPool>(pool)),
+          latch(std::make_unique<CountDownLatch>(num_tasks)),
+          num_successes(std::make_unique<std::atomic<size_t>>(0)) {
+    }
+  };
+
+  std::vector<SubPoolData> subpool_data_vec;
+  for (size_t i = 0; i < kNumSubPools; ++i) {
+    subpool_data_vec.emplace_back(i, &pool, kTasksPerSubPool);
+  }
+  std::vector<TestTask> tasks(kTotalTasks);
+  TestThreadHolder holder;
+  holder.AddThread(std::thread([&tasks, &subpool_data_vec] {
+    CDSAttacher attacher;
+    std::vector<bool> subpool_operational(kNumSubPools, true);
+    auto start_time = MonoTime::Now();
+    for (size_t task_index = 0; task_index < kTotalTasks; ++task_index) {
+      auto subpool_index = task_index % kNumSubPools;
+      auto& subpool_data = subpool_data_vec[subpool_index];
+      if (!subpool_operational[subpool_index]) {
+        subpool_data.latch->CountDown();
+        continue;
+      }
+      auto& task = tasks[task_index];
+      task.SetLatch(subpool_data.latch.get());
+      task.SetSuccessCounter(subpool_data.num_successes.get());
+      task.SetDelayMicros(RandomUniformInt(0, 1000));
+      ThreadSubPool& subpool = *subpool_data.subpool;
+      if (!subpool.Enqueue(&task)) {
+        LOG(INFO) << "Subpool " << subpool_index << " was shut down after we managed to submit "
+                  << task_index << " tasks out of " << kTasksPerSubPool;
+        subpool_operational[subpool_index] = false;
+        continue;
+      }
+      if (task_index % 10 == 0) {
+        std::this_thread::sleep_for(1ms);
+      }
+    }
+    LOG(INFO) << "Added all " << kTotalTasks << " tasks to all subpools in "
+              << (MonoTime::Now() - start_time).ToMicroseconds() << " usec";
+  }));
+  LOG(INFO) << "Waiting for all subpools to complete all submitted tasks";
+  for (auto& subpool_data : subpool_data_vec) {
+    std::this_thread::sleep_for(200ms);
+    auto& subpool = *subpool_data.subpool;
+    subpool.Shutdown();
+    ASSERT_EQ(subpool.num_active_tasks(), 0);
+  }
+  for (auto& subpool_data : subpool_data_vec) {
+    LOG(INFO) << "Subpool " << subpool_data.index
+              << " successfully completed " << *subpool_data.num_successes
+              << " tasks out of " << kTasksPerSubPool;
+  }
+  LOG(INFO) << "All subpools should be clear of tasks. Checking completed task counts.";
+  std::vector<size_t> completed_by_subpool(kNumSubPools, 0);
+  for (size_t task_index = 0; task_index < kTotalTasks; ++task_index) {
+    auto subpool_index = task_index % kNumSubPools;
+    if (tasks[task_index].IsCompleted()) {
+      completed_by_subpool[subpool_index]++;
+    }
+  }
+  for (size_t subpool_index = 0; subpool_index < kNumSubPools; ++subpool_index) {
+    ASSERT_EQ(completed_by_subpool[subpool_index], *subpool_data_vec[subpool_index].num_successes);
   }
 }
 
