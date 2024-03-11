@@ -524,3 +524,28 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl 
 SELECT a, b FROM test_tbl WHERE b = 4;
 DROP INDEX test_idx;
 DROP TABLE test_tbl;
+create table sample(a int, b int, primary key(a asc, b asc));
+insert into sample values (1,1);
+insert into sample values (1,2);
+insert into sample values (2,1);
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+select * from sample where b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b >= 2 and b < 2;
+select * from sample where b >= 2 and b < 2;
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+select * from sample where b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 2 and b < 2 and b >= 2;
+select * from sample where b <= 2 and b < 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 2 and b >= 2;
+select * from sample where b <= 2 and b >= 2;
+
+explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
+select * from sample where b <= 3 and b <= 2 and b >= 2;
+
+drop table sample;
+
