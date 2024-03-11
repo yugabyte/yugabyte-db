@@ -332,6 +332,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     connection = createTestRole();
+    allowSchemaPublic();
     pgInitialized = true;
   }
 
@@ -344,6 +345,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  private void allowSchemaPublic() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("GRANT ALL ON SCHEMA public TO public");
+    }
   }
 
   public void restartClusterWithFlags(

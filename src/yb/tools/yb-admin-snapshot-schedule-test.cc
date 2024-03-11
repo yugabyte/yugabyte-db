@@ -1979,6 +1979,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
   LOG(INFO) << "Create user user2";
   ASSERT_OK(conn.Execute("CREATE USER user2"));
 
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO user1"));
+
   LOG(INFO) << "Set Session authorization to user1";
   ASSERT_OK(conn.Execute("SET SESSION AUTHORIZATION user1"));
 

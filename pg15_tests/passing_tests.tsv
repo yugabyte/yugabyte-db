@@ -1,3 +1,6 @@
+JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata
+JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata
+JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 JAVA	org.yb.pgsql.TestBatchCopyFrom#testNonTxnWriteSessionVariable
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
@@ -12,6 +15,13 @@ JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
+JAVA	org.yb.pgsql.TestPgAuthorization#testAlterObjectOwner
+JAVA	org.yb.pgsql.TestPgAuthorization#testDomainPrivileges
+JAVA	org.yb.pgsql.TestPgAuthorization#testForeignKeyConstraintACLCheck
+JAVA	org.yb.pgsql.TestPgAuthorization#testMultiNodeOwnershipChanges
+JAVA	org.yb.pgsql.TestPgAuthorization#testReassignOwnedObjects
+JAVA	org.yb.pgsql.TestPgAuthorization#testReferencesOnColumns
+JAVA	org.yb.pgsql.TestPgAuthorization#testReferencesOnTables
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
@@ -172,6 +182,7 @@ pgwrapper_pg_wait_on_conflict-test	PgTabletSplittingWaitQueuesTest.SplitTablet
 pgwrapper_pg_wait_on_conflict-test	PgWaitQueueRF1Test.TestResumingWaitersDoesntBlockTabletShutdown
 pgwrapper_pg_wait_on_conflict-test	PgWaitQueuesReadCommittedTest.TestDeadlockSimple
 pgwrapper_pg_wrapper-test	PgWrapperTest.TestCompactHistoryWithTxn
+tools_yb-admin-snapshot-schedule-test	Colocation/YbAdminSnapshotScheduleTestWithYsqlParam.PgsqlAlterTableSetOwner/*
 tools_yb-backup-cross-feature-test	YBDdlAtomicityBackupTest.*
 tools_yb-backup-test	YBBackupTest.BackupRaceWithDropColocatedTable
 tools_yb-backup-test	YBBackupTest.BackupRaceWithDropTable
