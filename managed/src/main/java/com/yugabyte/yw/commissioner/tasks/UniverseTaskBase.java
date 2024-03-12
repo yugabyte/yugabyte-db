@@ -1796,7 +1796,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   StringUtils.isNotBlank(providerDetails.sshUser)
                       ? providerDetails.sshUser
                       : cloudType.getSshUser();
-              params.sshPort = providerDetails.sshPort.toString();
               UniverseDefinitionTaskParams.Cluster cluster =
                   universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
               UUID imageBundleUUID =
@@ -1808,7 +1807,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         imageBundleUUID,
                         n.cloudInfo.region,
                         cluster.userIntent.providerType.toString());
-                params.sshPort = toOverwriteNodeProperties.getSshPort().toString();
                 params.sshUser = toOverwriteNodeProperties.getSshUser();
               }
 
@@ -1822,9 +1820,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               params.reinstall = reinstall;
               if (StringUtils.isNotEmpty(n.sshUserOverride)) {
                 params.sshUser = n.sshUserOverride;
-              }
-              if (n.sshPortOverride != null) {
-                params.sshPort = n.sshPortOverride.toString();
               }
               InstallNodeAgent task = createTask(InstallNodeAgent.class);
               task.initialize(params);
