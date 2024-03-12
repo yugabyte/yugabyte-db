@@ -336,7 +336,18 @@ public class PlatformReplicationManager {
                             // Send the platform backup to all followers.
                             Set<PlatformInstance> instancesToSync =
                                 remoteInstances.stream()
-                                    .filter(instance -> sendBackup(instance))
+                                    .filter(
+                                        instance -> {
+                                          try {
+                                            return sendBackup(instance);
+                                          } catch (Exception e) {
+                                            log.error(
+                                                "Exception {} sending back to instance {}",
+                                                e.getMessage(),
+                                                instance.getAddress());
+                                            return false;
+                                          }
+                                        })
                                     .collect(Collectors.toSet());
 
                             // Sync the HA cluster state to all followers that successfully received
@@ -344,12 +355,19 @@ public class PlatformReplicationManager {
                             // backup.
                             instancesToSync.forEach(
                                 instance -> {
-                                  Date lastLastBackup = instance.getLastBackup();
-                                  instance.updateLastBackup(localInstance.getLastBackup());
-                                  if (!replicationHelper.syncToRemoteInstance(instance)) {
-                                    instance.updateLastBackup(lastLastBackup);
+                                  try {
+                                    Date lastLastBackup = instance.getLastBackup();
+                                    instance.updateLastBackup(localInstance.getLastBackup());
+                                    if (!replicationHelper.syncToRemoteInstance(instance)) {
+                                      instance.updateLastBackup(lastLastBackup);
+                                      log.error(
+                                          "Error syncing config to remote instance {}",
+                                          instance.getAddress());
+                                    }
+                                  } catch (Exception e) {
                                     log.error(
-                                        "Error syncing config to remote instance {}",
+                                        "Exception {} syncing config to remote instance {}",
+                                        e.getMessage(),
                                         instance.getAddress());
                                   }
                                 });

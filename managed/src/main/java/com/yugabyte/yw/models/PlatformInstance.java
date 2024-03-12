@@ -225,8 +225,9 @@ public class PlatformInstance extends Model {
   }
 
   public static boolean isBackupOutdated(Duration replicationFrequency, Date lastBackupTime) {
+    // Means awaiting connection
     if (lastBackupTime == null) {
-      return true;
+      return false;
     }
     long backupAgeMillis = System.currentTimeMillis() - lastBackupTime.getTime();
     return backupAgeMillis
