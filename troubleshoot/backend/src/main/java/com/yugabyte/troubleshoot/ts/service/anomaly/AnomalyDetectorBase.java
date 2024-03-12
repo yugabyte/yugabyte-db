@@ -32,12 +32,9 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
   }
 
   protected Pair<Instant, Instant> calculateGraphStartEndTime(
-      Instant detectionStartTime,
-      Instant detectionEndTime,
-      Instant anomalyStartTime,
-      Instant anomalyEndTime) {
-    long startTime = detectionStartTime.getEpochSecond();
-    long endTime = detectionEndTime.getEpochSecond();
+      AnomalyDetectionContext context, Instant anomalyStartTime, Instant anomalyEndTime) {
+    long startTime = context.getStartTime().getEpochSecond();
+    long endTime = context.getEndTime().getEpochSecond();
 
     long effectiveAnomalyStartTime =
         anomalyStartTime != null ? anomalyStartTime.getEpochSecond() : startTime;
@@ -45,15 +42,23 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
         anomalyEndTime != null ? anomalyEndTime.getEpochSecond() : endTime;
     long anomalyMiddle = (effectiveAnomalyStartTime + effectiveAnomalyEndTime) / 2;
     long anomalySize = effectiveAnomalyEndTime - effectiveAnomalyStartTime;
-    long anomalyBasedStartTime = anomalyMiddle - anomalySize * 2;
-    long anomalyBasedEndTime = anomalyMiddle + anomalySize * 2;
+    long anomalySizeBasedStartTime = anomalyMiddle - anomalySize * 2;
+    long anomalySizeBasedEndTime = anomalyMiddle + anomalySize * 2;
 
-    if (anomalyBasedStartTime > startTime) {
-      startTime = anomalyBasedStartTime;
+    // 20 points before and after the anomaly should be good enough
+    long stepBasedStartTime = anomalyMiddle - context.getStepSeconds() * 20;
+    long stepBasedEndTime = anomalyMiddle + context.getStepSeconds() * 20;
+
+    long desiredStartTime = Math.min(anomalySizeBasedStartTime, stepBasedStartTime);
+    long desiredEndTime = Math.max(anomalySizeBasedEndTime, stepBasedEndTime);
+
+    if (desiredStartTime > startTime) {
+      startTime = desiredStartTime;
     }
-    if (anomalyBasedEndTime < endTime) {
-      endTime = anomalyBasedEndTime;
+    if (desiredEndTime < endTime) {
+      endTime = desiredEndTime;
     }
+
     return ImmutablePair.of(Instant.ofEpochSecond(startTime), Instant.ofEpochSecond(endTime));
   }
 
@@ -156,8 +161,7 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
                   ? Instant.ofEpochMilli(graphAnomaly.getEndTime())
                   : null;
           Pair<Instant, Instant> graphStartEndTime =
-              calculateGraphStartEndTime(
-                  context.getStartTime(), context.getEndTime(), anomalyStartTime, anomalyEndTime);
+              calculateGraphStartEndTime(context, anomalyStartTime, anomalyEndTime);
           Anomaly.AnomalyBuilder anomalyBuilder =
               Anomaly.builder()
                   .uuid(UUID.randomUUID())
