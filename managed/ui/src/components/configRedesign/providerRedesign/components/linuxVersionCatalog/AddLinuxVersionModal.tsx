@@ -242,10 +242,10 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
         <div>
           <Typography variant="body1">{t('form.portDetails')}</Typography>
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={2}>
+            <Grid item xs={3}>
               {t('form.sshUser')}
             </Grid>
-            <Grid item xs={10}>
+            <Grid item xs={9}>
               <YBInputField
                 control={formControl}
                 name={'details.sshUser'}
@@ -256,10 +256,10 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             </Grid>
           </Grid>
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={2}>
+            <Grid item xs={3}>
               {t('form.sshPort')}
             </Grid>
-            <Grid item xs={10}>
+            <Grid item xs={9}>
               <YBInputField
                 type="number"
                 control={formControl}
