@@ -12,6 +12,7 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 interface ReplicationFactorProps {
   disabled?: boolean;
   isPrimary: boolean;
+  isViewMode: boolean;
 }
 
 const useStyles = makeStyles(() => ({
@@ -27,7 +28,8 @@ const ASYNC_RF_MAX = 15;
 
 export const ReplicationFactor = ({
   disabled,
-  isPrimary
+  isPrimary,
+  isViewMode
 }: ReplicationFactorProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
@@ -77,7 +79,7 @@ export const ReplicationFactor = ({
                   key={factor}
                   className={classes.rfButton}
                   data-testid={`ReplicationFactor-option${factor}`}
-                  disabled={factor !== value && disabled}
+                  disabled={(factor !== value && disabled) || isViewMode}
                   variant={factor === value ? 'primary' : 'secondary'}
                   onClick={(e: any) => {
                     if (disabled) e.preventDefault();
@@ -100,6 +102,7 @@ export const ReplicationFactor = ({
               min: ASYNC_RF_MIN,
               max: ASYNC_RF_MAX
             }}
+            disabled={isViewMode}
             onChange={handleChange}
           />
         )}

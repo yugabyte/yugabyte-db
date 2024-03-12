@@ -23,9 +23,10 @@ import { TOAST_AUTO_DISMISS_INTERVAL } from './utils/constants';
 
 interface EditReadReplicaProps {
   uuid: string;
+  isViewMode: boolean;
 }
 
-export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
+export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) => {
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
@@ -39,6 +40,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
         initializeForm({
           clusterType: ClusterType.ASYNC,
           mode: ClusterModes.EDIT,
+          isViewMode,
           universeConfigureTemplate: _.cloneDeep(resp.universeDetails)
         });
         try {
@@ -106,6 +108,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
         onCancel={onCancel}
         onDeleteRR={() => setShowDeleteRRModal(true)} //Deleting existing RR (API)
         universeUUID={uuid}
+        isViewMode={isViewMode}
       />
     </>
   );

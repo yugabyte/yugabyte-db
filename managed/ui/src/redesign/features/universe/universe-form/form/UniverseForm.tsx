@@ -47,6 +47,7 @@ interface UniverseFormProps {
   submitLabel?: string;
   isNewUniverse?: boolean; // This flag is used only in new cluster creation flow - we don't have proper state params to differentiate
   universeUUID?: string;
+  isViewMode?: boolean;
 }
 
 export const UniverseForm: FC<UniverseFormProps> = ({
@@ -57,7 +58,8 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   onDeleteRR,
   submitLabel,
   universeUUID,
-  isNewUniverse = false
+  isNewUniverse = false,
+  isViewMode = false
 }) => {
   const classes = useFormMainStyles();
   const { t } = useTranslation();
@@ -108,7 +110,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
       // Validate primary form before switching to async
       if (!_.isEmpty(universeConfigureError))
         toast.error(universeConfigureError, { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
-      let isValid = await triggerValidation();
+      const isValid = await triggerValidation();
       isValid && switchClusterType();
     } else {
       //switching from async to primary
@@ -125,7 +127,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
         {!isNewUniverse && (
           <Typography className={classes.subHeaderFont}>
             <i className="fa fa-chevron-right"></i> &nbsp;
-            {isPrimary ? t('universeForm.editUniverse') : t('universeForm.configReadReplica')}
+            {isPrimary
+              ? isViewMode
+                ? t('universeForm.viewPrimary')
+                : t('universeForm.editUniverse')
+              : isViewMode
+              ? t('universeForm.viewReadReplica')
+              : t('universeForm.configReadReplica')}
           </Typography>
         )}
         {onClusterTypeChange && (
@@ -150,7 +158,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               {t('universeForm.rrTab')}
             </Box>
             {/* show during new universe creation only */}
-            {isNewUniverse && onDeleteRR && !!asyncFormData && (
+            {!isViewMode && isNewUniverse && onDeleteRR && !!asyncFormData && (
               <YBButton
                 className={classes.clearRRButton}
                 component={Link}
@@ -235,12 +243,12 @@ export const UniverseForm: FC<UniverseFormProps> = ({
                     if (isPrimary) return hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE);
                     // if the universe is already created , then we need update universe perm
                     // or else we need universe create perm
-                    return universeUUID === undefined ?
-                      hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE) :
-                      hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_UNIVERSE,
-                        onResource: universeUUID
-                      });
+                    return universeUUID === undefined
+                      ? hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE)
+                      : hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_UNIVERSE,
+                          onResource: universeUUID
+                        });
                   }
                   // for edit mode , we need universe.update perm
                   return hasNecessaryPerm({
@@ -293,9 +301,11 @@ export const UniverseForm: FC<UniverseFormProps> = ({
         <form key={clusterType} onSubmit={formMethods.handleSubmit(onSubmit)}>
           <Box className={classes.formHeader}>{renderHeader()}</Box>
           <Box className={classes.formContainer}>{renderSections()}</Box>
-          <Box className={classes.formFooter} mt={4}>
-            {renderFooter()}
-          </Box>
+          {!isViewMode && (
+            <Box className={classes.formFooter} mt={4}>
+              {renderFooter()}
+            </Box>
+          )}
         </form>
       </FormProvider>
     </Box>

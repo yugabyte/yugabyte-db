@@ -68,7 +68,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
 
   //form context
   const { getValues } = useFormContext<UniverseFormData>();
-  const { mode, clusterType, newUniverse, universeConfigureTemplate } = useContext(
+  const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
@@ -92,11 +92,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <K8NodeSpecField
               isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
+              disabled={isViewMode}
             />
             <K8VolumeInfoField
               isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
-              disableVolumeSize={!isNodeResizable}
+              disableVolumeSize={!isNodeResizable || isViewMode}
               disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
               maxVolumeCount={maxVolumeCount}
             />
@@ -106,11 +107,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <InstanceTypeField
               isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
+              disabled={isViewMode}
             />
             <VolumeInfoField
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
-              disableVolumeSize={!isNodeResizable}
+              disableVolumeSize={!isNodeResizable || isViewMode}
               disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
               disableStorageType={!isCreatePrimary && !isCreateRR}
               disableIops={!isCreatePrimary && !isCreateRR}

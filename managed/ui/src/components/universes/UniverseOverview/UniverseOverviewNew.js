@@ -474,7 +474,7 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-    
+
     if (isNullOrEmpty(currentUniverse)) return;
 
     const clusterWidgetSize = isDedicatedNodes ? 4 : this.hasReadReplica(currentUniverse) ? 3 : 4;
@@ -599,11 +599,11 @@ export default class UniverseOverviewNew extends Component {
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
       ? [
-        {
-          metric: 'container_volume_max_usage',
-          name: 'size'
-        }
-      ]
+          {
+            metric: 'container_volume_max_usage',
+            name: 'size'
+          }
+        ]
       : null;
     const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
@@ -888,13 +888,13 @@ export default class UniverseOverviewNew extends Component {
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
-            <Col lg={4} md={6} sm={8} xs={12}>
-              <DBVersionWidget
-                higherVersionCount={updateAvailable}
-                isRollBackFeatureEnabled={isRollBackFeatureEnabled}
-                failedTaskDetails={failedTask}
-              />
-            </Col>
+          <Col lg={4} md={6} sm={8} xs={12}>
+            <DBVersionWidget
+              higherVersionCount={updateAvailable}
+              isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+              failedTaskDetails={failedTask}
+            />
+          </Col>
         </Row>
         <Row>
           {this.getPrimaryClusterWidget(universeInfo, isRollBackFeatureEnabled)}
