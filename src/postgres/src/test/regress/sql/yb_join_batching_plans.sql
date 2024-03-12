@@ -1,3 +1,5 @@
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+
 -- This file is meant to test and track the optimizer's plan choices with BNL
 -- enabled. yb_join_batching on the other hand is meant to test BNL execution
 -- and planning when we force the creation of a BNL.

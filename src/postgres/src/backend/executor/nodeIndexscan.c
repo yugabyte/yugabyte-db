@@ -2015,6 +2015,7 @@ yb_init_index_scandesc(IndexScanState *node)
 			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		scandesc->fetch_ybctids_only = false;
 	}
 }
 
