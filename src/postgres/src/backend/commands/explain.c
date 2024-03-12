@@ -3636,18 +3636,42 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 	{
 		long		spacePeakKb = (hinstrument.space_peak + 1023) / 1024;
 
+		/*
+		 * Hash joins have some non-deterministic fields and some deterministic
+		 * fields.
+		 * - Original Hash Buckets and Original Hash Batches are computed at the
+		 *   beginning by ExecChooseHashTableSize.
+		 * - Hash Buckets may be updated based on the number of tuples. This
+		 *   is consistent across multiple runs.
+		 * - Hash Batches and Memory Usage depend on the size of each tuple,
+		 *   which may vary slightly.
+		 */
+		bool		show_variable_fields = !IsYugaByteEnabled() ||
+						!yb_explain_hide_non_deterministic_fields;
+
 		if (es->format != EXPLAIN_FORMAT_TEXT)
 		{
 			ExplainPropertyInteger("Hash Buckets", NULL,
 								   hinstrument.nbuckets, es);
 			ExplainPropertyInteger("Original Hash Buckets", NULL,
 								   hinstrument.nbuckets_original, es);
-			ExplainPropertyInteger("Hash Batches", NULL,
-								   hinstrument.nbatch, es);
+			if (show_variable_fields)
+				ExplainPropertyInteger("Hash Batches", NULL,
+									   hinstrument.nbatch, es);
 			ExplainPropertyInteger("Original Hash Batches", NULL,
 								   hinstrument.nbatch_original, es);
-			ExplainPropertyInteger("Peak Memory Usage", "kB",
-								   spacePeakKb, es);
+			if (show_variable_fields)
+				ExplainPropertyInteger("Peak Memory Usage", "kB",
+									   spacePeakKb, es);
+		}
+		else if (!show_variable_fields)
+		{
+			appendStringInfoSpaces(es->str, es->indent * 2);
+			appendStringInfo(es->str,
+							 "Buckets: %d (originally %d)  Original Batches: %d\n",
+							 hinstrument.nbuckets,
+							 hinstrument.nbuckets_original,
+							 hinstrument.nbatch_original);
 		}
 		else if (hinstrument.nbatch_original != hinstrument.nbatch ||
 				 hinstrument.nbuckets_original != hinstrument.nbuckets)
