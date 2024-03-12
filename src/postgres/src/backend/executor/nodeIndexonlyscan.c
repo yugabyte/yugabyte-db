@@ -760,6 +760,7 @@ yb_init_indexonly_scandesc(IndexOnlyScanState *node)
 			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		scandesc->fetch_ybctids_only = false;
 	}
 }
 
