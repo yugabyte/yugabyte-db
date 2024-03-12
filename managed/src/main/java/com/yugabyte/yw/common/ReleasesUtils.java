@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
@@ -215,7 +216,7 @@ public class ReleasesUtils {
     }
   }
 
-  private ExtractedMetadata metadataFromName(String fileName) {
+  public ExtractedMetadata metadataFromName(String fileName) {
     Pattern ybPackagePattern = Pattern.compile(YB_PACKAGE_REGEX);
     Pattern ybHelmChartPattern = Pattern.compile(YB_HELM_PACKAGE_REGEX);
 
@@ -248,5 +249,72 @@ public class ReleasesUtils {
     }
     em.release_type = releaseTypeMap.getOrDefault(versionMatcher.group(), "PREVIEW");
     return em;
+  }
+
+  public ReleaseMetadata releaseToReleaseMetadata(Release release) {
+    ReleaseMetadata metadata = ReleaseMetadata.create(release.getVersion());
+    for (ReleaseArtifact artifact : release.getArtifacts()) {
+      String path = null;
+      if (artifact.getPackageFileID() != null) {
+        metadata.filePath = ReleaseLocalFile.get(artifact.getPackageFileID()).getLocalFilePath();
+        path = metadata.filePath;
+      }
+      if (artifact.getS3File() != null) {
+        metadata.s3 = s3LocationFroms3File(artifact);
+        path = artifact.getS3File().path;
+      } else if (artifact.getGcsFile() != null) {
+        metadata.gcs = gcsLocationFromGcsFile(artifact);
+        path = artifact.getGcsFile().path;
+      } else if (artifact.getPackageURL() != null) {
+        metadata.http = httpLocationFromUrl(artifact);
+        path = artifact.getPackageURL();
+      }
+      metadata = metadata.withPackage(path, artifact.getArchitecture());
+    }
+    return metadata;
+  }
+
+  public ReleaseMetadata.S3Location s3LocationFroms3File(ReleaseArtifact artifact) {
+    ReleaseMetadata.S3Location s3Location = new ReleaseMetadata.S3Location();
+    ReleaseArtifact.S3File s3File = artifact.getS3File();
+    s3Location.accessKeyId = s3File.accessKeyId;
+    s3Location.secretAccessKey = s3File.secretAccessKey;
+    s3Location.paths = new ReleaseMetadata.PackagePaths();
+    if (artifact.isKubernetes()) {
+      s3Location.paths.helmChart = s3File.path;
+      s3Location.paths.helmChartChecksum = artifact.getSha256();
+    } else {
+      s3Location.paths.x86_64 = s3File.path;
+      s3Location.paths.x86_64_checksum = artifact.getSha256();
+    }
+    return s3Location;
+  }
+
+  public ReleaseMetadata.GCSLocation gcsLocationFromGcsFile(ReleaseArtifact artifact) {
+    ReleaseMetadata.GCSLocation gcsLocation = new ReleaseMetadata.GCSLocation();
+    ReleaseArtifact.GCSFile gcsFile = artifact.getGcsFile();
+    gcsLocation.credentialsJson = gcsFile.credentialsJson;
+    gcsLocation.paths = new ReleaseMetadata.PackagePaths();
+    if (artifact.isKubernetes()) {
+      gcsLocation.paths.helmChart = gcsFile.path;
+      gcsLocation.paths.helmChartChecksum = artifact.getSha256();
+    } else {
+      gcsLocation.paths.x86_64 = gcsFile.path;
+      gcsLocation.paths.x86_64_checksum = artifact.getSha256();
+    }
+    return gcsLocation;
+  }
+
+  public ReleaseMetadata.HttpLocation httpLocationFromUrl(ReleaseArtifact artifact) {
+    ReleaseMetadata.HttpLocation httpLocation = new ReleaseMetadata.HttpLocation();
+    httpLocation.paths = new ReleaseMetadata.PackagePaths();
+    if (artifact.isKubernetes()) {
+      httpLocation.paths.helmChart = artifact.getPackageURL();
+      httpLocation.paths.helmChartChecksum = artifact.getSha256();
+    } else {
+      httpLocation.paths.x86_64 = artifact.getPackageURL();
+      httpLocation.paths.x86_64_checksum = artifact.getSha256();
+    }
+    return httpLocation;
   }
 }
