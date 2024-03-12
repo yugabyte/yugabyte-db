@@ -1231,18 +1231,18 @@ STRICT STABLE PARALLEL SAFE
 AS 'jsonb_path_query_first_tz';
 
 CREATE OR REPLACE FUNCTION
-  yb_pg_generate_bundle (queryid int8)
+  yb_start_diagnostics (queryid int8)
 RETURNS boolean
 LANGUAGE INTERNAL
 STABLE PARALLEL SAFE
-AS 'yb_pg_generate_bundle';
+AS 'yb_start_diagnostics';
 
 CREATE OR REPLACE FUNCTION
-  yb_pg_stop_bundle (queryid int8)
-RETURNS boolean
+  yb_finish_diagnostics (queryid int8)
+RETURNS text
 LANGUAGE INTERNAL
 STABLE PARALLEL SAFE
-AS 'yb_pg_stop_bundle';
+AS 'yb_finish_diagnostics';
 
 --
 -- The default permissions for functions mean that anyone can execute them.
