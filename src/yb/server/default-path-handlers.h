@@ -70,4 +70,6 @@ void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);
 
 void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server);
 
+void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCallbackRegistry::WebResponse* resp);
+
 } // namespace yb

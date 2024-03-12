@@ -43,6 +43,8 @@
 
 #include "yb/server/webserver.h"
 
+#include "default-path-handlers.h"
+
 #include <stdio.h>
 
 #include <algorithm>
@@ -691,21 +693,159 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
                   ? "Strict-Transport-Security: max-age=31536000\r\n"
                   : "";
 
-  sq_printf(
-      connection,
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Type: %s\r\n"
-      "Content-Length: %zd\r\n"
-      "X-Content-Type-Options: nosniff\r\n"
-      "%s"
-      "%s"
-      "Access-Control-Allow-Origin: *\r\n"
-      "\r\n",
-      content_type, str.length(), content_encoding, hsts);
+  string initialpath;
+  GetFullLogFilename(google::INFO, &initialpath);
+  string toRemove = "/yb-data/tserver/logs/yb-tserver.INFO";
+  std::string folderpath = initialpath;
+    size_t pos = folderpath.find(toRemove);
+    if (pos != std::string::npos) {
+        folderpath.erase(pos, toRemove.length());
+    }
+  folderpath = folderpath + "/query-diagnostics";
+  FILE* fptr = fopen("/Users/shubhankarvshastri/test1.txt","a");
+	fprintf(fptr,"1st %s",folderpath.c_str());
+  fclose(fptr);
+  // handle diagnostics
+  if (strcmp(request_info->uri, "/query-diagnostics") == 0) {
+    // const char* query_id = NULL;
+    // if (request_info->query_string &&
+    //     strstr(request_info->query_string, "query_id=") == request_info->query_string) {
+    //   query_id = request_info->query_string + strlen("query_id=");
+    // }
 
-  // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
-  sq_write(connection, str.c_str(), str.length());
-  return SQ_HANDLED_OK;
+
+
+    if (request_info->query_string == NULL) {
+      LOG(INFO) << "Could not find query_id & timestamp parameter";
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, str.length(), content_encoding, hsts);
+
+      sq_write(connection, str.c_str(), str.length());
+      return SQ_HANDLED_OK;
+    }
+
+    std::string query_string = request_info->query_string;
+    std::string query_id, timestamp;
+    size_t pos = query_string.find("query_id=");
+    if (pos != std::string::npos) {
+      size_t end = query_string.find("&", pos);
+      query_id = query_string.substr(pos + 9, end - pos - 9);
+    }
+    pos = query_string.find("timestamp=");
+    if (pos != std::string::npos) {
+      size_t end = query_string.find("&", pos);
+      timestamp = query_string.substr(pos + 10, end - pos - 10);
+    }
+
+    // If the query_id parameter was not found, log an error and return
+    if (query_id.size() == 0 || timestamp.size() == 0) {
+      LOG(INFO) << "Could not find query_id/timestamp parameter";
+      // return SQ_HANDLED_CLOSE_CONNECTION;
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, str.length(), content_encoding, hsts);
+
+      sq_write(connection, str.c_str(), str.length());
+      return SQ_HANDLED_OK;
+    }
+    //query_id and timestamp are now available
+    else {
+      // checking if such a folder exists.
+      char folder_path[1000];
+      snprintf(
+          folder_path, 1000,
+          "%s/%s/%s",
+          folderpath.c_str(), query_id.c_str(), timestamp.c_str());
+      if (chdir(folder_path) != 0) {
+        LOG(ERROR) << "Could not find this folder: " << folder_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
+
+      content_type = "application/x-tar";
+      char tar_file_path[1000];
+      snprintf(
+          tar_file_path, 1000,
+          "%s/%s_%s.tar",
+          folderpath.c_str(), query_id.c_str(), timestamp.c_str());
+
+      FILE* tar_file = fopen(tar_file_path, "rb");
+      if (tar_file == NULL) {
+        LOG(ERROR) << "Could not open tar file: " << tar_file_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
+
+      fseek(tar_file, 0, SEEK_END);
+      size_t tar_file_size = ftell(tar_file);
+      rewind(tar_file);
+
+      char* buffer = (char*)malloc(tar_file_size + 1);
+      if (buffer == NULL) {
+        LOG(ERROR) << "Could not allocate buffer for tar file: " << tar_file_path;
+        return SQ_HANDLED_CLOSE_CONNECTION;
+      }
+      fread(buffer, tar_file_size, 1, tar_file);
+      fclose(tar_file);
+
+      // for naming the file download.
+      char content_disposition[1024];
+      snprintf(
+          content_disposition, sizeof(content_disposition),
+          "Content-Disposition: attachment; filename=\"%s_%s.tar\"", query_id.c_str(),
+          timestamp.c_str());
+
+      sq_printf(
+          connection,
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: %s\r\n"
+          "Content-Length: %zd\r\n"
+          "X-Content-Type-Options: nosniff\r\n"
+          "%s\r\n"  // Content-Disposition header
+          "%s"
+          "%s"
+          "Access-Control-Allow-Origin: *\r\n"
+          "\r\n",
+          content_type, tar_file_size, content_disposition, content_encoding, hsts);
+
+      sq_write(connection, buffer, tar_file_size);
+
+      free(buffer);
+      return SQ_HANDLED_OK;
+    }
+
+  } else {
+    sq_printf(
+        connection,
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zd\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "%s"
+        "%s"
+        "Access-Control-Allow-Origin: *\r\n"
+        "\r\n",
+        content_type, str.length(), content_encoding, hsts);
+
+    // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
+    sq_write(connection, str.c_str(), str.length());
+    return SQ_HANDLED_OK;
+  }
 }
 
 void Webserver::Impl::RegisterPathHandler(const string& path,

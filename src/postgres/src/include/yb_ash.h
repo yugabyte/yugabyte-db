@@ -29,6 +29,7 @@
 #include "storage/proc.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
+#include "pg_yb_utils.h"
 
 /* GUC variables */
 extern bool yb_ash_enable_infra;
@@ -53,5 +54,8 @@ extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
+
+extern void dumpAshData(int64_t queryId,TimestampTz start , TimestampTz end,char *result_log_path);
+extern void dumpFullAshData(TimestampTz start , TimestampTz end,char *result_log_path);
 
 #endif							/* YB_ASH_H */
