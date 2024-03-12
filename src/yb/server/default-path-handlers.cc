@@ -706,7 +706,6 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
     // std::string tar_command = "tar -cf " + tar_file_path + " -- " + query_id;
 
 
-
     std::string query_diagnostics_path = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/";
     std::string query_id = req.parsed_args.find("query_id")->second;
     std::string timestamp = req.parsed_args.find("timestamp")->second;
@@ -719,8 +718,11 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
 
 
     std::string query_directory_path = query_diagnostics_path + query_id + "/" + timestamp;
+    std::string new_query_directory_path = query_diagnostics_path + query_id + "/" + query_id + "_" + timestamp;
+    std::filesystem::rename(query_directory_path, new_query_directory_path);
     std::string tar_file_path = query_diagnostics_path + query_id + "_" + timestamp + ".tar";
-    std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
+    // std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
+    std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + query_id + "_" + timestamp;
 
     int result = system(tar_command.c_str());
     if (result != 0) {
@@ -728,6 +730,7 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
         resp->code = 500; // Internal Server Error
         return;
     }
+    std::filesystem::rename(new_query_directory_path, query_directory_path);
     resp->code = 200;
 }
 

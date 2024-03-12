@@ -695,14 +695,6 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(
 
   // handle diagnostics
   if (strcmp(request_info->uri, "/query-diagnostics") == 0) {
-    // const char* query_id = NULL;
-    // if (request_info->query_string &&
-    //     strstr(request_info->query_string, "query_id=") == request_info->query_string) {
-    //   query_id = request_info->query_string + strlen("query_id=");
-    // }
-
-
-
     if (request_info->query_string == NULL) {
       LOG(INFO) << "Could not find query_id & timestamp parameter";
       sq_printf(

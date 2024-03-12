@@ -1327,7 +1327,7 @@ AS 'yb_start_diagnostics';
 
 CREATE OR REPLACE FUNCTION
   yb_finish_diagnostics (queryid int8)
-RETURNS boolean
+RETURNS text
 LANGUAGE INTERNAL
 STABLE PARALLEL SAFE
 AS 'yb_finish_diagnostics';

@@ -10495,7 +10495,7 @@
 
   { oid => '8067', descr => 'stop bundle generation and print details',
   proname => 'yb_finish_diagnostics', provolatile => 'v', proisstrict => 'f', proparallel => 's',
-  prorettype => 'bool', proargtypes => 'int8', 
+  prorettype => 'text', proargtypes => 'int8', 
   proargnames => '{queryid}',
   prosrc => 'yb_finish_diagnostics', },
 ]

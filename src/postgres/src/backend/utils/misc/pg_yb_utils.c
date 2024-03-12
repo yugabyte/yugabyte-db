@@ -4687,13 +4687,6 @@ InitSharedStruct(void)
 Datum
 yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a specific query id
 {
-	//This function is mainly for setting variables.
-	//do we want this superuser thing?
-	// if (!superuser())
-	// 	ereport(ERROR,
-	// 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-	// 			 (errmsg("only superusers can generate bundles"))));
-
 	start = GetCurrentTimestamp();
 	const char* timeStr = my_timestamptz_to_str(start);
 	bool is_queryid_null = PG_ARGISNULL(0);
@@ -4709,7 +4702,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	if(map == NULL)
 		create_shared_hashtable();
 
-	srand(108);
+	srand(108); // setting seed for 1% logging of explain plans.
 	//check if a bundle is already started for this queryid
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(result){
@@ -4743,15 +4736,8 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 Datum
 yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all details acquired for a specific query id
 {
-	// This is for logging.
-	// if (!superuser())
-	// 	ereport(ERROR,
-	// 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-	// 			 (errmsg("only superusers can stop and print bundle details"))));
 	bool is_queryid_null = PG_ARGISNULL(0);
 	int64 queryid = is_queryid_null ? 0 : PG_GETARG_INT64(0);
-	
-
 	//maybe just return false if the shared structs are not
 	if(map == NULL)
 		create_shared_hashtable();
@@ -4770,14 +4756,14 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	// 	PG_RETURN_BOOL(false);
 	// }
 
-
-
 	end = GetCurrentTimestamp();
 	bundleptr(0,queryid,"-",0,0,NULL,0,0,result);
-	dumpAshData(queryid ,result->start_time ,end,result->log_path);
 	explainptr(0,NULL,result);
 	schemaptr(0,NULL,result);
-	dumpFullAshData(result->start_time ,end,result->log_path);
+	if(YBEnableAsh()){
+		dumpAshData(queryid ,result->start_time ,end,result->log_path);
+		dumpFullAshData(result->start_time ,end,result->log_path);
+	}
 	//resetting the values
 	remove_from_shared_hashtable(map, queryid);
 	sharedBundleStruct->totalBundleStarted--;
@@ -4786,5 +4772,8 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	if(sharedBundleStruct->totalBundleStarted == 0){
 		sharedBundleStruct->debuggingBundle = false;
 	}
-	PG_RETURN_BOOL(true);
+
+	char returnStr[100];
+	sprintf(returnStr, "/query-diagnostics?query_id=%ld&timestamp=%s", result->queryid, my_timestamptz_to_str(result->start_time));
+	PG_RETURN_TEXT_P(cstring_to_text(returnStr));
 }
