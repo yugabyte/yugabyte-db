@@ -12,6 +12,7 @@
   }
 
   button {
+    transform: translate(300px, 0);
     span {
       >div {
         margin: 0 !important;
@@ -31,6 +32,24 @@
           line-height: 26px;
         }
       }
+    }
+  }
+}
+
+.ask-ai-top {
+  margin-left: 14px;
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  >span{
+    font-style: normal;
+    gap: 5px;
+    cursor: pointer;
+    margin-left: 10px;
+    >img{
+      width: 18px!important;
     }
   }
 }
