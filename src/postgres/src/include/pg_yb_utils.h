@@ -634,6 +634,14 @@ extern bool yb_use_hash_splitting_by_default;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
+// typedef struct pgssEntryBundle
+// {
+// 	pgssHashKey	key;			/* hash key of entry - MUST BE FIRST */
+// 	Counters	counters;		/* the statistics for this query */
+// } pgssEntryBundle;
+
+extern int8 bundleid;
+
 /*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.

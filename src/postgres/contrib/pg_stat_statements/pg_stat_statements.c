@@ -1717,6 +1717,14 @@ pgss_store(const char *query, uint64 queryId,
 		SpinLockRelease(&e->mutex);
 	}
 
+	//if (bundleid==queryId)
+	{
+		FILE* fptr = fopen("/Users/shubhankarvshastri/test.txt","a");
+		fprintf(fptr,"PG Stat Statements for the given query id \n");
+		fprintf(fptr, "e->counters.min_time %f \n" , entry->counters.min_time);
+		fclose(fptr);
+	}
+
 done:
 	LWLockRelease(pgss->lock);
 
