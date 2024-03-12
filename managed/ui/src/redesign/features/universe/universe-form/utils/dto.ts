@@ -843,7 +843,7 @@ export interface ImageBundle {
     sshPort: number;
   };
   useAsDefault: boolean;
-  metadata: {
+  metadata?: {
     type: ImageBundleType;
     version: string;
   };
