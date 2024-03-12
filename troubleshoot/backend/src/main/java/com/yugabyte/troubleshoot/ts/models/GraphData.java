@@ -18,6 +18,7 @@ public class GraphData {
   private String tableId;
   private String namespaceName;
   private String namespaceId;
+  private String nodePrefix;
   private String type;
   private Map<String, String> labels;
   @JsonIgnore private List<GraphPoint> points = new ArrayList<>();

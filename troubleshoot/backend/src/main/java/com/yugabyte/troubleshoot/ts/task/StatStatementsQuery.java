@@ -18,6 +18,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -66,7 +68,13 @@ public class StatStatementsQuery {
   private static final String YB_LATENCY_HISTOGRAM = "yb_latency_histogram";
 
   private static final DateTimeFormatter TIMESTAMP_FORMAT =
-      DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSSSSSxxx");
+      new DateTimeFormatterBuilder()
+          .append(DateTimeFormatter.ISO_LOCAL_DATE)
+          .appendLiteral('T')
+          .appendPattern("HH:mm:ss")
+          .appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true)
+          .appendPattern("xxx")
+          .toFormatter();
 
   final Map<UUID, UniverseProgress> universesProcessStartTime = new ConcurrentHashMap<>();
 
@@ -320,13 +328,17 @@ public class StatStatementsQuery {
       stats.setRowsAvg((double) (newRows - oldRows) / calls);
       stats.setAvgLatency((newTime - oldTime) / calls);
       // Only read old values in case it's not a reset
-      if (oldValue.has(YB_LATENCY_HISTOGRAM)) {
+      if (calls > 0 && oldValue.has(YB_LATENCY_HISTOGRAM)) {
         List<HistogramInterval> oldHistogram = readHistogram(oldValue);
         oldHistogramMap =
             oldHistogram.stream()
                 .collect(
                     Collectors.toMap(HistogramInterval::getBounds, HistogramInterval::getCount));
       }
+    }
+    if (calls <= 0) {
+      // Don't need to calculate latencies as they're NaN
+      return;
     }
     List<HistogramInterval> newHistogram = readHistogram(newValue);
     long callsCount = 0;
@@ -335,13 +347,13 @@ public class StatStatementsQuery {
       Double upperBound =
           Double.valueOf(bounds.substring(bounds.indexOf(',') + 1, bounds.indexOf(')')));
       callsCount += (histogramInterval.count - oldHistogramMap.getOrDefault(bounds, 0L));
-      if (stats.getMeanLatency() == null && callsCount >= calls * 0.5) {
+      if (stats.getMeanLatency().isNaN() && callsCount >= calls * 0.5) {
         stats.setMeanLatency(upperBound);
       }
-      if (stats.getP90Latency() == null && callsCount >= calls * 0.9) {
+      if (stats.getP90Latency().isNaN() && callsCount >= calls * 0.9) {
         stats.setP90Latency(upperBound);
       }
-      if (stats.getP99Latency() == null && callsCount >= calls * 0.99) {
+      if (stats.getP99Latency().isNaN() && callsCount >= calls * 0.99) {
         stats.setP99Latency(upperBound);
       }
       if (callsCount == calls) {

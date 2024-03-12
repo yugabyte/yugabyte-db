@@ -255,7 +255,7 @@ public class TsStorageGraphService implements GraphSourceIF {
     TsStorageGraphConfig.FilterColumn column = config.getFilterColumns().get(filterName);
     return switch (column.getType()) {
       case type_text -> stringValues;
-      case type_int -> stringValues.stream().map(Integer::valueOf).toList();
+      case type_int -> stringValues.stream().map(Long::valueOf).toList();
       case type_float -> stringValues.stream().map(Double::valueOf).toList();
       case type_bool -> stringValues.stream().map(Boolean::valueOf).toList();
       case type_uuid -> stringValues.stream().map(UUID::fromString).toList();

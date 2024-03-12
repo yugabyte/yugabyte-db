@@ -92,6 +92,7 @@
     "startTime": "2024-03-07T00:30:19Z",
     "endTime": "2024-03-07T00:40:07Z",
     "graphStartTime": "2024-03-07T00:15:37Z",
-    "graphEndTime": "2024-03-07T00:54:49Z"
+    "graphEndTime": "2024-03-07T00:54:49Z",
+    "graphStepSeconds": 35
   }
 ]

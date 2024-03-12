@@ -50,9 +50,11 @@ public class QueryLatencyDetectorTest {
 
     AnomalyDetector.AnomalyDetectionResult result =
         queryLatencyDetector.findAnomalies(
-            UUID.fromString("9ad06d1f-0355-4e3c-a42c-d052b38af7bc"),
-            Instant.parse("2024-01-18T15:00:00Z"),
-            Instant.parse("2024-01-18T19:00:00Z"));
+            AnomalyDetector.AnomalyDetectionContext.builder()
+                .universeUuid(UUID.fromString("9ad06d1f-0355-4e3c-a42c-d052b38af7bc"))
+                .startTime(Instant.parse("2024-01-18T15:00:00Z"))
+                .endTime(Instant.parse("2024-01-18T19:00:00Z"))
+                .build());
 
     assertThat(result.isSuccess()).isTrue();
     assertThat(result.getErrorMessages()).isEmpty();

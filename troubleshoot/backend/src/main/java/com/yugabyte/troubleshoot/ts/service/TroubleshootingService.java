@@ -5,6 +5,7 @@ import com.yugabyte.troubleshoot.ts.models.AnomalyMetadata;
 import com.yugabyte.troubleshoot.ts.service.anomaly.AnomalyDetector;
 import com.yugabyte.troubleshoot.ts.service.anomaly.AnomalyMetadataProvider;
 import io.ebean.Database;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +19,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TroubleshootingService {
 
-  private final Database database;
+  private static final long MAX_STEP_SECONDS = Duration.ofMinutes(10).toSeconds();
+
   private final List<AnomalyDetector> anomalyDetectors;
   private final AnomalyMetadataProvider anomalyMetadataProvider;
   private final ThreadPoolTaskExecutor anomalyDetectionExecutor;
@@ -28,7 +30,6 @@ public class TroubleshootingService {
       List<AnomalyDetector> anomalyDetectors,
       AnomalyMetadataProvider anomalyMetadataProvider,
       ThreadPoolTaskExecutor anomalyDetectionExecutor) {
-    this.database = database;
     this.anomalyDetectors = anomalyDetectors;
     this.anomalyMetadataProvider = anomalyMetadataProvider;
     this.anomalyDetectionExecutor = anomalyDetectionExecutor;
@@ -40,10 +41,21 @@ public class TroubleshootingService {
 
   public List<Anomaly> findAnomalies(UUID universeUuid, Instant startTime, Instant endTime) {
     List<Future<AnomalyDetector.AnomalyDetectionResult>> futures = new ArrayList<>();
+    // We don't want graph resolution to be too bad even if we check 2 weeks period.
+    long step =
+        Math.min(
+            (endTime.getEpochSecond()
+                - startTime.getEpochSecond() / GraphService.GRAPH_POINTS_DEFAULT),
+            MAX_STEP_SECONDS);
+    AnomalyDetector.AnomalyDetectionContext context =
+        AnomalyDetector.AnomalyDetectionContext.builder()
+            .universeUuid(universeUuid)
+            .startTime(startTime)
+            .endTime(endTime)
+            .stepSeconds(step)
+            .build();
     for (AnomalyDetector detector : anomalyDetectors) {
-      futures.add(
-          anomalyDetectionExecutor.submit(
-              () -> detector.findAnomalies(universeUuid, startTime, endTime)));
+      futures.add(anomalyDetectionExecutor.submit(() -> detector.findAnomalies(context)));
     }
     List<Anomaly> result = new ArrayList<>();
     for (Future<AnomalyDetector.AnomalyDetectionResult> future : futures) {

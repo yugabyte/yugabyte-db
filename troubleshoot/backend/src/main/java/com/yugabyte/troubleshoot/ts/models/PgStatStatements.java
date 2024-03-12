@@ -39,23 +39,23 @@ public class PgStatStatements extends Model {
   private long queryId;
 
   @CsvField(pos = 7, converterType = DoubleConverter.class)
-  private double rps;
+  private double rps = Double.NaN;
 
   @CsvField(pos = 8, converterType = DoubleConverter.class)
-  private double rowsAvg;
+  private double rowsAvg = Double.NaN;
 
   @CsvField(pos = 9, converterType = DoubleConverter.class)
-  private double avgLatency;
+  private double avgLatency = Double.NaN;
 
   @CsvField(pos = 10, converterType = DoubleConverter.class)
-  private Double meanLatency;
+  private Double meanLatency = Double.NaN;
 
   @CsvField(pos = 11, converterType = DoubleConverter.class)
-  private Double p90Latency;
+  private Double p90Latency = Double.NaN;
 
   @CsvField(pos = 12, converterType = DoubleConverter.class)
-  private Double p99Latency;
+  private Double p99Latency = Double.NaN;
 
   @CsvField(pos = 13, converterType = DoubleConverter.class)
-  private Double maxLatency;
+  private Double maxLatency = Double.NaN;
 }
