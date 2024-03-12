@@ -77,6 +77,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_test.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 
@@ -2867,23 +2868,26 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
   return document;
 }
 
-Result<rapidjson::Document> ClusterAdminClient::CloneFromSnapshotSchedule(
-    const SnapshotScheduleId& schedule_id, const string& target_namespace_name,
+Result<rapidjson::Document> ClusterAdminClient::CloneNamespace(
+    const TypedNamespaceName& source_namespace, const string& target_namespace_name,
     HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
   RpcController rpc;
   rpc.set_deadline(deadline);
-  master::CloneFromSnapshotScheduleRequestPB req;
-  master::CloneFromSnapshotScheduleResponsePB resp;
-  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  master::CloneNamespaceRequestPB req;
+  master::CloneNamespaceResponsePB resp;
+  master::NamespaceIdentifierPB source_namespace_identifier;
+  source_namespace_identifier.set_name(source_namespace.name);
+  source_namespace_identifier.set_database_type(source_namespace.db_type);
+  *req.mutable_source_namespace() = source_namespace_identifier;
   req.set_target_namespace_name(target_namespace_name);
   req.set_restore_ht(restore_at.ToUint64());
 
-  Status s = master_backup_proxy_->CloneFromSnapshotSchedule(req, &resp, &rpc);
+  Status s = master_backup_proxy_->CloneNamespace(req, &resp, &rpc);
   if (!s.ok()) {
     RETURN_NOT_OK_PREPEND(
-        s, Format("Failed to clone namespace from schedule: $0", schedule_id.ToString()));
+        s, Format("Failed to clone namespace $0", source_namespace.name));
   }
 
   if (resp.has_error()) {
