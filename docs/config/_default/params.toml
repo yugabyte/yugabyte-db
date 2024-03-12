@@ -74,6 +74,8 @@ version_menu_pagelinks = true
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.19"
   preview_version_slug = "stable"
+  # To disable list icons for particular page, define `hideListIcons: true` on that page params.
+  list_icons = true
 
 # Header logo link
 [yb.navbar_logo]
