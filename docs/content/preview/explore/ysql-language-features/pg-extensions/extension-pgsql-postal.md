@@ -21,7 +21,35 @@ First install `libpostal` [from source](https://github.com/openvenues/libpostal)
 `make -j$(nproc) && sudo make install`
 ```
 
-To build `pgsql-postal` against the correct PostgreSQL version for YugabyteDB compatibility, install PostgreSQL 11 on your system as described in the [PostGIS example](../extension-postgis/).
+To build `pgsql-postal` against the correct PostgreSQL version for YugabyteDB compatibility, install PostgreSQL 11 on the your system using the following instructions applicable to your operating system.
+
+### macOS
+
+There are two ways to install PostgreSQL on macOS:
+
+* Download and install [Postgres.app](https://postgresapp.com/)
+
+* Or, install with Homebrew:
+
+    ```sh
+    brew install postgres
+    ```
+
+### Ubuntu
+
+Add the [PostgreSQL APT sources](https://www.postgresql.org/download/linux/ubuntu/). Then, use `apt` to install as follows:
+
+```sh
+sudo apt-get install postgresql-11
+```
+
+### CentOS
+
+Get the YUM repository from the [PostgreSQL website](https://www.postgresql.org/download/linux/redhat/). Then, use `yum` or `dnf` to install:
+
+```sh
+sudo yum install postgresql11-server
+```
 
 Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) locally. First make sure to set `PG_CONFIG` in `Makefile` to the correct PostgreSQL version (for example, on CentOS `PG_CONFIG=/usr/pgsql-11/bin/pg_config`), then run `make`.
 
