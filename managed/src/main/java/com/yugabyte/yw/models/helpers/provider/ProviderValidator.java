@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
+import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.validators.AWSProviderValidator;
 import com.yugabyte.yw.models.configs.validators.AzureProviderValidator;
+import com.yugabyte.yw.models.configs.validators.GCPProviderValidator;
 import com.yugabyte.yw.models.configs.validators.KubernetesProviderValidator;
 import com.yugabyte.yw.models.configs.validators.OnPremValidator;
 import com.yugabyte.yw.models.configs.validators.ProviderFieldsValidator;
@@ -27,7 +29,10 @@ public class ProviderValidator extends BaseBeanValidator {
 
   @Inject
   public ProviderValidator(
-      BeanValidator beanValidator, AWSCloudImpl awsCloudImpl, RuntimeConfGetter runtimeConfGetter) {
+      BeanValidator beanValidator,
+      AWSCloudImpl awsCloudImpl,
+      GCPCloudImpl gcpCloudImpl,
+      RuntimeConfGetter runtimeConfGetter) {
     super(beanValidator);
     this.providerValidatorMap.put(
         CloudType.aws.toString(),
@@ -39,6 +44,9 @@ public class ProviderValidator extends BaseBeanValidator {
         new KubernetesProviderValidator(beanValidator, runtimeConfGetter));
     this.providerValidatorMap.put(
         CloudType.azu.toString(), new AzureProviderValidator(runtimeConfGetter, beanValidator));
+    this.providerValidatorMap.put(
+        CloudType.gcp.toString(),
+        new GCPProviderValidator(beanValidator, runtimeConfGetter, gcpCloudImpl));
   }
 
   public void validate(Provider provider) {
