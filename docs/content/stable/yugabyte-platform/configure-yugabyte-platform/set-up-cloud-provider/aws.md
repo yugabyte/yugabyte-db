@@ -80,9 +80,9 @@ To view a provider, select it in the list of AWS Configs to display the **Overvi
 To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
 
 - Provider Name
-- Access Key ID
-- Secret Access Key
+- AWS credentials (Access Key ID and Secret Access Key)
 - Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
+- Linux version catalog
 
 To view the universes created using the provider, select **Universes**.
 
@@ -123,6 +123,28 @@ You can customize your network, including the virtual network, as follows:
 - Click **Add Region** to add a region to the configuration.
 
   For information on configuring your regions, see [Add regions](#add-regions).
+
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. User will see this name when creating universes using this provider.
+
+1. Choose a CPU architecture.
+
+1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
+
+1. Provide the SSH user and port to use to access the machine image OS.
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
 
 ### SSH Key Pairs
 
