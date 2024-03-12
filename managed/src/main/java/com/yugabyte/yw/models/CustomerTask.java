@@ -6,6 +6,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -865,6 +866,7 @@ public class CustomerTask extends Model {
     }
   }
 
+  @JsonIgnore
   public String getNotificationTargetName() {
     if (getType().equals(TaskType.Create) && getTargetType().equals(TargetType.Backup)) {
       return Universe.getOrBadRequest(getTargetUUID()).getName();
