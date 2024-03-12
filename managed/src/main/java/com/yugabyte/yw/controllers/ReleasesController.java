@@ -76,7 +76,7 @@ public class ReleasesController extends AuthenticatedController {
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
     if (reqRelease.release_uuid == null) {
-      log.debug("generating random release UUID as one was not provided");
+      log.trace("generating random release UUID as one was not provided");
       reqRelease.release_uuid = UUID.randomUUID();
     }
     Release release;
