@@ -230,11 +230,11 @@
     "affectedTables": null,
     "summary": "Latencies increased for query 'select * from some_table' in database 'yugabyte'",
     "detectionTime": null,
-    "startTime": "2024-01-18T15:40:48Z",
-    "endTime": "2024-01-18T16:31:12Z",
+    "startTime": "2024-01-18T15:40:00Z",
+    "endTime": "2024-01-18T16:40:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T17:46:48Z",
-    "graphStepSeconds": 144
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStepSeconds": 1200
   },
   {
     "uuid": null,
@@ -463,10 +463,10 @@
     "affectedTables": null,
     "summary": "Latencies increased for query 'select * from some_table' in database 'postgres'",
     "detectionTime": null,
-    "startTime": "2024-01-18T16:21:36Z",
-    "endTime": "2024-01-18T17:21:36Z",
+    "startTime": "2024-01-18T16:20:00Z",
+    "endTime": "2024-01-18T17:20:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T18:51:36Z",
-    "graphStepSeconds": 144
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStepSeconds": 1200
   }
 ]
