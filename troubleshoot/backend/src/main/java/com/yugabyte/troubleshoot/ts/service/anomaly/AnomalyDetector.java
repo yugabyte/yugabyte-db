@@ -3,12 +3,13 @@ package com.yugabyte.troubleshoot.ts.service.anomaly;
 import com.yugabyte.troubleshoot.ts.models.Anomaly;
 import java.time.Instant;
 import java.util.*;
+import lombok.Builder;
 import lombok.Data;
+import lombok.Value;
 import lombok.experimental.Accessors;
 
 public interface AnomalyDetector {
-  public AnomalyDetectionResult findAnomalies(
-      UUID universeUuid, Instant startTime, Instant endTime);
+  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context);
 
   @Data
   @Accessors(chain = true)
@@ -22,5 +23,18 @@ public interface AnomalyDetector {
       errorMessages.addAll(other.errorMessages);
       anomalies.addAll(other.anomalies);
     }
+  }
+
+  @Value
+  @Builder(toBuilder = true)
+  @Accessors(chain = true)
+  public static class AnomalyDetectionContext {
+    UUID universeUuid;
+    String dbId;
+    String queryId;
+    Instant startTime;
+    Long stepSeconds;
+    Instant endTime;
+    Object customContext;
   }
 }

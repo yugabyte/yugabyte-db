@@ -35,6 +35,8 @@ public class Anomaly {
   @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
   Instant graphEndTime;
 
+  Long graphStepSeconds;
+
   @Value
   @Builder(toBuilder = true)
   @Jacksonized

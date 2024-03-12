@@ -34,10 +34,13 @@ public class UnevenCpuUsageDetector extends UnevenDistributionDetector {
 
   @Override
   protected Anomaly.AnomalyBuilder fillAnomaly(
-      Anomaly.AnomalyBuilder builder, String addectedNodesStr, GraphAnomaly graphAnomaly) {
+      Anomaly.AnomalyBuilder builder,
+      AnomalyDetectionContext context,
+      String affectedNodesStr,
+      GraphAnomaly graphAnomaly) {
     String summary =
         "Node(s) "
-            + addectedNodesStr
+            + affectedNodesStr
             + " consume significantly more CPU than average of the other nodes.";
     builder.summary(summary);
     return builder;

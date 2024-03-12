@@ -7,12 +7,11 @@ import com.yugabyte.troubleshoot.ts.service.GraphService;
 import com.yugabyte.troubleshoot.ts.service.PgStatStatementsQueryService;
 import io.ebean.Lists;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.tuple.Pair;
+import lombok.Data;
+import lombok.experimental.Accessors;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -32,29 +31,24 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
     this.pgStatStatementsQueryService = pgStatStatementsQueryService;
   }
 
-  public AnomalyDetectionResult findAnomalies(
-      UUID universeUuid, Instant startTime, Instant endTime) {
+  public AnomalyDetectionResult findAnomalies(AnomalyDetectionContext context) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
     List<PgStatStatementsQuery> queries =
-        pgStatStatementsQueryService.listByUniverseId(universeUuid);
+        pgStatStatementsQueryService.listByUniverseId(context.getUniverseUuid());
     Map<String, List<PgStatStatementsQuery>> queriesByDb =
         queries.stream()
             .collect(Collectors.groupingBy(q -> q.getId().getDbId(), Collectors.toList()));
     queriesByDb.forEach(
         (dbId, dbQueries) -> {
           for (List<PgStatStatementsQuery> batch : Lists.partition(dbQueries, QUERY_BATCH_SIZE)) {
-            result.merge(findAnomalies(universeUuid, dbId, batch, startTime, endTime));
+            result.merge(findAnomalies(context, dbId, batch));
           }
         });
     return result;
   }
 
   private AnomalyDetectionResult findAnomalies(
-      UUID universeUuid,
-      String dbId,
-      List<PgStatStatementsQuery> queries,
-      Instant startTime,
-      Instant endTime) {
+      AnomalyDetectionContext context, String dbId, List<PgStatStatementsQuery> queries) {
     AnomalyDetectionResult result = new AnomalyDetectionResult();
     GraphSettings settings = new GraphSettings();
     settings.setSplitMode(GraphSettings.SplitMode.TOP);
@@ -68,17 +62,19 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
     GraphQuery graphQuery =
         new GraphQuery()
             .setName("query_latency")
-            .setStart(startTime)
-            .setEnd(endTime)
+            .setStart(context.getStartTime())
+            .setEnd(context.getEndTime())
+            .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
             .setFilters(
                 ImmutableMap.of(
-                    GraphFilter.universeUuid, ImmutableList.of(universeUuid.toString()),
+                    GraphFilter.universeUuid,
+                        ImmutableList.of(context.getUniverseUuid().toString()),
                     GraphFilter.dbId, ImmutableList.of(dbId),
                     GraphFilter.queryId, ImmutableList.copyOf(queryMap.keySet())));
 
     GraphResponse response =
-        graphService.getGraphs(universeUuid, ImmutableList.of(graphQuery)).get(0);
+        graphService.getGraphs(context.getUniverseUuid(), ImmutableList.of(graphQuery)).get(0);
 
     if (!response.isSuccessful()) {
       return new AnomalyDetectionResult()
@@ -102,128 +98,75 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
         .setWindowMinSize(minAnomalySize)
         .setWindowMaxSize(minAnomalySize * 2);
 
+    AnomalyDetectionContext contextWithUpdatedStep =
+        context.toBuilder().stepSeconds(response.getStepSeconds()).build();
+
     queryGraphs.forEach(
         (queryId, data) -> {
           result.merge(
               findAnomalies(
+                  contextWithUpdatedStep,
                   detectionSettings,
-                  universeUuid,
                   dbId,
                   queryId,
                   queryMap.get(queryId),
-                  data,
-                  startTime,
-                  endTime));
+                  data));
         });
 
     return result;
   }
 
   private AnomalyDetectionResult findAnomalies(
+      AnomalyDetectionContext context,
       GraphAnomalyDetectionService.AnomalyDetectionSettings detectionSettings,
-      UUID universeUuid,
       String dbId,
       String queryId,
       PgStatStatementsQuery query,
-      List<GraphData> graphDataList,
-      Instant startTime,
-      Instant endTime) {
+      List<GraphData> graphDataList) {
+    AnomalyDetectionResult result = new AnomalyDetectionResult();
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(
             GraphAnomaly.GraphAnomalyType.INCREASE, graphDataList, detectionSettings);
 
     List<GraphAnomaly> mergedAnomalies = anomalyDetectionService.mergeAnomalies(anomalies);
 
-    AnomalyDetectionResult result = new AnomalyDetectionResult();
-    mergedAnomalies.forEach(
-        graphAnomaly -> {
-          AnomalyMetadata metadata =
-              metadataProvider.getMetadata(AnomalyMetadata.AnomalyType.SQL_QUERY_LATENCY_INCREASE);
-          AnomalyMetadata.AnomalyMetadataBuilder metadataBuilder = metadata.toBuilder();
-          metadataBuilder.mainGraphs(
-              metadata.getMainGraphs().stream()
-                  .map(t -> fillGraphMetadata(t, universeUuid, dbId, queryId))
-                  .toList());
-          metadataBuilder.rcaGuidelines(
-              metadata.getRcaGuidelines().stream()
-                  .map(
-                      rcaGuideline ->
-                          rcaGuideline.toBuilder()
-                              .troubleshootingRecommendations(
-                                  rcaGuideline.getTroubleshootingRecommendations().stream()
-                                      .map(
-                                          recommendation ->
-                                              CollectionUtils.isEmpty(
-                                                      recommendation.getSupportingGraphs())
-                                                  ? recommendation
-                                                  : recommendation.toBuilder()
-                                                      .supportingGraphs(
-                                                          recommendation
-                                                              .getSupportingGraphs()
-                                                              .stream()
-                                                              .map(
-                                                                  t ->
-                                                                      fillGraphMetadata(
-                                                                          t,
-                                                                          universeUuid,
-                                                                          dbId,
-                                                                          queryId))
-                                                              .toList())
-                                                      .build())
-                                      .toList())
-                              .build())
-                  .toList());
+    AnomalyDetectionContext updatedContext =
+        context.toBuilder()
+            .dbId(dbId)
+            .queryId(queryId)
+            .customContext(new QueryLatencyDetectionContext().setQuery(query))
+            .build();
 
-          Instant anomalyStartTime =
-              graphAnomaly.getStartTime() != null
-                  ? Instant.ofEpochMilli(graphAnomaly.getStartTime())
-                  : null;
-          Instant anomalyEndTime =
-              graphAnomaly.getEndTime() != null
-                  ? Instant.ofEpochMilli(graphAnomaly.getEndTime())
-                  : null;
-          Pair<Instant, Instant> graphStartEndTime =
-              calculateGraphStartEndTime(startTime, endTime, anomalyStartTime, anomalyEndTime);
-          Anomaly anomaly =
-              Anomaly.builder()
-                  .uuid(UUID.randomUUID())
-                  .universeUuid(universeUuid)
-                  .affectedNodes(
-                      graphAnomaly.getLabels().get(GraphFilter.instanceName.name()).stream()
-                          .map(nodeName -> Anomaly.NodeInfo.builder().name(nodeName).build())
-                          .toList())
-                  .metadata(metadataBuilder.build())
-                  .summary(
-                      "Latencies increased for query '"
-                          + query.getQuery()
-                          + "' in database '"
-                          + query.getDbName()
-                          + "'")
-                  .detectionTime(Instant.now())
-                  .startTime(anomalyStartTime)
-                  .endTime(anomalyEndTime)
-                  .graphStartTime(graphStartEndTime.getLeft())
-                  .graphEndTime(graphStartEndTime.getRight())
-                  .build();
+    createAnomalies(result, mergedAnomalies, updatedContext);
 
-          result.getAnomalies().add(anomaly);
-        });
     return result;
   }
 
-  private GraphMetadata fillGraphMetadata(
-      GraphMetadata template, UUID universeUuid, String dbId, String queryId) {
-    GraphMetadata.GraphMetadataBuilder metadataBuilder = template.toBuilder();
-    Map<GraphFilter, List<String>> filters = new HashMap<>(template.getFilters());
-    if (template.getFilters().containsKey(GraphFilter.universeUuid)) {
-      filters.put(GraphFilter.universeUuid, ImmutableList.of(universeUuid.toString()));
-    }
-    if (template.getFilters().containsKey(GraphFilter.dbId)) {
-      filters.put(GraphFilter.dbId, ImmutableList.of(dbId));
-    }
-    if (template.getFilters().containsKey(GraphFilter.queryId)) {
-      filters.put(GraphFilter.queryId, ImmutableList.of(queryId));
-    }
-    return metadataBuilder.filters(filters).build();
+  @Override
+  protected AnomalyMetadata.AnomalyType getAnomalyType() {
+    return AnomalyMetadata.AnomalyType.SQL_QUERY_LATENCY_INCREASE;
+  }
+
+  @Override
+  protected Anomaly.AnomalyBuilder fillAnomaly(
+      Anomaly.AnomalyBuilder builder,
+      AnomalyDetectionContext context,
+      String affectedNodes,
+      GraphAnomaly graphAnomaly) {
+    QueryLatencyDetectionContext customContext =
+        (QueryLatencyDetectionContext) context.getCustomContext();
+    builder.summary(
+        "Latencies increased for query '"
+            + customContext.getQuery().getQuery()
+            + "' in database '"
+            + customContext.getQuery().getDbName()
+            + "'");
+    return builder;
+  }
+
+  @Data
+  @Accessors(chain = true)
+  private static class QueryLatencyDetectionContext {
+    private PgStatStatementsQuery query;
   }
 }
