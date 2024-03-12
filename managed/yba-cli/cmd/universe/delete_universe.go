@@ -17,49 +17,41 @@ import (
 
 // deleteUniverseCmd represents the universe command
 var deleteUniverseCmd = &cobra.Command{
-	Use:   "delete [universe-name]",
+	Use:   "delete",
 	Short: "Delete a YugabyteDB Anywhere universe",
 	Long:  "Delete a universe in YugabyteDB Anywhere",
-	Args:  cobra.MaximumNArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
-		universeNameFlag, _ := cmd.Flags().GetString("name")
-		var universeName string
-		if len(args) > 0 {
-			universeName = args[0]
-		} else if len(universeNameFlag) > 0 {
-			universeName = universeNameFlag
-		} else {
+		universeName, err := cmd.Flags().GetString("name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to delete\n", formatter.RedColor))
 		}
-		err := util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to delete %s: %s", "universe", universeName),
+		err = util.ConfirmCommand(
+			fmt.Sprintf("Are you sure you want to delete %s: %s", util.UniverseType, universeName),
 			viper.GetBool("force"))
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		universeNameFlag, _ := cmd.Flags().GetString("name")
-		var universeName string
-		if len(args) > 0 {
-			universeName = args[0]
-		} else if len(universeNameFlag) > 0 {
-			universeName = universeNameFlag
 		}
 		universeListRequest := authAPI.ListUniverses()
 		universeListRequest = universeListRequest.Name(universeName)
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Delete")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Delete - List Universes")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -102,10 +94,10 @@ var deleteUniverseCmd = &cobra.Command{
 			formatter.Colorize(universeName, formatter.GreenColor))
 
 		if viper.GetBool("wait") {
-			if rDelete.TaskUUID != nil {
+			if len(rDelete.GetTaskUUID()) > 0 {
 				logrus.Info(fmt.Sprintf("Waiting for universe %s (%s) to be deleted\n",
 					formatter.Colorize(universeName, formatter.GreenColor), universeUUID))
-				err = authAPI.WaitForTask(*rDelete.TaskUUID, msg)
+				err = authAPI.WaitForTask(rDelete.GetTaskUUID(), msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
@@ -121,13 +113,14 @@ var deleteUniverseCmd = &cobra.Command{
 func init() {
 	deleteUniverseCmd.Flags().SortFlags = false
 	deleteUniverseCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the universe to be deleted.")
+		"[Required] The name of the universe to be created.")
+	deleteUniverseCmd.MarkFlagRequired("name")
 	deleteUniverseCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 	deleteUniverseCmd.Flags().Bool("force-delete", false,
 		"[Optional] Force delete the universe despite errors, defaults to false.")
 	deleteUniverseCmd.Flags().Bool("delete-backups", false,
-		"[Optional] Delete backups associated with universe-name, defaults to false.")
+		"[Optional] Delete backups associated with name, defaults to false.")
 	deleteUniverseCmd.Flags().Bool("delete-certs", false,
-		"[Optional] Delete certs associated with universe-name, defaults to false.")
+		"[Optional] Delete certs associated with name, defaults to false.")
 }

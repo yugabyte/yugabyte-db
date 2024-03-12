@@ -13,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -30,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -814,16 +814,41 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
+  private static List<UUID> sortAZs(
+      UniverseDefinitionTaskParams.Cluster cluster, Universe universe) {
+    List<UUID> result = new ArrayList<>();
+    Map<UUID, Integer> indexByUUID = new HashMap<>();
+    universe.getNodesInCluster(cluster.uuid).stream()
+        .sorted(Comparator.comparing(NodeDetails::getNodeIdx))
+        .forEach(n -> indexByUUID.putIfAbsent(n.getAzUuid(), n.getNodeIdx()));
+
+    cluster
+        .placementInfo
+        .azStream()
+        .sorted(
+            Comparator.<PlacementAZ, Boolean>comparing(az -> !az.isAffinitized)
+                .thenComparing(az -> az.numNodesInAZ)
+                // To keep predictability in tests, we sort zones by the order of nodes in universe.
+                .thenComparing(az -> indexByUUID.getOrDefault(az.uuid, Integer.MAX_VALUE))
+                .thenComparing(az -> az.uuid))
+        .forEach(az -> result.add(az.uuid));
+    return result;
+  }
+
   // Find the master leader and move it to the end of the list.
   public static List<NodeDetails> sortTServersInRestartOrder(
       Universe universe, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
     }
-
-    Map<UUID, Map<UUID, PlacementAZ>> placementAZMapPerCluster =
-        PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    Map<UUID, List<UUID>> sortedAZsByCluster = new HashMap<>();
+    sortedAZsByCluster.put(
+        primaryClusterUuid, sortAZs(universe.getUniverseDetails().getPrimaryCluster(), universe));
+    for (UniverseDefinitionTaskParams.Cluster cl :
+        universe.getUniverseDetails().getReadOnlyClusters()) {
+      sortedAZsByCluster.put(cl.uuid, sortAZs(cl, universe));
+    }
     return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
@@ -832,20 +857,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
                 .thenComparing(node -> node.state == NodeState.Live)
                 .thenComparing(
                     node -> {
-                      Map<UUID, PlacementAZ> placementAZMap =
-                          placementAZMapPerCluster.get(node.placementUuid);
-                      if (placementAZMap == null) {
-                        // Well, this shouldn't happen
-                        // but just to make sure we'll not fail - sort to the end
-                        log.warn("placementAZMap is null for cluster: " + node.placementUuid);
-                        return true;
-                      }
-                      PlacementAZ placementAZ = placementAZMap.get(node.azUuid);
-                      if (placementAZ == null) {
-                        return true;
-                      }
-                      // Primary zones go first
-                      return !placementAZ.isAffinitized;
+                      Integer azIdx =
+                          sortedAZsByCluster.get(node.placementUuid).indexOf(node.azUuid);
+                      return azIdx < 0 ? Integer.MAX_VALUE : azIdx;
                     })
                 .thenComparing(NodeDetails::getNodeIdx))
         .collect(Collectors.toList());

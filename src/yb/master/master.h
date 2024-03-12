@@ -131,6 +131,8 @@ class Master : public tserver::DbServerBase {
 
   MasterAutoFlagsManager* GetAutoFlagsManagerImpl() { return auto_flags_manager_.get(); }
 
+  CloneStateManager* clone_state_manager() const;
+
   scoped_refptr<MetricEntity> metric_entity_cluster();
 
   void SetMasterAddresses(std::shared_ptr<server::MasterAddresses> master_addresses) {
@@ -182,13 +184,9 @@ class Master : public tserver::DbServerBase {
   uint32_t GetAutoFlagConfigVersion() const override;
   AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
-  yb::client::AsyncClientInitializer& async_client_initializer() {
-    return *async_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& client_future() const;
 
-  yb::client::AsyncClientInitializer& cdc_state_client_initializer() {
-    return *cdc_state_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& cdc_state_client_future() const;
 
   enum MasterMetricType {
     TaskMetric,

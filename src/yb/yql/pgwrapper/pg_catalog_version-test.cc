@@ -313,6 +313,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
     conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
     LOG(INFO) << "Create a new database";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+    {
+      // In PG15, SCHEMA public by default is more restrictive, grant CREATE privilege
+      // to all users to allow this test to run successfully in both PG11 and PG15.
+      auto conn_yugabyte_on_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+      ASSERT_OK(conn_yugabyte_on_test.Execute("GRANT CREATE ON SCHEMA public TO public"));
+    }
     LOG(INFO) << "Create two new test users";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser1));
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser2));

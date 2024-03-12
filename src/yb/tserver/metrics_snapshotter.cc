@@ -56,6 +56,8 @@
 
 #include "yb/master/master_defaults.h"
 
+#include "yb/server/async_client_initializer.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"

@@ -19,7 +19,7 @@ Once data is replicated using Raft across a majority of the YugabyteDB tablet-pe
 
 This storage layer is a persistent key-to-object (or to-document) store. The following diagram depicts the storage model where not every element is always present:
 
-![cql_row_encoding](/images/architecture/cql_row_encoding.png)
+![Storage model](/images/architecture/cql_row_encoding.png)
 
 ### DocDB key
 

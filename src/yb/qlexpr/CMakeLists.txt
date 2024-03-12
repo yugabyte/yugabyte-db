@@ -12,7 +12,7 @@
 #
 
 set(YB_PCH_PREFIX ql_expr)
-set(YB_PCH_DEP_LIBS gmock gtest gutil opid_proto yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil yb_test_util yb_util)
 
 set(QL_EXPR_SRCS
   doc_scanspec_util.cc

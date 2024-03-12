@@ -110,7 +110,7 @@ import {
   UPDATE_USER_PROFILE_SUCCESS,
   UPDATE_USER_PROFILE_FAILURE
 } from '../actions/customers';
-import { sortVersion } from '../components/releases';
+import { compareYBSoftwareVersions, isVersionStable } from '../utils/universeUtilsTyped';
 
 import { isDefinedNotNull } from '../utils/ObjectUtils';
 import {
@@ -225,12 +225,34 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, currentCustomer: getInitialState({}), authToken: getInitialState({}) };
     case FETCH_SOFTWARE_VERSIONS:
       return { ...state, softwareVersions: [], softwareVersionswithMetaData: [] };
-    case FETCH_SOFTWARE_VERSIONS_SUCCESS:
+    case FETCH_SOFTWARE_VERSIONS_SUCCESS: {
+      const sortedStableDbVersions = action.payload.data.filter(
+        (release) => isVersionStable(release)).sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA, options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          }
+          ));
+      const sortedPreviewDbVersions = action.payload.data.filter(
+        (release) => !isVersionStable(release)).sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA, options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          }
+          ));
+      const sortedVersions = sortedStableDbVersions.concat(sortedPreviewDbVersions);
       return {
         ...state,
-        softwareVersions: action.payload.data.sort(sortVersion),
+        softwareVersions: sortedVersions,
         softwareVersionswithMetaData: action.payload.releasesWithMetadata
       };
+    }
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return { ...state };
     case FETCH_TLS_CERTS:

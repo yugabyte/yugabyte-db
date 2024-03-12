@@ -16,7 +16,7 @@ import {
   getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { ImageBundleDefaultTag, ImageBundleYBActiveTag, isImgBundleSupportedByProvider } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { ImageBundleType } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { openDialog } from '../../../actions/modal';
 import '../UniverseDisplayPanel/UniverseDisplayPanel.scss';
@@ -61,7 +61,8 @@ export default class ClusterInfoPanel extends Component {
     };
     const userIntent = cluster?.userIntent;
 
-    const getCurrentlyUsedImageBundle = () => {
+    const getCurrentProvider = () => {
+
       if (!providers) return null;
 
       const cluster = isPrimary ? getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
@@ -70,6 +71,15 @@ export default class ClusterInfoPanel extends Component {
 
       const providerUsed = find(providers.data, { uuid: cluster.userIntent.provider });
 
+      if (!providerUsed) return null;
+
+      return providerUsed;
+    };
+
+    const getCurrentlyUsedImageBundle = () => {
+
+      const providerUsed = getCurrentProvider();
+      
       if (!providerUsed) return null;
 
       const img = find(providerUsed.imageBundles, { uuid: cluster.userIntent.imageBundleUUID });
@@ -165,16 +175,21 @@ export default class ClusterInfoPanel extends Component {
                   </Col>
                 </Row>
               )}
-              <Row className={'cluster-metadata'}>
-                <Col lg={6} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__label'}>{'Linux Version:'}</span>
-                </Col>
-                <Col lg={6} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__align'}>
-                    {getImageBundleName()}
-                  </span>
-                </Col>
-              </Row>
+              {
+                isImgBundleSupportedByProvider(getCurrentProvider()) && (
+                  <Row className={'cluster-metadata'}>
+                    <Col lg={6} md={6} sm={6} xs={6}>
+                      <span className={'cluster-metadata__label'}>{'Linux Version:'}</span>
+                    </Col>
+                    <Col lg={6} md={6} sm={6} xs={6}>
+                      <span className={'cluster-metadata__align'}>
+                        {getImageBundleName()}
+                      </span>
+                    </Col>
+                  </Row>
+                )
+              }
+
               <Row className={'cluster-metadata'}>
                 <Col lg={8} md={6} sm={6} xs={6}>
                   <span className={'cluster-metadata__label'}>

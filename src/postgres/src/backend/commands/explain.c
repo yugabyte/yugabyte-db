@@ -20,6 +20,7 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
+#include "executor/ybcModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -118,7 +119,7 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
-						ExplainState *es);
+						int yb_estimated_docdb_result_width, ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
 static void ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
@@ -1282,6 +1283,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		else
 			dir = ForwardScanDirection;
 
+		/* Figure out if the query can be run as a single row txn */
+		queryDesc->estate->yb_es_is_single_row_modify_txn =
+			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
+
 		/* Refresh the session stats before the start of the query */
 		if (es->rpc)
 		{
@@ -2155,6 +2160,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexscan->indexorderdir,
 										indexscan->yb_estimated_num_nexts,
 										indexscan->yb_estimated_num_seeks,
+										indexscan->yb_estimated_docdb_result_width,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2167,6 +2173,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexonlyscan->indexorderdir,
 										indexonlyscan->yb_estimated_num_nexts,
 										indexonlyscan->yb_estimated_num_seeks,
+										indexonlyscan->yb_estimated_docdb_result_width,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2418,6 +2425,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((IndexScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((IndexScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_IndexOnlyScan:
@@ -2457,6 +2467,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((IndexOnlyScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((IndexOnlyScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_BitmapIndexScan:
@@ -2514,6 +2527,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				ExplainPropertyFloat(
 					"Estimated Nexts", NULL,
 					((YbSeqScan *) plan)->yb_estimated_num_nexts, 0, es);
+				ExplainPropertyInteger(
+					"Estimated Docdb Result Width", NULL,
+					((YbSeqScan *) plan)->yb_estimated_docdb_result_width, es);
 			}
 			break;
 		case T_Gather:
@@ -3946,7 +3962,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double yb_estimated_num_nexts, double yb_estimated_num_seeks,
-						ExplainState *es)
+						int yb_estimated_docdb_result_width, ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
 
@@ -3981,6 +3997,7 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		{
 			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
 			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);
+			ExplainPropertyInteger("Estimated Docdb Result Width", NULL, yb_estimated_docdb_result_width, es);
 		}
 	}
 }

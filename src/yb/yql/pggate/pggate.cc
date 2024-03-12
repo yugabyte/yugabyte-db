@@ -43,7 +43,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -135,9 +135,9 @@ Result<PgApiContext::MessengerHolder> BuildMessenger(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
   if (FLAGS_use_node_to_node_encryption) {
-    secure_context = VERIFY_RESULT(server::CreateSecureContext(
+    secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
         FLAGS_certs_dir,
-        server::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
+        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
   }
   auto messenger = VERIFY_RESULT(client::CreateClientMessenger(
       client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()));
@@ -2260,11 +2260,6 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
   return pg_session_->GetReplicationSlot(slot_name);
 }
 
-Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
-    const ReplicationSlotName& slot_name) {
-  return pg_session_->GetReplicationSlotStatus(slot_name);
-}
-
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
   return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
@@ -2277,6 +2272,11 @@ Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCD
 Result<cdc::GetConsistentChangesResponsePB> PgApiImpl::GetConsistentChangesForCDC(
     const std::string &stream_id) {
   return pg_session_->pg_client().GetConsistentChangesForCDC(stream_id);
+}
+
+Result<cdc::UpdateAndPersistLSNResponsePB> PgApiImpl::UpdateAndPersistLSN(
+    const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush) {
+  return pg_session_->pg_client().UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,

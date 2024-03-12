@@ -332,19 +332,6 @@ void FillFromRepeatedTabletLocations(
             BOOST_PP_CAT(method, Async))); \
   } while(0);
 
-#define IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
-  Result<master::BOOST_PP_CAT(method, ResponsePB)> YBClient::method( \
-      const master::BOOST_PP_CAT(method, RequestPB) & req) { \
-    master::BOOST_PP_CAT(method, ResponsePB) resp; \
-    CALL_SYNC_LEADER_MASTER_RPC_EX(service, req, resp, method); \
-    return resp; \
-  }
-
-#define IMPLEMENT_SYNC_LEADER_MASTER_RPC(i, data, set) IMPLEMENT_SYNC_LEADER_MASTER_RPC_IMP set
-
-#define IMPLEMENT_SYNC_LEADER_MASTER_RPCS(rpcs) \
-  BOOST_PP_SEQ_FOR_EACH(IMPLEMENT_SYNC_LEADER_MASTER_RPC, ~, rpcs)
-
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -1768,62 +1755,6 @@ Status YBClient::BootstrapProducer(
       this, db_type, namespace_name, pg_schema_names, table_names, deadline, std::move(callback));
 }
 
-Result<std::vector<NamespaceId>> YBClient::XClusterCreateOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<NamespaceName>& namespace_names) {
-  SCHECK(!namespace_names.empty(), InvalidArgument, "At least one namespace name is required");
-
-  master::XClusterCreateOutboundReplicationGroupRequestPB req;
-  req.set_replication_group_id(replication_group_id.ToString());
-  for (const auto& ns : namespace_names) {
-    req.add_namespace_names(ns);
-  }
-
-  master::XClusterCreateOutboundReplicationGroupResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterCreateOutboundReplicationGroup);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  std::vector<NamespaceId> namespace_ids;
-  for (const auto& namespace_id : resp.namespace_ids()) {
-    namespace_ids.push_back(namespace_id);
-  }
-
-  return namespace_ids;
-}
-
-Status YBClient::GetXClusterStreams(
-    CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-    const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
-    const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback) {
-  return data_->GetXClusterStreams(
-      this, deadline, replication_group_id, namespace_id, table_names, pg_schema_names,
-      std::move(callback));
-}
-
-Status YBClient::IsXClusterBootstrapRequired(
-    CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-    const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback) {
-  return data_->IsXClusterBootstrapRequired(
-      this, deadline, replication_group_id, namespace_id, std::move(callback));
-}
-
-Status YBClient::XClusterDeleteOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
-  master::XClusterDeleteOutboundReplicationGroupRequestPB req;
-  req.set_replication_group_id(replication_group_id.ToString());
-
-  master::XClusterDeleteOutboundReplicationGroupResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterDeleteOutboundReplicationGroup);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
-}
-
 Result<NamespaceId> YBClient::XClusterAddNamespaceToOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name) {
   master::XClusterAddNamespaceToOutboundReplicationGroupRequestPB req;
@@ -2560,12 +2491,18 @@ Result<bool> YBClient::CheckIfPitrActive() {
 }
 
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
-                                                      bool exclude_ysql) {
+                                                      bool exclude_ysql,
+                                                      const std::string& ysql_db_filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
   if (!filter.empty()) {
     req.set_name_filter(filter);
+  }
+
+  if (!ysql_db_filter.empty()) {
+    req.mutable_namespace_()->set_name(ysql_db_filter);
+    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
   }
 
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
@@ -2957,8 +2894,6 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
 
   return std::move(resp.service_info());
 }
-
-IMPLEMENT_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
 
 }  // namespace client
 }  // namespace yb

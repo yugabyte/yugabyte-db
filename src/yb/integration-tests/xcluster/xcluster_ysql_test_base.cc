@@ -14,6 +14,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -803,48 +804,33 @@ Status XClusterYsqlTestBase::SetUpWithParams(
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup() {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
-  auto namespace_id_out = VERIFY_RESULT(producer_client()->XClusterCreateOutboundReplicationGroup(
-      kReplicationGroupId, {namespace_name}));
+  auto namespace_id_out = VERIFY_RESULT(
+      client::XClusterClient(*producer_client())
+          .XClusterCreateOutboundReplicationGroup(kReplicationGroupId, {namespace_name}));
   SCHECK_EQ(namespace_id_out.size(), 1, IllegalState, "Namespace count does not match");
   SCHECK_EQ(namespace_id_out[0], producer_namespace_id, IllegalState, "NamespaceId does not match");
 
   std::promise<Result<bool>> promise;
   auto future = promise.get_future();
-  RETURN_NOT_OK(producer_client()->IsXClusterBootstrapRequired(
-      CoarseMonoClock::now() + MonoDelta::FromSeconds(kRpcTimeout), kReplicationGroupId,
-      producer_namespace_id, [&promise](Result<bool> res) { promise.set_value(res); }));
+  RETURN_NOT_OK(client::XClusterClient(*producer_client())
+                    .IsXClusterBootstrapRequired(
+                        CoarseMonoClock::now() + MonoDelta::FromSeconds(kRpcTimeout),
+                        kReplicationGroupId, producer_namespace_id,
+                        [&promise](Result<bool> res) { promise.set_value(res); }));
   auto bootstrap_required = VERIFY_RESULT(future.get());
   SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
 
   return Status::OK();
 }
 
-Result<bool> XClusterYsqlTestBase::IsCreateXClusterReplicationDone() {
-  master::IsCreateXClusterReplicationDoneRequestPB req;
-  master::IsCreateXClusterReplicationDoneResponsePB resp;
-  req.set_replication_group_id(kReplicationGroupId.ToString());
-  auto master_addr = consumer_cluster()->GetMasterAddresses();
-  auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
-  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
-
-  auto master_proxy = VERIFY_RESULT(GetProducerMasterProxy());
-
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
-  RETURN_NOT_OK(master_proxy.IsCreateXClusterReplicationDone(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
-  return resp.done();
-}
-
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this]() { return IsCreateXClusterReplicationDone(); }, MonoDelta::FromSeconds(kRpcTimeout),
-      __func__));
+      [this]() {
+        return client::XClusterClient(*producer_client())
+            .IsCreateXClusterReplicationDone(
+                kReplicationGroupId, consumer_cluster()->GetMasterAddresses());
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), __func__));
 
   // Wait for the xcluster safe time to propagate to the tserver nodes.
   return WaitForSafeTimeToAdvanceToNow();
@@ -853,23 +839,10 @@ Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish() {
 Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint() {
   RETURN_NOT_OK(SetupCertificates(kReplicationGroupId));
 
-  master::CreateXClusterReplicationRequestPB req;
-  master::CreateXClusterReplicationResponsePB resp;
-  req.set_replication_group_id(kReplicationGroupId.ToString());
   auto master_addr = consumer_cluster()->GetMasterAddresses();
-  auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
-  HostPortsToPBs(hp_vec, req.mutable_target_master_addresses());
 
-  auto master_proxy = VERIFY_RESULT(GetProducerMasterProxy());
-
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
-  RETURN_NOT_OK(master_proxy.CreateXClusterReplication(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(client::XClusterClient(*producer_client())
+                    .CreateXClusterReplication(kReplicationGroupId, master_addr));
 
   return WaitForCreateReplicationToFinish();
 }

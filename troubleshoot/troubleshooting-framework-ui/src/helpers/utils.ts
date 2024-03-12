@@ -1,6 +1,6 @@
 import { MIN_OUTLIER_NUM_NODES } from "./constants";
-import { Anomaly, AppName, GraphMetadata, GraphQuery, MetricMeasure, SplitMode, SplitType } from "./dtos";
-import { isNonEmptyArray } from './ObjectUtils';
+import { Anomaly, AppName, GraphMetadata, GraphQuery, MetricMeasure, RCAGuideline, SplitMode, SplitType, TroubleshootingRecommendations } from "./dtos";
+import { isNonEmptyArray, isNonEmptyObject } from './objectUtils';
 
 export const formatData = (data: any, appName: AppName) => {
   const formattedData = 
@@ -47,11 +47,11 @@ export const getAnomalyNumNodes = (anomalyData: Anomaly) => {
 };
 
 export const getAnomalyStartDate = (anomalyData: Anomaly) => {
-  return new Date(anomalyData.graphStartTime!);
+  return anomalyData?.graphStartTime ? new Date(anomalyData.graphStartTime!) : null;
 };
 
 export const getAnomalyEndTime = (anomalyData: Anomaly) => {
-   return anomalyData.graphEndTime ? new Date(anomalyData.graphEndTime!) : null;
+   return anomalyData?.graphEndTime ? new Date(anomalyData.graphEndTime!) : null;
 };
 
 export const formatUniverseDetails = (universeData: any) => {
@@ -248,7 +248,9 @@ export const getGraphRequestParams = (anomalyData: Anomaly, startDate=null, endD
       return request;
   });
   
-    const supportingGraphRequest = anomalyData.supportingGraphs.map((graph: GraphMetadata) => {
+  const nestedRequest = anomalyData.rcaGuidelines?.map((rca: RCAGuideline) => {
+    return rca.troubleshootingRecommendations?.map((recommendation: TroubleshootingRecommendations) => {
+      return recommendation.supportingGraphs?.map((graph: GraphMetadata) => {
       const request: GraphQuery = {};
       request.name = graph.name;
       request.filters = graph.filters;
@@ -256,8 +258,45 @@ export const getGraphRequestParams = (anomalyData: Anomaly, startDate=null, endD
       request.end = anomalyData.endTime;
       request.settings = anomalyData.defaultSettings;
       return request;
+      })
+    })
   });
+
+  const flattenedRequest = nestedRequest?.flat(2);
+  const supportingGraphRequest = flattenedRequest?.filter((request) => isNonEmptyObject(request));
 
   const requestParamsList = [...mainGraphRequest, ...supportingGraphRequest];
   return requestParamsList;
 };
+
+export const getRecommendationMetricsMap = (anomalyData: Anomaly) => {
+  if (!anomalyData) {
+    return [];
+  }
+
+   const nestedRecommendationMetrics = anomalyData.rcaGuidelines?.map((rca: RCAGuideline) => {
+      const params: any = {
+        cause: '',
+        name: [],
+        description: ''
+      };
+      params.cause = rca.possibleCause;
+      params.description = rca.possibleCauseDescription
+    return rca.troubleshootingRecommendations?.map((recommendation: TroubleshootingRecommendations) => {
+      if (!recommendation.supportingGraphs) {
+        return params;
+      }
+      return recommendation.supportingGraphs?.map((graph: GraphMetadata) => {
+        params.name.push(graph.name);
+        return params;
+      })
+    })
+  });
+
+  const flattenedRecommendationMetrics = nestedRecommendationMetrics?.flat(2);
+  const recommendationMetricsMap = new Set(flattenedRecommendationMetrics);
+  const recommendationMetrics = Array.from(recommendationMetricsMap);
+  
+  return recommendationMetrics;
+};
+

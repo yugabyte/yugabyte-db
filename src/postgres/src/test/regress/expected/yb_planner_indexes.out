@@ -397,3 +397,71 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
+-- Issue #21133
+CREATE TABLE bb (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT bb_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE c (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT c_pkey PRIMARY KEY(pk ASC)
+);
+CREATE TABLE cc (
+    pk serial NOT NULL,
+    col_int_nokey integer,
+    col_int_key integer,
+    CONSTRAINT cc_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX bb_int_key ON bb (col_int_key ASC);
+CREATE INDEX c_int_key ON c (col_int_key ASC);
+CREATE INDEX cc_int_key ON cc (col_int_key ASC);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT
+FROM
+    CC AS table1
+    JOIN CC AS table2 ON (
+        table2.col_int_key = table1.pk
+    )
+WHERE
+    table2.col_int_key < (
+        SELECT
+            col_int_nokey
+        FROM
+            CC
+        WHERE
+            col_int_nokey IN (
+                SELECT
+                    CHILD_SUBQUERY1_t1.pk
+                FROM
+                    BB AS CHILD_SUBQUERY1_t1
+                    JOIN C AS CHILD_SUBQUERY1_t2 ON (
+                        CHILD_SUBQUERY1_t2.pk = CHILD_SUBQUERY1_t1.col_int_key
+                    )
+                WHERE
+                    CHILD_SUBQUERY1_t2.col_int_key <= table1.pk
+            )
+    );
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Nested Loop (actual rows=0 loops=1)
+   ->  Seq Scan on cc table1 (actual rows=0 loops=1)
+   ->  Index Only Scan using cc_int_key on cc table2 (never executed)
+         Index Cond: ((col_int_key < (SubPlan 1)) AND (col_int_key = table1.pk))
+         Heap Fetches: 0
+         SubPlan 1
+           ->  Hash Semi Join (never executed)
+                 Hash Cond: (cc.col_int_nokey = child_subquery1_t1.pk)
+                 ->  Seq Scan on cc (never executed)
+                 ->  Hash (never executed)
+                       ->  YB Batched Nested Loop Join (never executed)
+                             Join Filter: (child_subquery1_t1.col_int_key = child_subquery1_t2.pk)
+                             ->  Index Scan using c_int_key on c child_subquery1_t2 (never executed)
+                                   Index Cond: (col_int_key <= table1.pk)
+                             ->  Index Scan using bb_int_key on bb child_subquery1_t1 (never executed)
+                                   Index Cond: (col_int_key = ANY (ARRAY[child_subquery1_t2.pk, $2, $3, ..., $1024]))
+(16 rows)
+
+DROP TABLE bb;
+DROP TABLE c;
+DROP TABLE cc;

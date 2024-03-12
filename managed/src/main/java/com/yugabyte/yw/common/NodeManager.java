@@ -31,8 +31,24 @@ import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -54,8 +70,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -818,10 +844,14 @@ public class NodeManager extends DevopsBase {
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
-    String masterAddresses = universe.getMasterAddresses();
+    String masterAddresses = taskParam.getMasterAddrsOverride();
+    if (StringUtils.isBlank(masterAddresses)) {
+      masterAddresses = universe.getMasterAddresses();
+    }
     if (StringUtils.isBlank(masterAddresses)) {
       log.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
     }
+
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
     Integer num_cores_to_keep =
@@ -838,26 +868,23 @@ public class NodeManager extends DevopsBase {
     String ybServerPackage = null, ybcPackage = null, ybcDir = null;
     Map<String, String> ybcFlags = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseManager.ReleaseMetadata releaseMetadata =
-          releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (releaseMetadata != null) {
+      ReleaseContainer release = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      if (release != null) {
         if (arch != null) {
-          ybServerPackage = releaseMetadata.getFilePath(arch);
+          ybServerPackage = release.getFilePath(arch);
         } else {
           // Fallback to region in case arch is not present
-          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+          ybServerPackage = release.getFilePath(taskParam.getRegion());
         }
-        if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
+        if (release.isS3Download(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
-        } else if (releaseMetadata.gcs != null
-            && releaseMetadata.gcs.paths.x86_64.equals(ybServerPackage)) {
+        } else if (release.isGcsDownload(ybServerPackage)) {
           subcommand.add("--gcs_remote_download");
-        } else if (releaseMetadata.http != null
-            && releaseMetadata.http.paths.x86_64.equals(ybServerPackage)) {
+        } else if (release.isHttpDownload(ybServerPackage)) {
           subcommand.add("--http_remote_download");
-          if (StringUtils.isNotBlank(releaseMetadata.http.paths.x86_64_checksum)) {
+          if (StringUtils.isNotBlank(release.getHttpChecksum())) {
             subcommand.add("--http_package_checksum");
-            subcommand.add(releaseMetadata.http.paths.x86_64_checksum.toLowerCase());
+            subcommand.add(release.getHttpChecksum().toLowerCase());
           }
         }
       }
@@ -1777,6 +1804,7 @@ public class NodeManager extends DevopsBase {
               }
             }
 
+            // Azure specific create parameters
             if (Common.CloudType.azu.equals(userIntent.providerType)) {
               AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
               String vnetName = a.getVnet();
@@ -1818,6 +1846,9 @@ public class NodeManager extends DevopsBase {
                 } catch (JsonProcessingException e) {
                   throw new RuntimeException("Could not convert custom network params to JSON");
                 }
+              }
+              if (confGetter.getConfForScope(provider, ProviderConfKeys.azureIgnorePlan)) {
+                commandArgs.add("--ignore_plan");
               }
             }
 
@@ -2038,7 +2069,7 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          sensitiveData.putAll(getReleaseSensitiveData(taskParam));
+          sensitiveData.putAll(getReleaseSensitiveData(taskParam, arch));
           String localPackagePath = getThirdpartyPackagePath();
           if (localPackagePath != null) {
             commandArgs.add("--local_package_path");
@@ -2630,17 +2661,18 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
+  private Map<String, String> getReleaseSensitiveData(
+      AnsibleConfigureServers.Params taskParam, Architecture arch) {
     Map<String, String> data = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
-      ReleaseManager.ReleaseMetadata releaseMetadata =
+      ReleaseContainer releaseContainer =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
-      if (releaseMetadata != null) {
-        if (releaseMetadata.s3 != null) {
-          data.put("--aws_access_key", releaseMetadata.s3.accessKeyId);
-          data.put("--aws_secret_key", releaseMetadata.s3.secretAccessKey);
-        } else if (releaseMetadata.gcs != null) {
-          data.put("--gcs_credentials_json", releaseMetadata.gcs.credentialsJson);
+      if (releaseContainer != null) {
+        if (releaseContainer.isAws(arch)) {
+          data.put("--aws_access_key", releaseContainer.getAwsAccessKey(arch));
+          data.put("--aws_secret_key", releaseContainer.getAwsSecretKey(arch));
+        } else if (releaseContainer.isGcs(arch)) {
+          data.put("--gcs_credentials_json", releaseContainer.getGcsCredentials(arch));
         }
       }
     }
@@ -2703,13 +2735,12 @@ public class NodeManager extends DevopsBase {
 
   public String getYbServerPackageName(String ybSoftwareVersion, Region region, Architecture arch) {
     String ybServerPackage = null;
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    if (releaseMetadata != null) {
+    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (release != null) {
       if (arch != null) {
-        ybServerPackage = releaseMetadata.getFilePath(arch);
+        ybServerPackage = release.getFilePath(arch);
       } else {
-        ybServerPackage = releaseMetadata.getFilePath(region);
+        ybServerPackage = release.getFilePath(region);
       }
     }
     return ybServerPackage;
@@ -2749,7 +2780,13 @@ public class NodeManager extends DevopsBase {
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
-              .generateConfigFile(taskParams, provider, userIntent, config, logLinePrefix)
+              .generateConfigFile(
+                  taskParams,
+                  provider,
+                  userIntent,
+                  config,
+                  logLinePrefix,
+                  getOtelColMetricsPort(taskParams))
               .toAbsolutePath()
               .toString());
 
@@ -2789,5 +2826,11 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  public static int getOtelColMetricsPort(NodeTaskParams nodeTaskParam) {
+    Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
+    NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+    return nodeDetails.otelCollectorMetricsPort;
   }
 }

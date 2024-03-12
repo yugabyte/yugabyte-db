@@ -8,8 +8,8 @@ aliases:
 menu:
   preview_yugabyte-platform:
     identifier: instance-tags
-    parent: manage-deployments
-    weight: 80
+    parent: edit-universe
+    weight: 20
 type: docs
 ---
 

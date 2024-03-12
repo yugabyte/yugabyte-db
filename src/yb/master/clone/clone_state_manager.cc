@@ -23,10 +23,12 @@
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/sys_catalog.h"
-
+#include "yb/rpc/rpc_context.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_PREVIEW_bool(enable_db_clone, false, "Enable DB cloning.");
 
 namespace yb {
 namespace master {
@@ -52,12 +54,36 @@ std::unique_ptr<CloneStateManager> CloneStateManager::Create(
     .GetTabletInfo = [catalog_manager](const TabletId& tablet_id) {
       return catalog_manager->GetTabletInfo(tablet_id);
     },
+    .FindNamespaceById = [catalog_manager](const NamespaceId& namespace_id) {
+      return catalog_manager->FindNamespaceById(namespace_id);
+    },
     .ScheduleCloneTabletCall = [catalog_manager, master]
         (const TabletInfoPtr& source_tablet, LeaderEpoch epoch, tablet::CloneTabletRequestPB req) {
       auto call = std::make_shared<AsyncCloneTablet>(
         master, catalog_manager->AsyncTaskPool(), source_tablet, epoch, std::move(req));
       return catalog_manager->ScheduleTask(call);
     },
+    .DoCreateSnapshot = [catalog_manager] (
+        const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
+        CoarseTimePoint deadline, const LeaderEpoch& epoch) {
+      return catalog_manager->DoCreateSnapshot(req, resp, deadline, epoch);
+    },
+    .GenerateSnapshotInfoFromSchedule = [catalog_manager] (
+        const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+        CoarseTimePoint deadline) {
+      return catalog_manager->GenerateSnapshotInfoFromSchedule(
+          snapshot_schedule_id, export_time, deadline);
+    },
+    .DoImportSnapshotMeta = [catalog_manager] (
+        const SnapshotInfoPB& snapshot_pb, const LeaderEpoch& epoch,
+        const std::optional<std::string>& clone_target_namespace_name, NamespaceMap* namespace_map,
+        UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
+        CoarseTimePoint deadline) {
+      return catalog_manager->DoImportSnapshotMeta(
+          snapshot_pb, epoch, clone_target_namespace_name, namespace_map, type_map, tables_data,
+          deadline);
+    },
+
 
     .Upsert = [catalog_manager, sys_catalog](const CloneStateInfoPtr& clone_state){
       return sys_catalog->Upsert(catalog_manager->leader_ready_term(), clone_state);
@@ -74,6 +100,110 @@ std::unique_ptr<CloneStateManager> CloneStateManager::Create(
 
 CloneStateManager::CloneStateManager(ExternalFunctions external_functions):
     external_funcs_(std::move(external_functions)) {}
+
+Status CloneStateManager::IsCloneDone(
+    const IsCloneDoneRequestPB* req, IsCloneDoneResponsePB* resp) {
+  auto clone_state = VERIFY_RESULT(GetCloneStateFromSourceNamespace(req->source_namespace_id()));
+  auto lock = clone_state->LockForRead();
+  auto seq_no = req->seq_no();
+  auto current_seq_no = lock->pb.clone_request_seq_no();
+  if (current_seq_no > seq_no) {
+    resp->set_is_done(true);
+  } else if (current_seq_no == seq_no) {
+    resp->set_is_done(lock->pb.aggregate_state() == SysCloneStatePB::RESTORED);
+  } else {
+    return STATUS_FORMAT(IllegalState,
+        "Clone seq_no $0 never started for namespace $1 (current seq no $2)",
+        seq_no, req->source_namespace_id(), current_seq_no);
+  }
+  return Status::OK();
+}
+
+Status CloneStateManager::CloneFromSnapshotSchedule(
+    const CloneFromSnapshotScheduleRequestPB* req,
+    CloneFromSnapshotScheduleResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  SCHECK(!req->target_namespace_name().empty(), InvalidArgument, "Got empty target namespace name");
+  LOG(INFO) << "Servicing CloneFromSnapshotSchedule request: " << req->ShortDebugString();
+  auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  auto restore_time = HybridTime(req->restore_ht());
+  auto [source_namespace_id, seq_no] = VERIFY_RESULT(CloneFromSnapshotSchedule(
+      snapshot_schedule_id, restore_time, req->target_namespace_name(), rpc->GetClientDeadline(),
+      epoch));
+  resp->set_source_namespace_id(source_namespace_id);
+  resp->set_seq_no(seq_no);
+  return Status::OK();
+}
+
+Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneFromSnapshotSchedule(
+    const SnapshotScheduleId& snapshot_schedule_id,
+    const HybridTime& restore_time,
+    const std::string& target_namespace_name,
+    CoarseTimePoint deadline,
+    const LeaderEpoch& epoch) {
+  if (!FLAGS_enable_db_clone) {
+    return STATUS_FORMAT(ConfigurationError, "FLAGS_enable_db_clone is disabled");
+  }
+
+  // Export snapshot info.
+  auto snapshot_info = VERIFY_RESULT(external_funcs_.GenerateSnapshotInfoFromSchedule(
+      snapshot_schedule_id, restore_time, deadline));
+  auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
+
+  // Import snapshot info.
+  NamespaceMap namespace_map;
+  UDTypeMap type_map;
+  ExternalTableSnapshotDataMap tables_data;
+  RETURN_NOT_OK(external_funcs_.DoImportSnapshotMeta(
+      snapshot_info, epoch, target_namespace_name, &namespace_map, &type_map, &tables_data,
+      deadline));
+  if (namespace_map.size() != 1) {
+    return STATUS_FORMAT(IllegalState, "Expected 1 namespace, got $0", namespace_map.size());
+  }
+
+  // Generate a new snapshot.
+  // All indexes already are in the request. Do not add them twice.
+  // It is safe to trigger the clone op immediately after this since imported snapshots are created
+  // synchronously.
+  // TODO: Change this and xrepl_catalog_manager to use CreateSnapshot so all our snapshots go
+  // through the same path.
+  CreateSnapshotRequestPB create_snapshot_req;
+  CreateSnapshotResponsePB create_snapshot_resp;
+  for (const auto& [old_table_id, table_data] : tables_data) {
+    const auto& table_meta = *table_data.table_meta;
+    const string& new_table_id = table_meta.table_ids().new_id();
+    if (!ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type())) {
+      return STATUS_FORMAT(InternalError, "Found unknown table type: ",
+          table_meta.table_type());
+    }
+
+    create_snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
+  }
+  create_snapshot_req.set_add_indexes(false);
+  create_snapshot_req.set_transaction_aware(true);
+  create_snapshot_req.set_imported(true);
+  RETURN_NOT_OK(external_funcs_.DoCreateSnapshot(
+      &create_snapshot_req, &create_snapshot_resp, deadline, epoch));
+  if (create_snapshot_resp.has_error()) {
+    return StatusFromPB(create_snapshot_resp.error().status());
+  }
+  auto target_snapshot_id = VERIFY_RESULT(
+      FullyDecodeTxnSnapshotId(create_snapshot_resp.snapshot_id()));
+
+  const auto source_namespace_id = namespace_map.begin()->first;
+  auto source_namespace = VERIFY_RESULT(external_funcs_.FindNamespaceById(source_namespace_id));
+  auto seq_no = source_namespace->FetchAndIncrementCloneSeqNo();
+
+  // Set up persisted clone state.
+  auto clone_state = VERIFY_RESULT(CreateCloneState(
+    seq_no, source_namespace_id, target_namespace_name, source_snapshot_id,
+    target_snapshot_id, restore_time, tables_data));
+
+  RETURN_NOT_OK(ScheduleCloneOps(clone_state, epoch));
+  return make_pair(source_namespace_id, seq_no);
+}
+
 
 Status CloneStateManager::ClearAndRunLoaders() {
   {

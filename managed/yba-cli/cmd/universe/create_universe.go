@@ -22,15 +22,15 @@ import (
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create [universe-name]",
-	Short: "Create an YugabyteDB Anywhere universe",
+	Use:   "create",
+	Short: "Create YugabyteDB Anywhere universe",
 	Long:  "Create an universe in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeNameFlag, err := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if !(len(args) > 0 || len(universeNameFlag) > 0) {
+		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
@@ -45,17 +45,11 @@ var createUniverseCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var response *http.Response
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		universeNameFlag, _ := cmd.Flags().GetString("name")
-		var universeName string
-		if len(args) > 0 {
-			universeName = args[0]
-		} else if len(universeNameFlag) > 0 {
-			universeName = universeNameFlag
 		}
 
 		allowed, version, err := authAPI.UniverseYBAVersionCheck()
@@ -84,7 +78,8 @@ var createUniverseCmd = &cobra.Command{
 		if len(clientRootCA) != 0 {
 			certUUID, response, err = authAPI.GetCertificate(clientRootCA).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
+				errMessage := util.ErrorFromHTTPResponse(response, err,
+					"Universe", "Create - Fetch Certificates")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 		}
@@ -104,7 +99,8 @@ var createUniverseCmd = &cobra.Command{
 			// find kmsConfigUUID from the name
 			kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
+				errMessage := util.ErrorFromHTTPResponse(response, err,
+					"Universe", "Create - Fetch KMS Configs")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			for _, k := range kmsConfigs {
@@ -170,7 +166,8 @@ var createUniverseCmd = &cobra.Command{
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create - Fetch Universe")
+				errMessage := util.ErrorFromHTTPResponse(response, err,
+					"Universe", "Create - Fetch Universe")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
@@ -193,12 +190,12 @@ func init() {
 	createUniverseCmd.Flags().SortFlags = false
 
 	createUniverseCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the universe to be created.")
+		"[Required] The name of the universe to be created.")
+	createUniverseCmd.MarkFlagRequired("name")
 
 	createUniverseCmd.Flags().String("provider-code", "",
 		"[Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.")
-
-	setDefaults()
+	createUniverseCmd.MarkFlagRequired("provider-code")
 
 	// fss := cliflag.NamedFlagSets{}
 	// createUniverseCmd.AddGroup()
@@ -207,7 +204,6 @@ func init() {
 		"[Optional] Provider name to be used in universe. "+
 			"Run \"yba provider list --code <provider-code>\" "+
 			"to check the default provider for the given provider-code.")
-	createUniverseCmd.MarkFlagRequired("provider-code")
 	createUniverseCmd.Flags().Bool("dedicated-nodes", false,
 		"[Optional] Place Masters on dedicated nodes, defaults to false for aws, azu, gcp, onprem."+
 			" Defaults to true for kubernetes.")
@@ -221,14 +217,14 @@ func init() {
 			"cluster as a separate flag. \"--replication-factor 3 --replication-factor 5\" OR "+
 			"\"--replication-factor 3,5\" refers to RF "+
 			"of Primary cluster = 3 and RF of Read Replica = 5. First flag always corresponds to"+
-			" the primary cluster. Defaults to 3 for both clusters.")
+			" the primary cluster.")
 	createUniverseCmd.Flags().IntSlice("num-nodes", []int{3, 3},
 		"[Optional] Number of nodes in the cluster. Provide no of nodes for each cluster "+
 			"as a separate flag. \"--num-nodes 3 --num-nodes 5\" "+
 			"OR \"--num-nodes 3,5\" "+
 			"refers to 3 nodes in the Primary cluster and 3 nodes in the Read Replica cluster"+
 			". First flag always corresponds to"+
-			" the primry cluster. Defaults to 3 for both clusters.")
+			" the primry cluster.")
 	createUniverseCmd.Flags().StringArray("regions", []string{},
 		"[Optional] Regions for the nodes of the cluster to be placed in. "+
 			"Provide comma-separated strings for each cluster as a separate flag, "+
@@ -267,11 +263,10 @@ func init() {
 	createUniverseCmd.Flags().IntSlice("num-volumes", []int{1, 1},
 		"[Optional] Number of volumes to be mounted on this instance at the default path."+
 			" Provide the number of volumes for each "+
-			"cluster as a separate flag or as comma separated values. Defaults to 1 per node.")
-	createUniverseCmd.Flags().IntSlice("volume-size", []int{},
+			"cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().IntSlice("volume-size", []int{100, 100},
 		"[Optional] The size of each volume in each instance. Provide the number of "+
-			"volumes for each cluster as a separate flag or as comma separated values."+
-			" Defaults to 100 GB per node.")
+			"volumes for each cluster as a separate flag or as comma separated values.")
 	// Comma separated values in a single string
 	createUniverseCmd.Flags().StringArray("mount-points", []string{},
 		"[Optional] Disk mount points. Provide comma-separated strings for each cluster "+
@@ -288,16 +283,20 @@ func init() {
 		"[Optional] Name of the storage class, supported for Kubernetes. Provide "+
 			"the storage type of volumes for each cluster as a separate flag. Defaults"+
 			" to \"standard\".")
-	createUniverseCmd.Flags().IntSlice("disk-iops", []int{},
+	createUniverseCmd.Flags().IntSlice("disk-iops", []int{3000, 3000},
 		"[Optional] Desired IOPS for the volumes mounted on this instance,"+
 			" supported only for AWS. Provide the number of "+
-			"volumes for each cluster as a separate flag or as comma separated values. "+
-			"Defaults to 3000.")
-	createUniverseCmd.Flags().IntSlice("throughput", []int{},
+			"volumes for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().IntSlice("throughput", []int{125, 125},
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS. Provide throughput "+
-			"for each cluster as a separate flag or as comma separated values. "+
-			"Defaults to 125.")
+			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-tserver-mem-size", []float64{4, 4},
+		"[Optional] Memory size of the kubernetes tserver node in GB. Provide k8s-tserver-mem-size "+
+			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-tserver-cpu-core-count", []float64{2, 2},
+		"[Optional] CPU core count of the kubernetes tserver node. Provide k8s-tserver-cpu-core-count "+
+			"for each cluster as a separate flag or as comma separated values.")
 
 	// if dedicated nodes is set to true
 	createUniverseCmd.Flags().String("dedicated-master-instance-type", "",
@@ -306,17 +305,15 @@ func init() {
 			"for azure and \"n1-standard-1\" for gcp. Fetches the first available "+
 			"instance type for onprem providers.")
 	createUniverseCmd.Flags().Int("dedicated-master-num-volumes", 1,
-		"[Optional] Number of volumes to be mounted on master instance at the default path."+
-			" Defaults to 1 per node.")
+		"[Optional] Number of volumes to be mounted on master instance at the default path.")
 	createUniverseCmd.Flags().Int("dedicated-master-volume-size", 100,
-		"[Optional] The size of each volume in each master instance."+
-			" Defaults to 100 GB per node.")
+		"[Optional] The size of each volume in each master instance.")
 	// Comma separated values in a single string
 	createUniverseCmd.Flags().String("dedicated-master-mount-points", "",
 		"[Optional] Disk mount points for master nodes. Provide comma-separated strings "+
 			"in the following format: \"--mount-points 'mount-point-1-for-master,"+
 			"mount-point-2-for-master'\""+
-			"Defaults to null for aws, azure, gcp. Fetches the first available "+
+			" Defaults to null for aws, azure, gcp. Fetches the first available "+
 			"instance mount points for onprem providers.")
 	createUniverseCmd.Flags().String("dedicated-master-storage-type", "",
 		"[Optional] Storage type (EBS for AWS) used for master instance. "+
@@ -327,21 +324,26 @@ func init() {
 			"Defaults to \"standard\".")
 	createUniverseCmd.Flags().Int("dedicated-master-disk-iops", 3000,
 		"[Optional] Desired IOPS for the volumes mounted on this instance,"+
-			" supported only for AWS. "+
-			"Defaults to 3000.")
+			" supported only for AWS.")
 	createUniverseCmd.Flags().Int("dedicated-master-throughput", 125,
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
-			"supported only for AWS. Defaults to 125.")
+			"supported only for AWS.")
+	createUniverseCmd.Flags().Float64Slice("k8s-master-mem-size", []float64{4, 4},
+		"[Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size "+
+			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
+		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
+			"for each cluster as a separate flag or as comma separated values.")
 
 	// Advanced configuratopn // taken only for Primary cluster
 	createUniverseCmd.Flags().Bool("assign-public-ip", true,
 		"[Optional] Assign Public IPs to the DB servers for connections over the internet.")
 	createUniverseCmd.Flags().Bool("enable-ysql", true,
-		"[Optional] Enable YSQL endpoint, defaults to true.")
+		"[Optional] Enable YSQL endpoint.")
 	createUniverseCmd.Flags().String("ysql-password", "",
 		"[Optional] YSQL authentication password.")
 	createUniverseCmd.Flags().Bool("enable-ycql", true,
-		"[Optional] Enable YCQL endpoint, defaults to true.")
+		"[Optional] Enable YCQL endpoint.")
 	createUniverseCmd.Flags().String("ycql-password", "",
 		"[Optional] YCQL authentication password.")
 	createUniverseCmd.Flags().Bool("enable-yedis", false,
@@ -351,11 +353,11 @@ func init() {
 
 	createUniverseCmd.Flags().Bool("enable-node-to-node-encrypt", true,
 		"[Optional] Enable Node-to-Node encryption to use TLS enabled connections for "+
-			"communication between different Universe nodes, defaults to true.")
+			"communication between different Universe nodes.")
 	createUniverseCmd.Flags().Bool("enable-client-to-node-encrypt", true,
 		"[Optional] Enable Client-to-Node encryption to use TLS enabled connection for "+
 			"communication between a client (ex: Database application, ysqlsh, ycqlsh) "+
-			"and the Universe YSQL -or- YCQL endpoint, defaults to true.")
+			"and the Universe YSQL -or- YCQL endpoint.")
 	createUniverseCmd.Flags().String("root-ca", "",
 		"[Optional] Root Certificate name for Encryption in Transit, defaults to creating new"+
 			" certificate for the universe if encryption in transit in enabled.")
@@ -374,7 +376,7 @@ func init() {
 		"[Optional] YugabyteDB Software Version, defaults to the latest available version"+
 			"Run \"yba yb-db-version list\" to find the latest version.")
 	createUniverseCmd.Flags().Bool("use-systemd", true,
-		"[Optional] Use SystemD, defaults to true.")
+		"[Optional] Use SystemD.")
 	createUniverseCmd.Flags().String("access-key-code", "",
 		"[Optional] Access Key code (UUID) corresponding to the provider,"+
 			" defaults to the provider's access key.")
@@ -386,32 +388,44 @@ func init() {
 			"as key=value pairs per flag. Example \"--user-tags "+
 			"name=test --user-tags owner=development\" OR "+
 			"\"--user-tags name=test,owner=development\".")
+	createUniverseCmd.Flags().String("kubernetes-universe-overrides-file-path", "",
+		"[Optional] Helm Overrides file path for the universe, supported for Kubernetes."+
+			" For examples on universe overrides file contents, please refer to: "+
+			"\"https://docs.yugabyte.com/stable/yugabyte-platform/"+
+			"create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides\"")
+	createUniverseCmd.Flags().StringArray("kubernetes-az-overrides-file-path", []string{},
+		"[Optional] Helm Overrides file paths for the availabilty zone, supported for Kubernetes."+
+			" Provide file paths for overrides of each Availabilty zone as a separate flag."+
+			" For examples on availabilty zone overrides file contents, please refer to: "+
+			"\"https://docs.yugabyte.com/stable/yugabyte-platform/"+
+			"create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides\"")
 
 	// Inputs for communication ports
 
 	createUniverseCmd.Flags().Int("master-http-port", 7000,
-		"[Optional] Master HTTP Port, defaults to 7000.")
+		"[Optional] Master HTTP Port.")
 	createUniverseCmd.Flags().Int("master-rpc-port", 7100,
-		"[Optional] Master RPC Port, defaults to 7100.")
+		"[Optional] Master RPC Port.")
 	createUniverseCmd.Flags().Int("node-exporter-port", 9300,
-		"[Optional] Node Exporter Port, defaults to 9300.")
+		"[Optional] Node Exporter Port.")
 	createUniverseCmd.Flags().Int("redis-server-http-port", 11000,
-		"[Optional] Redis Server HTTP Port, defaults to 11000.")
+		"[Optional] Redis Server HTTP Port.")
 	createUniverseCmd.Flags().Int("redis-server-rpc-port", 6379,
-		"[Optional] Redis Server RPC Port, defaults to 6379.")
+		"[Optional] Redis Server RPC Port.")
 	createUniverseCmd.Flags().Int("tserver-http-port", 9000,
-		"[Optional] TServer HTTP Port, defaults to 9000.")
+		"[Optional] TServer HTTP Port.")
 	createUniverseCmd.Flags().Int("tserver-rpc-port", 9100,
-		"[Optional] TServer RPC Port, defaults to 9100.")
+		"[Optional] TServer RPC Port.")
 	createUniverseCmd.Flags().Int("yql-server-http-port", 12000,
-		"[Optional] YQL Server HTTP Port, defaults to 12000.")
+		"[Optional] YQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("yql-server-rpc-port", 9042,
-		"[Optional] YQL Server RPC Port, defaults to 9042.")
+		"[Optional] YQL Server RPC Port.")
 	createUniverseCmd.Flags().Int("ysql-server-http-port", 13000,
-		"[Optional] YSQL Server HTTP Port, defaults to 13000.")
+		"[Optional] YSQL Server HTTP Port.")
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
-		"[Optional] YSQL Server RPC Port, defaults to 5433.")
+		"[Optional] YSQL Server RPC Port.")
 
+	setDefaults()
 }
 
 func setDefaults() {

@@ -22,7 +22,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"

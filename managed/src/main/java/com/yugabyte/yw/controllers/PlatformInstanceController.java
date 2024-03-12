@@ -97,6 +97,10 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instance.getIsLeader()) {
       config.get().updateLastFailover();
     }
+
+    // Sync instances immediately after being added
+    replicationManager.oneOffSync();
+
     auditService()
         .createAuditEntry(
             request,
@@ -175,7 +179,7 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result promoteInstance(
-      UUID configUUID, UUID instanceUUID, String curLeaderAddr, Http.Request request)
+      UUID configUUID, UUID instanceUUID, String curLeaderAddr, boolean force, Http.Request request)
       throws java.net.MalformedURLException {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -207,6 +211,15 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       curLeaderAddr = leaderInstance.get().getAddress();
+    }
+
+    // Validate we can reach current leader
+    if (!force) {
+      if (!replicationManager.testConnection(
+          config.get(), curLeaderAddr, config.get().getAcceptAnyCertificate())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
+      }
     }
 
     // Make sure the backup file provided exists.

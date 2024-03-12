@@ -124,6 +124,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> RESUME_UNIVERSE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ResumeServer,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
@@ -138,6 +139,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.ResumeServer,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
@@ -155,6 +157,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -167,6 +170,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),

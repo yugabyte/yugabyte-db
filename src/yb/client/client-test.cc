@@ -39,7 +39,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -100,7 +99,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
-#include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
@@ -2671,34 +2669,6 @@ TEST_F(ClientTest, GetNamespaceInfo) {
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
   ASSERT_TRUE(resp.colocated());
-}
-
-TEST_F(ClientTest, BadMasterAddress) {
-  auto messenger = ASSERT_RESULT(CreateMessenger("test-messenger"));
-  auto host = "should.not.resolve";
-
-  // Put host entry in cache.
-  ASSERT_NOK(messenger->resolver().Resolve(host));
-
-  {
-    struct TestServerOptions : public server::ServerBaseOptions {
-      TestServerOptions() : server::ServerBaseOptions(1) {}
-    };
-    TestServerOptions opts;
-    auto master_addr = std::make_shared<server::MasterAddresses>();
-    // Put several hosts, so resolve would take place.
-    master_addr->push_back({HostPort(host, 1)});
-    master_addr->push_back({HostPort(host, 2)});
-    opts.SetMasterAddresses(master_addr);
-
-    AsyncClientInitializer async_init(
-        "test-client", /* timeout= */ 1s, "UUID", &opts,
-        /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
-    async_init.Start();
-    async_init.get_client_future().wait_for(1s);
-  }
-
-  messenger->Shutdown();
 }
 
 TEST_F(ClientTest, RefreshPartitions) {

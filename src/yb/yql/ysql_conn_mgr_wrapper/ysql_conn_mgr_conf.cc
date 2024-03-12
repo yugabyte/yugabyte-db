@@ -157,7 +157,6 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%ysql_conn_mgr_max_client_connections%}",
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
-    {"{%application_name_add_host%}", BoolToString(application_name_add_host_)},
     {"{%log_debug%}", BoolToString(log_debug_)},
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},

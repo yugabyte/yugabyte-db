@@ -113,6 +113,21 @@ DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
 TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
 
+// The following flags related to the cloud, region and availability zone that an instance is
+// started in. These are passed in from whatever provisioning mechanics start the servers. They
+// are used for generic placement policies on table creation and tablet load balancing, to
+// either constrain data to a certain location (table A should only live in aws.us-west2.a), or to
+// define the required level of fault tolerance expected (table B should have N replicas, across
+// two regions of AWS and one of GCE).
+//
+// These are currently for use in a cloud-based deployment, but could be retrofitted to work for
+// an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
+DEFINE_NON_RUNTIME_string(placement_cloud, "cloud1",
+              "The cloud in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
+              "The cloud region in which this instance is started.");
+DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
+              "The cloud availability zone in which this instance is started.");
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

@@ -47,6 +47,7 @@
 #include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
@@ -61,7 +62,6 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"

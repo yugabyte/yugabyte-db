@@ -444,7 +444,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
-    auto client_future = master_->async_client_initializer().get_client_future();
+    auto client_future = master_->client_future();
 
     // Check if client was already initialized, otherwise we don't have to refresh master leader,
     // since it will be fetched as part of initialization.
@@ -551,14 +551,10 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata,
-      local_peer_pb_,
-      scoped_refptr<server::Clock>(master_->clock()),
+      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_,
-      nullptr /* tablet_splitter */,
-      master_->async_client_initializer().get_client_future());
+      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -599,7 +595,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = master_->async_client_initializer().get_client_future(),
+      .client_future = master_->client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),

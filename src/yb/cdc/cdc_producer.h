@@ -21,10 +21,13 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 

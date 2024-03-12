@@ -1265,6 +1265,20 @@ You can modify these parameters in the following ways:
     SET LOCAL temp_file_limit=-1;
     ```
 
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
@@ -1302,19 +1316,19 @@ Default: `1GB`
 
 ## Advanced flags
 
-#### backfill_index_client_rpc_timeout_ms
+##### backfill_index_client_rpc_timeout_ms
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
 Default: 1 day
 
-#### backfill_index_timeout_grace_margin_ms
+##### backfill_index_timeout_grace_margin_ms
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
 Default: -1, where the system automatically calculates the value to be approximately 1 second.
 
-#### backfill_index_write_batch_size
+##### backfill_index_write_batch_size
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
 

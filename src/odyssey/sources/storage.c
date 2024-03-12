@@ -253,11 +253,19 @@ void od_storage_watchdog_watch(void *arg)
 	od_id_generate(&watchdog_client->id, "a");
 
 	/* set storage user and database */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_kiwi_var_set(&watchdog_client->startup.user,
+		     watchdog->route_usr, strlen(watchdog->route_usr) + 1);
+
+	yb_kiwi_var_set(&watchdog_client->startup.database,
+		     watchdog->route_db, strlen(watchdog->route_db) + 1);
+#else
 	kiwi_var_set(&watchdog_client->startup.user, KIWI_VAR_UNDEF,
 		     watchdog->route_usr, strlen(watchdog->route_usr) + 1);
 
 	kiwi_var_set(&watchdog_client->startup.database, KIWI_VAR_UNDEF,
 		     watchdog->route_db, strlen(watchdog->route_db) + 1);
+#endif
 
 	machine_msg_t *msg;
 

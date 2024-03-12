@@ -118,6 +118,8 @@ message CreateTableRequestPB {
 
   // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
   optional bytes old_rewrite_table_id = 29;
+
+  optional bool is_clone = 30;
 }
 
 message CreateTableResponsePB {

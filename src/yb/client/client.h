@@ -83,24 +83,6 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
-#define DECLARE_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
-  Result<master::BOOST_PP_CAT(method, ResponsePB)> method( \
-      const master::BOOST_PP_CAT(method, RequestPB)& req);
-
-#define DECLARE_SYNC_LEADER_MASTER_RPC(i, data, set) DECLARE_SYNC_LEADER_MASTER_RPC_IMP set
-
-#define DECLARE_SYNC_LEADER_MASTER_RPCS(rpcs) \
-  BOOST_PP_SEQ_FOR_EACH(DECLARE_SYNC_LEADER_MASTER_RPC, ~, rpcs)
-
-// Add the methods that we want to invoke on master leader here.
-// These functions will take a const reference to the request of the corresponding type as input and
-// return a Result of the appropriate response.
-// Ex: Result<SetupUniverseReplicationResponsePB>
-// SetupUniverseReplication(SetupUniverseReplicationRequestPB req);
-#define CLIENT_SYNC_LEADER_MASTER_RPC_LIST \
-  ((Replication, SetupUniverseReplication)) \
-  ((Replication, IsSetupUniverseReplicationDone)) \
-
 template<class T> class scoped_refptr;
 
 namespace yb {
@@ -178,9 +160,6 @@ using GetTableLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
-using GetXClusterStreamsCallback =
-    std::function<void(Result<master::GetXClusterStreamsResponsePB>)>;
-using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
@@ -697,22 +676,6 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
-  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceName>& namespace_names);
-
-  Status GetXClusterStreams(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
-      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
-
-  Status IsXClusterBootstrapRequired(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
-
-  Status XClusterDeleteOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id);
-
   Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceName& namespace_name);
@@ -767,11 +730,14 @@ class YBClient {
   const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
   // List only those tables whose names pass a substring match on 'filter'.
+  // For YSQL tables, ysql_db_filter can be used to filter by the db they
+  // belong to.
   //
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
-      bool exclude_ysql = false);
+      bool exclude_ysql = false,
+      const std::string& ysql_db_filter = "");
 
   // List tables in a namespace.
   //
@@ -1023,8 +989,6 @@ class YBClient {
   Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
-  DECLARE_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
-
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
@@ -1074,6 +1038,8 @@ class YBClient {
   friend class internal::TabletInvoker;
   friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
+  friend class XClusterClient;
+  friend class XClusterRemoteClient;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);

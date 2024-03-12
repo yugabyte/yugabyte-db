@@ -118,7 +118,6 @@ const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
 
-YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
@@ -129,7 +128,6 @@ const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
 const char kTmpInfix[] = ".tmp";
 const char kCheckFileTemplate[] = "check.XXXXXX";
-const char kSecureCertsDirName[] = "certs";
 const char kPrefixMetricId[] = "drive:";
 
 std::string DataDir(const std::string& root, const std::string& server_type) {
@@ -834,10 +832,6 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
 std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
   return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
-}
-
-std::string FsManager::GetCertsDir(const std::string& root_dir) {
-  return JoinPathSegments(root_dir, kSecureCertsDirName);
 }
 
 std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {

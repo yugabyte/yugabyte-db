@@ -1,6 +1,6 @@
 import { FC } from 'react';
 import moment from 'moment-timezone';
-import { isValidObject } from './ObjectUtils';
+import { isValidObject } from './objectUtils';
 
 export const YBTimeFormats = {
   YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss [UTC]ZZ',
@@ -43,4 +43,9 @@ export const formatDatetime = (
 
 export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
   return <>{formatDatetime(date, timeFormat)}</>;
+};
+
+export const getDiffHours = (startDateTime: any, endDateTime: any) => {
+  const diffHours = (endDateTime - startDateTime) / 3600000;
+  return diffHours;
 };

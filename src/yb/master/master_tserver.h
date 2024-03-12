@@ -81,7 +81,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  rpc::Messenger* GetMessenger(tserver::ServerType type) const override;
+  rpc::Messenger* GetMessenger(ash::Component component) const override;
 
  private:
   Master* master_ = nullptr;

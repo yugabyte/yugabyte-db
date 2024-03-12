@@ -249,11 +249,11 @@ public class AppInit {
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
         releaseManager
-            .getLocalReleases()
+            .getLocalReleaseVersions()
             .forEach(
-                (version, rm) -> {
+                version -> {
                   try {
-                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                    gFlagsValidation.addDBMetadataFiles(version);
                   } catch (Exception e) {
                     log.error("Error: ", e);
                   }

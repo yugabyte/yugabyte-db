@@ -38,9 +38,9 @@
 #include <string>
 #include <utility>
 
-#include "yb/consensus/consensus_fwd.h"
+#include "yb/common/opid.h"
 
-#include "yb/util/opid.h"
+#include "yb/consensus/consensus_fwd.h"
 
 namespace yb {
 

@@ -679,6 +679,7 @@ public class ApiUtils {
     DeviceInfo deviceInfo = new DeviceInfo();
     deviceInfo.numVolumes = numVolumes;
     deviceInfo.volumeSize = volumeSize;
+    deviceInfo.mountPoints = "/mnt/d0";
     return deviceInfo;
   }
 

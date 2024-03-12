@@ -787,9 +787,6 @@ YBCStatus YBCPgListReplicationSlots(
 YBCStatus YBCPgGetReplicationSlot(
     const char *slot_name, YBCReplicationSlotDescriptor **replication_slot);
 
-YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
-                                        bool *active);
-
 YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
                                       YBCPgStatement *handle);
 YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
@@ -801,6 +798,10 @@ YBCStatus YBCPgDestroyVirtualWalForCDC();
 
 YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
                                        YBCPgChangeRecordBatch **record_batch);
+
+YBCStatus YBCPgUpdateAndPersistLSN(
+    const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
+    YBCPgXLogRecPtr* restart_lsn);
 
 // Get a new OID from the OID allocator of database db_oid.
 YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);

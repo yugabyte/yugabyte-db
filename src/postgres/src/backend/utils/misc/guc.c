@@ -2242,6 +2242,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_table_rewrite_keep_old_table", PGC_SUSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, DDLs that rewrite tables/indexes will"
+						 " not drop the old relfilenode/DocDB table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_table_rewrite_keep_old_table,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
@@ -6425,7 +6438,8 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 
-		if (gconf->flags & GUC_REPORT)
+		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
 			ReportGUCOption(gconf);
 	}
 }
@@ -6830,7 +6844,9 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && (gconf->flags & GUC_REPORT))
+			if (changed &&
+				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+				(YbIsClientYsqlConnMgr()  && gconf->context > PGC_BACKEND)))
 				ReportGUCOption(gconf);
 		}						/* end of stack-popping loop */
 
@@ -6881,7 +6897,7 @@ BeginReportingGUCOptions(void)
 static void
 ReportGUCOption(struct config_generic *record)
 {
-	if (reporting_enabled && (record->flags & GUC_REPORT))
+	if (reporting_enabled && ((record->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()))
 	{
 		char	   *val = _ShowOption(record, false);
 		StringInfoData msgbuf;
@@ -8290,7 +8306,11 @@ set_config_option(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal && (record->flags & GUC_REPORT))
+	if (changeVal &&
+		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() &&
+		record->context > PGC_BACKEND &&
+		!(action & GUC_ACTION_LOCAL))))
 		ReportGUCOption(record);
 
 	/*

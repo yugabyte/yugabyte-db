@@ -20,6 +20,8 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
@@ -36,7 +38,6 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/opid.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/rw_mutex.h"

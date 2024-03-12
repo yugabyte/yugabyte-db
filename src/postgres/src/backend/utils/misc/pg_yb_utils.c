@@ -733,6 +733,16 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 				*detail_nargs = status_nargs;
 				*detail_args = status_args;
 			}
+			else if(YBCIsTxnAbortedError(txn_err_code))
+			{
+				*msg_buf = "current transaction is expired or aborted";
+				*msg_nargs = 0;
+				*msg_args = NULL;
+
+				*detail_buf = status_msg;
+				*detail_nargs = status_nargs;
+				*detail_args = status_args;
+			}
 			break;
 		case ERRCODE_UNIQUE_VIOLATION:
 			*msg_buf = "duplicate key value violates unique constraint \"%s\"";
@@ -1338,6 +1348,8 @@ char *yb_test_fail_index_state_change = "";
 bool yb_test_fail_table_rewrite_after_creation = false;
 
 bool yb_test_stay_in_global_catalog_version_mode = false;
+
+bool yb_test_table_rewrite_keep_old_table = false;
 
 bool ddl_rollback_enabled = false;
 
@@ -4455,7 +4467,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   newRelfileNodeId,
 				   indexedRel,
 				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
-				   false,
+				   true /* skip_index_backfill */,
 				   indexRel->yb_table_properties->is_colocated,
 				   indexRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */,

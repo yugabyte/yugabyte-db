@@ -669,6 +669,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
 	/* See if we have any unbatchable filters. */
+	Relids batched_and_inner_relids =
+		bms_union(batchedrelids, index->rel->relids);
 	List *pclauses = NIL;
 	if (!bms_is_empty(batchedrelids)) {
 		pclauses = generate_join_implied_equalities(
@@ -676,11 +678,15 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			bms_union(batchedrelids, index->rel->relids),
 			batchedrelids,
 			rel);
-		pclauses = list_concat(pclauses, rel->joininfo);
-	}
 
-	Relids batched_and_inner_relids =
-		bms_union(batchedrelids, index->rel->relids);
+		foreach(lc, rel->joininfo)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			if (join_clause_is_movable_into(rinfo, rel->relids,
+											batched_and_inner_relids))
+				pclauses = lappend(pclauses, rinfo);
+		}
+	}
 
 	foreach(lc, pclauses)
 	{
@@ -2920,7 +2926,7 @@ match_rowcompare_to_indexcol(IndexOptInfo *index,
 	 * operators are matchable to the index.
 	 */
 	leftop = (Node *) linitial(clause->largs);
-	rightop = (Node *) linitial(clause->rargs);
+	rightop = (Node *) linitial(castNode(List, clause->rargs));
 	expr_op = linitial_oid(clause->opnos);
 	expr_coll = linitial_oid(clause->inputcollids);
 
@@ -4387,8 +4393,9 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 	var_on_left = match_index_to_operand((Node *) linitial(clause->largs),
 										 indexcol, index);
 	Assert(var_on_left ||
-		   match_index_to_operand((Node *) linitial(clause->rargs),
-								  indexcol, index));
+		   match_index_to_operand(
+				(Node *) linitial(castNode(List, clause->rargs)),
+				indexcol, index));
 	*var_on_left_p = var_on_left;
 
 	expr_op = linitial_oid(clause->opnos);
@@ -4414,8 +4421,10 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 	 * indexed relation.
 	 */
 	matching_cols = 1;
+	bool yb_is_row_array_cmp = clause->rctype == ROWCOMPARE_EQ;
 	largs_cell = lnext(list_head(clause->largs));
-	rargs_cell = lnext(list_head(clause->rargs));
+	rargs_cell = yb_is_row_array_cmp ? NULL :
+		lnext(list_head(castNode(List, clause->rargs)));
 	opnos_cell = lnext(list_head(clause->opnos));
 	collids_cell = lnext(list_head(clause->inputcollids));
 
@@ -4429,10 +4438,12 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 		if (var_on_left)
 		{
 			varop = (Node *) lfirst(largs_cell);
-			constop = (Node *) lfirst(rargs_cell);
+			constop = (Node *) yb_is_row_array_cmp ? clause->rargs :
+				lfirst(rargs_cell);
 		}
 		else
 		{
+			Assert(!yb_is_row_array_cmp);
 			varop = (Node *) lfirst(rargs_cell);
 			constop = (Node *) lfirst(largs_cell);
 			/* indexkey is on right, so commute the operator */
@@ -4440,9 +4451,10 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 			if (expr_op == InvalidOid)
 				break;			/* operator is not usable */
 		}
-		if (bms_is_member(index->rel->relid, pull_varnos(constop)))
+		if (!yb_is_row_array_cmp &&
+			bms_is_member(index->rel->relid, pull_varnos(constop)))
 			break;				/* no good, Var on wrong side */
-		if (contain_volatile_functions(constop))
+		if (!yb_is_row_array_cmp && contain_volatile_functions(constop))
 			break;				/* no good, volatile comparison value */
 
 		/*
@@ -4476,7 +4488,8 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 		/* This column matches, keep scanning */
 		matching_cols++;
 		largs_cell = lnext(largs_cell);
-		rargs_cell = lnext(rargs_cell);
+		if (!yb_is_row_array_cmp)
+			rargs_cell = lnext(rargs_cell);
 		opnos_cell = lnext(opnos_cell);
 		collids_cell = lnext(collids_cell);
 	}
@@ -4550,17 +4563,19 @@ adjust_rowcompare_for_index(RowCompareExpr *clause,
 									   matching_cols);
 		rc->inputcollids = list_truncate(list_copy(clause->inputcollids),
 										 matching_cols);
-		rc->largs = list_truncate(copyObject(clause->largs),
+		rc->largs = list_truncate(copyObject(castNode(List,clause->largs)),
 								  matching_cols);
-		rc->rargs = list_truncate(copyObject(clause->rargs),
-								  matching_cols);
+		rc->rargs = (Node *)
+			list_truncate(copyObject(castNode(List, clause->rargs)),
+									 matching_cols);
 		return (Expr *) rc;
 	}
 	else
 	{
 		return make_opclause(linitial_oid(new_ops), BOOLOID, false,
 							 copyObject(linitial(clause->largs)),
-							 copyObject(linitial(clause->rargs)),
+							 copyObject(
+								linitial(castNode(List, clause->rargs))),
 							 InvalidOid,
 							 linitial_oid(clause->inputcollids));
 	}

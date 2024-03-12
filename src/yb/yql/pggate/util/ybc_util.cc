@@ -187,6 +187,18 @@ YBPgErrorCode FetchErrorCode(YBCStatus s) {
   return result;
 }
 
+// Used for ASH to extract the name for a given enum, after
+// removing the leading "k"-prefix.
+template <class Enum>
+const char* NoPrefixName(Enum value) {
+  const char* name = ToCString(value);
+  if (!name) {
+    DCHECK(false);
+    return nullptr;
+  }
+  return name + 1;
+}
+
 } // anonymous namespace
 
 extern "C" {
@@ -309,6 +321,10 @@ bool YBCIsTxnDeadlockError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kDeadlock);
 }
 
+bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
+}
+
 uint16_t YBCGetTxnConflictErrorCode() {
   return to_underlying(TransactionErrorCode::kConflict);
 }
@@ -411,27 +427,23 @@ void YBCGenerateAshRootRequestId(unsigned char *root_request_id) {
   std::memcpy(root_request_id + sizeof(uint64_t), &b, sizeof(uint64_t));
 }
 
-#define RETURN_WITH_DCHECK(enum) \
-  do { \
-    DCHECK_NOTNULL(ToCString(enum)); \
-    return strdup(ToCString(enum) + 1); /* remove the 'k' prefix */ \
-  } while (0)
-
 const char* YBCGetWaitEventName(uint32_t wait_event_info) {
-  RETURN_WITH_DCHECK(static_cast<ash::WaitStateCode>(wait_event_info));
+  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  return NoPrefixName(static_cast<ash::WaitStateCode>(wait_event));
 }
 
 const char* YBCGetWaitEventClass(uint32_t wait_event_info) {
   /* The highest 8 bits are needed to get the wait event class */
-  uint8_t class_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_CLASS_POSITION);
-  RETURN_WITH_DCHECK(static_cast<ash::Class>(class_id));
+  constexpr uint8_t kAshClassMask = (1 << YB_ASH_CLASS_BITS) - 1;
+  uint8_t class_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_CLASS_POSITION) & kAshClassMask;
+  return NoPrefixName(static_cast<ash::Class>(class_id));
 }
 
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
   /* The highest 4 bits are needed to get the wait event component */
-  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >>
-      (YB_ASH_CLASS_POSITION + YB_ASH_CLASS_BITS));
-  RETURN_WITH_DCHECK(static_cast<ash::Component>(comp_id));
+  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_COMPONENT_POSITION);
+  return NoPrefixName(static_cast<ash::Component>(comp_id));
 }
 
 } // extern "C"

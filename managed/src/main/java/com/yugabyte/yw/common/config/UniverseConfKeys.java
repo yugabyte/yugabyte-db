@@ -945,14 +945,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
-      new ConfKeyInfo<>(
-          "yb.edit.allow_volume_decrease",
-          ScopeType.UNIVERSE,
-          "Allow decrease volume size",
-          "Allow decrease volume size for universe during full move",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
       new ConfKeyInfo<>(
           "yb.node_agent.reinstall_parallelism",
@@ -1046,6 +1038,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing the CheckLeaderlessTablets subtask",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockSyncCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clock Sync check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForUniverse =
       new ConfKeyInfo<>(
           "ybc.universe.enabled",
@@ -1053,5 +1053,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable YBC",
           "Enable YBC for universes during software upgrade",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> targetNodeDiskUsagePercentage =
+      new ConfKeyInfo<>(
+          "yb.checks.node_disk_size.target_usage_percentage",
+          ScopeType.UNIVERSE,
+          "Target Node Disk Usage Percentage",
+          "Percentage of current disk usage that may consume on the target nodes",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

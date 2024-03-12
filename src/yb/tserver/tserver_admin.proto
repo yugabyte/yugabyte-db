@@ -37,12 +37,12 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver_types.proto";
-import "yb/util/opid.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
 // startup to avoid running initdb.
