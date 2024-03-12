@@ -259,6 +259,10 @@ public class ReleaseArtifact extends Model {
     save();
   }
 
+  public boolean isKubernetes() {
+    return platform.equals(Platform.KUBERNETES);
+  }
+
   private static boolean validatePlatformArchitecture(
       Platform platform, PublicCloudConstants.Architecture architecture) {
     return (platform == Platform.LINUX && architecture != null)
