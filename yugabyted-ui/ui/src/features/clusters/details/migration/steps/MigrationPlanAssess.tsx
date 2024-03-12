@@ -64,13 +64,33 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
+  // DATO
   const {
-    data,
+    data: dato,
     isFetching: isFetchingAPI,
-    isError: isErrorMigrationAssessmentDetails,
+    isError: isErrorMigrationAssessmentDetailso,
   } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
+
+  const data: MigrationAssesmentInfo = React.useMemo(
+    () => ({
+      assesment_status: true,
+      complexity_overview: [
+        {
+          schema: "YUGABYTED",
+          sql_objects_count: 10,
+          table_count: 2,
+          complexity: "Easy",
+        },
+      ],
+      top_suggestions: ["Suggestion one", "Suggestion two"],
+      top_errors: [],
+    }),
+    []
+  );
+
+  const isErrorMigrationAssessmentDetails = false;
 
   const assessmentAPI = React.useMemo(() => {
     const assessmentData = (data as MigrationAssesmentInfo) || {};

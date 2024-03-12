@@ -67,13 +67,48 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
+  // DATO
   const {
-    data: migrationDataList,
+    data: migrationDataListo,
     isLoading: isLoadingMigrationTasks,
     isFetching: isFetchingMigrationTasks,
     refetch: refetchMigrationTasks,
-    isError: isErrorMigrationTasks,
+    isError: isErrorMigrationTaskso,
   } = useGetVoyagerMigrationTasksQuery({});
+
+  const migrationDataList: typeof migrationDataListo = React.useMemo(
+    () => ({
+      migrations: [
+        {
+          migration_uuid: "c8fc9318-4872-11ee-bdc6-42010a97001c",
+          migration_name: "Migration_1693540831345",
+          migration_phase: 0,
+          invocation_sequence: 2,
+          source_db: "oracle",
+          complexity: "N/A",
+          database_name: "DMS",
+          schema_name: "YUGABYTED",
+          status: "COMPLETED",
+          invocation_timestamp: "2023-09-01 02:54:44",
+        },
+        {
+          migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001a",
+          migration_name: "Migration_164446393009",
+          migration_phase: 1,
+          invocation_sequence: 4,
+          source_db: "",
+          complexity: "N/A",
+          database_name: "",
+          schema_name: "",
+          status: "COMPLETED",
+          invocation_timestamp: "2023-09-01 02:52:18",
+        },
+      ],
+    }),
+    []
+  );
+
+  const isErrorMigrationTasks = false;
 
   const refetch = React.useCallback(() => {
     refetchMigrationTasks();

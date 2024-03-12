@@ -153,13 +153,63 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   const { t } = useTranslation();
   const theme = useTheme();
 
+  // DATO
   const {
-    data,
+    data: dato,
     isFetching: isFetchingAPI,
-    isError: isErrorMigrationSchemaTasks,
+    isError: isErrorMigrationSchemaTaskso,
   } = useGetVoyagerMigrateSchemaTasksQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
+
+  const data = React.useMemo(
+    () => ({
+      migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001d",
+      overall_status: "in-progress",
+      export_schema: "complete",
+      analyze_schema: "complete",
+      import_schema: "N/A",
+      suggestions_errors: [
+        {
+          objectType: "TABLE",
+          objectName: "",
+          reason: "INHERITS not supported yet.",
+          sqlStatement:
+            "CREATE TABLE public.payment_p2007_01 (\n    CONSTRAINT payment_p2007_01_payment_date_check CHECK (((payment_date \u003e= '2007-01-01 00:00:00'::timestamp without time zone) AND (payment_date \u003c '2007-02-01 00:00:00'::timestamp without time zone)))\n)\nINHERITS (public.payment);",
+          filePath:
+            "/home/centos/dev-server-ssinghal/home/centos/export-dirs/postgres-sakila-migration/schema/tables/table.sql",
+          suggestion: "",
+          GH: "https://github.com/YugaByte/yugabyte-db/issues/1129",
+        },
+      ],
+      sql_objects: [
+        {
+          objectType: "TABLE",
+          totalCount: 6,
+          invalidCount: 0,
+          objectNames: "test1, test2, test3, test4, test5, test6",
+          objectDetails: "ss",
+        },
+        {
+          objectType: "CONSTRAINTS",
+          totalCount: 2,
+          invalidCount: 1,
+          objectNames: "test1, test2, test3, test4, test5, test6",
+          objectDetails: "",
+        },
+        {
+          objectType: "OBJECTS",
+          totalCount: 22,
+          invalidCount: 15,
+          objectNames: "test1, test2, test3, test4, test5, test6",
+          objectDetails: "",
+        },
+      ],
+    }),
+    []
+  );
+
+  const isErrorMigrationSchemaTasks = false;
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
 
