@@ -212,7 +212,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
 
     local.updateLastBackup(new Date());
     config = HighAvailabilityConfig.get(configUUID).get();
-    assertEquals(GlobalState.Operational, config.computeGlobalState());
+    assertEquals(GlobalState.StandbyConnected, config.computeGlobalState());
   }
 
   @Test
@@ -236,6 +236,6 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
 
     local.updateLastBackup(new Date(System.currentTimeMillis() - (30 * 60 * 1000)));
     config = HighAvailabilityConfig.get(configUUID).get();
-    assertEquals(GlobalState.Error, config.computeGlobalState());
+    assertEquals(GlobalState.StandbyDisconnected, config.computeGlobalState());
   }
 }
