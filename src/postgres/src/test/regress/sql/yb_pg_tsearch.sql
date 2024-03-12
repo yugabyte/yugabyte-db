@@ -57,6 +57,9 @@ create index wowidx on test_tsvector using gist (a);
 CREATE INDEX wowidx ON test_tsvector USING gin (a);
 
 SET enable_seqscan=OFF;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 -- GIN only supports bitmapscan, so no need to test plain indexscan
 -- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
 
@@ -73,6 +76,7 @@ SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
 SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
 SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
 
+RESET yb_test_ybgin_disable_cost_factor;
 RESET enable_seqscan;
 
 INSERT INTO test_tsvector VALUES ('???', 'DFG:1A,2B,6C,10 FGH');
