@@ -127,7 +127,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                 data.migration_phase === MigrationPhase["Export Data"]
               ? MigrationStep["Migrate Data"]
               : data.migration_phase === MigrationPhase["Analyze Schema"]
-              ? MigrationStep["Plan and Assess"]
+              ? MigrationStep["Assessment"]
               : data.migration_phase === MigrationPhase["Verify"]
               ? MigrationStep["Verify"]
               : 0,

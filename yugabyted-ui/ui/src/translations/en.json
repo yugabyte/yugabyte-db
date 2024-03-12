@@ -875,10 +875,6 @@
         "getStarted": "Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.",
         "learnMore": "Learn more",
         "planAndAssess": {
-          "schema": "Schema",
-          "sqlObjectCount": "SQL Object Count",
-          "tableCount": "Table Count",
-          "complexity": "Complexity",
           "sqlObjectName": "SQL Object Name",
           "sqlObjectType": "SQL Object Type",
           "reason": "Reason",
@@ -889,7 +885,34 @@
           "assessmentCompleteDesc": "Schema assessment is complete",
           "topErrors": "Top Errors",
           "topSuggestions": "Top Suggestions",
-          "complexityOverview": "Complexity Overview"
+          "complexityOverview": "Complexity Overview",
+          "tabAssessmentDetails": "Assessment Details",
+          "tabAssessmentResults": "Assessment Results",
+          "tabComplexityOverview": "Complexity Overview",
+          "details": {
+            "table": "Table",
+            "objectType": "Object type",
+            "rowCount": "Row count",
+            "diskSize": "Disk size",
+            "readIops": "Read IOPS",
+            "writeIops": "Write IOPS",
+            "searchTableName": "Search table name"
+          },
+          "results": {
+            "table": "Table",
+            "objectType": "Object type",
+            "decisionCheck": "Decision check",
+            "colocated": "Colocated",
+            "splitPoints": "Split points",
+            "searchTableName": "Search table name"
+          },
+          "overview": {
+            "schema": "Schema",
+            "sqlObjectCount": "SQL Object Count",
+            "tableCount": "Table Count",
+            "complexity": "Complexity",
+            "searchSchema": "Search schema"
+          }
         },
         "migrateSchema": {
           "sqlObjectName": "SQL Object Name",

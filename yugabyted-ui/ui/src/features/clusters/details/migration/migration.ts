@@ -17,7 +17,7 @@ export const migrationPhases = Object.keys(MigrationPhase)
  * Migration Steps (Cards shown in the UI)
  */
 export enum MigrationStep {
-  "Plan and Assess" = 0,
+  "Assessment" = 0,
   "Migrate Schema" = 1,
   "Migrate Data" = 2,
   "Verify" = 3,

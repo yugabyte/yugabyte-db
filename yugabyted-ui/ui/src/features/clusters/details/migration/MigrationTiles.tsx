@@ -109,7 +109,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   });
 
   const getTooltip = (step: string) => {
-    if (step === migrationSteps[MigrationStep["Plan and Assess"]]) {
+    if (step === migrationSteps[MigrationStep["Assessment"]]) {
       return ""; // Tooltip for plan and assess
     } else if (step === migrationSteps[MigrationStep["Migrate Schema"]]) {
       return ""; // Tooltip for migrate schema
@@ -136,7 +136,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             completed = true;
           } else {
             // We have not reached the verify phase
-            if (stepIndex === MigrationStep["Plan and Assess"]) {
+            if (stepIndex === MigrationStep["Assessment"]) {
               if ((migrationAssessmentData as MigrationAssesmentInfo)?.assesment_status === true) {
                 completed = true;
               } else {

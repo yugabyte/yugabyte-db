@@ -1,7 +1,7 @@
 import React, { FC } from "react";
 import { Box, LinearProgress, makeStyles, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import type { Migration } from "../MigrationOverview";
+import type { Migration } from "../../MigrationOverview";
 import {
   GenericFailure,
   STATUS_TYPES,
@@ -11,8 +11,8 @@ import {
   YBTable,
 } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
-import { MigrationStepNA } from "../MigrationStepNA";
-import MigrationAccordionTitle from "../MigrationAccordionTitle";
+import { MigrationStepNA } from "../../MigrationStepNA";
+import MigrationAccordionTitle from "../../MigrationAccordionTitle";
 import { ErrorRounded, InfoOutlined } from "@material-ui/icons";
 import { MigrationAssesmentInfo, useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
 
@@ -46,7 +46,7 @@ const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexi
   return <Box className={className}>{complexity || "N/A"}</Box>;
 };
 
-interface MigrationPlanAssessProps {
+interface MigrationAssessmentProps {
   heading: string;
   migration: Migration;
   step: number;
@@ -54,7 +54,7 @@ interface MigrationPlanAssessProps {
   isFetching?: boolean;
 }
 
-export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
+export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
   heading,
   migration,
   onRefetch,
