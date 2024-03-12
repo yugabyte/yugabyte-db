@@ -1,1 +1,5 @@
 test: yb-stat-activity-waitevent-statement-retry
+test: yb-fk-row-locking
+test: yb-user-managed-constraint
+test: yb-fk-relationship
+test: yb-check-constraint-locking

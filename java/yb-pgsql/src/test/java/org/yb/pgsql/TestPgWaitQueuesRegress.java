@@ -29,6 +29,11 @@ public class TestPgWaitQueuesRegress extends BasePgSQLTest {
     flagMap.put("enable_wait_queues", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("auto_promote_nonlocal_transactions_to_global", "false");
+    /*
+     * Setting yb_max_query_layer_retries allows to reliably test wait queue semantics in
+     * isolation by avoiding query layer retries of serialization errors.
+     */
+    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(0));
     return flagMap;
   }
 

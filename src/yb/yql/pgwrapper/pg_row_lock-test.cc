@@ -21,10 +21,10 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_skip_row_lock_for_update);
 
 using namespace std::literals;
-
-DECLARE_bool(yb_enable_read_committed_isolation);
 
 namespace yb::pgwrapper {
 
@@ -715,6 +715,14 @@ class PgRowLockTxnHelperSnapshotTest
   }
 };
 
+class PgMiniTestTxnHelperSerializableColumnLevelLocking
+    : public PgMiniTestTxnHelperSerializable {
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_skip_row_lock_for_update) = true;
+    PgMiniTestTxnHelperSerializable::BeforePgProcessStart();
+  }
+};
+
 TEST_F_EX(PgRowLockTest,
           ReferencedTableUpdateSerializable,
           PgMiniTestTxnHelperSerializable) {
@@ -781,9 +789,10 @@ TEST_F_EX(PgRowLockTest,
   TestRowLockConflictMatrix("cur_name");
 }
 
+// TODO(#19729): Finer column level locking should be enabled on simple statements.
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSerializableWithPushdown,
-          PgMiniTestTxnHelperSerializable) {
+          PgMiniTestTxnHelperSerializableColumnLevelLocking) {
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
@@ -793,9 +802,10 @@ TEST_F_EX(PgRowLockTest,
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
+// TODO(#19729): Finer column level locking should be enabled on simple statements.
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSerializableWithoutPushdown,
-          PgMiniTestTxnHelperSerializable) {
+          PgMiniTestTxnHelperSerializableColumnLevelLocking) {
   TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
