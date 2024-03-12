@@ -4317,6 +4317,18 @@ static struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_ybgin_disable_cost_factor", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("The multiplier to disable_cost to add when costing"
+						 " ybgin index scans that may not be supported."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_ybgin_disable_cost_factor,
+		2.0, 0.0, 10.0,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL

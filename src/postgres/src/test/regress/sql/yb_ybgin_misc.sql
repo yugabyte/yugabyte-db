@@ -3,8 +3,9 @@
 -- elsewhere.
 --
 
--- Disable sequential scan so that index scan is always chosen.
+-- Always choose index scan.
 SET enable_seqscan = off;
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 
 -- Set jsonbs to have jsonb_ops index, not jsonb_path_ops index.
 DROP INDEX jsonbs_j_idx;
