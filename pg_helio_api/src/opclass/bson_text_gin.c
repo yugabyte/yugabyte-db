@@ -1309,8 +1309,8 @@ GenerateTsVectorWithOptions(pgbson *document,
 	context.traverseOptionsFunc = &GetTextIndexTraverseOption;
 	context.generateNotFoundTerm = false;
 
-	bool generateRootTerm = false;
-	GenerateTerms(document, &context, generateRootTerm);
+	bool addRootTerm = false;
+	GenerateTerms(document, &context, addRootTerm);
 
 	/* Phase 2: Generate TSVector */
 

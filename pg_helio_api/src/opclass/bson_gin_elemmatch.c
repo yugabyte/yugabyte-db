@@ -43,6 +43,7 @@ typedef struct BsonElemMatchConsistentState
 	int32_t numKeys;
 	Datum *queryKeys;
 	int baseTermIndex;
+	bytea *indexClassOptions;
 } BsonElemMatchConsistentState;
 
 /*
@@ -621,6 +622,7 @@ ProcessFuncExprForIndexPushdown(FuncExpr *function,
 		sizeof(BsonElemMatchConsistentState));
 	consistentState->strategy = operator->indexStrategy;
 	consistentState->baseTermIndex = list_length(*elemMatchContextEntries);
+	consistentState->indexClassOptions = indexOptions;
 	BsonExtractQueryArgs args =
 	{
 		.query = bsonVal,
@@ -680,7 +682,8 @@ GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *expression,
 											 state->extra_data,
 											 state->numKeys,
 											 &recheckIgnore,
-											 state->queryKeys);
+											 state->queryKeys,
+											 state->indexClassOptions);
 			if (!res)
 			{
 				return false;
@@ -712,7 +715,8 @@ GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *expression,
 											 state->extra_data,
 											 state->numKeys,
 											 &recheckIgnore,
-											 state->queryKeys);
+											 state->queryKeys,
+											 state->indexClassOptions);
 			if (res)
 			{
 				return true;

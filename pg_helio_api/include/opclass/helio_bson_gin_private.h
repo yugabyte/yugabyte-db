@@ -56,7 +56,7 @@ int32_t GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *que
 								  BsonIndexTerm *compareValue, Pointer extraData);
 bool GinBsonConsistentCore(BsonIndexStrategy strategy, bool *check,
 						   Pointer *extra_data, int32_t numKeys, bool *recheck,
-						   Datum *queryKeys);
+						   Datum *queryKeys, bytea *options);
 int32_t GinBsonComparePartialElemMatchExpression(BsonIndexTerm *queryValue,
 												 BsonIndexTerm *compareValue,
 												 BsonElemMatchIndexExprState *exprState);
@@ -150,6 +150,14 @@ typedef struct
 
 	/* Whether a root truncation term has already been created for this document */
 	bool hasTruncatedTerms;
+
+	/*
+	 * Whether or not the path has array ancestors in the pre paths:
+	 * for a path a.b.c
+	 * if a, or b are arrays then this returns true.
+	 * For wildcard indexes, returns true if any path had an array ancestor
+	 */
+	bool hasArrayAncestors;
 } GenerateTermsContext;
 
 

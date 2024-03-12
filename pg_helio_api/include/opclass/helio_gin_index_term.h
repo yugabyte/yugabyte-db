@@ -20,6 +20,9 @@ typedef struct BsonIndexTerm
 	/* Whether or not the term is truncated */
 	bool isIndexTermTruncated;
 
+	/* Whether or not it's a metadata term */
+	bool isIndexTermMetadata;
+
 	/* The index term element */
 	pgbsonelement element;
 } BsonIndexTerm;
@@ -29,6 +32,9 @@ typedef struct BsonIndexTermSerialized
 {
 	/* Whether or not the term is truncated */
 	bool isIndexTermTruncated;
+
+	/* Whether or not it's a root metadata term (exists/not exists) */
+	bool isRootMetadataTerm;
 
 	/* The serialized index term value */
 	bytea *indexTermVal;
@@ -58,7 +64,10 @@ BsonIndexTermSerialized SerializeBsonIndexTerm(pgbsonelement *indexElement,
 											   indexMetadata);
 
 Datum GenerateRootTerm(void);
+Datum GenerateRootExistsTerm(void);
+Datum GenerateRootNonExistsTerm(void);
 Datum GenerateRootTruncatedTerm(void);
+Datum GenerateRootMultiKeyTerm(void);
 
 int32_t CompareBsonIndexTerm(BsonIndexTerm *left, BsonIndexTerm *right,
 							 bool *isComparisonValid);

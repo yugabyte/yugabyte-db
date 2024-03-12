@@ -18,6 +18,9 @@
 #include "types/decimal128.h"
 #include "io/bsonvalue_utils.h"
 
+#define IndexTermTruncatedFlag 0x1
+#define IndexTermMetadataFlag 0x2
+
 /* --------------------------------------------------------- */
 /* Forward Declaration */
 /* --------------------------------------------------------- */
@@ -27,7 +30,8 @@ static bool SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexEle
 static BsonIndexTermSerialized SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 														  const IndexTermCreateMetadata *
 														  createMetadata,
-														  bool forceTruncated);
+														  bool forceTruncated,
+														  bool isMetadataTerm);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -73,6 +77,16 @@ int32_t
 CompareBsonIndexTerm(BsonIndexTerm *leftTerm, BsonIndexTerm *rightTerm,
 					 bool *isComparisonValid)
 {
+	/* First compare metadata - metadata terms are less than all terms */
+	if (leftTerm->isIndexTermMetadata ^ rightTerm->isIndexTermMetadata)
+	{
+		/* If left is metadata and right is not metadata this will be
+		 * 1 - 0 == 1 so return -1 (left < right )
+		 */
+		return (int32_t) rightTerm->isIndexTermMetadata -
+			   (int32_t) leftTerm->isIndexTermMetadata;
+	}
+
 	/* Compare path */
 	StringView leftView = {
 		.length = leftTerm->element.pathLength, .string = leftTerm->element.path
@@ -121,7 +135,7 @@ IsSerializedIndexTermTruncated(bytea *indexTermSerialized)
 	/* size must be bigger than metadata + bson overhead */
 	Assert(indexTermSize > (sizeof(uint8_t) + 5));
 
-	return buffer[0] != 0;
+	return (buffer[0] & IndexTermTruncatedFlag) != 0;
 }
 
 
@@ -138,7 +152,8 @@ InitializeBsonIndexTerm(bytea *indexTermSerialized, BsonIndexTerm *indexTerm)
 	Assert(indexTermSize > (sizeof(uint8_t) + 5));
 
 	/* First we have the metadata */
-	indexTerm->isIndexTermTruncated = buffer[0] != 0;
+	indexTerm->isIndexTermTruncated = (buffer[0] & IndexTermTruncatedFlag) != 0;
+	indexTerm->isIndexTermMetadata = (buffer[0] & IndexTermMetadataFlag) != 0;
 
 	/* Next is the bson data serialized */
 	bson_value_t value;
@@ -330,6 +345,7 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
 {
 	bool forceAsNotTruncated = false;
 	int32_t currentLength = 0;
+	bson_type_t lastType = BSON_TYPE_MINKEY;
 
 	pgbson_element_writer elementWriter;
 	PgbsonInitArrayElementWriter(arrayWriter, &elementWriter);
@@ -342,6 +358,13 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
 		if (currentLength + dataSize > indexTermSoftLimit)
 		{
 			/* We've exceeded the limit - mark as truncated */
+			if (forceAsNotTruncated)
+			{
+				ereport(LOG, (errmsg(
+								  "Truncation limit reached and LastType %s is requested as ForceAsNotTruncated",
+								  BsonTypeName(lastType))));
+			}
+
 			return !forceAsNotTruncated;
 		}
 		else
@@ -354,6 +377,7 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
 
 		/* Leave up to 4 bytes from the hard limit for the path\0 */
 		int32_t valueLengthLeft = indexTermHardLimit - dataSize - 4;
+		lastType = iterValue->value_type;
 
 		/* Values can go until the hard limit. */
 		bool truncated = TruncateNestedEntry(&elementWriter, iterValue,
@@ -387,6 +411,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 {
 	bool forceAsNotTruncated = false;
 	int32_t currentLength = 0;
+	bson_type_t lastType = BSON_TYPE_MINKEY;
 
 	pgbson_element_writer elementWriter;
 	while (bson_iter_next(documentIterator))
@@ -396,6 +421,13 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 		if (currentLength + dataSize > softLimit)
 		{
 			/* We've exceeded the limit - mark as truncated */
+			if (forceAsNotTruncated)
+			{
+				ereport(LOG, (errmsg(
+								  "Truncation limit reached and LastType %s is requested as ForceAsNotTruncated",
+								  BsonTypeName(lastType))));
+			}
+
 			return !forceAsNotTruncated;
 		}
 		else
@@ -406,6 +438,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 
 		const bson_value_t *iterValue = bson_iter_value(documentIterator);
 		const StringView pathView = bson_iter_key_string_view(documentIterator);
+		lastType = iterValue->value_type;
 
 		/* Determine how we're going to write this value */
 		int32_t requiredLengthWithPath = currentLength + dataSize +
@@ -709,15 +742,14 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 static BsonIndexTermSerialized
 SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 						   const IndexTermCreateMetadata *createMetadata,
-						   bool forceTruncated)
+						   bool forceTruncated,
+						   bool isMetadataTerm)
 {
 	BsonIndexTerm indexTerm = {
-		0, { 0 }
+		false, false, { 0 }
 	};
-	indexTerm.isIndexTermTruncated = false;
-
 	BsonIndexTermSerialized serializedTerm = {
-		0, NULL
+		false, false, NULL
 	};
 
 	pgbson_writer writer;
@@ -728,6 +760,10 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	{
 		indexTerm.isIndexTermTruncated = true;
 	}
+	if (isMetadataTerm)
+	{
+		indexTerm.isIndexTermMetadata = true;
+	}
 
 	uint32_t dataSize = PgbsonWriterGetSize(&writer);
 
@@ -736,13 +772,15 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	{
 		ereport(ERROR, (errcode(MongoInternalError),
 						errmsg(
-							"Truncation size limit specified %d, but index term with type %s was larger %d",
+							"Truncation size limit specified %d, but index term with type %s was larger %d - isTruncated %d",
 							createMetadata->indexTermSizeLimit, BsonTypeName(
-								indexElement->bsonValue.value_type), dataSize),
+								indexElement->bsonValue.value_type), dataSize,
+							indexTerm.isIndexTermTruncated),
 						errhint(
-							"Truncation size limit specified %d, but index term with type %s was larger %d",
+							"Truncation size limit specified %d, but index term with type %s was larger %d - isTruncated %d",
 							createMetadata->indexTermSizeLimit, BsonTypeName(
-								indexElement->bsonValue.value_type), dataSize)));
+								indexElement->bsonValue.value_type), dataSize,
+							indexTerm.isIndexTermTruncated)));
 	}
 
 	int indexTermSize = dataSize + VARHDRSZ + sizeof(uint8_t);
@@ -750,10 +788,21 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	SET_VARSIZE(indexTermVal, indexTermSize);
 
 	uint8_t *buffer = (uint8_t *) VARDATA(indexTermVal);
-	buffer[0] = (uint8_t) indexTerm.isIndexTermTruncated;
+	buffer[0] = 0;
+	if (indexTerm.isIndexTermTruncated)
+	{
+		buffer[0] = buffer[0] | IndexTermTruncatedFlag;
+	}
+
+	if (indexTerm.isIndexTermMetadata)
+	{
+		buffer[0] = buffer[0] | IndexTermMetadataFlag;
+	}
+
 	PgbsonWriterCopyToBuffer(&writer, &buffer[1], dataSize);
 	serializedTerm.indexTermVal = indexTermVal;
 	serializedTerm.isIndexTermTruncated = indexTerm.isIndexTermTruncated;
+	serializedTerm.isRootMetadataTerm = indexTerm.isIndexTermMetadata;
 	return serializedTerm;
 }
 
@@ -772,13 +821,15 @@ SerializeBsonIndexTerm(pgbsonelement *indexElement, const
 	Assert(indexTermSizeLimit != NULL);
 
 	bool forceTruncated = false;
-	return SerializeBsonIndexTermCore(indexElement, indexTermSizeLimit, forceTruncated);
+	bool isMetadataTerm = false;
+	return SerializeBsonIndexTermCore(indexElement, indexTermSizeLimit, forceTruncated,
+									  isMetadataTerm);
 }
 
 
 /*
- * This is the root term that all documents get.
- * We pick a term that points to a path that is illegal ('.')
+ * This is the root term that all documents get when the indexed path exists.
+ * We pick a term that points to a path that is illegal ('')
  * and give it to all terms. This allows us to answer questions
  * on complement sets (e.g. NOT operators) from the index.
  */
@@ -795,7 +846,96 @@ GenerateRootTerm(void)
 		.indexTermSizeLimit = 0,
 		.pathPrefix = { 0 }
 	};
-	return PointerGetDatum(SerializeBsonIndexTerm(&element, &termData).indexTermVal);
+
+	bool forceTruncated = false;
+
+	/* Can't mark this as metadata due to back-compat. This is okay coz this is legacy. */
+	bool isMetadataTerm = false;
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+													  isMetadataTerm).indexTermVal);
+}
+
+
+/*
+ * This is the root term that all documents get when the indexed path exists.
+ * We pick a term that points to a path that is illegal ('')
+ * and give it to all terms. This allows us to answer questions
+ * on complement sets (e.g. NOT operators) from the index.
+ */
+Datum
+GenerateRootExistsTerm(void)
+{
+	pgbsonelement element = { 0 };
+	element.path = "";
+	element.pathLength = 0;
+	element.bsonValue.value_type = BSON_TYPE_BOOL;
+	element.bsonValue.value.v_bool = true;
+
+	IndexTermCreateMetadata termData =
+	{
+		.indexTermSizeLimit = 0,
+		.pathPrefix = { 0 }
+	};
+	bool forceTruncated = false;
+	bool isMetadataTerm = true;
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+													  isMetadataTerm).indexTermVal);
+}
+
+
+/*
+ * This is the root term that all documents get when the indexed path doesn't exist.
+ * We pick a term that points to a path that is illegal ('').
+ * This allows us to answer questions for exists and null equality in the index
+ */
+Datum
+GenerateRootNonExistsTerm(void)
+{
+	pgbsonelement element = { 0 };
+	element.path = "";
+	element.pathLength = 0;
+	element.bsonValue.value_type = BSON_TYPE_UNDEFINED;
+
+	IndexTermCreateMetadata termData =
+	{
+		.indexTermSizeLimit = 0,
+		.pathPrefix = { 0 }
+	};
+	bool forceTruncated = false;
+	bool isMetadataTerm = true;
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+													  isMetadataTerm).indexTermVal);
+}
+
+
+/*
+ * This is the root term that all documents get when the indexed path contains an array
+ * or array ancestor.
+ * We pick a term that points to a path that is illegal (''). In addition we add the
+ * Metadata "isMetadata" to distinguish this from regular data paths.
+ * This allows us to answer questions for null equality in the index.
+ */
+Datum
+GenerateRootMultiKeyTerm(void)
+{
+	bson_iter_t iter;
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendEmptyArray(&writer, "", 0);
+
+	PgbsonWriterGetIterator(&writer, &iter);
+
+	pgbsonelement element = { 0 };
+	BsonIterToSinglePgbsonElement(&iter, &element);
+	IndexTermCreateMetadata termData =
+	{
+		.indexTermSizeLimit = 0,
+		.pathPrefix = { 0 }
+	};
+	bool forceTruncated = false;
+	bool isMetadataTerm = true;
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData, forceTruncated,
+													  isMetadataTerm).indexTermVal);
 }
 
 
@@ -821,6 +961,13 @@ GenerateRootTruncatedTerm(void)
 	/* Use maxKey just so they're differentiated from the Root term */
 	element.bsonValue.value_type = BSON_TYPE_MAXKEY;
 	bool forceTruncated = true;
+
+	/* Can't mark this as metadata due to back-compat. Need to think of how to
+	 * handle this. TODO: When we bump index versions make this a metadata term.
+	 * Note that this isn't bad since we can never get a MAXKEY that is truncated.
+	 */
+	bool isMetadataTerm = false;
 	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData,
-													  forceTruncated).indexTermVal);
+													  forceTruncated,
+													  isMetadataTerm).indexTermVal);
 }

@@ -177,6 +177,9 @@ int CollStatsCountPolicyThreshold = DEFAULT_COLL_STATS_COUNT_POLICY_THRESHOLD;
 #define DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND false
 bool EnableIndexBuildBackground = DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND;
 
+#define DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM true
+bool EnableGenerateNonExistsTerm = DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM;
+
 #define DEFAULT_MAX_INDEX_BUILD_ATTEMPTS 3
 int MaxIndexBuildAttempts = DEFAULT_MAX_INDEX_BUILD_ATTEMPTS;
 
@@ -470,6 +473,13 @@ InitApiConfigurations(char *prefix)
 		psprintf("%s.enableIndexBuildBackground", prefix),
 		gettext_noop("Enables support for Index Builds in background."),
 		NULL, &EnableIndexBuildBackground, DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableGenerateNonExistsTerm", prefix),
+		gettext_noop(
+			"Enables generating the non exists term for new documents in a collection."),
+		NULL, &EnableGenerateNonExistsTerm, DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(

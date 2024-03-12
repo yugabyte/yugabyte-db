@@ -96,9 +96,35 @@ typedef struct DollarArrayOpQueryData
 	/* The index of the queryKey of the root term */
 	int rootTermIndex;
 
+	/* The index of the queryKey of the root exists term */
+	int rootExistsTermIndex;
+
+	/* The index of the queryKey of the non exists term */
+	int nonExistsTermIndex;
+
 	/* The index of the queryKey of the root truncated term */
 	int rootTruncatedTermIndex;
+
+	/* The index of the queryKey of the literal undefined term */
+	int undefinedLiteralTermIndex;
+
+	/* Index of the multi-key existence term */
+	int multiKeyTermIndex;
 } DollarArrayOpQueryData;
+
+
+typedef struct DollarExistsQueryData
+{
+	/* whether the lookup was a partial match or not.
+	 * Wildcard index terms don't give us enough information so we have to do
+	 * a $gte: MinKey partial match. */
+	bool isComparePartial;
+
+	/* Whether is $exists: true or $exists: false. */
+	bool isPositiveExists;
+} DollarExistsQueryData;
+
+extern bool EnableGenerateNonExistsTerm;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -160,26 +186,168 @@ static inline Datum * GenerateNullEqualityIndexTerms(int32 *nentries, bool **par
 													 pgbsonelement *filterElement,
 													 const IndexTermCreateMetadata *
 													 metadata);
+static Datum * GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch,
+										   Pointer **extraData,
+										   pgbsonelement *filterElement, bool
+										   isPositiveExists,
+										   const void *indexOptions,
+										   const IndexTermCreateMetadata *metadata);
 static bson_value_t GetLowerBoundForLessThan(bson_type_t inputBsonType);
 
+
+/*
+ * returns true if the index is a wildcard index
+ */
 inline static bool
-HandleConsistentEqualsNull(bool *check, bool *recheck)
+IsWildcardIndex(const void *indexOptions)
+{
+	BsonGinIndexOptionsBase *optionsBase = (BsonGinIndexOptionsBase *) indexOptions;
+	switch (optionsBase->type)
+	{
+		case IndexOptionsType_SinglePath:
+		{
+			return ((BsonGinSinglePathOptions *) indexOptions)->isWildcard;
+		}
+
+		case IndexOptionsType_Wildcard:
+		{
+			return true;
+		}
+
+		case IndexOptionsType_Text:
+		{
+			return ((BsonGinTextPathOptions *) indexOptions)->isWildcard;
+		}
+
+		default:
+		{
+			return false;
+		}
+	}
+}
+
+
+inline static bool
+HandleConsistentEqualsNull(bool *check, bool *recheck, bytea *indexOptions)
 {
 	/* we're in the $eq: null / $gte : null/ $lte: null case. */
-	/* result is true, if the value is null. */
-	if (check[0] || check[1])
+	/* result is true, if the value is null, doesn't exist or literal undefined. */
+
+	/* check[0] == literal null
+	 * check[1] == Root non exists
+	 * check[2] == literal undefined
+	 * check[3] == root exists term
+	 * check[4] == array ancestors
+	 * check[5] == legacy root term
+	 */
+	if (check[0] || check[1] || check[2])
 	{
-		*recheck = false;
-	}
-	else
-	{
-		/* if the value isn't null */
-		/* we can't be sure this path is a match. */
-		/* set recheck to true to validate it in the runtime. */
-		*recheck = true;
+		/* literal null, literal undefined, or non-exists */
+
+		/* This definitely matches $eq: null except for array ancestors where we need
+		 * to recheck in the runtime.
+		 */
+
+		/* For array multi-key terms - the index does not have fidelity - needs to push to runtime */
+		*recheck = check[4];
+		return true;
 	}
 
-	return true;
+	if (check[3])
+	{
+		/* It matches the root exists term - so some path exists and it's not
+		 * null, or undefined. Could still be a false positive in the following cases:
+		 * 1) The index is a wildcard index
+		 * 2) The path has array ancestors
+		 * In all other cases, this can fully be trusted as not matching null.
+		 */
+		if (check[4] || IsWildcardIndex(indexOptions))
+		{
+			*recheck = true;
+			return true;
+		}
+
+		return false;
+	}
+
+	/* It matches the legacy root term follow existing path and push to runtime */
+	*recheck = true;
+	return check[5];
+}
+
+
+inline static bool
+HandleConsistentGreaterLessEquals(Datum *queryKeys, bool *check, bool *recheck,
+								  bytea *indexOptions)
+{
+	BsonIndexTerm indexTerm;
+	InitializeBsonIndexTerm(DatumGetByteaPP(queryKeys[0]), &indexTerm);
+
+	if (indexTerm.element.bsonValue.value_type == BSON_TYPE_NULL)
+	{
+		/* $gte: null path */
+		return HandleConsistentEqualsNull(check, recheck, indexOptions);
+	}
+
+	/* $gte is true if it's $gt/$lt (the 0th term ) */
+
+	/* Recheck is always false if the term is strictly greater than
+	 * For equality, it's false unless it's truncated.
+	 */
+	BsonIndexTerm equalityTerm;
+	InitializeBsonIndexTerm(DatumGetByteaPP(queryKeys[1]), &equalityTerm);
+	*recheck = !check[0] && equalityTerm.isIndexTermTruncated;
+
+	/* A row matches if it's $gt/$lt OR $eq */
+	return check[0] || check[1];
+}
+
+
+inline static bool
+HandleConsistentExists(bool *check, bool *recheck, const DollarExistsQueryData *queryData)
+{
+	*recheck = false;
+
+	if (queryData->isComparePartial)
+	{
+		/* Wildcard index scenario */
+		if (queryData->isPositiveExists)
+		{
+			return check[0];
+		}
+
+		/* There's 4 terms:
+		 * check[0] -> $gte: MinKey()
+		 */
+		if (check[0])
+		{
+			/* It matched an exists: true - guaranteed false */
+			return false;
+		}
+
+		/* It did not match exists: true, but matches Root/RootExists
+		 * check[1] -> Legacy root term
+		 * check[2] -> Root Non Exists
+		 * check[3] -> Root Exists
+		 * These match all docs - if we remove the ones in check[0]
+		 * These all match exists: false
+		 */
+		return true;
+	}
+
+	/* Non compare-partial path (single path index) */
+	if (check[0])
+	{
+		/* For positive - this is the exists term.
+		 * For negative - this is the non-exists term
+		 * return what it says
+		 */
+		return true;
+	}
+
+	/* check[0] didn't match use legacy root term and thunk to runtime */
+	*recheck = true;
+	return check[1];
 }
 
 
@@ -201,8 +369,8 @@ GenerateSinglePathTermsCore(pgbson *bson, GenerateTermsContext *context,
 	context->generateNotFoundTerm = singlePathOptions->generateNotFoundTerm;
 	context->termMetadata = GetIndexTermMetadata(singlePathOptions);
 
-	bool generateRootTerm = true;
-	GenerateTerms(bson, context, generateRootTerm);
+	bool addRootTerm = true;
+	GenerateTerms(bson, context, addRootTerm);
 }
 
 
@@ -221,8 +389,41 @@ GenerateWildcardPathTermsCore(pgbson *bson, GenerateTermsContext *context,
 	context->generateNotFoundTerm = false;
 	context->termMetadata = GetIndexTermMetadata(wildcardOptions);
 
-	bool generateRootTerm = true;
-	GenerateTerms(bson, context, generateRootTerm);
+	bool addRootTerm = true;
+	GenerateTerms(bson, context, addRootTerm);
+}
+
+
+/*
+ * Common logic for handling the Consistent check for
+ * $eq: null in array terms. This is used between $in/$all
+ */
+inline static bool
+HandleConsistentArrayOpForEqualsNull(bool *check, DollarArrayOpQueryData *queryData,
+									 bool *recheck, bytea *indexClassOptions)
+{
+	/* $eq/$in null. For new indexes we generate a non exists term,
+	 * so if we match that and we don't match the root term, we don't need to recheck. */
+
+	/* equals null checks on:
+	 * check[0] == literal null
+	 * check[1] == Root non exists
+	 * check[2] == literal undefined
+	 * check[3] == root exists term
+	 * check[4] == array ancestors
+	 * check[5] == legacy root term
+	 */
+	bool eqNullCheck[6] = { 0 };
+
+	/* Exact equality on null is covered above */
+	eqNullCheck[0] = false;
+	eqNullCheck[1] = check[queryData->nonExistsTermIndex];
+	eqNullCheck[2] = check[queryData->undefinedLiteralTermIndex];
+	eqNullCheck[3] = check[queryData->rootExistsTermIndex];
+	eqNullCheck[4] = check[queryData->multiKeyTermIndex];
+	eqNullCheck[5] = check[queryData->rootTermIndex];
+
+	return HandleConsistentEqualsNull(eqNullCheck, recheck, indexClassOptions);
 }
 
 
@@ -232,7 +433,8 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 					  Pointer *extra_data,
 					  int32_t numKeys,
 					  bool *recheck,
-					  Datum *queryKeys)
+					  Datum *queryKeys,
+					  bytea *indexClassOptions)
 {
 	switch (strategy)
 	{
@@ -241,7 +443,7 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 		{
 			if (check[0])
 			{
-				/* $gt from the index can be fully trusted for hits */
+				/* $gt/$lt from the index can be fully trusted for hits */
 				*recheck = false;
 				return check[0];
 			}
@@ -249,7 +451,7 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			bool isTermTruncated = false;
 			if (numKeys == 2)
 			{
-				isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaP(
+				isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaPP(
 																	 queryKeys[1]));
 			}
 
@@ -356,54 +558,44 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 				/* for $eq since we go for an exact match, */
 				/* we can trust the check - we don't need to look up the doc. */
 				/* Unless the term is truncated */
-				*recheck = IsSerializedIndexTermTruncated(DatumGetByteaP(queryKeys[0]));
+				*recheck = IsSerializedIndexTermTruncated(DatumGetByteaPP(queryKeys[0]));
 				return check[0];
 			}
 			else
 			{
-				return HandleConsistentEqualsNull(check, recheck);
+				return HandleConsistentEqualsNull(check, recheck, indexClassOptions);
 			}
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL:
-		case BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL:
 		{
-			BsonIndexTerm indexTerm;
-			InitializeBsonIndexTerm(DatumGetByteaP(queryKeys[0]), &indexTerm);
+			/* we translate $exists: true to $gte: MinKey at the planner level
+			 * We can't use queryKeys here and check if $gte: MinKey since we need to know if it is compare partial or not
+			 * and that we can't tell from the query keys. */
+			DollarExistsQueryData *existsQueryData = extra_data != NULL ?
+													 (DollarExistsQueryData *) extra_data[
+				0] : NULL;
 
-			if (indexTerm.element.bsonValue.value_type == BSON_TYPE_NULL)
+			if (existsQueryData != NULL)
 			{
-				/* $gte: null path */
-				return HandleConsistentEqualsNull(check, recheck);
+				/* $exists: true case. */
+				return HandleConsistentExists(check, recheck, existsQueryData);
 			}
 
-			/* $gte is true if it's $gt/$lt (the 0th term ) */
+			return HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
+													 indexClassOptions);
+		}
 
-			/* Recheck is always false if the term is strictly greater than
-			 * For equality, it's false unless it's truncated.
-			 */
-			BsonIndexTerm equalityTerm;
-			InitializeBsonIndexTerm(DatumGetByteaP(queryKeys[1]), &equalityTerm);
-			*recheck = !check[0] && equalityTerm.isIndexTermTruncated;
-
-			/* A row matches if it's $gt/$lt OR $eq */
-			return check[0] || check[1];
+		case BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL:
+		{
+			return HandleConsistentGreaterLessEquals(queryKeys, check, recheck,
+													 indexClassOptions);
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_EXISTS:
 		{
-			*recheck = false;
-			if (numKeys == 1)
-			{
-				/* positive exists case. */
-				return check[0];
-			}
-			else
-			{
-				/* $exists: 0 case */
-				Assert(numKeys == 2);
-				return !check[0] && check[1];
-			}
+			return HandleConsistentExists(check, recheck,
+										  (DollarExistsQueryData *) extra_data[0]);
 		}
 
 		case BSON_INDEX_STRATEGY_UNIQUE_EQUAL:
@@ -459,9 +651,11 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			if (queryData->arrayHasNull && !result)
 			{
 				/* if no item matched, the document could still match for */
-				/* $eq/$in null. Handle this in the runtime. */
-				result = true;
-				*recheck = true;
+
+				/* $eq/$in null. For new indexes we generate a non exists term,
+				 * so if we match that and we don't match the root term, we don't need to recheck. */
+				result = HandleConsistentArrayOpForEqualsNull(check, queryData, recheck,
+															  indexClassOptions);
 			}
 
 			if (queryData->arrayHasRegex &&
@@ -488,26 +682,23 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			/* and did not match the equality */
 			/* it is a match for $ne */
 
-			/* There's 2 terms - 0: RootTerm, 1: The $eq term */
+			/* There's 3 terms - 0: RootTerm, 1: NonExistsTerm, 2: The $eq term */
 			BsonIndexTerm indexTerm;
-			InitializeBsonIndexTerm(DatumGetByteaP(queryKeys[1]), &indexTerm);
+			InitializeBsonIndexTerm(DatumGetByteaPP(queryKeys[0]), &indexTerm);
 
 			if (indexTerm.element.bsonValue.value_type == BSON_TYPE_NULL)
 			{
-				/* this is the $ne null case. */
-				if (check[1])
+				bool result = HandleConsistentEqualsNull(check, recheck,
+														 indexClassOptions);
+
+				if (*recheck)
 				{
-					*recheck = false;
-					return false;
-				}
-				else
-				{
-					/* if the field value is not null, we can't be sure */
-					/* from the index whether it's a match or not. */
-					/* pass it to the runtime to evaluate. */
-					*recheck = true;
+					/* If we're being asked to reevaluate in the runtime, then thunk to runtime */
 					return true;
 				}
+
+				/* Otherwise invert the $eq: null result */
+				return !result;
 			}
 			else
 			{
@@ -520,8 +711,9 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 					return true;
 				}
 
+				/* All documents that don't match the equality */
 				*recheck = false;
-				return check[0] && !check[1];
+				return !check[0];
 			}
 		}
 
@@ -532,15 +724,19 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			 * the $nin array has null or not */
 			DollarArrayOpQueryData *queryData =
 				(DollarArrayOpQueryData *) extra_data[numKeys];
-			bool res = check[queryData->rootTermIndex];
 
+			/* for $eq: null if it matches the non exists term, then it matched a doc with this path undefined. */
+
+			bool res = check[queryData->rootTermIndex] ||
+					   check[queryData->nonExistsTermIndex] ||
+					   check[queryData->rootExistsTermIndex];
 			bool mismatchOnTruncatedTerm = false;
 			for (int i = 0; i < queryData->inTermCount; i++)
 			{
 				/* if any terms match, res is false. */
 				if (check[i])
 				{
-					if (IsSerializedIndexTermTruncated(DatumGetByteaP(queryKeys[i])))
+					if (IsSerializedIndexTermTruncated(DatumGetByteaPP(queryKeys[i])))
 					{
 						mismatchOnTruncatedTerm = true;
 					}
@@ -552,9 +748,19 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 
 			if (res && queryData->arrayHasNull)
 			{
-				/* none of the terms matched */
-				res = true;
-				*recheck = true;
+				bool equalsNull = HandleConsistentArrayOpForEqualsNull(check, queryData,
+																	   recheck,
+																	   indexClassOptions);
+
+				if (*recheck)
+				{
+					/* Since recheck was set - we move to the runtime */
+					res = true;
+				}
+				else
+				{
+					res = !equalsNull;
+				}
 			}
 			else if (queryData->arrayHasRegex && queryData->rootTruncatedTermIndex > 0 &&
 					 check[queryData->rootTruncatedTermIndex])
@@ -602,9 +808,9 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			if (!res && hasOnlyNull)
 			{
 				/* if we get $all: [null] or [null,..<null>, null] as the query,
-				 * we can match empty documents, so we need to recheck at runtime. */
-				res = true;
-				*recheck = true;
+				 * we can match empty documents, we can skip recheck if we didn't match the root term and matched the non-exists term. */
+				res = HandleConsistentArrayOpForEqualsNull(check, queryData, recheck,
+														   indexClassOptions);
 			}
 
 			if (queryData->rootTruncatedTermIndex > 0)
@@ -690,8 +896,9 @@ GinBsonExtractQueryUniqueIndexTerms(PG_FUNCTION_ARGS)
 /*
  * Used as the term generation of the actual order by.
  * This matches all terms for that path. The root term
- * is also included to ensure we capture documents
- * that don't have the path in them.
+ * and non exists term is also included to ensure we capture documents
+ * that don't have the path in them. Once we reindex old indexes to contain
+ * the root term we can just generate the non exists term.
  */
 Datum *
 GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
@@ -715,15 +922,17 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 
 	filterElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 
-	*nentries = 2;
-	entries = (Datum *) palloc(sizeof(Datum) * 2);
+	*nentries = 3;
+	entries = (Datum *) palloc(sizeof(Datum) * 3);
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&filterElement,
 														&termMetadata).indexTermVal);
 	entries[1] = GenerateRootTerm();
+	entries[2] = GenerateRootNonExistsTerm();
 
-	*partialMatch = palloc0(sizeof(bool) * 2);
+	*partialMatch = palloc0(sizeof(bool) * 3);
 	(*partialMatch)[0] = true;
 	(*partialMatch)[1] = false;
+	(*partialMatch)[2] = false;
 	return entries;
 }
 
@@ -799,12 +1008,7 @@ GenerateTerms(pgbson *bson, GenerateTermsContext *context, bool addRootTerm)
 	context->terms.entries = palloc0(sizeof(Datum) * 2);
 	context->terms.entryCapacity = 2;
 	context->hasTruncatedTerms = false;
-
-	if (addRootTerm)
-	{
-		/* all documents get the root term. */
-		AddTerm(context, GenerateRootTerm());
-	}
+	context->hasArrayAncestors = false;
 
 	int32_t initialIndex = context->index;
 
@@ -815,15 +1019,41 @@ GenerateTerms(pgbson *bson, GenerateTermsContext *context, bool addRootTerm)
 					  isArrayTerm, context,
 					  isCheckForArrayTermsWithNestedDocument);
 
-	/* Add the path not found term if necessary */
-	if (context->index == initialIndex && context->generateNotFoundTerm)
+	bool hasNoTerms = context->index == initialIndex;
+
+	/* Add the path not found term if necessary
+	 * we do this for back compat only when the index used the legacy not found term
+	 */
+	if (hasNoTerms && context->generateNotFoundTerm)
 	{
 		AddTerm(context, GeneratePathUndefinedTerm(context->options));
 	}
 
-	if (context->hasTruncatedTerms)
+	if (addRootTerm)
 	{
-		AddTerm(context, GenerateRootTruncatedTerm());
+		/* GUC to preserve back-compat behavior. */
+		if (!EnableGenerateNonExistsTerm)
+		{
+			AddTerm(context, GenerateRootTerm());
+		}
+		else if (!hasNoTerms)
+		{
+			AddTerm(context, GenerateRootExistsTerm());
+		}
+		else
+		{
+			AddTerm(context, GenerateRootNonExistsTerm());
+		}
+
+		if (context->hasTruncatedTerms)
+		{
+			AddTerm(context, GenerateRootTruncatedTerm());
+		}
+
+		if (context->hasArrayAncestors)
+		{
+			AddTerm(context, GenerateRootMultiKeyTerm());
+		}
 	}
 
 	context->totalTermCount = context->index;
@@ -935,6 +1165,12 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 			{
 				/* path is invalid, but may have valid descendants (e.g. index is for 'a.b.c' inclusive, */
 				/* and the current path is 'a.b') */
+				if (inArrayContext || BSON_ITER_HOLDS_ARRAY(bsonIter))
+				{
+					/* Mark the path as having array ancestors leading to the index path */
+					context->hasArrayAncestors = true;
+				}
+
 				break;
 			}
 
@@ -987,6 +1223,12 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 
 		if (BSON_ITER_HOLDS_DOCUMENT(bsonIter))
 		{
+			if (inArrayContext && option == IndexTraverse_Match)
+			{
+				/* Mark the path as having array ancestors leading to the index path */
+				context->hasArrayAncestors = true;
+			}
+
 			bson_iter_t containerIter;
 			if (bson_iter_recurse(bsonIter, &containerIter))
 			{
@@ -1006,6 +1248,12 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 		{
 			if (BSON_ITER_HOLDS_ARRAY(bsonIter))
 			{
+				if (inArrayContext && option == IndexTraverse_Match)
+				{
+					/* Mark the path as having array ancestors leading to the index path */
+					context->hasArrayAncestors = true;
+				}
+
 				bson_iter_t containerIter;
 
 				/* Count the array terms - to pre-allocate the term Datum pointers */
@@ -1168,31 +1416,37 @@ GinBsonExtractQueryCore(BsonIndexStrategy strategy, BsonExtractQueryArgs *args)
  *
  * Sets the respective partial matches to false
  *
- * Note: Make sure to at least palloc array to hold 3 elements
+ * Note: Make sure to at least palloc array to hold 4 elements
  */
 static inline Datum *
 GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
 							   pgbsonelement *filterElement,
 							   const IndexTermCreateMetadata *metadata)
 {
-	*nentries = 3;
-	*partialmatch = (bool *) palloc(sizeof(bool) * 3);
-	Datum *entries = (Datum *) palloc(sizeof(Datum) * 3);
+	*nentries = 6;
+	*partialmatch = NULL;
+	Datum *entries = (Datum *) palloc(sizeof(Datum) * 6);
 
 	/* the first term generated is the value itself (null) */
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(filterElement,
 														metadata).indexTermVal);
-	(*partialmatch)[0] = false;
 
-	/* The next term is undefined */
+	/* non exists term. */
+	entries[1] = GenerateRootNonExistsTerm();
+
+	/* The next term is undefined, we generate this for back compat but new indexes should only have the non exists term. */
 	filterElement->bsonValue.value_type = BSON_TYPE_UNDEFINED;
-	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(filterElement,
+	entries[2] = PointerGetDatum(SerializeBsonIndexTerm(filterElement,
 														metadata).indexTermVal);
-	(*partialmatch)[1] = false;
 
-	/* the next term generated is the root term */
-	entries[2] = GenerateRootTerm();
-	(*partialmatch)[2] = false;
+	/* the next term generated is the root exists term */
+	entries[3] = GenerateRootExistsTerm();
+
+	/* the next term is the array ancestor term */
+	entries[4] = GenerateRootMultiKeyTerm();
+
+	/* the next term generated is the root term for back-compatibility */
+	entries[5] = GenerateRootTerm();
 
 	return entries;
 }
@@ -1397,16 +1651,25 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 {
 	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
-	Datum *entries = (Datum *) palloc(sizeof(Datum) * 2);
+	Datum *entries = (Datum *) palloc(sizeof(Datum) * 6);
 
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(query, &element);
-	*nentries = 2;
 
+	if (element.bsonValue.value_type == BSON_TYPE_NULL)
+	{
+		/* $ne: null - we use $eq null and invert the set */
+		return GenerateNullEqualityIndexTerms(nentries, args->partialmatch,
+											  &element, &args->termMetadata);
+	}
+
+	*nentries = 4;
 	BsonIndexTermSerialized serialized = SerializeBsonIndexTerm(&element,
 																&args->termMetadata);
-	entries[0] = GenerateRootTerm();
-	entries[1] = PointerGetDatum(serialized.indexTermVal);
+	entries[0] = PointerGetDatum(serialized.indexTermVal);
+	entries[1] = GenerateRootExistsTerm();
+	entries[2] = GenerateRootNonExistsTerm();
+	entries[3] = GenerateRootTerm();
 	return entries;
 }
 
@@ -1435,6 +1698,15 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
 		/* special case for $gte: null */
 		return GenerateNullEqualityIndexTerms(nentries, partialmatch, &element,
 											  &args->termMetadata);
+	}
+
+	if (element.bsonValue.value_type == BSON_TYPE_MINKEY)
+	{
+		/* special case for $exists: true */
+		bool isPositiveExists = true;
+		return GenerateExistsEqualityTerms(nentries, partialmatch, args->extra_data,
+										   &element, isPositiveExists, args->options,
+										   &args->termMetadata);
 	}
 
 	entries = (Datum *) palloc(sizeof(Datum) * 2);
@@ -1615,6 +1887,46 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 
 
 /*
+ * Term generation for $eq: null type operators that take
+ * arrays - this covers $in and $all scenarios
+ */
+inline static int
+AddNullArrayOpTerms(Datum *entries, int index,
+					DollarArrayOpQueryData *inQueryData,
+					pgbsonelement *queryElement,
+					IndexTermCreateMetadata *termMetadata)
+{
+	entries[index] = GenerateRootTerm();
+	inQueryData->rootTermIndex = index;
+	index++;
+
+	entries[index] = GenerateRootExistsTerm();
+	inQueryData->rootExistsTermIndex = index;
+	index++;
+
+	entries[index] = GenerateRootNonExistsTerm();
+	inQueryData->nonExistsTermIndex = index;
+	index++;
+
+	entries[index] = GenerateRootMultiKeyTerm();
+	inQueryData->multiKeyTermIndex = index;
+	index++;
+
+	pgbsonelement undefinedElement;
+	undefinedElement.path = queryElement->path;
+	undefinedElement.pathLength = queryElement->pathLength;
+	undefinedElement.bsonValue.value_type = BSON_TYPE_UNDEFINED;
+	BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&undefinedElement,
+																	termMetadata);
+	entries[index] = PointerGetDatum(serializedTerm.indexTermVal);
+	inQueryData->undefinedLiteralTermIndex = index;
+	index++;
+
+	return index;
+}
+
+
+/*
  * GinBsonExtractQueryIn generates the index term needed to match
  * equality on an array of dotted path and values.
  * In this case, we can simply return the terms as the value stored
@@ -1661,7 +1973,8 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 
 	if (arrayHasNull)
 	{
-		inArraySize++;
+		/* one for undefined, root term, root Exists, the non exists term, and multi-key. */
+		inArraySize += 5;
 	}
 
 	/* allocate an additional one for truncation if necessary */
@@ -1716,9 +2029,8 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 	inQueryData->inTermCount = index;
 	if (arrayHasNull)
 	{
-		entries[index] = GenerateRootTerm();
-		inQueryData->rootTermIndex = index;
-		index++;
+		index = AddNullArrayOpTerms(entries, index, inQueryData, &queryElement,
+									&args->termMetadata);
 	}
 
 	if (inQueryData->arrayHasRegex ||
@@ -1786,8 +2098,11 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 		termCount++;
 	}
 
-	/* we generate two more possible terms for the root term. */
-	termCount += 2;
+	/* we generate 5 more possible terms 1 for the root term, root exists term,
+	 * the non exists term, multi-key term and the truncated term if needed.
+	 * We also may add the literal undefined if there's $ne null.
+	 */
+	termCount += 6;
 	entries = (Datum *) palloc(sizeof(Datum) * termCount);
 	index = 0;
 
@@ -1841,6 +2156,25 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 
 	queryData->rootTermIndex = index;
 	entries[index++] = GenerateRootTerm();
+	queryData->nonExistsTermIndex = index;
+	entries[index++] = GenerateRootNonExistsTerm();
+	queryData->rootExistsTermIndex = index;
+	entries[index++] = GenerateRootExistsTerm();
+	queryData->multiKeyTermIndex = index;
+	entries[index++] = GenerateRootMultiKeyTerm();
+	if (queryData->arrayHasNull)
+	{
+		pgbsonelement undefinedElement;
+		undefinedElement.path = queryElement.path;
+		undefinedElement.pathLength = queryElement.pathLength;
+		undefinedElement.bsonValue.value_type = BSON_TYPE_UNDEFINED;
+
+		queryData->undefinedLiteralTermIndex = index;
+		BsonIndexTermSerialized serialized = SerializeBsonIndexTerm(&undefinedElement,
+																	&args->
+																	termMetadata);
+		entries[index++] = PointerGetDatum(serialized.indexTermVal);
+	}
 
 	if (queryData->arrayHasTruncation)
 	{
@@ -1850,6 +2184,7 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 	}
 
 	*nentries = index;
+	Assert(index <= termCount);
 
 	/* The last slot of extra_data (that is, if n is the number of entries,
 	 * then (n+1)th slot) will be storing a pointer to the info whether
@@ -2009,10 +2344,6 @@ static Datum *
 GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 {
 	pgbson *query = args->query;
-	int32 *nentries = args->nentries;
-	bool **partialmatch = args->partialmatch;
-	Datum *entries;
-	pgbsonelement documentElement;
 	pgbsonelement filterElement;
 	PgbsonToSinglePgbsonElement(query, &filterElement);
 	bool existsPositiveMatch = true;
@@ -2026,37 +2357,104 @@ GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 		existsPositiveMatch = false;
 	}
 
-	/* find all values starting at minkey. */
-	documentElement.path = filterElement.path;
-	documentElement.pathLength = filterElement.pathLength;
-	documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
+	return GenerateExistsEqualityTerms(args->nentries, args->partialmatch,
+									   args->extra_data, &filterElement,
+									   existsPositiveMatch, args->options,
+									   &args->termMetadata);
+}
 
-	if (existsPositiveMatch)
+
+static Datum *
+GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch, Pointer **extraData,
+							pgbsonelement *filterElement, bool isPositiveExists,
+							const void *indexOptions,
+							const IndexTermCreateMetadata *metadata)
+{
+	Datum *entries;
+
+	/* Only single path non-wildcard indexes can know if the path exists or not, therefore we can trust the non-exists term.
+	 * Otherwise we need to do a partial match with MinKey. */
+	bool isComparePartial = IsWildcardIndex(indexOptions);
+
+	DollarExistsQueryData *existsQueryData = (DollarExistsQueryData *) palloc0(
+		sizeof(DollarExistsQueryData));
+	existsQueryData->isComparePartial = isComparePartial;
+	existsQueryData->isPositiveExists = isPositiveExists;
+
+	if (!existsQueryData->isComparePartial)
 	{
-		*nentries = 1;
-		entries = (Datum *) palloc(sizeof(Datum));
-		*partialmatch = (bool *) palloc(sizeof(bool));
-		**partialmatch = true;
-		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-															&args->termMetadata).
-									 indexTermVal);
-	}
-	else
-	{
+		/* Even though we're only setting one value in extra data, the contract in GIN/RUM is to allocate the same size of entries. */
+		*extraData = (Pointer *) palloc(sizeof(Pointer) * 2);
+		(*extraData)[0] = (Pointer) existsQueryData;
+
 		*nentries = 2;
 		entries = (Datum *) palloc(sizeof(Datum) * 2);
 		*partialmatch = (bool *) palloc(sizeof(bool) * 2);
 
+		entries[0] = isPositiveExists ? GenerateRootExistsTerm() :
+					 GenerateRootNonExistsTerm();
+		(*partialmatch)[0] = false;
+
+		/* Left here for back compat */
+		entries[1] = GenerateRootTerm();
+		(*partialmatch)[1] = false;
+
+		return entries;
+	}
+
+	pgbsonelement documentElement;
+	documentElement.path = filterElement->path;
+	documentElement.pathLength = filterElement->pathLength;
+	documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
+
+	/* for partial match (wildcard indexes) we treat $exists: true as gte MinKey and not undefined. */
+	if (isPositiveExists)
+	{
+		*extraData = (Pointer *) palloc(sizeof(Pointer) * 1);
+		*nentries = 1;
+		entries = (Datum *) palloc(sizeof(Datum) * 1);
+		*partialmatch = (bool *) palloc(sizeof(bool) * 1);
+		**partialmatch = true;
+		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
+															metadata).
+									 indexTermVal);
+	}
+	else
+	{
+		/* Even though we're only setting one value in extra data, the contract in GIN/RUM is to allocate the same size of entries. */
+		*extraData = (Pointer *) palloc(sizeof(Pointer) * 4);
+		*nentries = 4;
+		entries = (Datum *) palloc(sizeof(Datum) * 4);
+		*partialmatch = (bool *) palloc(sizeof(bool) * 4);
+
+		/* for wildcard indexes do partial match since we can't generate a non exists term there. */
 		/* first term is the exists term. */
 		(*partialmatch)[0] = true;
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-															&args->termMetadata).
+															metadata).
 									 indexTermVal);
 
 		/* second term is the root term. */
 		(*partialmatch)[1] = false;
 		entries[1] = GenerateRootTerm();
+
+		/* We match both exists/nonexists since for a wildcard index we need *all* documents
+		 * to generate the inverse match on the Exists. Note that:
+		 * NumDocs(RootTerm) + NumDocs(NonExistsTerm) + NumDocs(RootExists) == TotalDocs
+		 * Since the Root term is only for legacy docs.
+		 */
+
+		/* third term is the non-exists term. */
+		(*partialmatch)[2] = false;
+		entries[2] = GenerateRootNonExistsTerm();
+
+		/* third term is the exists term. */
+		(*partialmatch)[3] = false;
+		entries[3] = GenerateRootExistsTerm();
 	}
+
+	(*extraData)[0] = (Pointer) existsQueryData;
+
 	return entries;
 }
 
@@ -2287,10 +2685,10 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 
 	/* if the $all array has only null values, we can match documents
 	 * that don't define the path we are matching, so we create a root term
-	 * to match them. */
+	 * and a non-exists term to match them. */
 	if (arrayHasOnlyNull)
 	{
-		termCount++;
+		termCount += 5;
 	}
 
 	/* Add one for the root truncated term */
@@ -2375,9 +2773,8 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 
 	if (arrayHasOnlyNull)
 	{
-		entries[index] = GenerateRootTerm();
-		queryData->rootTermIndex = index;
-		index++;
+		index = AddNullArrayOpTerms(entries, index, queryData, &filterElement,
+									&args->termMetadata);
 	}
 
 	if (queryData->arrayHasTruncation ||
@@ -2566,8 +2963,11 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_CHECK_VIOLATION), errmsg(
-								"gin_compare_partial_bson: Unsupported strategy")));
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg("compare_partial_bson: Unsupported strategy %d",
+								   strategy),
+							errhint("compare_partial_bson: Unsupported strategy %d",
+									strategy)));
 		}
 	}
 }

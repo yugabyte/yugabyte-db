@@ -217,10 +217,10 @@ gin_bson_compare_partial(PG_FUNCTION_ARGS)
 	Pointer extraData = PG_GETARG_POINTER(3);
 
 	BsonIndexTerm queryIndexTerm = {
-		0, { 0 }
+		false, false, { 0 }
 	};
 	BsonIndexTerm compareIndexTerm = {
-		0, { 0 }
+		false, false, { 0 }
 	};
 	InitializeBsonIndexTerm(queryValue, &queryIndexTerm);
 	InitializeBsonIndexTerm(compareValue, &compareIndexTerm);
@@ -294,15 +294,6 @@ gin_bson_can_pre_consistent(PG_FUNCTION_ARGS)
 Datum
 gin_bson_pre_consistent(PG_FUNCTION_ARGS)
 {
-	/* Bug: Because we reused the same C function for exclusion constraints
-	 * We need to do this check here: TODO: After 1.11 schema rolls out
-	 * delete this.
-	 */
-	if (fcinfo->flinfo->fn_oid == BsonExclusionPreConsistentFunctionId())
-	{
-		PG_RETURN_DATUM(gin_bson_exclusion_pre_consistent(fcinfo));
-	}
-
 	bool *check = (bool *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
 
@@ -312,13 +303,14 @@ gin_bson_pre_consistent(PG_FUNCTION_ARGS)
 	bool *recheck = (bool *) PG_GETARG_POINTER(5);       /* out param. */
 	Datum *queryKeys = (Datum *) PG_GETARG_POINTER(6);
 
-
+	bytea *options = (bytea *) PG_GET_OPCLASS_OPTIONS();
 	bool res = GinBsonConsistentCore(strategy,
 									 check,
 									 extra_data,
 									 numKeys,
 									 recheck,
-									 queryKeys);
+									 queryKeys,
+									 options);
 
 	PG_RETURN_BOOL(res);
 }
@@ -351,15 +343,17 @@ gin_bson_consistent(PG_FUNCTION_ARGS)
 	if (strategy == BSON_INDEX_STRATEGY_DOLLAR_ORDERBY)
 	{
 		*recheck = false;
-		PG_RETURN_BOOL(check[0] || check[1]);
+		PG_RETURN_BOOL(check[0] || check[1] || check[2]);
 	}
 
+	bytea *options = (bytea *) PG_GET_OPCLASS_OPTIONS();
 	res = GinBsonConsistentCore(strategy,
 								check,
 								extra_data,
 								numKeys,
 								recheck,
-								queryKeys);
+								queryKeys,
+								options);
 	PG_RETURN_BOOL(res);
 }
 
@@ -412,9 +406,9 @@ gin_bson_get_single_path_generated_terms(PG_FUNCTION_ARGS)
 	{
 		Datum next = context->terms.entries[context->index++];
 		BsonIndexTerm term = {
-			0, { 0 }
+			false, false, { 0 }
 		};
-		bytea *serializedTerm = DatumGetByteaP(next);
+		bytea *serializedTerm = DatumGetByteaPP(next);
 		InitializeBsonIndexTerm(serializedTerm, &term);
 		bool addMetadata = PG_GETARG_BOOL(4);
 
@@ -477,6 +471,7 @@ gin_bson_get_wildcard_project_generated_terms(PG_FUNCTION_ARGS)
 		options->pathSpec = sizeof(BsonGinWildcardProjectionPathOptions);
 		options->isExclusion = PG_GETARG_BOOL(2);
 		options->includeId = PG_GETARG_BOOL(3);
+		options->base.type = IndexOptionsType_Wildcard;
 		options->base.indexTermTruncateLimit = PG_GETARG_INT32(5);
 
 		GenerateWildcardPathTermsCore(document, context, options);
@@ -493,9 +488,9 @@ gin_bson_get_wildcard_project_generated_terms(PG_FUNCTION_ARGS)
 	{
 		Datum next = context->terms.entries[context->index++];
 		BsonIndexTerm term = {
-			0, { 0 }
+			false, false, { 0 }
 		};
-		bytea *serializedTerm = DatumGetByteaP(next);
+		bytea *serializedTerm = DatumGetByteaPP(next);
 		InitializeBsonIndexTerm(serializedTerm, &term);
 		bool addMetadata = PG_GETARG_BOOL(4);
 

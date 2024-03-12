@@ -408,6 +408,26 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 				pgbsonelement argElement;
 				PgbsonToSinglePgbsonElement(secondArg, &argElement);
 
+				if (argElement.bsonValue.value_type == BSON_TYPE_NULL &&
+					operator->indexStrategy == BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL)
+				{
+					/* $gte: null - skip range optimization (go through normal path)
+					 * that skips ComparePartial and uses runtime recheck
+					 */
+					break;
+				}
+
+				if (argElement.bsonValue.value_type == BSON_TYPE_MINKEY &&
+					operator->indexStrategy == BSON_INDEX_STRATEGY_DOLLAR_GREATER_EQUAL)
+				{
+					/* This is similar to $exists: true, skip optimization and rely on
+					 * more efficient $exists: true check that doesn't need comparePartial.
+					 * This is still okay since $lte/$lt starts with At least MinKey() so
+					 * it doesn't change the bounds to be any better.
+					 */
+					break;
+				}
+
 				if (element->minElement.pathLength == 0)
 				{
 					element->minElement = argElement;
@@ -441,6 +461,15 @@ OptimizeIndexExpressionsForRange(List *indexClauses)
 				pgbson *secondArg = DatumGetPgBson(argsConst->constvalue);
 				pgbsonelement argElement;
 				PgbsonToSinglePgbsonElement(secondArg, &argElement);
+
+				if (argElement.bsonValue.value_type == BSON_TYPE_NULL &&
+					operator->indexStrategy == BSON_INDEX_STRATEGY_DOLLAR_LESS_EQUAL)
+				{
+					/* $lte: null - skip range optimization (go through normal path)
+					 * that skips ComparePartial and uses runtime recheck
+					 */
+					break;
+				}
 
 				if (element->maxElement.pathLength == 0)
 				{

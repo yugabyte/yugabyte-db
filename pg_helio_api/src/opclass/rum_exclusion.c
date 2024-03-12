@@ -339,7 +339,7 @@ GenerateTermsForExclusion(pgbson *document,
 	for (int i = 0; i < context->totalTermCount; i++)
 	{
 		Datum entry = context->terms.entries[i];
-		bytea *termBson = DatumGetByteaP(entry);
+		bytea *termBson = DatumGetByteaPP(entry);
 		BsonIndexTerm indexTerm;
 		InitializeBsonIndexTerm(termBson, &indexTerm);
 
