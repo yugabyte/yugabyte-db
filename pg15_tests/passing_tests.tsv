@@ -15,13 +15,7 @@ JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
 JAVA	org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
-JAVA	org.yb.pgsql.TestPgAuthorization#testAlterObjectOwner
-JAVA	org.yb.pgsql.TestPgAuthorization#testDomainPrivileges
-JAVA	org.yb.pgsql.TestPgAuthorization#testForeignKeyConstraintACLCheck
-JAVA	org.yb.pgsql.TestPgAuthorization#testMultiNodeOwnershipChanges
-JAVA	org.yb.pgsql.TestPgAuthorization#testReassignOwnedObjects
-JAVA	org.yb.pgsql.TestPgAuthorization#testReferencesOnColumns
-JAVA	org.yb.pgsql.TestPgAuthorization#testReferencesOnTables
+JAVA	org.yb.pgsql.TestPgAuthorization
 JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
