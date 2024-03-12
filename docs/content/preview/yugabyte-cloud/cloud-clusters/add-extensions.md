@@ -11,7 +11,13 @@ menu:
 type: docs
 ---
 
-YugabyteDB is bundled with a number of [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/) that are tested to work with YSQL.
+YugabyteDB includes a number of [pre-bundled PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/), tested to work with YSQL, that you can use to extend the functionality of your database.
+
+{{< note title="Extensions must be pre-bundled" >}}
+
+YugabyteDB Managed only supports extensions that are pre-bundled in YugabyteDB. You cannot install new extensions in YugabyteDB Managed. Refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/) for the list of pre-bundled extensions.
+
+{{< /note >}}
 
 ## Loading extensions
 
@@ -32,12 +38,6 @@ yugabyte=# GRANT yb_extension TO user;
 ```
 
 For more information on roles in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).
-
-## Request support for a new extension
-
-You cannot install new extensions in YugabyteDB Managed.
-
-If you need a database extension that is not bundled with YugabyteDB added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or [reach out on Slack](https://yugabyte-db.slack.com/).
 
 ## Learn more
 
