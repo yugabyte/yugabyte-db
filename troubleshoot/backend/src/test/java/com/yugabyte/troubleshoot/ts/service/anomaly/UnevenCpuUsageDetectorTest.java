@@ -68,9 +68,11 @@ public class UnevenCpuUsageDetectorTest {
 
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
-            UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"),
-            Instant.parse("2024-01-18T15:00:00Z"),
-            Instant.parse("2024-01-18T19:00:00Z"));
+            AnomalyDetector.AnomalyDetectionContext.builder()
+                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .startTime(Instant.parse("2024-01-18T15:00:00Z"))
+                .endTime(Instant.parse("2024-01-18T19:00:00Z"))
+                .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/anomalies.json");
   }
@@ -96,9 +98,11 @@ public class UnevenCpuUsageDetectorTest {
 
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
-            UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"),
-            Instant.parse("2024-03-05T15:58:41Z"),
-            Instant.parse("2024-03-05T16:13:41Z"));
+            AnomalyDetector.AnomalyDetectionContext.builder()
+                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .startTime(Instant.parse("2024-03-05T15:58:41Z"))
+                .endTime(Instant.parse("2024-03-05T16:13:41Z"))
+                .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/short_anomaly.json");
   }
@@ -123,9 +127,11 @@ public class UnevenCpuUsageDetectorTest {
 
     AnomalyDetector.AnomalyDetectionResult result =
         unevenCpuUsageDetector.findAnomalies(
-            UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"),
-            Instant.parse("2024-03-07T00:06:17Z"),
-            Instant.parse("2024-03-07T01:06:15Z"));
+            AnomalyDetector.AnomalyDetectionContext.builder()
+                .universeUuid(UUID.fromString("59b6e66f-83ed-4fff-a3c6-b93568237fab"))
+                .startTime(Instant.parse("2024-03-07T00:06:17Z"))
+                .endTime(Instant.parse("2024-03-07T01:06:15Z"))
+                .build());
 
     assertResult(result, "anomaly/uneven_cpu_usage/larger_anomaly.json");
   }
