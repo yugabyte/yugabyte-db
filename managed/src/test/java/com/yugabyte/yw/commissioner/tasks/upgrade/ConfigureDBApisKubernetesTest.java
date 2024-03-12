@@ -44,6 +44,8 @@ public class ConfigureDBApisKubernetesTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    setFollowerLagMock();
+    setUnderReplicatedTabletsMock();
     this.configureDBApisKubernetes =
         new ConfigureDBApisKubernetes(mockBaseTaskDependencies, mockOperatorStatusUpdaterFactory);
     setupUniverseSingleAZ(false, false);
