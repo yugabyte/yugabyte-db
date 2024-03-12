@@ -1312,4 +1312,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Azure Provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> haShutdownLevel =
+      new ConfKeyInfo<>(
+          "yb.ha.shutdown_level",
+          ScopeType.GLOBAL,
+          "HA Shutdown Level",
+          "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
