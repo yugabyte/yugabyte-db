@@ -649,9 +649,13 @@ TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHear
 
   thread_holder.AddThreadFunctor([&conn1] {
     // Trigger promotion.
-    (void) conn1.ExecuteFormat(
-        "INSERT INTO $0$1_1(value, other_value) VALUES (2, 1)", kTablePrefix, kOtherRegion);
-    ASSERT_NOK(conn1.CommitTransaction());
+    if (conn1.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (2, 1)", kTablePrefix, kOtherRegion).ok()) {
+      // Commit errors with a status only when all the previous statements have passed. Else it
+      // returns a Status::OK() but implicitly does a ROLLBACK (returning the message "ROLLBACK")
+      // to the user. Hence ASSERT_NOK on commit only when the previous statement succeeds.
+      ASSERT_NOK(conn1.CommitTransaction());
+    }
   });
 
   thread_holder.AddThreadFunctor([&conn2] {
