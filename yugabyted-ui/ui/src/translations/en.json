@@ -776,6 +776,9 @@
       "databases": {
         "tabYsql": "YSQL",
         "tabYcql": "YCQL",
+        "tabBackups": "Backups",
+        "tabPitr": "Point-in-time Recovery",
+        "tabRestore": "Restore History",
         "ysqlDatabases": "YSQL Databases",
         "ycqlKeyspaces": "YCQL Keyspaces",
         "noDatabases": "There are no databases available",
@@ -801,7 +804,39 @@
         "keyspace": "Keyspace",
         "table": "Table",
         "partition": "Partition",
-        "size": "Size"
+        "size": "Size",
+        "backups": {
+          "backups": "Backups",
+          "database": "Database",
+          "apiType": "API type",
+          "size": "Size",
+          "progress": "Progress",
+          "backupStarted": "Backup started on",
+          "refresh": "Refresh",
+          "noBackups": "No backups available",
+          "searchBackups": "Search database backups"
+        },
+        "pitr": {
+          "pitr": "Point-in-time Recovery",
+          "database": "Database",
+          "apiType": "API type",
+          "progress": "Progress",
+          "createdOn": "Created on",
+          "refresh": "Refresh",
+          "noPitr": "No Point-in-time Recovery available",
+          "searchPitr": "Search PITR"
+        },
+        "restore": {
+          "restores": "Restores",
+          "database": "Database",
+          "apiType": "API type",
+          "size": "Size",
+          "progress": "Progress",
+          "restoredOn": "Restored on",
+          "refresh": "Refresh",
+          "noRestores": "No restores available",
+          "searchRestores": "Search restores"
+        }
       },
       "voyager": {
         "migrationOverview": "Migration Overview",

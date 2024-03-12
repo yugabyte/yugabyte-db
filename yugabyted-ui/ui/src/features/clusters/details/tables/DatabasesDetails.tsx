@@ -4,6 +4,7 @@ import { Box, makeStyles, Tab, Tabs } from '@material-ui/core';
 import { generatePath, Link, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { GetClusterTablesApiEnum } from '@app/api/src';
+import { BackupTab } from './BackupTab';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -28,6 +29,10 @@ const tabList: ITabListItem[] = [
     name: 'tabYcql',
     testId: 'ClusterTabList-Ycql'
   },
+  {
+    name: 'tabBackups',
+    testId: 'ClusterTabList-Backups'
+  }
 ];
 
 export const DatabasesDetails: FC = () => {
@@ -58,8 +63,13 @@ export const DatabasesDetails: FC = () => {
       </div>
 
       <Box mt={2}>
-        <TablesTab dbApi={params.tab === 'tabYcql' ? GetClusterTablesApiEnum.Ycql : 
-          GetClusterTablesApiEnum.Ysql} />
+        {(params.tab === 'tabYsql' || params.tab === 'tabYcql') &&
+          <TablesTab dbApi={params.tab === 'tabYcql' ? GetClusterTablesApiEnum.Ycql :
+            GetClusterTablesApiEnum.Ysql} />
+        }
+        {params.tab === 'tabBackups' &&
+          <BackupTab />
+        }
       </Box>
     </Box>
   );
