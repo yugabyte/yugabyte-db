@@ -1699,7 +1699,7 @@ yb-admin \
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `EXPLICIT`: Checkpointing type on the server.
 * `CHANGE`: Record type indicating the server that the stream should send only the new values of the changed columns.
-* `USE_SNAPSHOT`: Snapshot option indicating intention of client to consume the snapshot.
+* `USE_SNAPSHOT`: Snapshot option indicating intention of client to consume the snapshot. If the client is not interested in consuming the snapshot, the `NOEXPORT_SNAPSHOT` option is to be used.
 
 For example:
 
