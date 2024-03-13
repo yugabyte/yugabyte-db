@@ -377,9 +377,9 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			 * reported.  This isn't ideal but trying to do it here would
 			 * often result in duplication.
 			 */
-			FILE* fptr1 = fopen("/Users/shubhankarvshastri/explain.txt","a");
-			fprintf(fptr1, "duration: %.3f ms  plan:\n%s" , msec,es->str->data);
-			fclose(fptr1);
+			// FILE* fptr1 = fopen("/Users/shubhankarvshastri/explain.txt","a");
+			// fprintf(fptr1, "duration: %.3f ms  plan:\n%s" , msec,es->str->data);
+			// fclose(fptr1);
 			ereport(LOG,
 					(errmsg("duration: %.3f ms  plan:\n%s",
 							msec, es->str->data),

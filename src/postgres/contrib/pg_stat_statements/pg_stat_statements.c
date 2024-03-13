@@ -1336,9 +1336,9 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-	FILE* fptr = fopen("/Users/shubhankarvshastri/test.txt","a");
-	fprintf(fptr,"inside pgss with queryid %lu",queryDesc->plannedstmt->queryId);
-	fclose(fptr);
+	// FILE* fptr = fopen("/Users/shubhankarvshastri/test.txt","a");
+	// fprintf(fptr,"inside pgss with queryid %lu",queryDesc->plannedstmt->queryId);
+	// fclose(fptr);
 }
 
 /*

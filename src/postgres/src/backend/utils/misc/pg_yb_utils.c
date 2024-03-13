@@ -4622,8 +4622,8 @@ char* getPath(int64 queryid, const char* timeStr)
 		fclose(fptr);
 		return NULL;
 	}
-	FILE* fptr = fopen("/Users/shubhankarvshastri/test1.txt","a");
-	fprintf(fptr,"1st %s",pwd);
+	// FILE* fptr = fopen("/Users/shubhankarvshastri/test1.txt","a");
+	// fprintf(fptr,"1st %s",pwd);
 	if (chdir("..") == -1) {
 		perror("Error changing directory");
 		return NULL;
@@ -4636,8 +4636,8 @@ char* getPath(int64 queryid, const char* timeStr)
 		fclose(fptr);
 		return NULL;
 	}
-	fprintf(fptr,"2nd %s",dir);
-	fclose(fptr);
+	//fprintf(fptr,"2nd %s",dir);
+	//fclose(fptr);
 	if (chdir(pwd) == -1) {
 		perror("Error changing back to original directory");
 		return NULL;
