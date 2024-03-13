@@ -3046,7 +3046,9 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
   }
 };
 
-TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
+// See https://github.com/yugabyte/yugabyte-db/issues/21459 for the reason we are disabling this
+// test in ASAN (it is causing ASAN Jenkins jobs to fail). This is a temporary workaround.
+TEST_F_EX(CppCassandraDriverTest, YB_DISABLE_TEST_IN_ASAN(BatchWriteDuringSoftMemoryLimit),
           CppCassandraDriverLowSoftLimitTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
 
