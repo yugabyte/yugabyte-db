@@ -55,7 +55,7 @@ extern bool yb_enable_ash_check_hook(bool *newval,
 									 void **extra,
 									 GucSource source);
 
-extern void dumpAshData(int64_t queryId,TimestampTz start , TimestampTz end,char *result_log_path);
+extern void dumpAshData(int64 queryId,TimestampTz start , TimestampTz end,char *result_log_path);
 extern void dumpFullAshData(TimestampTz start , TimestampTz end,char *result_log_path);
 
 #endif							/* YB_ASH_H */
