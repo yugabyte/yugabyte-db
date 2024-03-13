@@ -40,7 +40,7 @@ class PgSharedMemTest : public PgMiniTestBase {
   }
 
   virtual int GetReadWriteTimeout() const {
-    return 2000 * kTimeMultiplier;
+    return RegularBuildVsSanitizers(2, 20) * 1000;
   }
 };
 
