@@ -102,6 +102,7 @@ func init() {
 // Execute commands
 func Execute(version string) {
 	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("YugabyteDB Anywhere CLI (yba) version: {{.Version}}\n")
 	if err := rootCmd.Execute(); err != nil {
 		logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 	}
