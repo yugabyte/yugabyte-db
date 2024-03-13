@@ -1278,30 +1278,18 @@ yb_is_main_table(IndexOptInfo *indexinfo)
 
 /* Returns whether the given index_path matches the primary key exactly. */
 static bool
-yb_ipath_matches_pk(IndexPath *index_path) {
-	return false;
-#ifdef YB_TODO
-	/* Trevor Foucher This function needs changes to work with Pg15 */
+yb_ipath_matches_pk(IndexPath *index_path)
+{
 	ListCell   *values;
 	Bitmapset  *primary_key_attrs = NULL;
-	List	   *qinfos = NIL;
 	ListCell   *lc = NULL;
-
 	/*
-	 * Verify no non-primary-key filters are specified. There is one
-	 * indrestrictinfo per query term.
+	 * Verify no non-primary-key filters are specified.
 	 */
 	foreach(values, index_path->indexinfo->indrestrictinfo)
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
-
-		/*
-		 * There is one indexquals per key that has a query term. Note this
-		 * means we can't simply compare indrestrictinfo count to indexquals,
-		 * because if there is only one query term, both structures will contain
-		 * one item, even if there are more columns in the primary key.
-		 */
-		if (!list_member_ptr(index_path->indexquals, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_path->indexclauses))
 			return false;
 	}
 
@@ -1309,29 +1297,37 @@ yb_ipath_matches_pk(IndexPath *index_path) {
 	 * Check that all WHERE clause conditions in the query use the equality
 	 * operator, and count the number of primary keys used.
 	 */
-	qinfos = deconstruct_indexquals(index_path);
-	foreach(lc, qinfos)
+	foreach (lc, index_path->indexclauses)
 	{
-		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-		RestrictInfo *rinfo = qinfo->rinfo;
-		Expr	   *clause = rinfo->clause;
-		Oid			clause_op;
-		int			op_strategy;
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell 	*lc2;
 
-		if (!IsA(clause, OpExpr))
-			return false;
+		foreach (lc2, iclause->indexquals)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			Expr		*clause = rinfo->clause;
+			Oid			clause_op;
+			int			op_strategy;
 
-		clause_op = qinfo->clause_op;
-		if (!OidIsValid(clause_op))
-			return false;
+			if (!IsA(clause, OpExpr))
+				return false;
 
-		op_strategy = get_op_opfamily_strategy(
-			clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
-		Assert(op_strategy != 0);  /* not a member of opfamily?? */
-		if (op_strategy != BTEqualStrategyNumber)
-			return false;
-		/* Just used for counting, not matching. */
-		primary_key_attrs = bms_add_member(primary_key_attrs, qinfo->indexcol);
+			clause_op = ((OpExpr *) clause)->opno;
+			if (!OidIsValid(clause_op))
+				return false;
+
+			/* indexcols is only set for RowCompareExpr. */
+			Assert(iclause->indexcols == NULL);
+
+			op_strategy = get_op_opfamily_strategy(
+				clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			Assert(op_strategy != 0); /* not a member of opfamily?? */
+			if (op_strategy != BTEqualStrategyNumber)
+				return false;
+			/* Just used for counting, not matching. */
+			primary_key_attrs =
+				bms_add_member(primary_key_attrs, iclause->indexcol);
+		}
 	}
 
 	/*
@@ -1340,7 +1336,6 @@ yb_ipath_matches_pk(IndexPath *index_path) {
 	 */
 	return bms_num_members(primary_key_attrs) ==
 		   index_path->indexinfo->nkeycolumns;
-#endif
 }
 
 /*

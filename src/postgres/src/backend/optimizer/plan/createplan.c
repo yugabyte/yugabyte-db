@@ -3543,7 +3543,10 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				return false;
 			}
 
-			op_strategy = get_op_opfamily_strategy(clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			/* indexcols is only set for RowCompareExpr. */
+			Assert(iclause->indexcols == NULL);
+			op_strategy = get_op_opfamily_strategy(
+				clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
 			Assert(op_strategy != 0);  /* not a member of opfamily?? */
 			/* Only pushdown equal operators. */
 			if (op_strategy != BTEqualStrategyNumber)
@@ -6305,7 +6308,6 @@ yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
 		foreach(lc, index_path->indexclauses)
 		{
 			IndexClause *iclause = lfirst_node(IndexClause, lc);
-			int			indexcol = iclause->indexcol;
 			ListCell   *lc2;
 
 			foreach(lc2, iclause->indexquals)
@@ -6325,7 +6327,7 @@ yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
 					*stripped_indexquals = lappend(*stripped_indexquals, clause);
 					clause = copyObject(clause);
 					clause = fix_indexqual_clause(root, index_path->indexinfo,
-												  indexcol, clause,
+												  iclause->indexcol, clause,
 												  iclause->indexcols);
 					*fixed_indexquals = lappend(*fixed_indexquals, clause);
 				}
@@ -6373,7 +6375,6 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	foreach(lc, index_path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		int			indexcol = iclause->indexcol;
 		ListCell   *lc2;
 
 		foreach(lc2, iclause->indexquals)
@@ -6392,7 +6393,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 				continue;
 
 			stripped_indexquals = lappend(stripped_indexquals, clause);
-			clause = fix_indexqual_clause(root, index, indexcol,
+			clause = fix_indexqual_clause(root, index, iclause->indexcol,
 										  clause, iclause->indexcols);
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
