@@ -6,11 +6,35 @@ description: Apply operating system upgrades and patches to universe nodes.
 headcontent: Apply operating system upgrades and patches to universe nodes
 menu:
   stable_yugabyte-platform:
-    identifier: upgrade-nodes
+    identifier: upgrade-nodes-2-onprem
     parent: manage-deployments
     weight: 10
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../upgrade-nodes-csp/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
+      Public Cloud
+    </a>
+  </li>
+
+  <li >
+    <a href="../upgrade-nodes/" class="nav-link active">
+      <i class="fa-solid fa-building"></i>
+      On-premises
+    </a>
+  </li>
+
+<!--  <li>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+-->
+</ul>
 
 If a virtual machine or a physical server in a universe requires operating system (OS) updates or patches, you need to pause node processes before applying updates.
 
