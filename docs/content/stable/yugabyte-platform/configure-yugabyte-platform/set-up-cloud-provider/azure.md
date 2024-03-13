@@ -73,7 +73,7 @@ To create an Azure provider:
 
 1. Click **Create Config** to open the **Create Azure Provider Configuration** page.
 
-    ![Create Azure provider](/images/yb-platform/config/yba-azure-config-create.png)
+    ![Create Azure provider](/images/yb-platform/config/yba-azure-config-create-220.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
@@ -124,11 +124,29 @@ You can specify a region as follows:
 
 1. Optionally, specify the security group, if the database VM is in a different network than YBA.
 
-1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [SSH Key Pairs](#ssh-key-pairs).
-
 1. Click **Add Zone** and provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YBA can deploy nodes in the correct network isolation that you need in your environment.
 
 1. Click **Add Region**.
+
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. User will see this name when creating universes using this provider.
+
+1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [SSH Key Pairs](#ssh-key-pairs).
+
+1. Provide the SSH user and port to use to access the machine image OS.
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
 
 ### SSH Key Pairs
 

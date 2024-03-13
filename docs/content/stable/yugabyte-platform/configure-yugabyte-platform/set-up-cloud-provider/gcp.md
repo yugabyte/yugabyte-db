@@ -175,6 +175,26 @@ For each region that you want to use for this configuration, do the following:
 - Enter the ID of a shared subnet.
 - Optionally, if you have an [instance template](#gcp-instance-templates), specify the template name in the **Instance Template** field.
 
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. User will see this name when creating universes using this provider.
+
+1. Enter the Machine Image ID to use for each [provider region](#regions).
+
+1. Provide the SSH user and port to use to access the machine image OS.
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
+
 ### SSH Key Pairs
 
 To be able to provision cloud instances with YugabyteDB, YBA requires SSH access. The following are two ways to provide SSH access:
