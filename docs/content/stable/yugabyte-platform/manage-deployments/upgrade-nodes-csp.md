@@ -38,9 +38,16 @@ type: docs
 
 You can apply operating system patches and upgrades to running universes on AWS, GCP, and Azure.
 
+Upgrades are performed via a rolling update, where one node in the universe is taken offline, patched, and restarted before updating the next. The universe continues to function normally during this process, however the upgrade can impact performance. For best results, do the following:
+
+- Perform upgrades during low traffic periods to reduce the impact of rolling updates.
+- Avoid performing upgrades during scheduled backups.
+
 ## Prerequisites
 
-Ensure your provider configuration is updated with Linux version you want to apply to your universe. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+If your universe uses a Linux version managed by YugabyteDB Anywhere, updated images are automatically added to the provider.
+
+If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 ## Upgrade Linux version
 

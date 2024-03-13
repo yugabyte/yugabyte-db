@@ -38,6 +38,11 @@ type: docs
 
 If a virtual machine or a physical server in a universe requires operating system (OS) updates or patches, you need to pause node processes before applying updates.
 
+Upgrades are performed via a rolling update, where one node in the universe is taken offline, patched, and restarted before updating the next. The universe continues to function normally during this process, however the upgrade can impact performance. For best results, do the following:
+
+- Perform upgrades during low traffic periods to reduce the impact of a universe node being offline.
+- Avoid performing upgrades during scheduled backups.
+
 ## Prerequisites
 
 If your patching and upgrading process is likely to take longer than 15 minutes, increase the WAL log retention time. Set the WAL log retention time using the `--log_min_seconds_to_retain` YB-TServer flag. Refer to [Edit configuration flags](../edit-config-flags/).
