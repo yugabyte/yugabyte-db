@@ -178,5 +178,16 @@ DELETE FROM pctest1 WHERE d LIKE 'Value_8';
 DELETE FROM pctest1 WHERE d LIKE 'Value_8';
 SELECT count(*) FROM pctest1;
 
+-- index scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
+INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
+EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+
+-- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
+DROP TABLE pctest3;

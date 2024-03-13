@@ -748,5 +748,46 @@ SELECT count(*) FROM pctest1;
    991
 (1 row)
 
+-- index scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+CREATE TABLE pctest3(k int primary key, a int unique) WITH (colocation = true);
+INSERT INTO pctest3 SELECT i, i FROM generate_series(1, 1000) i;
+EXPLAIN (costs off) SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Scan using pctest3_pkey on pctest3
+                     Index Cond: (k > 123)
+                     Partial Aggregate: true
+(7 rows)
+
+SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
+ count | max  | min 
+-------+------+-----
+   877 | 1000 | 124
+(1 row)
+
+-- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Noop Aggregate
+               ->  Parallel Index Only Scan using pctest3_a_key on pctest3
+                     Index Cond: (a > 123)
+                     Partial Aggregate: true
+(7 rows)
+
+SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+ count | max  | min 
+-------+------+-----
+   877 | 1000 | 124
+(1 row)
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
+DROP TABLE pctest3;
