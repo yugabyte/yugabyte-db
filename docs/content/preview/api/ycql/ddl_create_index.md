@@ -103,7 +103,7 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 ### User enforced consistency
 
-{{<tip>}}
+{{<tip title="Caution">}}
 Opt for user-enforced consistency only when there is no other solution to your problem as there is a considerable user effort needed to keep the index and table in sync.
 {{</tip>}}
 
@@ -115,7 +115,7 @@ CREATE INDEX ON orders (warehouse)
       WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
 ```
 
-{{< warning>}}
+{{< warning title="Syncing table and index">}}
 When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index will **NOT** be backfilled. It will be the responsibility of the user to re-insert the data again to be reflected in the index.
 {{< /warning >}}
 
