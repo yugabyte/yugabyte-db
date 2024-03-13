@@ -742,8 +742,8 @@ dumpAshData(int64 queryId, TimestampTz start, TimestampTz end,char *result_log_p
 		{
 			fprintf(fptr, "%s,",timestamptz_to_str(sampletime));
 			print_uuid_to_file(yb_ash->circular_buffer[i].metadata.root_request_id, fptr);
-			fprintf(fptr, ",%lld,%s,%s,%s,",
-					yb_ash->circular_buffer[i].rpc_request_id,
+			fprintf(fptr, ",%ld,%s,%s,%s,",
+					(int64)yb_ash->circular_buffer[i].rpc_request_id,
 					YBCGetWaitEventComponent(
 						yb_ash->circular_buffer[i].wait_event_code),
 					pgstat_get_wait_event_type(
@@ -751,9 +751,9 @@ dumpAshData(int64 queryId, TimestampTz start, TimestampTz end,char *result_log_p
 					pgstat_get_wait_event(
 						yb_ash->circular_buffer[i].wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
-			fprintf(fptr, ",%ld,%llu,%s,%s,%f\n",
+			fprintf(fptr, ",%ld,%lu,%s,%s,%f\n",
 					(int64)yb_ash->circular_buffer[i].metadata.query_id,
-					yb_ash->circular_buffer[i].metadata.session_id,
+					(uint64)yb_ash->circular_buffer[i].metadata.session_id,
 					client_node_ip,
 					yb_ash->circular_buffer[i].aux_info,
 					yb_ash->circular_buffer[i].sample_weight);
@@ -798,8 +798,8 @@ dumpFullAshData(TimestampTz start, TimestampTz end,char *result_log_path)
 		{
 			fprintf(fptr, "%s,",timestamptz_to_str(sampletime));
 			print_uuid_to_file(yb_ash->circular_buffer[i].metadata.root_request_id, fptr);
-			fprintf(fptr, ",%lld,%s,%s,%s,",
-					yb_ash->circular_buffer[i].rpc_request_id,
+			fprintf(fptr, ",%ld,%s,%s,%s,",
+					(int64)yb_ash->circular_buffer[i].rpc_request_id,
 					YBCGetWaitEventComponent(
 						yb_ash->circular_buffer[i].wait_event_code),
 					pgstat_get_wait_event_type(
@@ -807,9 +807,9 @@ dumpFullAshData(TimestampTz start, TimestampTz end,char *result_log_path)
 					pgstat_get_wait_event(
 						yb_ash->circular_buffer[i].wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
-			fprintf(fptr, ",%ld,%llu,%s,%s,%f\n",
+			fprintf(fptr, ",%ld,%lu,%s,%s,%f\n",
 					(int64)yb_ash->circular_buffer[i].metadata.query_id,
-					yb_ash->circular_buffer[i].metadata.session_id,
+					(uint64)yb_ash->circular_buffer[i].metadata.session_id,
 					client_node_ip,
 					yb_ash->circular_buffer[i].aux_info,
 					yb_ash->circular_buffer[i].sample_weight);
