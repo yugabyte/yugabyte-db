@@ -20,10 +20,18 @@ public class KubernetesOverridesSerializer extends StdSerializer<KubernetesOverr
     Resource resource = value.getResource();
     gen.writeStartObject();
     provider.defaultSerializeField("nodeSelector", value.getNodeSelector(), gen);
-    provider.defaultSerializeField("master", value.getMaster(), gen);
-    provider.defaultSerializeField("tserver", value.getTserver(), gen);
-    provider.defaultSerializeField("serviceEndpoints", value.getServiceEndpoints(), gen);
-    provider.defaultSerializeField("resource", resource, gen);
+    if (value.getMaster() != null) {
+      provider.defaultSerializeField("master", value.getMaster(), gen);
+    }
+    if (value.getTserver() != null) {
+      provider.defaultSerializeField("tserver", value.getTserver(), gen);
+    }
+    if (value.getServiceEndpoints() != null) {
+      provider.defaultSerializeField("serviceEndpoints", value.getServiceEndpoints(), gen);
+    }
+    if (resource != null) {
+      provider.defaultSerializeField("resource", resource, gen);
+    }
     if (value.getAdditionalProperties() != null) {
       for (Map.Entry<String, Object> entry : value.getAdditionalProperties().entrySet()) {
         gen.writeObjectField(entry.getKey(), entry.getValue());
