@@ -152,7 +152,8 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
     ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
-    CheckCacheCounters(options, 1, 0, 1, 0);
+    // 1 cache miss (loading the block) + 1 cache hit (table cache).
+    CheckCacheCounters(options, 1, 1, 1, 0);
     iterators[i].reset(iter);
   }
   size_t usage = cache->GetUsage();
@@ -171,7 +172,8 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
     ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
-    CheckCacheCounters(options, 0, 1, 0, 0);
+    // 2 cache hits: the block + table cache.
+    CheckCacheCounters(options, 0, 2, 0, 0);
     iterators[i].reset(iter);
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_overflow_single_touch) = true;
@@ -202,7 +204,8 @@ TEST_F(DBBlockCacheTest, TestWithCompressedBlockCache) {
     iter = db_->NewIterator(read_options);
     iter->Seek(ToString(i));
     ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
-    CheckCacheCounters(options, 1, 0, 1, 0);
+    // 1 cache miss (loading the block) + 1 cache hit (table cache).
+    CheckCacheCounters(options, 1, 1, 1, 0);
     CheckCompressedCacheCounters(options, 1, 0, 1, 0);
     iterators[i].reset(iter);
   }
