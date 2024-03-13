@@ -101,7 +101,6 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
 
     // Docdb related classes
     (kRpc)
-    (kFlushAndCompaction)
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
