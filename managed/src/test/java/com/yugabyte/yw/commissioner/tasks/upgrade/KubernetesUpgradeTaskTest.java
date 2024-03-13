@@ -269,7 +269,10 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails =
           tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
-      assertJsonEqual(expectedResults, taskDetails.get(0));
+      assertJsonEqual(
+          "Task details for " + task + " at position " + position,
+          expectedResults,
+          taskDetails.get(0));
       position++;
     }
   }
