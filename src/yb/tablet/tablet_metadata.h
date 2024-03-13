@@ -283,6 +283,9 @@ struct RaftGroupMetadataData {
 class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                           public docdb::SchemaPackingProvider {
  public:
+  using TableIdToSchemaVersionMap =
+      ::google::protobuf::Map<::std::string, ::google::protobuf::uint32>;
+
   // Create metadata for a new Raft group. This assumes that the given superblock
   // has not been written before, and writes out the initial superblock with
   // the provided parameters.
@@ -515,8 +518,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
 
+  std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
+
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
+
+  void GetTableIdToSchemaVersionMap(
+      TableIdToSchemaVersionMap* table_to_version) const;
 
   // Iterates through all the tables colocated on this tablet. In case of non-colocated tables,
   // iterates exactly one time. Use light-weight callback as it's triggered under the locked mutex;
