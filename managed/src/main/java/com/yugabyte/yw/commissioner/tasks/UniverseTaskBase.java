@@ -395,6 +395,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final UUID universeUuid;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
+    private final Duration waitForServerTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
@@ -411,6 +412,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
       followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
+
+      waitForServerTimeout =
+          confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     }
 
     public boolean isLoadBalancerOff() {
@@ -423,6 +427,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     public boolean isFollowerLagCheckEnabled() {
       return followerLagCheckEnabled;
+    }
+
+    public Duration getWaitForServerTimeout() {
+      return waitForServerTimeout;
     }
 
     public void lockUniverse(UUID universeUUID) {
@@ -664,6 +672,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected UserIntent getUserIntent() {
     return getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
+  }
+
+  protected void putDateIntoCache(String key) {
+    getTaskCache().put(key, Json.toJson(new Date()));
+  }
+
+  protected Date getDateFromCache(String key) {
+    JsonNode jsonNode = getTaskCache().get(key);
+    if (jsonNode != null) {
+      return Json.fromJson(jsonNode, Date.class);
+    }
+    return null;
   }
 
   private UniverseUpdater getLockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
@@ -2057,11 +2077,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param node node for which the check needs to be executed.
    * @param serverType server process type on the node to the check.
-   * @param sleepTimeMs default sleep time if server does not support check for readiness.
+   * @param sleepTimeMs sleep time to wait until server is ready
    * @return SubTaskGroup
    */
   public SubTaskGroup createWaitForServerReady(
-      NodeDetails node, ServerType serverType, int sleepTimeMs) {
+      NodeDetails node, ServerType serverType, long sleepTimeMs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServerReady");
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());

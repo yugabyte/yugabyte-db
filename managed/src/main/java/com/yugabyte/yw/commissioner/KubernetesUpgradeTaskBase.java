@@ -203,7 +203,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
+          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -212,7 +212,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
 
     if (isTServerChanged) {
@@ -227,7 +228,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.TSERVER,
           softwareVersion,
-          taskParams().sleepAfterTServerRestartMillis,
+          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           false, // master change is false since it has already been upgraded.
@@ -236,7 +237,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -270,7 +272,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             null,
             ServerType.TSERVER,
             softwareVersion,
-            taskParams().sleepAfterTServerRestartMillis,
+            getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
             universeOverrides,
             azOverrides,
             false, // master change is false since it has already been upgraded.
@@ -279,7 +281,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             /*isReadOnlyCluster*/ true,
             commandType,
             enableYbc,
-            ybcSoftwareVersion);
+            ybcSoftwareVersion,
+            /* addDelayAfterStartup */ true);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
