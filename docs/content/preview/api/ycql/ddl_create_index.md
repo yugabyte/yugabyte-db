@@ -56,20 +56,20 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 ### Grammar
 
 ```ebnf
-create_index ::= CREATE [ UNIQUE ] [ DEFERRED ] INDEX 
-                 [ IF NOT EXISTS ] index_name ON  table_name ( 
-                 partition_key_columns , [ clustering_key_columns ] )  
-                 [ covering_columns ] [ index_properties ] 
+create_index ::= CREATE [ UNIQUE ] [ DEFERRED ] INDEX
+                 [ IF NOT EXISTS ] index_name ON  table_name (
+                 partition_key_columns , [ clustering_key_columns ] )
+                 [ covering_columns ] [ index_properties ]
                  [ WHERE index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
 
 clustering_key_columns ::= index_column [ , ... ]
 
-index_properties ::= WITH 
+index_properties ::= WITH
                      { property_name = property_literal
-                       | CLUSTERING ORDER BY ( 
-                         { index_column [ ASC | DESC ] } [ , ... ] ) } 
+                       | CLUSTERING ORDER BY (
+                         { index_column [ ASC | DESC ] } [ , ... ] ) }
                      [ AND ... ]
 
 index_column ::= column_name | jsonb_attribute
@@ -83,8 +83,8 @@ index_predicate ::= where_expression
 
 Where
 
-- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers. 
-- `table_name` may be qualified with a keyspace name. 
+- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers.
+- `table_name` may be qualified with a keyspace name.
 - `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 - `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
 - `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
@@ -103,6 +103,10 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 ### User enforced consistency
 
+{{<tip>}}
+Opt for user-enforced consistency only when there is no other solution to your problem as there is a considerable user effort needed to keep the index and table in sync.
+{{</tip>}}
+
 Indexes require transactions to have been enabled on the table. For cases where the table was created without enabling transactions, `consistency_level` has to be set to `user_enforced` like,
 
 ```sql
@@ -111,8 +115,8 @@ CREATE INDEX ON orders (warehouse)
       WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
 ```
 
-{{< warning >}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
+{{< warning>}}
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index will **NOT** be backfilled. It will be the responsibility of the user to re-insert the data again to be reflected in the index.
 {{< /warning >}}
 
 ### PARTITION KEY
@@ -158,11 +162,11 @@ After creating a set of indexes with their backfill deferred, you can then trigg
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
     CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
-    
-    
+
+
     // To launch backfill ...
-    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and             
-                                                        // all deferred indexes idx_1 .. idx_9 
+    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and
+                                                        // all deferred indexes idx_1 .. idx_9
                                                         // on the same table viz: table_name.
     ```
 
