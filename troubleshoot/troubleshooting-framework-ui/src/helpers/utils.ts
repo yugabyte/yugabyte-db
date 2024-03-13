@@ -31,7 +31,7 @@ export const getAnomalyOutlierType = (anomalyData: Anomaly) => {
   let outlierType: SplitMode = SplitMode.TOP;
   if (anomalyData?.defaultSettings?.splitMode === SplitMode.TOP) {
     outlierType = SplitMode.TOP;
-  } else if(anomalyData?.defaultSettings?.splitMode === SplitMode.BOTTOM) {
+  } else if (anomalyData?.defaultSettings?.splitMode === SplitMode.BOTTOM) {
     outlierType = SplitMode.BOTTOM;
   }
 
@@ -239,23 +239,23 @@ export function getReadOnlyCluster(clusters: any) {
 
 export const getGraphRequestParams = (anomalyData: Anomaly, startDate=null, endDate=null, splitType=null, splitMode=null, splitNum=null) => {
   const mainGraphRequest = anomalyData?.mainGraphs.map((graph: GraphMetadata) => {
-      const request: GraphQuery = {};
+      const request: any = {};
       request.name = graph.name;
       request.filters = graph.filters;
-      request.start = anomalyData.startTime;
-      request.end = anomalyData.endTime;
+      request.start = anomalyData.graphStartTime;
+      request.end = anomalyData.graphEndTime;
       request.settings = anomalyData.defaultSettings;
       return request;
   });
   
-  const nestedRequest = anomalyData.rcaGuidelines?.map((rca: RCAGuideline) => {
+  const nestedRequest = anomalyData?.rcaGuidelines?.map((rca: RCAGuideline) => {
     return rca.troubleshootingRecommendations?.map((recommendation: TroubleshootingRecommendations) => {
       return recommendation.supportingGraphs?.map((graph: GraphMetadata) => {
-      const request: GraphQuery = {};
+      const request: any = {};
       request.name = graph.name;
       request.filters = graph.filters;
-      request.start = anomalyData.startTime;
-      request.end = anomalyData.endTime;
+      request.start = anomalyData.graphStartTime;
+      request.end = anomalyData.graphEndTime;
       request.settings = anomalyData.defaultSettings;
       return request;
       })
@@ -274,7 +274,7 @@ export const getRecommendationMetricsMap = (anomalyData: Anomaly) => {
     return [];
   }
 
-   const nestedRecommendationMetrics = anomalyData.rcaGuidelines?.map((rca: RCAGuideline) => {
+   const nestedRecommendationMetrics = anomalyData?.rcaGuidelines?.map((rca: RCAGuideline) => {
       const params: any = {
         cause: '',
         name: [],
