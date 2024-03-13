@@ -571,7 +571,7 @@ public class LocalNodeManager {
     provider.save();
   }
 
-  private void startProcessForNode(
+  public void startProcessForNode(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {

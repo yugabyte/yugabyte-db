@@ -29,8 +29,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -51,32 +49,22 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected UpgradeContext getUpgradeContext(
-      String targetSoftwareVersion,
-      Set<NodeDetails> nodesToSkipMasterActions,
-      Set<NodeDetails> nodesToSkipTServerActions) {
+  protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
         .targetSoftwareVersion(targetSoftwareVersion)
-        .nodesToSkipMasterActions(nodesToSkipMasterActions)
-        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
-  protected UpgradeContext getRollbackUpgradeContext(
-      String targetSoftwareVersion,
-      Set<NodeDetails> nodesToSkipMasterActions,
-      Set<NodeDetails> nodesToSkipTServerActions) {
+  protected UpgradeContext getRollbackUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
         .processTServersFirst(true)
         .targetSoftwareVersion(targetSoftwareVersion)
-        .nodesToSkipMasterActions(nodesToSkipMasterActions)
-        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
@@ -97,7 +85,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   protected void createUpgradeTaskFlowTasks(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes,
+      MastersAndTservers nodes,
       String newVersion,
       UpgradeContext upgradeContext,
       boolean reProvision) {
@@ -236,8 +224,9 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   protected void createPrecheckTasks(Universe universe, String newVersion) {
-    Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-    Set<NodeDetails> allNodes = toOrderedSet(nodes);
+    super.createPrecheckTasks(universe);
+    MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
+    Set<NodeDetails> allNodes = toOrderedSet(nodes.asPair());
 
     // Preliminary checks for upgrades.
     createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
@@ -268,27 +257,28 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
    * @param requiredVersion
    * @return pair of list of nodes
    */
-  protected Pair<List<NodeDetails>, List<NodeDetails>> filterNodesWithSameDBVersionAndLiveState(
-      Universe universe, Pair<List<NodeDetails>, List<NodeDetails>> nodes, String requiredVersion) {
+  protected MastersAndTservers filterOutAlreadyProcessedNodes(
+      Universe universe, MastersAndTservers nodes, String requiredVersion) {
     Set<NodeDetails> masterNodesWithSameDBVersion =
-        getNodesWithSameDBVersion(universe, nodes.getLeft(), ServerType.MASTER, requiredVersion);
+        getNodesWithSameDBVersion(universe, nodes.mastersList, ServerType.MASTER, requiredVersion);
     List<NodeDetails> masterNodes =
-        nodes.getLeft().stream()
+        nodes.mastersList.stream()
             .filter(
                 node ->
-                    (masterNodesWithSameDBVersion.contains(node)
-                        && node.state.equals(NodeState.Live)))
+                    (!masterNodesWithSameDBVersion.contains(node)
+                        || !node.state.equals(NodeState.Live)))
             .collect(Collectors.toList());
     Set<NodeDetails> tserverNodesWithSameDBVersion =
-        getNodesWithSameDBVersion(universe, nodes.getRight(), ServerType.TSERVER, requiredVersion);
+        getNodesWithSameDBVersion(
+            universe, nodes.tserversList, ServerType.TSERVER, requiredVersion);
     List<NodeDetails> tserverNodes =
-        nodes.getRight().stream()
+        nodes.tserversList.stream()
             .filter(
                 node ->
-                    (tserverNodesWithSameDBVersion.contains(node)
-                        && node.state.equals(NodeState.Live)))
+                    (!tserverNodesWithSameDBVersion.contains(node)
+                        || !node.state.equals(NodeState.Live)))
             .collect(Collectors.toList());
-    return new ImmutablePair<>(masterNodes, tserverNodes);
+    return new MastersAndTservers(masterNodes, tserverNodes);
   }
 
   private Set<NodeDetails> getNodesWithSameDBVersion(
@@ -332,15 +322,5 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           "Error fetching version info on node: {} port: {} ", node.cloudInfo.private_ip, port, e);
     }
     return false;
-  }
-
-  /** Returns set of nodes which requires software download before configuration. */
-  protected Set<NodeDetails> getNodesWhichRequiresSoftwareDownload(
-      Set<NodeDetails> allNodes,
-      Set<NodeDetails> nodesToSkipMaster,
-      Set<NodeDetails> nodesToSkipTServer) {
-    return allNodes.stream()
-        .filter(node -> !nodesToSkipMaster.contains(node) && !nodesToSkipTServer.contains(node))
-        .collect(Collectors.toSet());
   }
 }
