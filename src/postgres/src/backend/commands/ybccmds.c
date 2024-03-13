@@ -841,7 +841,7 @@ YBCDropTable(Relation relation)
 			return;
 		}
 
-		if (yb_ddl_rollback_enabled)
+		if (YbDdlRollbackEnabled())
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1673,7 +1673,7 @@ YBCDropIndex(Relation index)
 		if (not_found)
 			return;
 
-		if (yb_ddl_rollback_enabled)
+		if (YbDdlRollbackEnabled())
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
