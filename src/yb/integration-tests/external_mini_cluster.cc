@@ -1703,6 +1703,9 @@ Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
+  if (tablet_ids.empty()) {
+    req.set_all_tablets(true);
+  }
 
   auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
     proxy_cache_.get(), ts->bound_rpc_addr());
