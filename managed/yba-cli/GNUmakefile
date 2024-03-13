@@ -76,3 +76,7 @@ build:
 .PHONY: doc
 doc:
 	YBA_FF_TOOLS=true  go run main.go tools gen-doc --format markdown
+
+.PHONY: license
+license:
+	./licenses/generate-license-file.sh

@@ -466,6 +466,19 @@ class TableProperties {
     partitioning_version_ = value;
   }
 
+  PgReplicaIdentity replica_identity() const {
+    DCHECK(HasReplicaIdentity());
+    return *ysql_replica_identity_;
+  }
+
+  void SetReplicaIdentity(PgReplicaIdentity replica_identity) {
+    ysql_replica_identity_ = replica_identity;
+  }
+
+  bool HasReplicaIdentity() const {
+    return ysql_replica_identity_.has_value();
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -490,6 +503,9 @@ class TableProperties {
   int num_tablets_;
   bool is_ysql_catalog_table_;
   uint32_t partitioning_version_;
+
+  // This is optional since its a ysql only field
+  std::optional<PgReplicaIdentity> ysql_replica_identity_;
 };
 
 using PgSchemaName = std::string;

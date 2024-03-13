@@ -3803,3 +3803,83 @@ FROM
 --------
       1
 (1 row)
+
+create table sample(a int, b int, primary key(a asc, b asc));
+insert into sample values (1,1);
+insert into sample values (1,2);
+insert into sample values (2,1);
+explain (costs off) select * from sample where b < 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b >= 2 and b < 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b >= 2) AND (b < 2))
+(2 rows)
+
+select * from sample where b >= 2 and b < 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b < 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b <= 2 and b < 2 and b >= 2;
+                    QUERY PLAN
+---------------------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 2) AND (b < 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 2 and b < 2 and b >= 2;
+ a | b
+---+---
+(0 rows)
+
+explain (costs off) select * from sample where b <= 2 and b >= 2;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 2 and b >= 2;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+
+explain (costs off) select * from sample where b <= 3 and b <= 2 and b >= 2;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using sample_pkey on sample
+   Index Cond: ((b <= 3) AND (b <= 2) AND (b >= 2))
+(2 rows)
+
+select * from sample where b <= 3 and b <= 2 and b >= 2;
+ a | b
+---+---
+ 1 | 2
+(1 row)
+
+drop table sample;

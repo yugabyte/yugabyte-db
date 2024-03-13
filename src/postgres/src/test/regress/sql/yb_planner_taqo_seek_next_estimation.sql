@@ -1,6 +1,7 @@
 CREATE DATABASE taqo_seek_next_estimation with colocation = true;
 \c taqo_seek_next_estimation
 SET statement_timeout = '7200s';
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
 -- CREATE QUERIES
 create table t1 (k1 int, PRIMARY KEY (k1 asc));
 create table t2 (k1 int, k2 int, PRIMARY KEY (k1 asc, k2 asc));

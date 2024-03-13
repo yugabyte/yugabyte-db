@@ -67,7 +67,7 @@ export const RegionAmiIdForm: FC<RegionAmiIdFormProps> = ({ providerType }) => {
           tableContainerClass={styles.bootstrapTable}
           data={imageBundles}
           trClassName={(row: ImageBundle) => {
-            return row.metadata.type !== ImageBundleType.CUSTOM ? classes.hideRow : '';
+            return row?.metadata?.type !== ImageBundleType.CUSTOM ? classes.hideRow : '';
           }}
         >
           <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />

@@ -1284,7 +1284,8 @@ class ClusterControl:
                 pgrep_full_command_output_arg = '--list-full'
             pgrep_regex_str = self.get_pgrep_regex(daemon_id)
             pgrep_output = subprocess.check_output(
-                ["pgrep", pgrep_full_command_output_arg, "-f", pgrep_regex_str]
+                ["pgrep", pgrep_full_command_output_arg, "-f", pgrep_regex_str],
+                env={"LC_ALL": "C.UTF-8"}
             ).strip().decode('utf-8')
 
             data_dirs_re_match = FS_DATA_DIRS_ARG_RE.search(pgrep_output)

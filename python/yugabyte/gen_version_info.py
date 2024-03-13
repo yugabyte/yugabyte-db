@@ -70,6 +70,12 @@ def boolean_to_json_str(bool_flag: bool) -> str:
     return str(bool_flag).lower()
 
 
+def get_glibc_version() -> str:
+    glibc_v = subprocess.check_output('ldd --version', shell=True).decode('utf-8').strip()
+    # We only want the version
+    return glibc_v.split("\n")[0].split()[-1]
+
+
 def get_git_sha1(git_repo_dir: str) -> Optional[str]:
     try:
         sha1 = subprocess.check_output(
@@ -187,6 +193,11 @@ def main() -> int:
             "platform": os_platform,
             "architecture": architecture
             }
+
+    # Record our glibc version.  This doesn't apply to mac/darwin.
+    if os_platform == 'linux':
+        data["glibc_v"] = get_glibc_version()
+
     content = json.dumps(data)
 
     # Frequently getting errors here when rebuilding on NFS:

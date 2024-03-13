@@ -824,6 +824,7 @@ public class TestPgExplainAnalyze extends BasePgExplainAnalyzeTest {
 
         // EXPLAIN (ANALYZE ON, DIST ON, VERBOSE ON) with non-deterministic fields visible
         stmt.execute("SET yb_enable_base_scans_cost_model = TRUE");
+        stmt.execute("SET enable_bitmapscan = FALSE");
         testExplainWithOptions(
             stmt,
             makeOptionsBuilder()

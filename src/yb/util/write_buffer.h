@@ -36,6 +36,15 @@ class WriteBuffer {
   explicit WriteBuffer(size_t block_size, ScopedTrackedConsumption* consumption = nullptr)
       : block_size_(block_size), consumption_(consumption) {}
 
+  WriteBuffer(WriteBuffer&& rhs) : block_size_(rhs.block_size_) {
+    Take(&rhs);
+  }
+
+  void operator=(WriteBuffer&& rhs) {
+    Reset();
+    Take(&rhs);
+  }
+
   void PushBack(char value);
 
   void AppendWithPrefix(char prefix, const char* data, size_t len) {
@@ -81,6 +90,10 @@ class WriteBuffer {
 
   WriteBufferPos Position();
   size_t BytesAfterPosition(const WriteBufferPos& pos) const;
+
+  bool empty() {
+    return blocks_.empty();
+  }
 
   size_t size() const {
     return size_without_last_block_ + filled_in_last_block();

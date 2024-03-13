@@ -19,6 +19,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -189,5 +190,10 @@ public class Release extends Model {
       transaction.commit();
     }
     return true;
+  }
+
+  public Set<Universe> getUniverses() {
+    String formattedVersion = this.version;
+    return Universe.universeDetailsIfReleaseExists(formattedVersion);
   }
 }

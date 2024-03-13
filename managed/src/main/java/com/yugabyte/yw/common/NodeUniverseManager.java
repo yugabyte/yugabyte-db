@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -469,13 +470,24 @@ public class NodeUniverseManager extends DevopsBase {
         nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
       } else {
         String sshPort = provider.getDetails().sshPort.toString();
+        UUID imageBundleUUID =
+            Util.retreiveImageBundleUUID(
+                universe.getUniverseDetails().arch, cluster.userIntent, provider);
+        if (imageBundleUUID != null) {
+          ImageBundle.NodeProperties toOverwriteNodeProperties =
+              imageBundleUtil.getNodePropertiesOrFail(
+                  imageBundleUUID,
+                  node.cloudInfo.region,
+                  cluster.userIntent.providerType.toString());
+          sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        }
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
-        if (StringUtils.isBlank(context.getSshPort())
+        if (StringUtils.isNotBlank(context.getSshUser())
             && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
+          // In case the custom ssh User is specified in the context, that will be
+          // prepare node stage, where the custom sshPort might not be configured yet.
           sshPort = "22";
-        } else if (StringUtils.isNotBlank(context.getSshPort())) {
-          sshPort = context.getSshPort();
         }
         commandArgs.add("--port");
         commandArgs.add(sshPort);

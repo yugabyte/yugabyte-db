@@ -35,4 +35,9 @@ func WriteDefaultConfig() {
 		common.SetYamlValue(common.InputFile(), "installRoot",
 			filepath.Join(common.GetUserHomeDir(), "yugabyte"))
 	}
+
+}
+func UpdateConfigRootInstall(path string) {
+	log.DebugLF("updating installRoot to " + path)
+	common.SetYamlValue(common.InputFile(), "installRoot", path)
 }

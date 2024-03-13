@@ -213,7 +213,7 @@ export const ConfigureRegionModal = ({
     providerCode === CloudType.aws
     && !showRegionAmiForm
     && Array.isArray(imageBundles) &&
-    imageBundles.filter((i: ImageBundle) => i.metadata.type === ImageBundleType.CUSTOM).length > 0;
+    imageBundles.filter((i: ImageBundle) => i?.metadata?.type === ImageBundleType.CUSTOM).length > 0;
 
   const onSubmit: SubmitHandler<ConfigureRegionFormValues> = (formValues) => {
     if (shouldExposeField.zones && formValues.zones.length <= 0) {
@@ -236,7 +236,7 @@ export const ConfigureRegionModal = ({
 
       formValues.imageBundles?.forEach((img, i) => {
 
-        if (img.metadata.type === ImageBundleType.CUSTOM) {
+        if (img?.metadata?.type === ImageBundleType.CUSTOM) {
 
           keys(img.details.regions).forEach((region, j) => {
             const val = img.details.regions[region];

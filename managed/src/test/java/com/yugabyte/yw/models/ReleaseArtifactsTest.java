@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.ReleaseArtifact.GCSFile;
 import com.yugabyte.yw.models.ReleaseArtifact.S3File;
@@ -72,6 +73,31 @@ public class ReleaseArtifactsTest extends FakeDBApplication {
         ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, rlfUUID);
     artifact.setReleaseUUID(releaseUUID);
     ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseKubernetesArtifact(releaseUUID);
+    assertNotNull(foundArtifact);
+    assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
+  }
+
+  @Test
+  public void testGetForX86Architecture() {
+    UUID releaseUUID = UUID.randomUUID();
+    Release.create(releaseUUID, "version", "lts");
+    ReleaseArtifact artifact =
+        ReleaseArtifact.create("", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url");
+    artifact.setReleaseUUID(releaseUUID);
+    ReleaseArtifact foundArtifact =
+        ReleaseArtifact.getForReleaseArchitecture(releaseUUID, Architecture.x86_64);
+    assertNotNull(foundArtifact);
+    assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
+  }
+
+  @Test
+  public void testGetForArchitectureKubernetes() {
+    UUID releaseUUID = UUID.randomUUID();
+    Release.create(releaseUUID, "version", "lts");
+    ReleaseArtifact artifact =
+        ReleaseArtifact.create("", ReleaseArtifact.Platform.KUBERNETES, null, "url");
+    artifact.setReleaseUUID(releaseUUID);
+    ReleaseArtifact foundArtifact = ReleaseArtifact.getForReleaseArchitecture(releaseUUID, null);
     assertNotNull(foundArtifact);
     assertEquals(artifact.getArtifactUUID(), foundArtifact.getArtifactUUID());
   }

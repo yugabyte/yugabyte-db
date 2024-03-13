@@ -121,6 +121,8 @@ typedef FormData_pg_class *Form_pg_class;
  * has the same meaning as 'd'.
  */
 #define		  REPLICA_IDENTITY_INDEX	'i'
+/* only the modified columns of the updated record are logged as replica identity */
+#define		  YB_REPLICA_IDENTITY_CHANGE 'c'
 
 /*
  * Relation kinds that have physical storage. These relations normally have

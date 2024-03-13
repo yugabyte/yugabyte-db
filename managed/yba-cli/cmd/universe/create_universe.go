@@ -22,15 +22,15 @@ import (
 
 // createUniverseCmd represents the universe command
 var createUniverseCmd = &cobra.Command{
-	Use:   "create [universe-name]",
-	Short: "Create an YugabyteDB Anywhere universe",
+	Use:   "create",
+	Short: "Create YugabyteDB Anywhere universe",
 	Long:  "Create an universe in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		universeNameFlag, err := cmd.Flags().GetString("name")
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if !(len(args) > 0 || len(universeNameFlag) > 0) {
+		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
@@ -45,17 +45,11 @@ var createUniverseCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var response *http.Response
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		universeNameFlag, _ := cmd.Flags().GetString("name")
-		var universeName string
-		if len(args) > 0 {
-			universeName = args[0]
-		} else if len(universeNameFlag) > 0 {
-			universeName = universeNameFlag
 		}
 
 		allowed, version, err := authAPI.UniverseYBAVersionCheck()
@@ -196,7 +190,8 @@ func init() {
 	createUniverseCmd.Flags().SortFlags = false
 
 	createUniverseCmd.Flags().StringP("name", "n", "",
-		"[Optional] The name of the universe to be created.")
+		"[Required] The name of the universe to be created.")
+	createUniverseCmd.MarkFlagRequired("name")
 
 	createUniverseCmd.Flags().String("provider-code", "",
 		"[Required] Provider code. Allowed values: aws, gcp, azu, onprem, kubernetes.")

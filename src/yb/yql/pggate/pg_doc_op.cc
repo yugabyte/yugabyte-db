@@ -530,7 +530,7 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
     : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
 Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
-  SCHECK(pgsql_ops_.empty(),
+  SCHECK(pgsql_ops_.empty() || !exec_params,
          IllegalState,
          "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));

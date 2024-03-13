@@ -111,7 +111,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -548,8 +547,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .getGcp()
         .setInstanceTemplate(instanceTemplate);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(true);
+    when(mockCloudAPI.isValidCreds(any())).thenReturn(true);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
     when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(ImmutableList.of(region));

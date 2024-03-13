@@ -66,8 +66,29 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     return null;
   }
 
+  private void runBasicChecks(Universe universe) {
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    if (isFirstTry()) {
+      currentNode.validateActionOnState(NodeActionType.REMOVE);
+    }
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(getUniverse());
     boolean alwaysWaitForDataMove =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
     if (alwaysWaitForDataMove) {
@@ -78,50 +99,37 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    log.info(
+        "Started {} task for node {} in univ uuid={}",
+        getName(),
+        taskParams().nodeName,
+        taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    boolean alwaysWaitForDataMove =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
+
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion,
+            u -> {
+              NodeDetails node = u.getNode(taskParams().nodeName);
+              if (node == null) {
+                String msg =
+                    "No node " + taskParams().nodeName + " found in universe " + u.getName();
+                log.error(msg);
+                throw new RuntimeException(msg);
+              }
+              if (node.isMaster) {
+                NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
+                if (newMasterNode != null && newMasterNode.masterState == null) {
+                  newMasterNode.masterState = MasterState.ToStart;
+                }
+                node.masterState = MasterState.ToStop;
+              }
+            });
     try {
-      checkUniverseVersion();
-      boolean alwaysWaitForDataMove =
-          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
-
-      Universe universe =
-          lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                NodeDetails node = u.getNode(taskParams().nodeName);
-                if (node == null) {
-                  String msg =
-                      "No node " + taskParams().nodeName + " found in universe " + u.getName();
-                  log.error(msg);
-                  throw new RuntimeException(msg);
-                }
-                if (node.isMaster) {
-                  NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
-                  if (newMasterNode != null && newMasterNode.masterState == null) {
-                    newMasterNode.masterState = MasterState.ToStart;
-                  }
-                  node.masterState = MasterState.ToStop;
-                }
-              });
-
-      log.info(
-          "Started {} task for node {} in univ uuid={}",
-          getName(),
-          taskParams().nodeName,
-          taskParams().getUniverseUUID());
-      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-
-      if (isFirstTry()) {
-        currentNode.validateActionOnState(NodeActionType.REMOVE);
-      }
-
       preTaskActions();
-
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 

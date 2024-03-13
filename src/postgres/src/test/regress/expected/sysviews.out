@@ -8,61 +8,61 @@
 -- but even a trivial check of count(*) will exercise the normal code path
 -- through the SRF.
 select count(*) >= 0 as ok from pg_available_extension_versions;
- ok 
+ ok
 ----
  t
 (1 row)
 
 select count(*) >= 0 as ok from pg_available_extensions;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- At introduction, pg_config had 23 entries; it may grow
 select count(*) > 20 as ok from pg_config;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- We expect no cursors in this test; see also portals.sql
 select count(*) = 0 as ok from pg_cursors;
- ok 
+ ok
 ----
  t
 (1 row)
 
 select count(*) >= 0 as ok from pg_file_settings;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- There will surely be at least one rule
 select count(*) > 0 as ok from pg_hba_file_rules;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- There will surely be at least one active lock
 select count(*) > 0 as ok from pg_locks;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- We expect no prepared statements in this test; see also prepare.sql
 select count(*) = 0 as ok from pg_prepared_statements;
- ok 
+ ok
 ----
  t
 (1 row)
 
 -- See also prepared_xacts.sql
 select count(*) >= 0 as ok from pg_prepared_xacts;
- ok 
+ ok
 ----
  t
 (1 row)
@@ -70,9 +70,9 @@ select count(*) >= 0 as ok from pg_prepared_xacts;
 -- This is to record the prevailing planner enable_foo settings during
 -- a regression test run.
 select name, setting from pg_settings where name like 'enable%';
-              name              | setting 
+              name              | setting
 --------------------------------+---------
- enable_bitmapscan              | on
+ enable_bitmapscan              | off
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
@@ -98,13 +98,13 @@ select name, setting from pg_settings where name like 'enable%';
 -- (At the time of writing, the actual counts are around 38 because of
 -- zones using fractional GMT offsets, so this is a pretty loose test.)
 select count(distinct utc_offset) >= 24 as ok from pg_timezone_names;
- ok 
+ ok
 ----
  t
 (1 row)
 
 select count(distinct utc_offset) >= 24 as ok from pg_timezone_abbrevs;
- ok 
+ ok
 ----
  t
 (1 row)
@@ -112,15 +112,14 @@ select count(distinct utc_offset) >= 24 as ok from pg_timezone_abbrevs;
 -- Let's check the non-default timezone abbreviation sets, too
 set timezone_abbreviations = 'Australia';
 select count(distinct utc_offset) >= 24 as ok from pg_timezone_abbrevs;
- ok 
+ ok
 ----
  t
 (1 row)
 
 set timezone_abbreviations = 'India';
 select count(distinct utc_offset) >= 24 as ok from pg_timezone_abbrevs;
- ok 
+ ok
 ----
  t
 (1 row)
-

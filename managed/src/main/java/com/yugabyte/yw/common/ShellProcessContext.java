@@ -12,8 +12,6 @@ public class ShellProcessContext {
   public static final ShellProcessContext DEFAULT = ShellProcessContext.builder().build();
   // specify the SSH user to connect with.
   String sshUser;
-  // specify the SSH port to connect at.
-  String sshPort;
   // Whether to log stdout&stderr to application.log or not.
   boolean logCmdOutput;
   // Executed command is logged with trace level, in case it's set to true. Otherwise info.

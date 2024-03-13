@@ -8,7 +8,14 @@
  */
 
 import { PointInTimeRecoveryList } from './PointInTimeRecoveryList';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
 
-export const PointInTimeRecovery = ({ universeUUID }: { universeUUID: string }) => {
-  return <PointInTimeRecoveryList universeUUID={universeUUID} />;
+export const PointInTimeRecovery = ({
+  universeUUID,
+  allowedTasks
+}: {
+  universeUUID: string;
+  allowedTasks: AllowedTasks;
+}) => {
+  return <PointInTimeRecoveryList universeUUID={universeUUID} allowedTasks={allowedTasks} />;
 };

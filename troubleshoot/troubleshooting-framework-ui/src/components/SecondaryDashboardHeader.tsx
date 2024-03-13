@@ -11,7 +11,7 @@ import { MetricSplitSelector } from '../common/MetricSplitSelector';
 import { YBDateTimePicker } from '../common/YBDateTimePicker';
 import { AppName, MetricMeasure, SplitMode, Universe } from '../helpers/dtos';
 import { formatData, getFilteredItems } from '../helpers/utils';
-import { YBTimeFormats, formatDatetime } from '../helpers/DateUtils';
+import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
 import {
   ALL,
   metricOutlierSelectors,
@@ -117,7 +117,6 @@ export const SecondaryDashboardHeader = ({
   // State variables
   const [primaryZoneToNodesMap, setPrimaryZoneToNodesMap] = useState(primaryZoneMapping);
   const [asyncZoneToNodesMap, setAsyncZoneToNodesMap] = useState(asyncZoneMapping);
-  const [openDateTimePicker, setOpenDateTimePicker] = useState(false);
   const [datetimeError, setDateTimeError] = useState<string>('');
 
   // format date
@@ -134,7 +133,7 @@ export const SecondaryDashboardHeader = ({
 
   useEffect(() => {
     setPrimaryZoneToNodesMap(primaryZoneMapping);
-  }, [primaryZoneMapping]);
+  }, []);
 
   useUpdateEffect(() => {
     const emptyMap = new Map();
@@ -220,9 +219,6 @@ export const SecondaryDashboardHeader = ({
                     value={duration.label}
                     onClick={(e: any) => {
                       onSelectedFilterDuration(duration.label);
-                      duration.label !== TIME_FILTER.CUSTOM
-                        ? setOpenDateTimePicker(true)
-                        : setOpenDateTimePicker(false);
                     }}
                     className={clsx(classes.menuItem, classes.regularText)}
                   >

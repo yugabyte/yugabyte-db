@@ -843,7 +843,6 @@ export default class UniverseOverviewNew extends Component {
       currentCustomer,
       runtimeConfigs
     } = this.props;
-
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);

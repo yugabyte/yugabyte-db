@@ -13,14 +13,17 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBModal, YBModalProps } from '../../../redesign/components';
 import { YBErrorIndicator } from '../../common/indicators';
-
 import { XClusterConfig } from '../dtos';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
 interface CommonSyncXClusterConfigModalProps {
   xClusterConfig: XClusterConfig;
   modalProps: YBModalProps;
+  allowedTasks: AllowedTasks;
 }
 
 type SyncXClusterConfigModalProps =
@@ -122,13 +125,16 @@ export const SyncXClusterConfigModal = (props: SyncXClusterConfigModalProps) => 
     );
   };
 
+  const isFormDisabled = props.isDrInterface
+    ? isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.SYNC_DR)
+    : isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.SYNC_REPLICATION);
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
       cancelLabel={cancelLabel}
       onSubmit={onSubmit}
-      buttonProps={{ primary: { disabled: isSubmitting } }}
+      buttonProps={{ primary: { disabled: isSubmitting || isFormDisabled } }}
       isSubmitting={isSubmitting}
       size="sm"
       {...modalProps}

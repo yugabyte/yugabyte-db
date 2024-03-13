@@ -28,9 +28,12 @@
 
 #include "postgres.h"
 
+#include "access/relscan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapOr.h"
 #include "miscadmin.h"
+#include "nodes/tidbitmap.h"
+#include "pg_yb_utils.h"
 
 
 /* ----------------------------------------------------------------
@@ -113,7 +116,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TIDBitmap  *result = NULL;
+	TupleBitmap result = {NULL};
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -131,7 +134,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TIDBitmap  *subresult;
+		TupleBitmap subresult = {NULL};
 
 		/*
 		 * We can special-case BitmapIndexScan children to avoid an explicit
@@ -140,48 +143,68 @@ MultiExecBitmapOr(BitmapOrState *node)
 		 */
 		if (IsA(subnode, BitmapIndexScanState))
 		{
-			if (result == NULL) /* first subplan */
+			bool is_yugabyte = IsYugaByteEnabled() &&
+				IsYBRelation(
+					((BitmapIndexScanState *) subnode)->ss.ss_currentRelation);
+
+			if (result.tbm == NULL) /* first subplan */
 			{
-				/* XXX should we use less than work_mem for this? */
-				result = tbm_create(work_mem * 1024L,
-									((BitmapOr *) node->ps.plan)->isshared ?
-									node->ps.state->es_query_dsa : NULL);
+				if (is_yugabyte)
+					result.ybtbm = yb_tbm_create(work_mem * 1024L);
+				else
+					/* XXX should we use less than work_mem for this? */
+					result.tbm = tbm_create(work_mem * 1024L,
+											((BitmapOr *) node->ps.plan)->isshared
+												? node->ps.state->es_query_dsa
+												: NULL);
 			}
 
-			((BitmapIndexScanState *) subnode)->biss_result = result;
+			if (is_yugabyte)
+			{
+				((BitmapIndexScanState *) subnode)->biss_result = result.ybtbm;
+				subresult.ybtbm = (YbTIDBitmap *) MultiExecProcNode(subnode);
+			}
+			else
+			{
+				((BitmapIndexScanState *) subnode)->biss_result = result.tbm;
+				subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
+			}
 
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (subresult != result)
+			if (subresult.tbm != result.tbm)
 				elog(ERROR, "unrecognized result from subplan");
 		}
 		else
 		{
-			/* standard implementation */
-			subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-			if (!subresult || !IsA(subresult, TIDBitmap))
+			subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
+			if (!subresult.tbm)
 				elog(ERROR, "unrecognized result from subplan");
 
-			if (result == NULL)
+			if (result.tbm == NULL)
 				result = subresult; /* first subplan */
-			else
+			else if (IsA(subresult.tbm, TIDBitmap))
 			{
-				tbm_union(result, subresult);
-				tbm_free(subresult);
+				tbm_union(result.tbm, subresult.tbm);
+				tbm_free(subresult.tbm);
 			}
+			else if (IsA(subresult.ybtbm, YbTIDBitmap))
+				yb_tbm_union_and_free(result.ybtbm, subresult.ybtbm);
+			else
+				elog(ERROR, "unrecognized result from subplan");
 		}
 	}
 
 	/* We could return an empty result set here? */
-	if (result == NULL)
+	if (result.tbm == NULL)
 		elog(ERROR, "BitmapOr doesn't support zero inputs");
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
+		InstrStopNode(node->ps.instrument,
+					  IsA(result.ybtbm, YbTIDBitmap)
+						? yb_tbm_get_size(result.ybtbm) : 0);
 
-	return (Node *) result;
+
+	return (Node *) result.tbm;
 }
 
 /* ----------------------------------------------------------------

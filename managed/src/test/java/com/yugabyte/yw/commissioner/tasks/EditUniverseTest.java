@@ -364,7 +364,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     added.forEach(
         nodeInstance -> {
-          nodeInstance.setInUse(true);
+          nodeInstance.setState(NodeInstance.State.USED);
           nodeInstance.save();
         });
     TaskInfo taskInfo = submitTask(taskParams);

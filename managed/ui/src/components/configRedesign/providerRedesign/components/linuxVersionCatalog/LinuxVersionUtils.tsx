@@ -148,10 +148,10 @@ export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
         img.details.regions[region.code] = {};
       }
 
-      if (sshUserOverride) {
+      if (isAWS && sshUserOverride) {
         img.details.regions[region.code]['sshUserOverride'] = sshUserOverride;
       }
-      if (sshPortOverride) {
+      if (isAWS && sshPortOverride) {
         img.details.regions[region.code]['sshPortOverride'] = parseInt(sshPortOverride);
       }
     });

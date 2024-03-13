@@ -3,11 +3,8 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -26,15 +23,12 @@ import play.libs.Json;
 public class CloudRegionHelper {
 
   private final CloudQueryHelper queryHelper;
-  private final RuntimeConfGetter confGetter;
   private final ConfigHelper configHelper;
 
   @Inject
-  public CloudRegionHelper(
-      CloudQueryHelper queryHelper, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
+  public CloudRegionHelper(CloudQueryHelper queryHelper, ConfigHelper configHelper) {
     this.queryHelper = queryHelper;
     this.configHelper = configHelper;
-    this.confGetter = confGetter;
   }
 
   public Region createRegion(
@@ -77,52 +71,12 @@ public class CloudRegionHelper {
     final Region region = createdRegion;
     String customImageId = metadata.customImageId;
     String architecture = metadata.architecture != null ? metadata.architecture.name() : null;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
-      if (customImageId != null && !customImageId.isEmpty()) {
-        region.setYbImage(customImageId);
-        region.update();
-      } else {
-        switch (CloudType.valueOf(provider.getCode())) {
-            // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
-          case aws:
-          case gcp:
-          case azu:
-            // Setup default image, if no custom one was specified.
-            String defaultImage = queryHelper.getDefaultImage(region, architecture);
-            if (defaultImage == null || defaultImage.isEmpty()) {
-              throw new RuntimeException("Could not get default image for region: " + regionCode);
-            }
-            region.setYbImage(defaultImage);
-            region.update();
-            break;
-        }
-      }
-
-      // Attempt to find architecture for AWS providers.
-      if (provider.getCode().equals(CloudType.aws.toString())
-          && (region.getArchitecture() == null
-              || (customImageId != null && !customImageId.isEmpty()))) {
-        String arch = queryHelper.getImageArchitecture(region);
-        if (arch == null || arch.isEmpty()) {
-          log.warn(
-              "Could not get architecture for image {} in region {}.",
-              region.getYbImage(),
-              region.getCode());
-
-        } else {
-          try {
-            // explicitly overriding arch name to maintain equivalent type of architecture.
-            if (arch.equals("arm64")) {
-              arch = Architecture.aarch64.name();
-            }
-            region.setArchitecture(Architecture.valueOf(arch));
-            region.update();
-          } catch (IllegalArgumentException e) {
-            log.warn(
-                "{} not a valid architecture. Skipping for region {}.", arch, region.getCode());
-          }
-        }
-      }
+    if (customImageId != null && !customImageId.isEmpty()) {
+      // Backward compatiblity.
+      // In case custom image is specified use that so that imageBundle points to the correct
+      // image reference.
+      region.setYbImage(customImageId);
+      region.update();
     }
     String customSecurityGroupId = metadata.customSecurityGroupId;
     if (customSecurityGroupId != null && !customSecurityGroupId.isEmpty()) {

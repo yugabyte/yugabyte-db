@@ -76,7 +76,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertEquals(nodes.size(), 0);
 
     // Update node to in use and confirm no more fetching.
-    node.setInUse(true);
+    node.setState(NodeInstance.State.USED);
     node.save();
     nodes = NodeInstance.listByZone(zone.getUuid(), null);
     assertEquals(nodes.size(), 0);
@@ -109,11 +109,12 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void testClearNodeDetails() {
     NodeInstance node = createNode();
     node.setNodeName("yb-universe-1-n1");
-    node.setInUse(true);
+    node.setState(NodeInstance.State.USED);
     node.save();
     node.clearNodeDetails();
-    assertEquals(node.isInUse(), false);
+    assertEquals(node.getState(), NodeInstance.State.FREE);
     assertEquals(node.getNodeName(), "");
+    assertEquals(node.getUniverseMetadata(), null);
   }
 
   @Test
@@ -129,7 +130,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertTrue(reservedInstances.containsKey(universeNodeName));
     NodeInstance reservedInstance = reservedInstances.get(universeNodeName);
     assertEquals(node.getNodeUuid(), reservedInstance.getNodeUuid());
-    assertEquals(false, node.isInUse());
+    assertEquals(NodeInstance.State.FREE, node.getState());
     assertTrue(StringUtils.isBlank(reservedInstance.getNodeName()));
     UUID cluserUuid1 = UUID.randomUUID();
     // No more nodes.
@@ -143,7 +144,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertTrue(reservedInstances.containsKey(universeNodeName));
     reservedInstance = reservedInstances.get(universeNodeName);
     assertEquals(node.getNodeUuid(), reservedInstance.getNodeUuid());
-    assertEquals(false, reservedInstance.isInUse());
+    assertEquals(NodeInstance.State.FREE, reservedInstance.getState());
     assertTrue(StringUtils.isBlank(reservedInstance.getNodeName()));
   }
 
@@ -160,7 +161,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     Map<String, NodeInstance> committedInstances = NodeInstance.commitReservedNodes(cluserUuid);
     NodeInstance committedInstance = committedInstances.get(universeNodeName);
     assertEquals(node.getNodeUuid(), committedInstance.getNodeUuid());
-    assertEquals(true, committedInstance.isInUse());
+    assertEquals(NodeInstance.State.USED, committedInstance.getState());
     assertEquals(universeNodeName, committedInstance.getNodeName());
     UUID cluserUuid1 = UUID.randomUUID();
     // No more nodes.

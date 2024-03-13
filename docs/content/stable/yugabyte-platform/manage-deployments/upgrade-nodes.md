@@ -28,7 +28,7 @@ For each node in the universe, use the following general procedure:
 
 1. Stop the processes for the node to be patched.
 
-    In YugabyteDB Anywhere (YBA), navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Stop Processes**.
+    In YugabyteDB Anywhere (YBA), navigate to the universe **Nodes** tab, click the node **Actions**, and choose **Stop Processes**.
 
     If using the YBA API, use the following command:
 
@@ -48,14 +48,16 @@ For each node in the universe, use the following general procedure:
     - Inline patching - where you modify the Linux OS binaries in place (for example, yum).
     - Boot disk replacement - this is typically used with a hypervisor or public cloud. You create a separate new VM with a virtual disk containing the new Linux OS patch or upgrade, disconnect the virtual disk from the new VM, and use it to replace the DB node's boot disk.
 
-1. Re-provision the node. This must be done using the API.
+1. Re-provision the node.
 
-    Use the following API command:
+    - If the node uses automatic provisioning, use the following API command:
 
-    ```shell
-    curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
-    --data-raw '{"nodeAction":"REPROVISION"}'
-    ```
+        ```shell
+        curl '<platform-url>/api/v1/customers/<customer_uuid>/universes/<universe_uuid>/nodes/<node_name>' -X 'PUT' -H 'X-AUTH-YW-API-TOKEN: <api-token>' -H 'Content-Type: application/json' -H 'Accept: application/json, text/plain, */*' \
+        --data-raw '{"nodeAction":"REPROVISION"}'
+        ```
+
+    - If the node uses assisted or fully manual provisioning, re-provision the node by following the [manual provisioning steps](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/).
 
 1. Start the processes for the node.
 

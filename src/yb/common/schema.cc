@@ -191,6 +191,9 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
   pb->set_retain_delete_markers(retain_delete_markers_);
   pb->set_partitioning_version(partitioning_version_);
+  if (HasReplicaIdentity()) {
+    pb->set_ysql_replica_identity(*ysql_replica_identity_);
+  }
 }
 
 TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& pb) {
@@ -219,6 +222,9 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   if (pb.has_retain_delete_markers()) {
     table_properties.SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
+  if (pb.has_ysql_replica_identity()) {
+    table_properties.SetReplicaIdentity(pb.ysql_replica_identity());
+  }
   table_properties.set_partitioning_version(
       pb.has_partitioning_version() ? pb.partitioning_version() : 0);
   return table_properties;
@@ -246,6 +252,9 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_retain_delete_markers()) {
     SetRetainDeleteMarkers(pb.retain_delete_markers());
   }
+  if (pb.has_ysql_replica_identity()) {
+    SetReplicaIdentity(pb.ysql_replica_identity());
+  }
   set_partitioning_version(pb.has_partitioning_version() ? pb.partitioning_version() : 0);
 }
 
@@ -261,6 +270,7 @@ void TableProperties::Reset() {
   partitioning_version_ =
       PREDICT_TRUE(FLAGS_TEST_partitioning_version < 0) ? kCurrentPartitioningVersion
                                                         : FLAGS_TEST_partitioning_version;
+  ysql_replica_identity_ = std::nullopt;
 }
 
 string TableProperties::ToString() const {
@@ -270,11 +280,13 @@ string TableProperties::ToString() const {
   }
   result += Format("contain_counters: $0 is_transactional: $1 ",
                    contain_counters_, is_transactional_);
-  return result + Format(
-      "consistency_level: $0 is_ysql_catalog_table: $1 partitioning_version: $2 }",
-      consistency_level_,
-      is_ysql_catalog_table_,
-      partitioning_version_);
+  result + Format(
+               "consistency_level: $0 is_ysql_catalog_table: $1 partitioning_version: $2 ",
+               consistency_level_, is_ysql_catalog_table_, partitioning_version_);
+  if (HasReplicaIdentity()) {
+    result + Format("replica_identity: $0 }", *ysql_replica_identity_);
+  }
+  return result;
 }
 
 // ------------------------------------------------------------------------------------------------

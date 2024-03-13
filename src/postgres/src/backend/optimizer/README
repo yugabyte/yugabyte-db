@@ -364,6 +364,7 @@ RelOptInfo      - a relation or joined relations
   SeqScan       - represents a sequential scan plan
   IndexPath     - index scan
   BitmapHeapPath - top of a bitmapped index scan
+  YbBitmapTablePath - top of a bitmapped index scan
   TidPath       - scan by CTID
   SubqueryScanPath - scan a subquery-in-FROM
   ForeignPath   - scan a foreign table, foreign join or foreign upper-relation

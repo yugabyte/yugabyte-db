@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -407,8 +408,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
   @Test

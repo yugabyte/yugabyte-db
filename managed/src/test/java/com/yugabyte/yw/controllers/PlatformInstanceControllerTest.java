@@ -289,9 +289,43 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testPromoteInstanceNoConnection() {
+    when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+        .thenReturn(new ShellResponse());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(false);
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUuid();
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, false);
+    assertOk(createResult);
+    JsonNode instanceJson = Json.parse(contentAsString(createResult));
+    PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
+    UUID instanceUUID = instance.getUuid();
+    PlatformInstance remoteLeader = PlatformInstance.create(config, "http://def.com/", true, false);
+    remoteLeader.save();
+    String uri =
+        String.format(
+            "/api/settings/ha/config/%s/instance/%s/promote?isForcePromote=false",
+            configUUID.toString(), instanceUUID.toString());
+    String authToken = user.createAuthToken();
+    JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
+    Result promoteResult =
+        assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
+    assertBadRequest(
+        promoteResult, "Could not connect to current leader and force parameter not set.");
+  }
+
+  @Test
   public void testPromoteInstanceBackupFileNonexistent() {
     when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
         .thenReturn(new ShellResponse());
+    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
+    when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUuid();

@@ -1,3 +1,5 @@
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE INDEX p1_b_idx ON p1 (b ASC);
@@ -275,6 +277,33 @@ insert into out values (1, NULL), (1, 'abcd');
 /*+Leading((out intable)) IndexScan(out out_ind)*/ select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
 drop table intable;
 drop table out;
+
+create table outtable(a int);
+insert into outtable values (1), (2), (3);
+
+create table intable(a int primary key);
+insert into intable values (2), (3), (4), (6);
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+-- The problematic join filter is pushdownable to the nullable side.
+-- BNL not allowed here.
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+drop table outtable;
+drop table intable;
 
 CREATE TABLE q1(a int);
 CREATE TABLE q2(a int);

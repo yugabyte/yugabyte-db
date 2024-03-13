@@ -63,6 +63,7 @@ public class GraphService {
     UniverseMetadata universeMetadata = universeMetadataService.get(universeUuid);
     UniverseDetails universeDetails = universeDetailsService.get(universeUuid);
     if (universeMetadata == null || universeDetails == null) {
+      log.warn("Universe information for " + universeUuid + " is missing");
       return queries.stream()
           .map(
               q ->
@@ -97,6 +98,7 @@ public class GraphService {
         }
       }
       if (!sourceFound) {
+        log.warn("No graph named: " + query.getName());
         responses.add(
             new GraphResponse()
                 .setSuccessful(false)
@@ -127,8 +129,9 @@ public class GraphService {
     long endSeconds = query.getEnd().getEpochSecond();
     long startSeconds = query.getStart().getEpochSecond();
     if (query.getStepSeconds() == null) {
-      query.setStepSeconds(Math.max(minStep, (endSeconds - startSeconds) / GRAPH_POINTS_DEFAULT));
+      query.setStepSeconds((endSeconds - startSeconds) / GRAPH_POINTS_DEFAULT);
     }
+    query.setStepSeconds(Math.max(minStep, query.getStepSeconds()));
     startSeconds = startSeconds - startSeconds % query.getStepSeconds();
     endSeconds = endSeconds - endSeconds % query.getStepSeconds();
     query.setStart(Instant.ofEpochSecond(startSeconds));

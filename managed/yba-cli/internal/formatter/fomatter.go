@@ -57,6 +57,8 @@ const (
 	RedColor = "red"
 	// BlueColor for colored output
 	BlueColor = "blue"
+	// YellowColor for colored output
+	YellowColor = "yellow"
 )
 
 // Format is the format string rendered using the Context
@@ -190,6 +192,8 @@ func Colorize(message string, colors string) string {
 		return color.RedString(message)
 	case BlueColor:
 		return color.BlueString(message)
+	case YellowColor:
+		return color.YellowString(message)
 	default:
 		return message
 	}

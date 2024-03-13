@@ -642,15 +642,18 @@ public class ReleaseManager {
               .filter(p -> !currentFilePaths.contains(p.toString())) // Filter files already known
               .forEach(
                   p -> {
-                    ReleasesUtils.ExtractedMetadata metadata = releasesUtils.metadataFromPath(p);
+                    ReleasesUtils.ExtractedMetadata metadata = null;
+                    releasesUtils.metadataFromPath(p);
                     try {
+                      metadata = releasesUtils.metadataFromPath(p);
                       if (metadata.platform == ReleaseArtifact.Platform.KUBERNETES) {
                         localReleaseNameValidation(metadata.version, null, p.toString());
                       } else {
                         localReleaseNameValidation(metadata.version, p.toString(), null);
                       }
                     } catch (RuntimeException e) {
-                      log.error("local release " + metadata.version + " failed validation", e);
+                      log.error(
+                          "local release " + p.getFileName().toString() + " failed validation");
                       // continue forEach
                       return;
                     }

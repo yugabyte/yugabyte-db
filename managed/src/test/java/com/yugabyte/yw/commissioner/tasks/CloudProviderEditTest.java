@@ -79,7 +79,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
-import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -212,8 +211,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   private void setUpCredsValidation(boolean valid) {
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(valid);
+    when(mockCloudAPI.isValidCreds(any())).thenReturn(valid);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
   }
 

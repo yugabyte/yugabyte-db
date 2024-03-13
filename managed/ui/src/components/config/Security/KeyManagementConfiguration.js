@@ -230,8 +230,8 @@ class KeyManagementConfiguration extends Component {
         case 'AZU':
           if (isFieldModified('CLIENT_ID')) data['CLIENT_ID'] = values.CLIENT_ID;
 
-          if(!this.state.enabledMI){
-            if (isFieldModified('CLIENT_SECRET')) 
+          if (!this.state.enabledMI) {
+            if (isFieldModified('CLIENT_SECRET'))
               data['CLIENT_SECRET'] = values.CLIENT_SECRET;
           }
 
@@ -326,7 +326,7 @@ class KeyManagementConfiguration extends Component {
           break;
         case 'AZU':
           data['CLIENT_ID'] = values.CLIENT_ID;
-          if(!this.state.enabledMI){
+          if (!this.state.enabledMI) {
             data['CLIENT_SECRET'] = values.CLIENT_SECRET;
           }
           data['TENANT_ID'] = values.TENANT_ID;
@@ -375,6 +375,7 @@ class KeyManagementConfiguration extends Component {
   };
 
   getAWSForm = (values) => {
+    const { hostInfo } = this.props;
     const isEdit = this.isEditMode();
     return (
       <Fragment>
@@ -386,6 +387,7 @@ class KeyManagementConfiguration extends Component {
             <Field
               name={'enableIAMProfile'}
               component={YBCheckBox}
+              disabled={hostInfo === undefined || getYBAHost(hostInfo) !== YBAHost.AWS}
               checkState={this.state.enabledIAMProfile ? true : false}
               input={{
                 onChange: () => this.setState({ enabledIAMProfile: !this.state.enabledIAMProfile })
@@ -827,7 +829,7 @@ class KeyManagementConfiguration extends Component {
   };
 
   getAzuForm = () => {
-    const {hostInfo} = this.props;
+    const { hostInfo } = this.props;
     const isEdit = this.isEditMode();
 
     return (
@@ -1112,13 +1114,13 @@ class KeyManagementConfiguration extends Component {
         });
         configs = configs
           ? configs.filter((config) => {
-              return (
-                !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
-                (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
-                (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
-                (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
-              );
-            })
+            return (
+              !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
+              (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
+              (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
+              (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
+            );
+          })
           : [];
       }
       //feature flagging

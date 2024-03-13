@@ -289,7 +289,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     for (NodeInstance ni : NodeInstance.listByProvider(p.getUuid())) {
       if (k < 5) {
         k++;
-        ni.setInUse(true);
+        ni.setState(NodeInstance.State.USED);
         ni.save();
       } else {
         break;
@@ -1984,6 +1984,14 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   public void testGetUpdateOptionsEditRegions() throws IOException {
     testGetAvailableOptions(
         x -> x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID()),
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditDefaultRegion() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().placementInfo.cloudList.get(0).defaultRegion = UUID.randomUUID(),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }

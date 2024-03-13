@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -219,10 +220,21 @@ public class ThirdPartyLoginHandler {
     CommonProfile profile = this.getProfile(request);
     String emailAttr = confGetter.getGlobalConf(GlobalConfKeys.oidcEmailAttribute);
     String email;
-    if (emailAttr.equals("")) {
-      email = profile.getEmail();
-    } else {
+    if (emailAttr != null && StringUtils.isNotBlank(emailAttr)) {
       email = (String) profile.getAttribute(emailAttr);
+      if (email == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Unable to fetch email. Please check the email attribute specified.");
+      }
+    } else {
+      email = profile.getEmail();
+      // If email is null then the token doesn't have the 'email' claim.
+      // Need to specify the email attribute in the OIDC config.
+      if (email == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unable to fetch email. Please specify the email attribute in the OIDC config.");
+      }
     }
     return email.toLowerCase();
   }

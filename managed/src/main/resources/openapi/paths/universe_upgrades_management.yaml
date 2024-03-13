@@ -53,3 +53,5 @@
           path: universes
           sourceType: endpoint
         checkOnlyPermission: false
+    x-yba-api-since: 2.20.2.0
+    x-yba-api-visibility: preview

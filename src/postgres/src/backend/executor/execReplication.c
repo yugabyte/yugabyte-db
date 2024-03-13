@@ -560,7 +560,8 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 
 	/* If relation has replica identity we are always good. */
 	if (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL ||
-		OidIsValid(RelationGetReplicaIndex(rel)))
+		OidIsValid(RelationGetReplicaIndex(rel)) ||
+		(IsYugaByteEnabled() && rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE))
 		return;
 
 	/*
@@ -574,7 +575,7 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	 * NOTE: we may need to allow more system tables in YB context.
 	 *
 	 * TODO(#20143): Revisit if and when we introduce support for replica
-	 * identity.
+	 * identity, to identify how REPLICA_IDENTITY_NOTHING is handled here.
 	 */
 	if (IsYugaByteEnabled() &&
 		yb_non_ddl_txn_for_sys_tables_allowed)

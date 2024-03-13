@@ -238,7 +238,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  boolean demoteRemoteInstance(PlatformInstance remoteInstance) {
+  boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
     try {
       if (remoteInstance.getIsLocal()) {
         LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
@@ -261,7 +261,7 @@ public class PlatformReplicationHelper {
               localInstance -> {
                 // Send step down request to remote instance.
                 client.demoteInstance(
-                    localInstance.getAddress(), config.getLastFailover().getTime());
+                    localInstance.getAddress(), config.getLastFailover().getTime(), promote);
 
                 return true;
               })
@@ -451,7 +451,7 @@ public class PlatformReplicationHelper {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demoteRemoteInstance(remoteInstance)) {
+    if (!this.demoteRemoteInstance(remoteInstance, false)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
       return false;
     }

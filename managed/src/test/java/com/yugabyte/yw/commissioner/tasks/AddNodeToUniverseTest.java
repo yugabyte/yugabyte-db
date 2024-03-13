@@ -168,7 +168,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           NodeInstance.maybeGetByName(nodeName)
               .ifPresent(
                   nodeInstance -> {
-                    nodeInstance.setInUse(false);
+                    nodeInstance.setState(NodeInstance.State.FREE);
                     nodeInstance.setNodeName("");
                     nodeInstance.save();
                   });

@@ -417,8 +417,17 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Test
   public void testParseKubernetesOverridesNoAdditionalProperty() {
     KubernetesOverrides overrides = createKubernetesOverrides();
+    String expectedString =
+        "---\n"
+            + "nodeSelector:\n"
+            + "  label: \"selector\"\n"
+            + "resource:\n"
+            + "  master:\n"
+            + "    limits:\n"
+            + "      cpu: 4\n";
 
     String overridesString = ybUniverseReconciler.getKubernetesOverridesString(overrides);
+    assertEquals(expectedString, overridesString);
     assertTrue(overridesString.length() > 0);
   }
 

@@ -52,9 +52,6 @@ public interface ITask extends Runnable {
     return false;
   }
 
-  /** Invoked when the current task is cancelled/aborted. */
-  default void onCancelled(TaskInfo taskInfo) {}
-
   /** Clean up the initialization. */
   void terminate();
 

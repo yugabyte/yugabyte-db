@@ -51,4 +51,15 @@ public class ThreadPoolConfig {
     taskExecutor.initialize();
     return taskExecutor;
   }
+
+  @Bean
+  public ThreadPoolTaskExecutor anomalyDetectionExecutor(
+      @Value("${task.anomaly_detection.threads}") int threads) {
+    ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+    taskExecutor.setCorePoolSize(threads);
+    taskExecutor.setMaxPoolSize(threads);
+    taskExecutor.setThreadNamePrefix("metric_query");
+    taskExecutor.initialize();
+    return taskExecutor;
+  }
 }

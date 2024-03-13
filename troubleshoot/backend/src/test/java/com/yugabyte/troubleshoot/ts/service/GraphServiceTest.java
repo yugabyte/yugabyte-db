@@ -76,7 +76,8 @@ public class GraphServiceTest {
     expectedResponseStr =
         expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -103,7 +104,8 @@ public class GraphServiceTest {
     expectedResponseStr =
         expectedResponseStr.replaceAll("<universe_uuid>", metadata.getId().toString());
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -142,7 +144,8 @@ public class GraphServiceTest {
 
     String expectedResponseStr = CommonUtils.readResource("query/overall_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -188,7 +191,8 @@ public class GraphServiceTest {
 
     String expectedResponseStr = CommonUtils.readResource("query/overall_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -216,38 +220,38 @@ public class GraphServiceTest {
             + "export_type%3D%22ysql_export%22,%20"
             + "universe_uuid%3D%22<universe_uuid>%22,%20"
             + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
             + "%20by%20(service_method,%20exported_instance))%20/%20(avg(rate(rpc_latency_count%7B"
             + "export_type%3D%22ysql_export%22,%20"
             + "universe_uuid%3D%22<universe_uuid>%22,%20"
             + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
             + "%20by%20(service_method,%20exported_instance))%20and%20"
             + "topk(2,%20(avg(rate(rpc_latency_sum%7Bexport_type%3D%22ysql_export%22,%20"
             + "universe_uuid%3D%22<universe_uuid>%22,%20"
             + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D"
-            + "@1706284080))%20by%20(service_method,%20exported_instance))%20/%20"
-            + "(avg(rate(rpc_latency_count%7Bexport_type%3D%22ysql_export%22,%20"
-            + "universe_uuid%3D%22<universe_uuid>%22,%20"
-            + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D"
-            + "@1706284080))%20by%20(service_method,%20exported_instance)))%20by%20(service_method))%20"
-            + "or%20avg((avg(rate(rpc_latency_sum%7Bexport_type%3D%22ysql_export%22,%20"
-            + "universe_uuid%3D%22<universe_uuid>%22,%20"
-            + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B12000s%5D@1706284080))"
             + "%20by%20(service_method,%20exported_instance))%20/%20(avg(rate(rpc_latency_count%7B"
             + "export_type%3D%22ysql_export%22,%20"
             + "universe_uuid%3D%22<universe_uuid>%22,%20"
             + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
-            + "server_type%3D%22yb_ysqlserver%22,%20"
-            + "service_method%3D~%22SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B12000s%5D@1706284080))"
+            + "%20by%20(service_method,%20exported_instance)))%20by%20(service_method))%20"
+            + "or%20avg((avg(rate(rpc_latency_sum%7Bexport_type%3D%22ysql_export%22,%20"
+            + "universe_uuid%3D%22<universe_uuid>%22,%20"
+            + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
+            + "%20by%20(service_method,%20exported_instance))%20/%20(avg(rate(rpc_latency_count%7B"
+            + "export_type%3D%22ysql_export%22,%20"
+            + "universe_uuid%3D%22<universe_uuid>%22,%20"
+            + "service_type%3D%22SQLProcessor%22,%20exported_instance%3D~%22node2%7Cnode3%22,%20"
+            + "server_type%3D%22yb_ysqlserver%22,%20service_method%3D~%22"
+            + "SelectStmt%7CInsertStmt%7CUpdateStmt%7CDeleteStmt%22%7D%5B120s%5D))"
             + "%20by%20(service_method,%20exported_instance)%20!%3D%200))%20by%20(service_method)"
             + "&start=2024-01-26T12:28:00.000Z&end=2024-01-26T15:48:00.000Z&step=120s";
     expectedQuery = expectedQuery.replaceAll("<universe_uuid>", metadata.getId().toString());
@@ -263,7 +267,8 @@ public class GraphServiceTest {
     String expectedResponseStr =
         CommonUtils.readResource("query/outlier_node_metrics_response.json");
     JsonNode expectedResponse = objectMapper.readTree(expectedResponseStr);
-    JsonNode actualResponse = objectMapper.valueToTree(response);
+    String actualResponseStr = objectMapper.writeValueAsString(response);
+    JsonNode actualResponse = objectMapper.readTree(actualResponseStr);
 
     assertThat(actualResponse).isEqualTo(expectedResponse);
   }
@@ -285,6 +290,7 @@ public class GraphServiceTest {
             Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds - 10))
         .setActualTimestamp(Instant.ofEpochSecond(periodEnd.getEpochSecond() - beforeSeconds))
         .setNodeName(nodeName)
+        .setDbId("12345")
         .setQueryId(queryId)
         .setRps(value)
         .setRowsAvg(value * 2)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 )
@@ -42,6 +43,7 @@ var preflightCmd = &cobra.Command{
 			if upgradePreflightChecks {
 				checksToRun = preflight.UpgradeChecks
 			} else if migratePreflightChecks {
+				config.UpdateConfigRootInstall("/opt/ybanywhere")
 				checksToRun = preflight.ReplicatedMigrateChecks
 			}
 			// TODO: We should allow the user to better specify which checks to run.

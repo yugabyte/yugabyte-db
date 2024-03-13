@@ -70,43 +70,29 @@ class StrandTaskWithErrorFunc : public StrandTask {
 // after all previously enqueued tasks.
 //
 // Submitted task should inherit StrandTask or wrapped by class that provides such inheritance.
-class Strand : public ThreadPoolTask {
+class Strand : public ThreadPoolTask,
+               public ThreadSubPoolBase,
+               public TaskRecipient<StrandTask> {
  public:
   explicit Strand(ThreadPool* thread_pool);
   virtual ~Strand();
 
-  void Enqueue(StrandTask* task);
+  bool Enqueue(StrandTask* task) override;
 
-  template <class F>
-  void EnqueueFunctor(const F& f) {
-    Enqueue(MakeFunctorStrandTask(f));
-  }
-
-  template <class F>
-  void EnqueueFunctor(F&& f) {
-    Enqueue(MakeFunctorStrandTask(std::move(f)));
-  }
-
-  // Shut down the strand and wait for running tasks to finish. Concurrent calls to this function
-  // are OK, and each of them will wait for the tasks.
-  void Shutdown();
-
-  // Wait for running tasks to complete. This uses a "busy wait" approach of waiting for 1ms in a
-  // loop. It is suitable for use during shutdown and in tests.
-  void BusyWait();
+  // Do nothing. We manage active_tasks_ in a different way.
+  void OnTaskDone(ThreadPoolTask* task, const Status& status) override {}
 
  private:
   void Run() override;
 
   void Done(const Status& status) override;
 
-  void ProcessTasks(const Status& status, bool allow_closing);
+  bool IsIdle() override;
 
-  ThreadPool& thread_pool_;
-  std::atomic<size_t> active_tasks_{0};
-  MPSCQueue<StrandTask> queue_;
+  // Whether the top-level strand task is currently running in the underlying thread pool.
   std::atomic<bool> running_{false};
-  std::atomic<bool> closing_{false};
+
+  MPSCQueue<StrandTask> queue_;
 };
 
 } // namespace rpc

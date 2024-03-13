@@ -15,10 +15,8 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
@@ -56,19 +54,6 @@ public class DeleteNode extends NodeTaskBase {
 
               // Update userIntent to reflect new numNodes
               cluster.userIntent.numNodes = universeDetails.nodeDetailsSet.size();
-              // If OnPrem Free up the node.
-              if (cluster.userIntent.providerType.equals(Common.CloudType.onprem)) {
-                try {
-                  NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
-                  node.clearNodeDetails();
-                } catch (Exception ex) {
-                  log.warn(
-                      "On-prem node {} in universe {} doesn't have a linked instance. "
-                          + "Deletion is skipped.",
-                      taskParams().nodeName,
-                      universe.getName());
-                }
-              }
               universe.setUniverseDetails(universeDetails);
             }
           };

@@ -29,6 +29,7 @@ using namespace std::chrono_literals;
 using namespace std::literals;
 
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace {
 
@@ -1212,6 +1213,57 @@ TEST_F_EX(
       tablets[0].tablet_id()));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestReplicaIdentityAfterRestore),
+    YBBackupTestOneTablet) {
+  ASSERT_OK(
+      cluster_->SetFlagOnTServers("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_replica_identity", "true"));
+
+  ASSERT_OK(
+      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
+
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+
+  ASSERT_RESULT(RunPsqlCommand("ALTER TABLE mytbl REPLICA IDENTITY FULL"));
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
+
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  std::string db_name = "yugabyte_new";
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
+
+  // Sanity check the tablet count.
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  SetDbName(db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand("SELECT relreplident FROM pg_class WHERE oid = 'mytbl'::regclass",
+  R"#(
+    relreplident
+   --------------
+    f
+   (1 row)
+  )#"));
 }
 
 class YBLegacyColocatedDBBackupTest : public YBBackupTest {

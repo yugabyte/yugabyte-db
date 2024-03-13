@@ -58,6 +58,7 @@
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 #include "optimizer/ybcplan.h"
+#include "tcop/pquery.h"
 
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -86,6 +87,20 @@ bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 	bool has_triggers = resultRelInfo->ri_TrigDesc && resultRelInfo->ri_TrigDesc->numtriggers > 0;
 	bool has_indices = YBCRelInfoHasSecondaryIndices(resultRelInfo);
 	return !has_indices && !has_triggers;
+}
+
+bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
+{
+	if (!IsYugaByteEnabled() || YbIsBatchedExecution() || IsTransactionBlock())
+		return false;
+
+	Assert(ActivePortal);
+
+	return ActivePortal->stmts->length == 1 &&
+		YBCIsSingleRowModify(pstmt) &&
+		estate->es_num_result_relations == 1 &&
+		(pstmt->commandType == CMD_UPDATE ||
+		YBCIsSingleRowTxnCapableRel(&estate->es_result_relations[0]));
 }
 
 /*

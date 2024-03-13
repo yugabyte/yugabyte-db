@@ -11,7 +11,10 @@ import {
 } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { YBCheckBox } from '../../common/forms/fields';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 
 import styles from './DeleteConfigModal.module.scss';
@@ -20,7 +23,7 @@ interface DeleteConfigModalProps {
   onHide: () => void;
   visible: boolean;
   xClusterConfigUUID: string;
-
+  allowedTasks: AllowedTasks;
   redirectUrl?: string;
   sourceUniverseUUID?: string;
   targetUniverseUUID?: string;
@@ -33,6 +36,7 @@ export const DeleteConfigModal = ({
   sourceUniverseUUID,
   targetUniverseUUID,
   visible,
+  allowedTasks,
   xClusterConfigName,
   xClusterConfigUUID
 }: DeleteConfigModalProps) => {
@@ -104,12 +108,15 @@ export const DeleteConfigModal = ({
     onHide();
   };
 
+  const isDeleteActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_REPLICATION);
+
   return (
     <YBModalForm
       visible={visible}
       formName={'DeleteConfigForm'}
       onHide={onHide}
       onFormSubmit={handleFormSubmit}
+      isButtonDisabled={isDeleteActionFrozen}
       submitLabel="Delete Replication"
       title={`Delete Replication: ${xClusterConfigLabel}`}
       footerAccessory={

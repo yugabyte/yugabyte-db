@@ -1,6 +1,7 @@
 --------------------------------------
 -- Set up tables.
 --------------------------------------
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
 
 CREATE TABLE t1(h int, r int, v1 int, v2 int, v3 int, primary key(h HASH, r ASC));
 CREATE INDEX t1_v1_v2_idx on t1(v1 HASH, v2 ASC);

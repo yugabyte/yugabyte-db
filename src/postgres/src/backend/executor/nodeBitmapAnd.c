@@ -30,6 +30,7 @@
 
 #include "executor/execdebug.h"
 #include "executor/nodeBitmapAnd.h"
+#include "nodes/tidbitmap.h"
 
 
 /* ----------------------------------------------------------------
@@ -112,7 +113,7 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	PlanState **bitmapplans;
 	int			nplans;
 	int			i;
-	TIDBitmap  *result = NULL;
+	TupleBitmap	result = {NULL};
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
@@ -130,20 +131,24 @@ MultiExecBitmapAnd(BitmapAndState *node)
 	for (i = 0; i < nplans; i++)
 	{
 		PlanState  *subnode = bitmapplans[i];
-		TIDBitmap  *subresult;
+		TupleBitmap	subresult;
 
-		subresult = (TIDBitmap *) MultiExecProcNode(subnode);
-
-		if (!subresult || !IsA(subresult, TIDBitmap))
+		subresult.tbm = (TIDBitmap *) MultiExecProcNode(subnode);
+		if (!subresult.tbm)
 			elog(ERROR, "unrecognized result from subplan");
 
-		if (result == NULL)
+		if (result.tbm == NULL)
 			result = subresult; /* first subplan */
-		else
+		else if (IsA(subresult.tbm, TIDBitmap))
 		{
-			tbm_intersect(result, subresult);
-			tbm_free(subresult);
+			tbm_intersect(result.tbm, subresult.tbm);
+			tbm_free(subresult.tbm);
 		}
+		else if (IsA(subresult.ybtbm, YbTIDBitmap))
+			yb_tbm_intersect_and_free(result.ybtbm, subresult.ybtbm);
+		else
+			elog(ERROR, "unrecognized result from subplan");
+
 
 		/*
 		 * If at any stage we have a completely empty bitmap, we can fall out
@@ -152,18 +157,23 @@ MultiExecBitmapAnd(BitmapAndState *node)
 		 * the subplans by selectivity should make this case more likely to
 		 * occur.)
 		 */
-		if (tbm_is_empty(result))
+		if ((IsA(result.ybtbm, YbTIDBitmap) &&
+			 (yb_tbm_is_empty(result.ybtbm) ||
+			  result.ybtbm->work_mem_exceeded))
+			|| (IsA(result.tbm, TIDBitmap) && tbm_is_empty(result.tbm)))
 			break;
 	}
 
-	if (result == NULL)
+	if (result.tbm == NULL)
 		elog(ERROR, "BitmapAnd doesn't support zero inputs");
 
 	/* must provide our own instrumentation support */
 	if (node->ps.instrument)
-		InstrStopNode(node->ps.instrument, 0 /* XXX */ );
+		InstrStopNode(node->ps.instrument,
+					  IsA(result.ybtbm, YbTIDBitmap)
+						? yb_tbm_get_size(result.ybtbm) : 0);
 
-	return (Node *) result;
+	return (Node *) result.tbm;
 }
 
 /* ----------------------------------------------------------------

@@ -167,14 +167,6 @@ typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
-    CreateNewCDCStreamMode,
-    // Only populate the table_id. It is only used by xCluster.
-    (kXClusterTableIds)
-    // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
-    (kCdcsdkNamespaceAndTableIds)
-);
-
-YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,
     // Stream has been initialized but no in-memory data structures or sys-catalog have been
     // modified.
@@ -1267,10 +1259,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status IsEncryptionEnabled(
       const IsEncryptionEnabledRequestPB* req, IsEncryptionEnabledResponsePB* resp);
 
-  // Backfills pg_type_oid and pgschema_name in tablet metadata if not present.
-  Status BackfillMetadataForCDC(
-      scoped_refptr<TableInfo> table, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
-
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
@@ -1565,11 +1553,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
 
-  Status CreateNewXReplStream(
-      const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
-      const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
-      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc);
-
   auto GetTasksTracker() { return tasks_tracker_; }
 
   void MarkUniverseForCleanup(const xcluster::ReplicationGroupId& replication_group_id)
@@ -1583,8 +1566,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<CDCStreamInfo>> InitNewXReplStream() EXCLUDES(mutex_);
   void ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
 
-  Status SetWalRetentionForTable(
-      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch) EXCLUDES(mutex_);
+  Status SetXReplWalRetentionForTable(const TableInfoPtr& table, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2458,8 +2441,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   template <class Req, class Resp, class F>
   Status PerformOnSysCatalogTablet(const Req& req, Resp* resp, const F& f);
 
-  bool CDCStreamExistsUnlocked(const xrepl::StreamId& id) REQUIRES_SHARED(mutex_);
-
   Status CollectTable(
       const TableDescription& table_description,
       CollectFlags flags,
@@ -2771,9 +2752,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   static void SetTabletSnapshotsState(
       SysSnapshotEntryPB::State state, SysSnapshotEntryPB* snapshot_pb);
 
-  Status CreateNewCDCStreamForNamespace(
-      const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
+  xrepl::StreamId GenerateNewXreplStreamId() EXCLUDES(xrepl_stream_ids_in_use_mutex_);
+  void RecoverXreplStreamId(const xrepl::StreamId& stream_id)
+      EXCLUDES(xrepl_stream_ids_in_use_mutex_);
+
+  Result<xrepl::StreamId> CreateNewXClusterStream(
+      const TableId& table_id, bool transactional,
+      const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB>& options,
+      const std::optional<SysCDCStreamEntryPB::State>& initial_state, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+
+  Status CreateNewCDCStreamForNamespace(
+      const CreateCDCStreamRequestPB& req,
+      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status CreateNewCdcsdkStream(
+      const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
+      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                const std::vector<TableId>& table_ids,
@@ -2786,8 +2782,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
-  Status BackfillMetadataForCDC(
-      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status BackfillMetadataForCDC(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
@@ -3203,6 +3199,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // CDC Stream map: xrepl::StreamId -> CDCStreamInfo.
   typedef std::unordered_map<xrepl::StreamId, CDCStreamInfoPtr> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
+
+  std::mutex xrepl_stream_ids_in_use_mutex_;
+  std::unordered_set<xrepl::StreamId> xrepl_stream_ids_in_use_
+      GUARDED_BY(xrepl_stream_ids_in_use_mutex_);
 
   mutable MutexType cdcsdk_unprocessed_table_mutex_;
   // In-memory map containing newly created tables which are yet to be added to CDCSDK stream's

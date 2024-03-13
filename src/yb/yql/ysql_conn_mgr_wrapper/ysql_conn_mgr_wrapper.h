@@ -48,7 +48,6 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   uint16_t control_connection_pool_size_;
   uint num_resolver_threads_ = 1;
 
-  bool application_name_add_host_ = true;
   bool log_debug_ = false;
 
   void UpdateConfigFromGFlags();

@@ -50,7 +50,6 @@ Version refers to the latest tested version of the integration.
 | :------------- | :------ | :------ | :------- |
 | Apache Beam    | 2.49.0  | Partial | [Apache Beam](apache-beam/) |
 | Apache Flink   | 1.17.1  | Partial | [Apache Flink](apache-flink/) |
-| Apache Kafka   | 6.1.1   | Full | [Apache Kafka](apache-kafka/) |
 | Akka Persistence | 1.0.1 | Partial | [Akka Persistence](akka-ysql/) |
 | Confluent      | 7.4.0   | Full | [Confluent Cloud](../tutorials/cdc-tutorials/cdc-confluent-cloud/) |
 | Debezium       | 1.9.5   | Full | [Debezium](cdc/debezium/) |
@@ -165,7 +164,7 @@ Version refers to the latest tested version of the integration.
   </li>
 
   <li>
-    <a href="apache-kafka/">
+    <a href="">
       <img src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">
       Apache Kafka
     </a>

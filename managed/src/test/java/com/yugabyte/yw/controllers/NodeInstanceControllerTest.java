@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -284,7 +285,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testListByZoneNoFreeNodes() {
-    node.setInUse(true);
+    node.setState(NodeInstance.State.USED);
     node.save();
     Result r = listByZone(zone.getUuid());
     checkOk(r);
@@ -292,7 +293,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     JsonNode json = parseResult(r);
     assertEquals(0, json.size());
 
-    node.setInUse(false);
+    node.setState(NodeInstance.State.FREE);
     node.save();
     assertAuditEntry(0, customer.getUuid());
   }
@@ -669,7 +670,103 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
                     NodeActionType.PRECHECK_DETACHED,
                     false));
 
-    assertBadRequest(r, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    assertConflict(r, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  private Result performUpdateStateAction(
+      UUID customerUUID, UUID providerUUID, String nodeIP, NodeInstance.State targetState) {
+    String uri =
+        "/api/customers/"
+            + customerUUID
+            + "/providers/"
+            + providerUUID
+            + "/instances/"
+            + nodeIP
+            + "/state";
+    ObjectNode params = Json.newObject();
+    params.put("state", targetState.toString());
+    return doRequestWithBody("PUT", uri, params);
+  }
+
+  @Test
+  public void testUpdateStateValid() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.RecommissionNodeInstance);
+    when(mockCommissioner.submit(any(TaskType.class), any(DetachedNodeTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    // Creating valid transition from DECOMMISSIONED -> FREE state.
+    node.setState(NodeInstance.State.DECOMMISSIONED);
+    node.save();
+    Result r =
+        performUpdateStateAction(
+            customer.getUuid(), provider.getUuid(), FAKE_IP, NodeInstance.State.FREE);
+    ArgumentCaptor<DetachedNodeTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(DetachedNodeTaskParams.class);
+    assertOk(r);
+    verify(mockCommissioner, times(1))
+        .submit(Mockito.eq(TaskType.RecommissionNodeInstance), paramsCaptor.capture());
+    DetachedNodeTaskParams params = paramsCaptor.getValue();
+    assertEquals(params.getInstanceType(), FAKE_INSTANCE_TYPE);
+    assertEquals(params.getNodeUuid(), node.getNodeUuid());
+    assertEquals(params.getAzUuid(), node.getZoneUuid());
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testUpdateStateInvalidState() {
+    node.setState(NodeInstance.State.USED);
+    node.save();
+    Result r =
+        assertPlatformException(
+            () ->
+                performUpdateStateAction(
+                    customer.getUuid(), provider.getUuid(), FAKE_IP, NodeInstance.State.FREE));
+
+    assertBadRequest(
+        r,
+        "Node instance "
+            + node.getNodeUuid()
+            + " cannot transition from state: "
+            + NodeInstance.State.USED
+            + " to state: "
+            + NodeInstance.State.FREE);
+  }
+
+  @Test
+  // Validates that error is thrown if there is already another task being run on the node instance.
+  public void testUpdateStateInstanceTaskRunning() {
+    UUID taskUUID = buildTaskInfo(null, TaskType.PrecheckNodeDetached);
+    node.setState(NodeInstance.State.DECOMMISSIONED);
+    node.save();
+    CustomerTask.create(
+        customer,
+        node.getNodeUuid(),
+        taskUUID,
+        CustomerTask.TargetType.Node,
+        CustomerTask.TaskType.PrecheckNode,
+        node.getNodeName());
+
+    Result r =
+        assertPlatformException(
+            () ->
+                performUpdateStateAction(
+                    customer.getUuid(), provider.getUuid(), FAKE_IP, NodeInstance.State.FREE));
+
+    assertConflict(r, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testUpdateStateInstanceInvalidIP() {
+    node.setState(NodeInstance.State.DECOMMISSIONED);
+    node.save();
+    Result r =
+        assertPlatformException(
+            () ->
+                performUpdateStateAction(
+                    customer.getUuid(), provider.getUuid(), FAKE_IP_2, NodeInstance.State.FREE));
+
+    assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.getUuid());
   }
 }

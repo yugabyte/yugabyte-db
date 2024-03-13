@@ -66,6 +66,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -79,6 +80,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleConfigureServers,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -117,6 +119,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     try {
       when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
           .thenReturn(true);
+      setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception ignored) {
     }
     tlsToggle.setUserTaskUUID(UUID.randomUUID());
@@ -345,10 +348,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       if (nodeToNodeChange != 0) {
-        expectedPosition += 78;
+        expectedPosition += 84;
         expectedNumberOfInvocations += 24;
       } else {
-        expectedPosition += 70;
+        expectedPosition += 76;
         expectedNumberOfInvocations += 18;
       }
     } else {

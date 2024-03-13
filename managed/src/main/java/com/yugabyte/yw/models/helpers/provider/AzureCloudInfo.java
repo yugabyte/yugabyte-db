@@ -13,12 +13,19 @@ import io.swagger.annotations.ApiModelProperty.AccessMode;
 import io.swagger.annotations.ApiParam;
 import java.util.HashMap;
 import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints.Required;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Builder(toBuilder = true)
+@AllArgsConstructor
+@NoArgsConstructor
 public class AzureCloudInfo implements CloudInfoInterface {
 
   private static final Map<String, String> configKeyMap =
@@ -36,11 +43,13 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @JsonAlias("AZURE_TENANT_ID")
   @ApiModelProperty
   @EditableInUseProvider(name = "Azure Tenant ID", allowed = false)
+  @Required
   public String azuTenantId;
 
   @JsonAlias("AZURE_CLIENT_ID")
   @ApiModelProperty
   @EditableInUseProvider(name = "Azure Client ID", allowed = false)
+  @Required
   public String azuClientId;
 
   @JsonAlias("AZURE_CLIENT_SECRET")
@@ -50,6 +59,7 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @JsonAlias("AZURE_SUBSCRIPTION_ID")
   @ApiModelProperty
   @EditableInUseProvider(name = "Azure Subscription ID", allowed = false)
+  @Required
   public String azuSubscriptionId;
 
   @JsonAlias("AZURE_NETWORK_SUBSCRIPTION_ID")
@@ -60,6 +70,7 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @JsonAlias("AZURE_RG")
   @EditableInUseProvider(name = "Azure Resource Group", allowed = false)
   @ApiModelProperty
+  @Required
   public String azuRG;
 
   @JsonAlias("AZURE_NETWORK_RG")

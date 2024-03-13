@@ -122,6 +122,7 @@ export default class ReleaseList extends Component {
     if (searchResults != null) {
       releaseStrList = searchResults;
     } else if (releases.data) {
+      // Changes to be made after release flow is finalized
       releaseStrList = Object.keys(releases.data).sort(sortVersion);
     }
     const releaseInfos = releaseStrList

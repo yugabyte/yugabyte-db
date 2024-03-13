@@ -23,8 +23,12 @@ func init() {
 
 	UpgradeUniverseCmd.AddCommand(upgradeSoftwareCmd)
 
-	upgradeSoftwareCmd.PersistentFlags().BoolP("force", "f", false,
+	UpgradeUniverseCmd.PersistentFlags().StringP("name", "n", "",
+		"[Required] The name of the universe to be created.")
+	UpgradeUniverseCmd.MarkPersistentFlagRequired("name")
+
+	UpgradeUniverseCmd.PersistentFlags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
-	upgradeSoftwareCmd.PersistentFlags().BoolP("skip-validations", "s", false,
+	UpgradeUniverseCmd.PersistentFlags().BoolP("skip-validations", "s", false,
 		"[Optional] Skip validations before running the CLI command.")
 }

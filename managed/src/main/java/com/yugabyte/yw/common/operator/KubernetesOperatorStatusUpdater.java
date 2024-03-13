@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.operator;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.Event;
@@ -297,8 +298,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
 
       // Update Swamper Targets configMap
-      String configMapName =
-          YBUniverseReconciler.getYbaUniverseName(ybUniverse) + "-prometheus-targets";
+      String configMapName = OperatorUtils.getYbaUniverseName(ybUniverse) + "-prometheus-targets";
       // TODO (@anijhawan) should call the swamperHelper target function but we are in static
       // context here.
       if (u != null) {

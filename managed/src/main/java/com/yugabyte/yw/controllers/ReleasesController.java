@@ -179,6 +179,10 @@ public class ReleasesController extends AuthenticatedController {
     if (release == null) {
       log.info("Release {} does not exist, skipping delete");
     } else {
+      if (!release.getUniverses().isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "cannot delete in-use release " + releaseUUID);
+      }
       if (!release.delete()) {
         log.error("Failed to delete release {}", releaseUUID);
         throw new PlatformServiceException(
@@ -246,6 +250,10 @@ public class ReleasesController extends AuthenticatedController {
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
+        if (!release.getUniverses().isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
+        }
         log.info("updating release state to {}", reqRelease.state);
         release.setState(Release.ReleaseState.valueOf(reqRelease.state));
       }
@@ -314,6 +322,10 @@ public class ReleasesController extends AuthenticatedController {
         }
       }
       for (UUID artifactUUID : removeArtifacts) {
+        if (!release.getUniverses().isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "cannot remove artifacts from in-use release " + releaseUUID);
+        }
         ReleaseArtifact artifact = ReleaseArtifact.get(artifactUUID);
         if (artifact != null) {
           log.info("deleting artifact {}", artifact.getArtifactUUID());
@@ -357,9 +369,14 @@ public class ReleasesController extends AuthenticatedController {
       }
       resp.artifacts.add(respArtifact);
     }
-    // Add 0 universes for now
-    // TODO: Get active universes
-    resp.universes = new ArrayList<>();
+
+    resp.universes =
+        release.getUniverses().stream()
+            .map(
+                u ->
+                    new ResponseRelease.Universe(
+                        u.getUniverseUUID(), u.getName(), u.getCreationDate()))
+            .collect(Collectors.toList());
     return resp;
   }
 }

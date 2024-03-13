@@ -708,6 +708,23 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
   VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 }
 
+TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
+  ASSERT_OK(
+      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
+
+  CreateTable("test_table");
+  string ddl_statement = "ALTER TABLE test_table REPLICA IDENTITY FULL;";
+  ASSERT_OK(conn.TestFailDdl(ddl_statement));
+
+  // Table should exist with old (default) replica identity intact.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(VerifyReplicaIdentityMatches(
+      client.get(), kDatabase, "test_table", PgReplicaIdentity::CHANGE));
+}
+
 class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {
  protected:
   bool testFailedDueToTxnVerification(PGConn *conn, const string& cmd) {

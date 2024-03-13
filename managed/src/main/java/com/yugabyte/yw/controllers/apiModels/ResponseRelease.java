@@ -30,10 +30,16 @@ public class ResponseRelease {
   public String release_notes;
   public String release_tag;
 
-  public class Universe {
-    UUID uuid;
-    String name;
-    Date creation_date;
+  public static class Universe {
+    public UUID uuid;
+    public String name;
+    public Date creation_date;
+
+    public Universe(UUID uuid, String name, Date creation_date) {
+      this.uuid = uuid;
+      this.name = name;
+      this.creation_date = creation_date;
+    }
   }
 
   public List<Universe> universes;

@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -73,6 +74,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1695,7 +1697,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       tserverNodes.remove(stoppedNode);
       masterNodes.remove(stoppedNode);
     }
-    createMasterAddressUpdateTask(masterNodes, tserverNodes);
+    createMasterAddressUpdateTask(universe, masterNodes, tserverNodes);
 
     // Update the master addresses on the target universes whose source universe belongs to
     // this task.
@@ -1707,9 +1709,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * tservers and masters.
    */
   protected void createMasterAddressUpdateTask(
-      Set<NodeDetails> masterNodes, Set<NodeDetails> tserverNodes) {
+      Universe universe, Set<NodeDetails> masterNodes, Set<NodeDetails> tserverNodes) {
     // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
+    createConfigureServerTasks(
+            tserverNodes,
+            params -> {
+              params.updateMasterAddrsOnly = true;
+              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+            })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Change the master addresses in the conf file for the all masters to reflect
@@ -1719,6 +1726,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params -> {
               params.updateMasterAddrsOnly = true;
               params.isMaster = true;
+              params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
@@ -2255,6 +2263,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     params.isMaster = true;
                     params.resetMasterState = isShellMode;
                     params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                    params.masterAddrsOverride =
+                        getOrCreateExecutionContext().getMasterAddrsSupplier();
                   })
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         });
@@ -2626,6 +2636,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeDetails node,
       Set<ServerType> processTypes,
       SubTaskGroupType subGroupType,
+      boolean skipCheckNodesAreSafeToTakeDown,
       @Nullable String targetSoftwareVersion) {
     boolean underReplicatedTabletsCheckEnabled =
         confGetter.getConfForScope(
@@ -2633,6 +2644,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
       createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion)
           .setSubTaskGroupType(subGroupType);
+    }
+    if (!skipCheckNodesAreSafeToTakeDown) {
+      List<String> masterIps = new ArrayList<>();
+      List<String> tserverIps = new ArrayList<>();
+      for (ServerType processType : processTypes) {
+        if (processType == ServerType.TSERVER) {
+          tserverIps.add(node.cloudInfo.private_ip);
+        }
+        if (processType == ServerType.MASTER) {
+          masterIps.add(node.cloudInfo.private_ip);
+        }
+      }
+      createCheckNodesAreSafeToTakeDownTask(masterIps, tserverIps);
     }
   }
 
@@ -2762,6 +2786,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       CheckLeaderlessTablets checkLeaderlessTablets = createTask(CheckLeaderlessTablets.class);
       checkLeaderlessTablets.initialize(params);
       subTaskGroup.addSubTask(checkLeaderlessTablets);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  protected void createCheckNodesAreSafeToTakeDownTask(
+      List<String> masterIps, List<String> tserverIps) {
+    if (CollectionUtils.isEmpty(masterIps) && CollectionUtils.isEmpty(tserverIps)) {
+      return;
+    }
+    if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.useNodesAreSafeToTakeDown)) {
+      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodesAreSafeToTakeDown");
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      CheckNodesAreSafeToTakeDown.Params params = new CheckNodesAreSafeToTakeDown.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.masterIps = new ArrayList<>(masterIps);
+      params.tserverIps = new ArrayList<>(tserverIps);
+
+      CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
+          createTask(CheckNodesAreSafeToTakeDown.class);
+      checkNodesAreSafeToTakeDown.initialize(params);
+      subTaskGroup.addSubTask(checkNodesAreSafeToTakeDown);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
   }

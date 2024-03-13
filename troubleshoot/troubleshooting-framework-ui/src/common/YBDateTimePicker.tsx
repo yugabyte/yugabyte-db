@@ -2,8 +2,8 @@ import { ChangeEvent } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import TextField from '@material-ui/core/TextField';
 import clsx from 'clsx';
-import { YBTimeFormats, formatDatetime } from '../helpers/DateUtils';
-import { isNonEmptyString } from '../helpers/ObjectUtils';
+import { YBTimeFormats, formatDatetime } from '../helpers/dateUtils';
+import { isNonEmptyString } from '../helpers/objectUtils';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -39,7 +39,7 @@ export const YBDateTimePicker = ({
   const maxDate = formatDatetime(today, YBTimeFormats.YB_DATE_TIME_TIMESTAMP);
 
   const oldDay = new Date(today);
-  oldDay.setDate(oldDay.getDate() - 60);
+  oldDay.setDate(oldDay.getDate() - 30);
   const minDate = formatDatetime(oldDay, YBTimeFormats.YB_DATE_TIME_TIMESTAMP);
 
   return (

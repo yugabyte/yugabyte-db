@@ -1,3 +1,4 @@
+SET yb_explain_hide_non_deterministic_fields = true;
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
 CREATE TABLE t(r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC)) SPLIT AT VALUES ((1, 1, 500));
@@ -110,7 +111,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
                      Distinct Prefix: 1
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
                      Distinct Prefix: 2
 (11 rows)
@@ -134,7 +135,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
                      Distinct Prefix: 1
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
                      Distinct Prefix: 2
 (11 rows)
@@ -204,7 +205,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
                ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
                      Distinct Prefix: 2
          ->  Hash (actual rows=2 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Unique (actual rows=2 loops=1)
                      ->  Distinct Index Scan using t_pkey on t t_1 (actual rows=3 loops=1)
                            Distinct Prefix: 1
@@ -280,7 +281,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
                Distinct Prefix: 1
    ->  Hash (actual rows=2 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
                      Distinct Prefix: 1
@@ -328,7 +329,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
          ->  Seq Scan on t t1 (actual rows=1000 loops=1)
                Storage Filter: (((r1)::double precision + random()) < '5'::double precision)
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
                      Distinct Prefix: 2
 (10 rows)
@@ -548,7 +549,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    ->  Distinct Index Scan using th_pkey on th t1 (actual rows=6 loops=1)
          Distinct Prefix: 2
    ->  Hash (actual rows=6 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Scan using th_pkey on th t2 (actual rows=6 loops=1)
                Distinct Prefix: 2
 (8 rows)
@@ -624,7 +625,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
                Distinct Prefix: 2
    ->  Hash (actual rows=6 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
                Distinct Prefix: 2
 (9 rows)
@@ -677,7 +678,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
          Distinct Prefix: 1
          Heap Fetches: 0
    ->  Hash (actual rows=334 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 20kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Only Scan using irv on t t2 (actual rows=334 loops=1)
                Distinct Prefix: 1
                Heap Fetches: 0

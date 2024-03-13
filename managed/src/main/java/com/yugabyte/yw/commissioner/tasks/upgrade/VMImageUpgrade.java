@@ -90,6 +90,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     Set<NodeDetails> nodeSet = fetchNodesForCluster();
     String newVersion = taskParams().ybSoftwareVersion;
     if (taskParams().isSoftwareUpdateViaVm) {
@@ -104,10 +105,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodesForClustersInParams();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          Set<NodeDetails> nodeSet = fetchNodesForCluster();
+          MastersAndTservers nodes = getNodesToBeRestarted();
+          Set<NodeDetails> nodeSet = toOrderedSet(nodes.asPair());
 
           String newVersion = taskParams().ybSoftwareVersion;
 
@@ -180,9 +187,19 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
       List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
-      if (node.isMaster) processTypes.add(ServerType.MASTER);
-      if (node.isTserver) processTypes.add(ServerType.TSERVER);
+      List<String> masterIps = new ArrayList<>();
+      if (node.isMaster) {
+        processTypes.add(ServerType.MASTER);
+        masterIps.add(node.cloudInfo.private_ip);
+      }
+      List<String> tserverIps = new ArrayList<>();
+      if (node.isTserver) {
+        processTypes.add(ServerType.TSERVER);
+        tserverIps.add(node.cloudInfo.private_ip);
+      }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
+
+      createCheckNodesAreSafeToTakeDownTask(masterIps, tserverIps);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.

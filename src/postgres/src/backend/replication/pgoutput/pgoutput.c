@@ -216,13 +216,14 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 static void
 pgoutput_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
-	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
+	/* Skip sending replication origin as it is not applicable for YB. */
+	bool send_replication_origin = !IsYugaByteEnabled() &&
+								   txn->origin_id != InvalidRepOriginId;
 
 	OutputPluginPrepareWrite(ctx, !send_replication_origin);
 	logicalrep_write_begin(ctx->out, txn);
 
-	/* Skip sending replication origin as it is not applicable for YB. */
-	if (!IsYugaByteEnabled() && send_replication_origin)
+	if (send_replication_origin)
 	{
 		char	   *origin;
 
