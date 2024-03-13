@@ -117,6 +117,11 @@ extern bool yb_enable_replication_slot_consumption;
 extern bool yb_enable_alter_table_rewrite;
 
 /*
+ * Guc variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

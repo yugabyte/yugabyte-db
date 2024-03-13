@@ -950,6 +950,10 @@ YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name) {
   return ToYBCStatus(pgapi->AlterTableDropColumn(handle, name));
 }
 
+YBCStatus YBCPgAlterTableSetReplicaIdentity(YBCPgStatement handle, const char identity_type) {
+  return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
+}
+
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname) {
   return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));

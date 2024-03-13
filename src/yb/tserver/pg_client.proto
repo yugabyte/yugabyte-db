@@ -169,6 +169,29 @@ message PgRenameTablePB {
   string table_name = 2;
 }
 
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentityType {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}
+
+message PgReplicaIdentityPB {
+  PgReplicaIdentityType replica_identity = 1;
+}
+
 message PgAlterTableRequestPB {
   uint64 session_id = 1;
   bool use_transaction = 2;
@@ -178,6 +201,7 @@ message PgAlterTableRequestPB {
   repeated string drop_columns = 6;
   PgRenameTablePB rename_table = 7;
   bool increment_schema_version = 8;
+  PgReplicaIdentityPB replica_identity = 9;
 }
 
 message PgAlterTableResponsePB {

@@ -76,6 +76,7 @@ DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -134,6 +135,17 @@ Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& d
   const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
   RETURN_NOT_OK(conn->Execute(ddl_query));
   return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
+
+Status IsReplicaIdentityPopulatedInTabletPeers(
+    PgReplicaIdentity expected_replica_identity, std::vector<tablet::TabletPeerPtr> tablet_peers,
+    std::string table_id) {
+  for (const auto& peer : tablet_peers) {
+    auto replica_identity =
+        peer->tablet_metadata()->schema(table_id)->table_properties().replica_identity();
+    EXPECT_EQ(replica_identity, expected_replica_identity);
+  }
+  return Status::OK();
 }
 
 } // namespace
@@ -1309,6 +1321,30 @@ TEST_F(PgMiniTest, NoRestartSecondRead) {
   res = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT b FROM t WHERE a = 2"));
   ASSERT_EQ(res, 1);
   ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 3 TABLETS"));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(CHANGE, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY FULL"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(FULL, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY CHANGE"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(CHANGE, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY DEFAULT"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(DEFAULT, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY NOTHING"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
 }
 
 // ------------------------------------------------------------------------------------------------
