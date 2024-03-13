@@ -6,6 +6,7 @@ description: Summary of supported PostgreSQL extensions
 image: /images/section_icons/develop/ecosystem-integrations.png
 summary: Reference for YSQL extensions
 aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgis/
   - /stable/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
 menu:
   stable:
@@ -59,5 +60,4 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | [pg_hint_plan](../../query-1-performance/pg-hint-plan/#root) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) documentation. |
 | pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
-| [PostGIS](extension-postgis/) | Requires&nbsp;installation | A spatial database extender for PostgreSQL-compatible object-relational databases. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |
