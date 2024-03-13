@@ -18,16 +18,21 @@ import { MigrationAssesmentInfo, useGetVoyagerMigrationAssesmentDetailsQuery } f
 import { MigrationAssessmentDetails } from "./AssessmentDetails";
 import { MigrationAssessmentResults } from "./AssessmentResults";
 import { MigrationComplexityOverview } from "./ComplexityOverview";
+import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
-    marginBottom: theme.spacing(4),
+    marginBottom: theme.spacing(2),
   },
   tabSectionContainer: {
     display: "flex",
     alignItems: "center",
     width: "100%",
     boxShadow: `inset 0px -1px 0px 0px ${theme.palette.grey[200]}`,
+  },
+  nextSteps: {
+    paddingLeft: theme.spacing(4),
+    marginBottom: theme.spacing(4),
   },
 }));
 
@@ -78,121 +83,214 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const data: MigrationAssesmentInfo = React.useMemo(
-    () => ({
-      assesment_status: true,
-      complexity_overview: [
-        {
-          schema: "YUGABYTED",
-          sql_objects_count: 10,
-          table_count: 2,
-          complexity: "Easy",
-        },
-      ],
-      top_suggestions: ["Suggestion one", "Suggestion two"],
-      top_errors: [],
-    }),
-    []
-  );
+  const [tab, setTab] = React.useState<string>(tabList[0].name);
 
-  const isErrorMigrationAssessmentDetails = false;
-
-  const assessmentAPI = React.useMemo(() => {
-    const assessmentData = (data as MigrationAssesmentInfo) || {};
-    assessmentData.top_suggestions = assessmentData.top_suggestions?.filter((s) => s.trim());
-    assessmentData.top_errors = assessmentData.top_errors?.filter((s) => s.trim());
-    return assessmentData;
-  }, [data]);
-
-  const isComplete = assessmentAPI.assesment_status === true;
-
-  const complexityColumns = [
+  const overviewData = [
     {
-      name: "schema",
-      label: t("clusterDetail.voyager.planAndAssess.schema"),
+      task: "Preparing",
+      progress: "100%",
+      status: "Complete",
+    },
+    {
+      task: "Processing",
+      progress: "45%",
+      status: "In Progress",
+    },
+    {
+      task: "Finalization",
+      progress: "0%",
+      status: "N/A",
+    },
+  ];
+
+  const overviewColumns = [
+    {
+      name: "task",
+      label: t("clusterDetail.voyager.planAndAssess.overview.task"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "sql_objects_count",
-      label: t("clusterDetail.voyager.planAndAssess.sqlObjectCount"),
+      name: "progress",
+      label: t("clusterDetail.voyager.planAndAssess.overview.progress"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
     {
-      name: "table_count",
-      label: t("clusterDetail.voyager.planAndAssess.tableCount"),
+      name: "status",
+      label: t("clusterDetail.voyager.planAndAssess.overview.status"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "complexity",
-      label: t("clusterDetail.voyager.planAndAssess.complexity"),
-      options: {
-        /*         customBodyRender: ComplexityComponent(classes), */
+        customBodyRender: (status: string) =>
+          status !== "N/A" ? (
+            <YBBadge
+              variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
+              text={status}
+            />
+          ) : (
+            status
+          ),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
   ];
 
-  const [tab, setTab] = React.useState<string>(tabList[0].name);
+  const nextStepsData = [
+    {
+      phase: "Resizing",
+      status: "Complete",
+    },
+    {
+      phase: "Processing",
+      status: "In Progress",
+    },
+    {
+      phase: "Finalization",
+      status: "N/A",
+    },
+  ];
+
+  const nextStepsColumns = [
+    {
+      name: "phase",
+      label: t("clusterDetail.voyager.planAndAssess.nextSteps.phase"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "status",
+      label: t("clusterDetail.voyager.planAndAssess.nextSteps.status"),
+      options: {
+        customBodyRender: (status: string) =>
+          status !== "N/A" ? (
+            <YBBadge
+              variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
+              text={status}
+            />
+          ) : (
+            status
+          ),
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", height: "44px" } }),
+      },
+    },
+  ];
 
   return (
-    <Box mt={-2}>
-      <Box display="flex" justifyContent="space-between" alignItems="start">
-        <Box className={classes.tabSectionContainer}>
-          <Tabs
-            value={tab}
-            indicatorColor="primary"
-            textColor="primary"
-            data-testid="ClusterTabList"
-          >
-            {tabList.map((tab) => (
-              <Tab
-                key={tab.name}
-                value={tab.name}
-                label={t(`clusterDetail.voyager.planAndAssess.${tab.name}`)}
-                onClick={() => setTab(tab.name)}
-                data-testid={tab.testId}
-              />
-            ))}
-          </Tabs>
-        </Box>
-      </Box>
+    <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
+      <Typography variant="h4" className={classes.heading}>
+        {heading}
+      </Typography>
 
-      <Box mt={2}>
-        {tab === "tabAssessmentDetails" && (
-          <MigrationAssessmentDetails
-            heading={heading}
-            migration={migration}
-            onRefetch={onRefetch}
-            isFetching={isFetching}
+      <YBAccordion
+        titleContent={
+          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.overviewTab")} />
+        }
+        defaultExpanded
+      >
+        <Box flex={1} px={2} minWidth={0}>
+          <YBTable
+            data={overviewData}
+            columns={overviewColumns}
+            options={{
+              pagination: true,
+            }}
+            withBorder={false}
           />
-        )}
-        {tab === "tabAssessmentResults" && (
-          <MigrationAssessmentResults
-            heading={heading}
-            migration={migration}
-            onRefetch={onRefetch}
-            isFetching={isFetching}
+        </Box>
+      </YBAccordion>
+
+      <YBAccordion
+        titleContent={
+          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.assessmentTab")} />
+        }
+      >
+        <Box flex={1} px={2} minWidth={0}>
+          <Box className={classes.tabSectionContainer}>
+            <Tabs
+              value={tab}
+              indicatorColor="primary"
+              textColor="primary"
+              data-testid="ClusterTabList"
+            >
+              {tabList.map((tab) => (
+                <Tab
+                  key={tab.name}
+                  value={tab.name}
+                  label={t(`clusterDetail.voyager.planAndAssess.${tab.name}`)}
+                  onClick={() => setTab(tab.name)}
+                  data-testid={tab.testId}
+                />
+              ))}
+            </Tabs>
+          </Box>
+
+          <Box mt={2}>
+            {tab === "tabAssessmentDetails" && (
+              <MigrationAssessmentDetails
+                heading={heading}
+                migration={migration}
+                onRefetch={onRefetch}
+                isFetching={isFetching}
+              />
+            )}
+            {tab === "tabAssessmentResults" && (
+              <MigrationAssessmentResults
+                heading={heading}
+                migration={migration}
+                onRefetch={onRefetch}
+                isFetching={isFetching}
+              />
+            )}
+            {tab === "tabComplexityOverview" && (
+              <MigrationComplexityOverview
+                heading={heading}
+                migration={migration}
+                onRefetch={onRefetch}
+                isFetching={isFetching}
+              />
+            )}
+          </Box>
+        </Box>
+      </YBAccordion>
+
+      <YBAccordion
+        titleContent={
+          <MigrationAccordionTitle title={t("clusterDetail.voyager.planAndAssess.nextStepsTab")} />
+        }
+      >
+        <Box flex={1} px={2} minWidth={0}>
+          <ul className={classes.nextSteps}>
+            <li>
+              <Typography variant="body2">
+                It is recommended to manually run validation queries on both the source and target
+                database to ensure that the data is correctly migrated.
+              </Typography>
+            </li>
+            <li>
+              <Typography variant="body2">
+                A sample query to validate the databases can include checking the row count of each
+                table.
+              </Typography>
+            </li>
+          </ul>
+
+          <YBTable
+            data={nextStepsData}
+            columns={nextStepsColumns}
+            options={{
+              pagination: true,
+            }}
+            withBorder={false}
           />
-        )}
-        {tab === "tabComplexityOverview" && (
-          <MigrationComplexityOverview
-            heading={heading}
-            migration={migration}
-            onRefetch={onRefetch}
-            isFetching={isFetching}
-          />
-        )}
-      </Box>
+        </Box>
+      </YBAccordion>
     </Box>
   );
 };

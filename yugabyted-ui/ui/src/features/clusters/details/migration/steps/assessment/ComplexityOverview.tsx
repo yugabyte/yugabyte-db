@@ -81,7 +81,7 @@ export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> =
   const complexityColumns = [
     {
       name: "schema",
-      label: t("clusterDetail.voyager.planAndAssess.overview.schema"),
+      label: t("clusterDetail.voyager.planAndAssess.complexity.schema"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -89,7 +89,7 @@ export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> =
     },
     {
       name: "sql_objects_count",
-      label: t("clusterDetail.voyager.planAndAssess.overview.sqlObjectCount"),
+      label: t("clusterDetail.voyager.planAndAssess.complexity.sqlObjectCount"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -97,7 +97,7 @@ export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> =
     },
     {
       name: "table_count",
-      label: t("clusterDetail.voyager.planAndAssess.overview.tableCount"),
+      label: t("clusterDetail.voyager.planAndAssess.complexity.tableCount"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -105,7 +105,7 @@ export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> =
     },
     {
       name: "complexity",
-      label: t("clusterDetail.voyager.planAndAssess.overview.complexity"),
+      label: t("clusterDetail.voyager.planAndAssess.complexity.complexity"),
       options: {
         customBodyRender: ComplexityComponent(classes),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -129,7 +129,7 @@ export const MigrationComplexityOverview: FC<MigrationComplexityOverviewProps> =
           <Box display="flex" justifyContent="space-between" alignItems="start">
             <YBInput
               placeholder={t(
-                "clusterDetail.voyager.planAndAssess.overview.searchSchema"
+                "clusterDetail.voyager.planAndAssess.complexity.searchSchema"
               )}
               InputProps={{
                 startAdornment: <SearchIcon />,
