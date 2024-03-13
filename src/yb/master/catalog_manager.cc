@@ -5364,9 +5364,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT:
         return id;
-      case SysRowEntryType::CDC_STREAM:
-        if (!CDCStreamExistsUnlocked(CHECK_RESULT(xrepl::StreamId::FromString(id)))) return id;
-        break;
+      case SysRowEntryType::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
