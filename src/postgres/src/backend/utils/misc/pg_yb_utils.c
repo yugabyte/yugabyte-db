@@ -4802,14 +4802,14 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 
 	end = GetCurrentTimestamp();
 	bundleptr(0,queryid,"-",0,0,NULL,0,0,result);
-	dumpAshData(queryid ,result->start_time ,end,result->log_path);
+	//dumpAshData(queryid ,result->start_time ,end,result->log_path);
 	explainptr(0,NULL,result);
 	schemaptr(0,NULL,result);
-	dumpFullAshData(result->start_time ,end,result->log_path);
-	// if(YBEnableAsh()){
-	// 	dumpAshData(queryid ,result->start_time ,end,result->log_path);
-	// 	dumpFullAshData(result->start_time ,end,result->log_path);
-	// }
+	//dumpFullAshData(result->start_time ,end,result->log_path);
+	if(yb_enable_ash){
+		dumpAshData(queryid ,result->start_time ,end,result->log_path);
+		dumpFullAshData(result->start_time ,end,result->log_path);
+	}
 	//resetting the values
 	remove_from_shared_hashtable(map, queryid);
 	sharedBundleStruct->totalBundleStarted--;

@@ -745,11 +745,11 @@ dumpAshData(int64 queryId, TimestampTz start, TimestampTz end,char *result_log_p
 			fprintf(fptr, ",%ld,%s,%s,%s,",
 					(int64)yb_ash->circular_buffer[i].rpc_request_id,
 					YBCGetWaitEventComponent(
-						yb_ash->circular_buffer[i].wait_event_code),
+						yb_ash->circular_buffer[i].encoded_wait_event_code),
 					pgstat_get_wait_event_type(
-						yb_ash->circular_buffer[i].wait_event_code),
+						yb_ash->circular_buffer[i].encoded_wait_event_code),
 					pgstat_get_wait_event(
-						yb_ash->circular_buffer[i].wait_event_code));
+						yb_ash->circular_buffer[i].encoded_wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
 			fprintf(fptr, ",%ld,%lu,%s,%s,%f\n",
 					(int64)yb_ash->circular_buffer[i].metadata.query_id,
@@ -801,11 +801,11 @@ dumpFullAshData(TimestampTz start, TimestampTz end,char *result_log_path)
 			fprintf(fptr, ",%ld,%s,%s,%s,",
 					(int64)yb_ash->circular_buffer[i].rpc_request_id,
 					YBCGetWaitEventComponent(
-						yb_ash->circular_buffer[i].wait_event_code),
+						yb_ash->circular_buffer[i].encoded_wait_event_code),
 					pgstat_get_wait_event_type(
-						yb_ash->circular_buffer[i].wait_event_code),
+						yb_ash->circular_buffer[i].encoded_wait_event_code),
 					pgstat_get_wait_event(
-						yb_ash->circular_buffer[i].wait_event_code));
+						yb_ash->circular_buffer[i].encoded_wait_event_code));
 			print_uuid_to_file(yb_ash->circular_buffer[i].yql_endpoint_tserver_uuid, fptr);
 			fprintf(fptr, ",%ld,%lu,%s,%s,%f\n",
 					(int64)yb_ash->circular_buffer[i].metadata.query_id,
