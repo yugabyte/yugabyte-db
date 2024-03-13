@@ -18,6 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_util.h"
 #include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
@@ -2735,7 +2736,7 @@ Status GetChangesForCDCSDK(
             }
 
             bool has_columns_marked_for_deletion = false;
-            if (FLAGS_ysql_yb_ddl_rollback_enabled) {
+            if (YsqlDdlRollbackEnabled()) {
               for (auto column : current_schema.columns()) {
                 if (column.marked_for_deletion()) {
                   has_columns_marked_for_deletion = true;
