@@ -12,6 +12,7 @@ import com.yugabyte.troubleshoot.ts.yba.client.YBAClient;
 import com.yugabyte.troubleshoot.ts.yba.models.RunQueryResult;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Rule;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,10 +102,9 @@ public class StatStatementsQueryTest {
     when(ybaClient.runSqlQuery(
             universeMetadata, SYSTEM_PLATFORM, PG_STAT_STATEMENTS_QUERY, "node2"))
         .thenReturn(runQueryResult);
-    statStatementsQuery.processAllUniverses();
+    Map<UUID, UniverseProgress> progresses = statStatementsQuery.processAllUniverses();
 
-    UniverseProgress progress =
-        statStatementsQuery.universesProcessStartTime.get(universeMetadata.getId());
+    UniverseProgress progress = progresses.get(universeMetadata.getId());
     while (progress.getStartTimestamp() == 0L || progress.inProgress) {
       Thread.sleep(10);
     }
@@ -146,9 +146,9 @@ public class StatStatementsQueryTest {
     when(ybaClient.runSqlQuery(
             universeMetadata, SYSTEM_PLATFORM, PG_STAT_STATEMENTS_QUERY, "node2"))
         .thenReturn(runQueryResult);
-    statStatementsQuery.processAllUniverses();
+    progresses = statStatementsQuery.processAllUniverses();
 
-    progress = statStatementsQuery.universesProcessStartTime.get(universeMetadata.getId());
+    progress = progresses.get(universeMetadata.getId());
     while (progress.getStartTimestamp() == 0L || progress.inProgress) {
       Thread.sleep(10);
     }

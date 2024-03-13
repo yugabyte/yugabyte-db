@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class TroubleshootingService {
 
-  private static final long MAX_STEP_SECONDS = Duration.ofMinutes(10).toSeconds();
+  private static final long MAX_STEP_SECONDS = Duration.ofMinutes(2).toSeconds();
 
   private final List<AnomalyDetector> anomalyDetectors;
   private final AnomalyMetadataProvider anomalyMetadataProvider;
