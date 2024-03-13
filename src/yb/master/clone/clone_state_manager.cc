@@ -390,8 +390,14 @@ Status CloneStateManager::HandleRestoringState(const CloneStateInfoPtr& clone_st
 }
 
 Status CloneStateManager::Run() {
-  std::lock_guard lock(mutex_);
-  for (auto& [source_namespace_id, clone_state] : source_clone_state_map_) {
+  // Copy is required to avoid deadlocking with the catalog manager mutex in
+  // CatalogManager::RunLoaders, which calls CloneStateManager::ClearAndRunLoaders.
+  CloneStateMap source_clone_state_map;
+  {
+    std::lock_guard lock(mutex_);
+    source_clone_state_map = source_clone_state_map_;
+  }
+  for (auto& [source_namespace_id, clone_state] : source_clone_state_map) {
     Status s;
     switch (clone_state->LockForRead()->pb.aggregate_state()) {
       case SysCloneStatePB::CREATING:

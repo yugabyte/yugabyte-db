@@ -115,7 +115,8 @@ class CloneStateManager {
   std::mutex mutex_;
 
   // Map from clone source namespace id to the latest clone state for that namespace.
-  std::unordered_map<NamespaceId, CloneStateInfoPtr> source_clone_state_map_ GUARDED_BY(mutex_);
+  using CloneStateMap = std::unordered_map<NamespaceId, CloneStateInfoPtr>;
+  CloneStateMap source_clone_state_map_ GUARDED_BY(mutex_);
 
   const ExternalFunctions external_funcs_;
 };
