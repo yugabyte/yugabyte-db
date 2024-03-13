@@ -38,6 +38,7 @@ DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
@@ -72,6 +73,8 @@ class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     FLAGS_enable_automatic_tablet_splitting = false;
+    // This test counts number of performed RPC calls, so turn off pg client shared memory.
+    FLAGS_pg_client_use_shared_memory = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
