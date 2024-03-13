@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -79,7 +80,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   @Override
   public NodeState getNodeState() {
-    return NodeState.Reprovisioning;
+    return NodeState.VMImageUpgrade;
   }
 
   @Override
@@ -150,6 +151,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Universe universe = getUniverse();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
+      createSetNodeStateTask(node, getNodeState());
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
@@ -252,6 +254,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
             } else {
+              long startTime = System.currentTimeMillis();
               // Todo: remove the following subtask.
               // We have an issue where the tserver gets running once the VM with the new image is
               // up.
@@ -267,7 +270,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               createServerControlTask(node, processType, "start")
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               createWaitForServersTasks(new HashSet<>(nodeList), processType);
-              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+              createWaitForServerReady(
+                      node,
+                      processType,
+                      getOrCreateExecutionContext().getWaitForServerTimeout().toMillis())
                   .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
@@ -275,6 +281,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 createSetActiveUniverseKeysTask()
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
               }
+              createSleepAfterStartupTask(
+                  universe.getUniverseUUID(),
+                  Collections.singletonList(processType),
+                  SetNodeState.getStartKey(node.getNodeName(), getNodeState()));
             }
           });
 
@@ -286,6 +296,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       }
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createSetNodeStateTask(node, NodeState.Live);
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent

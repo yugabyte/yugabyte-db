@@ -102,7 +102,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> PROCESS_START_SEQ =
       ImmutableList.of(

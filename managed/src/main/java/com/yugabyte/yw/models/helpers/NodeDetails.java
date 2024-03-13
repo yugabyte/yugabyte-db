@@ -161,7 +161,9 @@ public class NodeDetails {
     // Set when the node is being rebooted.
     Rebooting(REBOOT),
     // Set when the node is being stopped + started.
-    HardRebooting(HARD_REBOOT);
+    HardRebooting(HARD_REBOOT),
+    // Set when upgrading vm image for node.
+    VMImageUpgrade();
 
     private final NodeActionType[] allowedActions;
 
