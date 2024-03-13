@@ -44,6 +44,8 @@ To create a universe:
 
 1. Enter the universe details. Refer to the following sections.
 
+1. To add a read replica, click **Configure Read Replica**. Refer to [Create a read replica cluster](../read-replicas/).
+
 1. Click **Create** when you are done and wait for the configuration to complete.
 
 ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1-gcp.png)

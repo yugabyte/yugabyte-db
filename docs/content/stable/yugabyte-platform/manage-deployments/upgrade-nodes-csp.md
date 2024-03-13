@@ -57,6 +57,8 @@ To apply operating system patch or upgrade, do the following:
 
 1. Select the target version.
 
+1. If the universe has a read replica, to select a different Linux version for the replica, deselect the **Use the same version for the primary cluster and the read replicas** option and select the version to use for the read replica.
+
 1. Specify the delay (in seconds) between restarting servers for the rolling upgrade.
 1. Click **Upgrade**.
 
