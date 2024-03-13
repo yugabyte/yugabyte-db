@@ -165,14 +165,14 @@ public class MetricGraphService implements GraphSourceIF {
     if (settings.getSplitMode() == GraphSettings.SplitMode.NONE) {
       return Collections.emptyMap();
     }
-    long range = query.getStepSeconds();
     long end = query.getEnd().getEpochSecond();
+    long start = query.getStart().getEpochSecond();
     MetricQueryContext context =
         MetricQueryContext.builder()
             .graphConfig(config)
             .graphQuery(query)
             .topKQuery(true)
-            .queryRangeSecs(range)
+            .queryRangeSecs(end - start)
             .queryTimestampSec(end)
             .additionalGroupBy(getAdditionalGroupBy(settings))
             .excludeFilters(getExcludeFilters(settings))
