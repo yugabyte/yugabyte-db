@@ -702,9 +702,6 @@ sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
         folderpath.erase(pos, toRemove.length());
     }
   folderpath = folderpath + "/query-diagnostics";
-  FILE* fptr = fopen("/Users/shubhankarvshastri/test1.txt","a");
-	fprintf(fptr,"1st %s",folderpath.c_str());
-  fclose(fptr);
   // handle diagnostics
   if (strcmp(request_info->uri, "/query-diagnostics") == 0) {
     // const char* query_id = NULL;

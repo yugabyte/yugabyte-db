@@ -651,7 +651,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Logs.
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // Query Diagnostics
-  DisplayIconTile(output, "fa-files-o", "Query Diagnostics", "/query_diagnostics");
+  DisplayIconTile(output, "fa-files-o", "Query Diagnostics", "/query-diagnostics");
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
   // Metrics.
