@@ -15,12 +15,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 import play.mvc.Http.Status;
 
 /**
@@ -62,11 +59,18 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    String newVersion = taskParams().ybSoftwareVersion;
+    MastersAndTservers allNodes = fetchNodes(taskParams().upgradeOption);
+    return filterOutAlreadyProcessedNodes(getUniverse(), allNodes, newVersion);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          Set<NodeDetails> allNodes = toOrderedSet(nodes);
+          MastersAndTservers nodesToApply = getNodesToBeRestarted();
+          Set<NodeDetails> allNodes = toOrderedSet(fetchNodes(taskParams().upgradeOption).asPair());
           Universe universe = getUniverse();
           String newVersion = taskParams().ybSoftwareVersion;
           String currentVersion =
@@ -89,28 +93,15 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   && !isUniverseOnPremManualProvisioned
                   && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-          Pair<List<NodeDetails>, List<NodeDetails>> nodesToSkipAction =
-              filterNodesWithSameDBVersionAndLiveState(universe, nodes, newVersion);
-          Set<NodeDetails> nodesToSkipMasterActions =
-              nodesToSkipAction.getLeft().stream().collect(Collectors.toSet());
-          Set<NodeDetails> nodesToSkipTServerActions =
-              nodesToSkipAction.getRight().stream().collect(Collectors.toSet());
-
           // Download software to nodes which does not have either master or tserver with new
           // version.
-          createDownloadTasks(
-              getNodesWhichRequiresSoftwareDownload(
-                  allNodes, nodesToSkipMasterActions, nodesToSkipTServerActions),
-              newVersion);
+          createDownloadTasks(toOrderedSet(nodesToApply.asPair()), newVersion);
 
           // Install software on nodes.
           createUpgradeTaskFlowTasks(
-              nodes,
+              nodesToApply,
               newVersion,
-              getUpgradeContext(
-                  taskParams().ybSoftwareVersion,
-                  nodesToSkipMasterActions,
-                  nodesToSkipTServerActions),
+              getUpgradeContext(taskParams().ybSoftwareVersion),
               reProvisionRequired);
 
           if (taskParams().installYbc) {

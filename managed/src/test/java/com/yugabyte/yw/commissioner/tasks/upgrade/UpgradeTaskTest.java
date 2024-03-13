@@ -135,7 +135,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.UpdateClusterUserIntent,
-          TaskType.CheckUnderReplicatedTablets);
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown);
 
   @Override
   @Before
