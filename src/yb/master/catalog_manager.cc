@@ -647,6 +647,8 @@ DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
     "registered.");
 TAG_FLAG(initial_tserver_registration_duration_secs, advanced);
 
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
 namespace yb {
 namespace master {
 
@@ -7071,6 +7073,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       const Status s = STATUS(InvalidArgument, "No namespace used");
       return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
     }
+  }
+
+  if (!FLAGS_ysql_yb_enable_replica_identity &&
+      req->alter_properties().has_ysql_replica_identity()) {
+    const Status s = STATUS(
+        InvalidArgument,
+        "Cannot use Replica Identity with Alter Table as the flag ysql_yb_enable_replica_identity "
+        "is not set");
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
   if (req->ysql_ddl_rollback_enabled()) {

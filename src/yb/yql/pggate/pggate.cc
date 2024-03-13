@@ -994,6 +994,16 @@ Status PgApiImpl::AlterTableDropColumn(PgStatement *handle, const char *name) {
   return pg_stmt->DropColumn(name);
 }
 
+Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->SetReplicaIdentity(identity_type);
+}
+
 Status PgApiImpl::AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                         const char *newname) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {

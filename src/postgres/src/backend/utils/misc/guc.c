@@ -2151,6 +2151,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replica_identity", PGC_SUSET, REPLICATION,
+			gettext_noop("Allow changing replica identity via ALTER TABLE command"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replica_identity,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "

@@ -158,6 +158,8 @@ message TablePropertiesPB {
   // Used to distinguish which algorithm should be used for partition key and bounds generation,
   // value == 0 stands for the default buggy algorithm for range partitioning case, see #12189.
   optional uint32 partitioning_version = 11;
+
+  optional PgReplicaIdentity ysql_replica_identity = 12;
 }
 
 message SchemaPB {
