@@ -6,6 +6,7 @@ package provider
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"text/template"
 
@@ -207,4 +208,9 @@ func (z *ZoneContext) Subnet() string {
 // SecondarySubnet fetches Zone SecondarySubnet
 func (z *ZoneContext) SecondarySubnet() string {
 	return z.z.GetSecondarySubnet()
+}
+
+// MarshalJSON function
+func (z *ZoneContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(z.z)
 }

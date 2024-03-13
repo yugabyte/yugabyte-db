@@ -525,6 +525,11 @@ public enum TaskType {
       CustomerTask.TaskType.UpdateProxyConfig,
       CustomerTask.TargetType.Universe),
 
+  RecommissionNodeInstance(
+      com.yugabyte.yw.commissioner.tasks.RecommissionNodeInstance.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Node),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(

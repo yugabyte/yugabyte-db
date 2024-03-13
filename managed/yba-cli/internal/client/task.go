@@ -82,7 +82,7 @@ func (a *AuthAPIClient) WaitForTask(taskUUID, message string) error {
 		case <-checkEveryInSec.C:
 			r, response, err := a.GetCustomerTaskStatus(taskUUID).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "WaitForTask",
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Wait For Task",
 					"Get Task Status")
 				return errMessage
 			}

@@ -45,9 +45,10 @@ class CDCSDKVirtualWAL {
       const xrepl::StreamId& stream_id, GetConsistentChangesResponsePB* resp,
       const HostPort hostport, const CoarseTimePoint deadline);
 
-  Status UpdateAndPersistLSNInternal(
+  // Returns the actually persisted restart_lsn.
+  Result<uint64_t> UpdateAndPersistLSNInternal(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
-      const uint64_t restart_lsn);
+      const uint64_t restart_lsn_hint);
 
  private:
   struct GetChangesRequestInfo {

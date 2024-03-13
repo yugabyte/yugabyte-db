@@ -66,7 +66,10 @@ public class GraphAnomalyDetectionServiceTest {
                 .setType(INCREASE)
                 .setStartTime(1708515360000L)
                 .setEndTime(1708518960000L),
-            new GraphAnomaly().setType(INCREASE).setStartTime(1708526160000L));
+            new GraphAnomaly()
+                .setType(INCREASE)
+                .setStartTime(1708526160000L)
+                .setEndTime(1708529760000L));
   }
 
   @Test
@@ -75,7 +78,11 @@ public class GraphAnomalyDetectionServiceTest {
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(INCREASE, graphData, settings);
     assertThat(anomalies)
-        .containsExactly(new GraphAnomaly().setType(INCREASE).setStartTime(1708151760000L));
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(INCREASE)
+                .setStartTime(1708151760000L)
+                .setEndTime(1708529760000L));
   }
 
   @Test
@@ -97,7 +104,11 @@ public class GraphAnomalyDetectionServiceTest {
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(INCREASE, graphData, settings);
     assertThat(anomalies)
-        .containsExactly(new GraphAnomaly().setType(INCREASE).setStartTime(1707924960000L));
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(INCREASE)
+                .setStartTime(1707924960000L)
+                .setEndTime(1708529760000L));
   }
 
   @Test
@@ -160,7 +171,11 @@ public class GraphAnomalyDetectionServiceTest {
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(INCREASE, graphData, settings);
     assertThat(anomalies)
-        .containsExactly(new GraphAnomaly().setType(INCREASE).setStartTime(1708503300000L));
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(INCREASE)
+                .setStartTime(1708503300000L)
+                .setEndTime(1708529760000L));
   }
 
   @Test
@@ -182,7 +197,11 @@ public class GraphAnomalyDetectionServiceTest {
     List<GraphAnomaly> anomalies =
         anomalyDetectionService.getAnomalies(INCREASE, graphData, settings);
     assertThat(anomalies)
-        .containsExactly(new GraphAnomaly().setType(INCREASE).setStartTime(1708486560000L));
+        .containsExactly(
+            new GraphAnomaly()
+                .setType(INCREASE)
+                .setStartTime(1708486560000L)
+                .setEndTime(1708529760000L));
   }
 
   @Test
@@ -233,6 +252,7 @@ public class GraphAnomalyDetectionServiceTest {
             new GraphAnomaly()
                 .setType(UNEVEN_DISTRIBUTION)
                 .setStartTime(1708443360000L)
+                .setEndTime(1708529760000L)
                 .setLabels(ImmutableMap.of(LINE_NAME, Collections.singleton("node3"))));
   }
 

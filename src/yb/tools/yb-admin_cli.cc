@@ -2261,6 +2261,121 @@ Status get_xcluster_safe_time_action(
   return PrintJsonResult(client->GetXClusterSafeTime(include_lag_and_skew));
 }
 
+const auto create_xcluster_checkpoint_args = "<replication_group_id> <database_names>";
+Status create_xcluster_checkpoint_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, args[1], boost::is_any_of(","));
+
+  auto namespace_ids =
+      VERIFY_RESULT(client->CheckpointXClusterReplication(replication_group_id, namespace_names));
+
+  SCHECK_EQ(
+      namespace_ids.size(), namespace_names.size(), IllegalState,
+      "Number of namespace ids does not match number of namespace names");
+
+  std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
+
+  std::vector<NamespaceName> dbs_with_bootstrap;
+  std::vector<NamespaceName> dbs_without_bootstrap;
+  for (size_t i = 0; i < namespace_ids.size(); i++) {
+    auto is_bootstrap_required =
+        VERIFY_RESULT(client->IsXClusterBootstrapRequired(replication_group_id, namespace_ids[i]));
+    std::cout << "Checkpointing of " << namespace_names[i] << " completed. Bootstrap is "
+              << (is_bootstrap_required ? "" : "not ")
+              << "required for setting up xCluster replication" << std::endl;
+    if (is_bootstrap_required) {
+      dbs_with_bootstrap.push_back(namespace_names[i]);
+    } else {
+      dbs_without_bootstrap.push_back(namespace_names[i]);
+    }
+  }
+  std::cout << "Successfully checkpointed databases for xCluster replication group "
+            << replication_group_id << std::endl
+            << std::endl;
+
+  if (!dbs_with_bootstrap.empty()) {
+    std::cout << "Perform a distributed Backup of database(s) " << AsString(dbs_with_bootstrap)
+              << " and Restore them on the target universe";
+  }
+  if (!dbs_without_bootstrap.empty()) {
+    std::cout << "Create equivalent YSQL objects (schemas, tables, indexes, ...) for databases "
+              << AsString(dbs_without_bootstrap) << " on the target universe";
+  }
+
+  std::cout << "Once the above step(s) complete run `setup_xcluster_replication`" << std::endl;
+
+  return Status::OK();
+}
+
+const auto is_xcluster_bootstrap_required_args = "<replication_group_id> <database_names>";
+Status is_xcluster_bootstrap_required_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  std::vector<NamespaceName> namespace_names;
+  boost::split(namespace_names, args[1], boost::is_any_of(","));
+
+  std::cout << "Waiting for checkpointing of database(s) to complete" << std::endl << std::endl;
+
+  for (size_t i = 0; i < namespace_names.size(); i++) {
+    const auto& namespace_info = VERIFY_RESULT_REF(
+        client->GetNamespaceInfo(YQLDatabase::YQL_DATABASE_PGSQL, namespace_names[i]));
+    auto is_bootstrap_required = VERIFY_RESULT(
+        client->IsXClusterBootstrapRequired(replication_group_id, namespace_info.id()));
+    std::cout << "Checkpointing of " << namespace_names[i] << " completed. Bootstrap is "
+              << (is_bootstrap_required ? "" : "not ")
+              << "required for setting up xCluster replication" << std::endl;
+  }
+
+  return Status::OK();
+}
+
+const auto setup_xcluster_replication_args =
+    "<replication_group_id> <target_master_addresses>";
+Status setup_xcluster_replication_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+
+  RETURN_NOT_OK(client->CreateXClusterReplication(replication_group_id, args[1]));
+
+  RETURN_NOT_OK(client->WaitForCreateXClusterReplication(replication_group_id, args[1]));
+
+  std::cout << "xCluster Replication group " << replication_group_id << " setup successfully"
+            << endl;
+
+  return Status::OK();
+}
+
+const auto drop_xcluster_replication_args = "<replication_group_id>";
+Status drop_xcluster_replication_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+
+  RETURN_NOT_OK(client->DeleteXClusterOutboundReplicationGroup(replication_group_id));
+
+  std::cout << "Outbound xCluster Replication group " << replication_group_id
+            << " deleted successfully" << endl;
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2376,6 +2491,11 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(setup_namespace_universe_replication);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
+  // xCluster V2 commands
+  REGISTER_COMMAND(create_xcluster_checkpoint);
+  REGISTER_COMMAND(is_xcluster_bootstrap_required);
+  REGISTER_COMMAND(setup_xcluster_replication);
+  REGISTER_COMMAND(drop_xcluster_replication);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

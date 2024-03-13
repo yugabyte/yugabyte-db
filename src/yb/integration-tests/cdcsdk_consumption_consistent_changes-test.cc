@@ -997,6 +997,88 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithCol
   CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionOnMixTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 40;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Create 2 colocated + 1 non-colocated table
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id int primary key, value_1 int) TABLEGROUP tg1;"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id int primary key, value_1 int) TABLEGROUP tg1;"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test3(id int primary key, value_1 int) SPLIT INTO 3 TABLETS;"));
+
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  auto table3 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test3"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_table_3;
+  ASSERT_OK(test_client()->GetTablets(table3, 0, &tablets_table_3, nullptr));
+  ASSERT_EQ(tablets_table_3.size(), 3);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  int num_batches = 2;
+  int inserts_per_batch = 20;
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", j, j + 1));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test3 VALUES ($0, $1)", j, j + 1));
+    }
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int j = 40; j < 60; j++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test3 VALUES ($0, $1)", j, j + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Perform some single-shard txns on test1 & test3.
+  for (int j = 60; j < 80; j++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test3 VALUES ($0, $1)", j, j + 1));
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int j = 80; j < 100; j++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", j, j + 1));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test3 VALUES ($0, $1)", j, j + 1));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Perform some single-shard txns on test2 & test3.
+  for (int j = 100; j < 120; j++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0, $1)", j, j + 1));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test3 VALUES ($0, $1)", j, j + 1));
+  }
+
+  // Expected DML = num_batches * inserts_per_batch/table * 3 table + 40 insert/table * 2 tables
+  // (test1,test3) + 20 inserts/table * 2 tables (test2, test3).
+  int expected_dml_records = num_batches * inserts_per_batch * 3 + 40 * 2 + 40 * 2;
+  vector<TableId> table_ids = {table1.table_id(), table2.table_id(), table3.table_id()};
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, table_ids, expected_dml_records, true /* init_virtual_wal */));
+  LOG(INFO) << "Got " << get_consistent_changes_resp.records.size() << " records.";
+
+  CheckRecordsConsistencyWithWriteId(get_consistent_changes_resp.records);
+  CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTabletSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;

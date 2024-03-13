@@ -1,0 +1,7 @@
+# src/test/regress/yb_replica_identity_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests pertaining to replica identity
+####################################################################################################
+test: yb_pg_replica_identity
+test: yb_replica_identity

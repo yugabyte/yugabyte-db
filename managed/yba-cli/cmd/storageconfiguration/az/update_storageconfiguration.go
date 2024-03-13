@@ -36,17 +36,15 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 
 		r, response, err := storageConfigListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Update - List Customer Configurations")
+				response, err, "Storage Configuration: Azure",
+				"Update - List Customer Configurations")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -130,7 +128,7 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 			Config(requestBody).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: AZ", "Update")
+				response, err, "Storage Configuration: Azure", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

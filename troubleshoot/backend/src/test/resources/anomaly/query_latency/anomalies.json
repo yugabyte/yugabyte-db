@@ -10,14 +10,14 @@
         "name": "query_latency",
         "threshold": null,
         "filters": {
-          "dbId": [
-            "1234"
-          ],
           "universeUuid": [
             "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
           ],
           "queryId": [
             "100"
+          ],
+          "dbId": [
+            "1234"
           ]
         }
       }
@@ -41,14 +41,14 @@
                 "name": "query_rps",
                 "threshold": null,
                 "filters": {
-                  "dbId": [
-                    "1234"
-                  ],
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ],
                   "queryId": [
                     "100"
+                  ],
+                  "dbId": [
+                    "1234"
                   ]
                 }
               }
@@ -81,14 +81,14 @@
                 "name": "query_rows_avg",
                 "threshold": null,
                 "filters": {
-                  "dbId": [
-                    "1234"
-                  ],
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ],
                   "queryId": [
                     "100"
+                  ],
+                  "dbId": [
+                    "1234"
                   ]
                 }
               }
@@ -233,7 +233,8 @@
     "startTime": "2024-01-18T15:40:00Z",
     "endTime": "2024-01-18T16:40:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T18:10:00Z"
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStepSeconds": 1200
   },
   {
     "uuid": null,
@@ -246,14 +247,14 @@
         "name": "query_latency",
         "threshold": null,
         "filters": {
-          "dbId": [
-            "4321"
-          ],
           "universeUuid": [
             "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
           ],
           "queryId": [
             "100"
+          ],
+          "dbId": [
+            "4321"
           ]
         }
       }
@@ -277,14 +278,14 @@
                 "name": "query_rps",
                 "threshold": null,
                 "filters": {
-                  "dbId": [
-                    "4321"
-                  ],
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ],
                   "queryId": [
                     "100"
+                  ],
+                  "dbId": [
+                    "4321"
                   ]
                 }
               }
@@ -317,14 +318,14 @@
                 "name": "query_rows_avg",
                 "threshold": null,
                 "filters": {
-                  "dbId": [
-                    "4321"
-                  ],
                   "universeUuid": [
                     "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
                   ],
                   "queryId": [
                     "100"
+                  ],
+                  "dbId": [
+                    "4321"
                   ]
                 }
               }
@@ -465,6 +466,7 @@
     "startTime": "2024-01-18T16:20:00Z",
     "endTime": "2024-01-18T17:20:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-18T18:50:00Z"
+    "graphEndTime": "2024-01-18T19:00:00Z",
+    "graphStepSeconds": 1200
   }
 ]

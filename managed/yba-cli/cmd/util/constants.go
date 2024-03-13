@@ -56,6 +56,34 @@ const (
 	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
 )
 
+// UniverseStates
+const (
+	// ReadyUniverseState state
+	ReadyUniverseState = "Ready"
+	// PausedUniverseState state
+	PausedUniverseState = "Paused"
+	// PendingUniverseState state
+	PendingUniverseState = "Pending"
+	// WarningUniverseState state
+	WarningUniverseState = "Warning"
+	// BadUniverseState state
+	BadUniverseState = "Error"
+	// UnknownUniverseState state
+	UnknownUniverseState = "Loading"
+)
+
+// ProviderStates
+const (
+	// ReadyProviderState state
+	ReadyProviderState = "READY"
+	// UpdatingProviderState state
+	UpdatingProviderState = "UPDATING"
+	// ErrorroviderState state
+	ErrorProviderState = "ERROR"
+	// DeletingProviderState state
+	DeletingProviderState = "DELETING"
+)
+
 // Allowed states for YugabyteDB Anywhere Tasks
 const (
 	// CreateTaskStatus task status
@@ -103,10 +131,8 @@ const (
 const (
 	// UniverseType resource
 	UniverseType = "universe"
-
 	// ProviderType resource
 	ProviderType = "provider"
-
 	// StorageConfigurationType resource
 	StorageConfigurationType = "storage configuration"
 )
@@ -127,7 +153,7 @@ const (
 
 // Different storage configuration types
 const (
-	// util.S3StorageConfigType type
+	// S3StorageConfigType type
 	S3StorageConfigType = "S3"
 	// AzureStorageConfigType type
 	AzureStorageConfigType = "AZ"
@@ -135,6 +161,14 @@ const (
 	GCSStorageConfigType = "GCS"
 	// NFSStorageConfigType type
 	NFSStorageConfigType = "NFS"
+)
+
+// ClusterTypes for universe
+const (
+	// PrimaryClusterType for primary cluster
+	PrimaryClusterType = "PRIMARY"
+	// ReadReplicaClusterType for rrs
+	ReadReplicaClusterType = "ASYNC"
 )
 
 // CompletedStates returns set of states that mark the task as completed

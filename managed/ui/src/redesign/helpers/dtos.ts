@@ -257,6 +257,12 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  universePaused: boolean;
+}
+
+export interface AllowedTasks {
+  restricted: boolean;
+  taskIds: string[];
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;
@@ -271,6 +277,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  allowedTasks: AllowedTasks;
 }
 
 export const TableType = {

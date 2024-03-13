@@ -39,11 +39,8 @@ var createOnpremProviderCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -172,7 +169,8 @@ var createOnpremProviderCmd = &cobra.Command{
 		providerUUID := rCreate.GetResourceUUID()
 		taskUUID := rCreate.GetTaskUUID()
 
-		providerutil.WaitForCreateProviderTask(authAPI, providerName, providerUUID, taskUUID)
+		providerutil.WaitForCreateProviderTask(authAPI,
+			providerName, providerUUID, providerCode, taskUUID)
 	},
 }
 

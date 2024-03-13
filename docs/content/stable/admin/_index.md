@@ -18,7 +18,7 @@ YugabyteDB ships with a variety of tools to interact with, manage and configure 
 ![Tools and their purpose](/images/admin/tools_functionalities.png)
 
 {{<note title="Note">}}
-For information about configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 {{</note>}}
 
 ## Tools
@@ -66,11 +66,5 @@ For information about configuring [YB-Master](../reference/configuration/yb-mast
     body="Perform advanced operations on tablet servers."
     href="yb-ts-cli/"
     icon="fa-solid fa-toolbox">}}
-
-  {{<index/item
-    title="yb-docker-ctl"
-    body="Create and manage Docker-based local clusters."
-    href="yb-docker-ctl/"
-    icon="fa-brands fa-docker">}}
 
 {{</index/block>}}

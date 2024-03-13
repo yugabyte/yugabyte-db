@@ -70,6 +70,7 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
+class XClusterClient;
 }
 
 namespace tools {
@@ -457,6 +458,24 @@ class ClusterAdminClient {
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
+  Result<std::vector<NamespaceId>> CheckpointXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceName> databases);
+
+  Result<bool> IsXClusterBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id);
+
+  Status CreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  Status WaitForCreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  Status DeleteXClusterOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,
@@ -535,6 +554,8 @@ class ClusterAdminClient {
 
   Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
       bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
+
+  client::XClusterClient XClusterClient();
 
   std::string master_addr_list_;
   HostPort init_master_addr_;

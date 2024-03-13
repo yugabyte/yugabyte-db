@@ -39,11 +39,8 @@ func DeleteProviderValidation(cmd *cobra.Command) {
 }
 
 func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 	providerName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -79,7 +76,11 @@ func DeleteProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 
 	rDelete, response, err := authAPI.DeleteProvider(providerUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Delete")
+		callSite := "Provider"
+		if len(strings.TrimSpace(commandCall)) != 0 {
+			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
+		}
+		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 

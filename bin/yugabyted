@@ -6119,9 +6119,9 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
-            if args.enable_pg_parity:
+            if args.enable_pg_parity_tech_preview:
                 self.configs.temp_data["enable_pg_parity"] = \
-                                args.enable_pg_parity
+                                args.enable_pg_parity_tech_preview
 
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
@@ -6577,7 +6577,7 @@ class ControlScript(object):
             "--config", help="{} user configuration file path".format(
                               SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--enable_pg_parity", help="Enable PostgreSQL compatibility features."
+                "--enable_pg_parity_tech_preview", help="Enable PostgreSQL compatibility features."
                 " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
@@ -7268,20 +7268,25 @@ class YBControllerCLIProxy(object):
         # "{}/yb-data/ybc".format(data_dir)
         backup_lock = os.path.join(
             ybc_dir,
-            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
         with open(backup_lock, "w+") as backup_lock_file:
             backup_lock_file.write(
-                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task")))
+                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task") + ","
+                    + ybc_args.get("ns_type") + "," + ybc_args.get("ns") + ","
+                    + datetime.utcnow().strftime('%B %d %Y - %H:%M:%S')))
             Output.log("Started backup with task id {}.".format(task_id))
 
     @staticmethod
     def rename_ybc_lock_file(ybc_args, ybc_dir):
         # "{}/yb-data/ybc".format(data_dir)
         backup_lock = os.path.join(
-            ybc_dir, "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"))
+            ybc_dir, "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                            ybc_args.get("ybc_task"))
         )
         rename_filename = os.path.join(
-            ybc_dir, "{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"), time.time())
+            ybc_dir, "{}_{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                          ybc_args.get("ybc_task"), time.time())
         )
         try:
             os.rename(backup_lock, rename_filename)
@@ -7292,7 +7297,8 @@ class YBControllerCLIProxy(object):
     def check_for_ongoing_ybc_task(ybc_args, ybc_dir):
         ybc_lock = os.path.join(
             ybc_dir,
-            "{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type")))
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
         ybc_task_details = []
         if os.path.isfile(ybc_lock):
             with open(ybc_lock, 'r') as file:

@@ -173,3 +173,22 @@ enum CDCSDKSnapshotOption {
   NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
   USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
 }
+
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentity {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}

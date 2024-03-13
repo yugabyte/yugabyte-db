@@ -134,6 +134,11 @@ extern bool yb_enable_replication_slot_consumption;
 extern bool yb_enable_alter_table_rewrite;
 
 /*
+ * GUC variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -189,6 +194,7 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
+bool YBCIsTxnAbortedError(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();

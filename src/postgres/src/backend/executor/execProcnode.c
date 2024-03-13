@@ -114,6 +114,7 @@
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
 #include "executor/nodeYbBatchedNestloop.h"
+#include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "miscadmin.h"
@@ -239,6 +240,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_BitmapHeapScan:
 			result = (PlanState *) ExecInitBitmapHeapScan((BitmapHeapScan *) node,
 														  estate, eflags);
+			break;
+
+		case T_YbBitmapTableScan:
+			result = (PlanState *) ExecInitYbBitmapTableScan((YbBitmapTableScan *) node,
+															 estate, eflags);
 			break;
 
 		case T_TidScan:
@@ -533,6 +539,13 @@ MultiExecProcNode(PlanState *node)
 			break;
 	}
 
+	/*
+	 * Specifically this is required after the MultiExecBitmapIndexScan, but it
+	 * doesn't hurt to call it here after any of the above.
+	 */
+	if (IsYugaByteEnabled() && node->instrument)
+		YbUpdateSessionStats(&node->instrument->yb_instr);
+
 	return result;
 }
 
@@ -644,6 +657,10 @@ ExecEndNode(PlanState *node)
 
 		case T_BitmapHeapScanState:
 			ExecEndBitmapHeapScan((BitmapHeapScanState *) node);
+			break;
+
+		case T_YbBitmapTableScanState:
+			ExecEndYbBitmapTableScan((YbBitmapTableScanState *) node);
 			break;
 
 		case T_TidScanState:

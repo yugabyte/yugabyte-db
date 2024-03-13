@@ -17,12 +17,16 @@ import {
   getTablesForBootstrapping,
   parseFloatIfDefined
 } from '../ReplicationUtils';
+import { TableSelect } from '../sharedComponents/tableSelect/TableSelect';
+import { XClusterTableType } from '../XClusterTypes';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { api, universeQueryKey } from '../../../redesign/helpers/api';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
+import { AllowedTasks, TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
 import {
   XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
@@ -30,10 +34,7 @@ import {
   XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
-import { TableSelect } from '../sharedComponents/tableSelect/TableSelect';
-
-import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterTableType } from '../XClusterTypes';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 import styles from './CreateConfigModal.module.scss';
 
@@ -66,6 +67,7 @@ interface ConfigureReplicationModalProps {
   onHide: Function;
   visible: boolean;
   sourceUniverseUUID: string;
+  allowedTasks: AllowedTasks;
 }
 
 const MODAL_TITLE = 'Configure Replication';
@@ -88,6 +90,7 @@ const INITIAL_VALUES: Partial<CreateXClusterConfigFormValues> = {
 export const CreateConfigModal = ({
   onHide,
   visible,
+  allowedTasks,
   sourceUniverseUUID
 }: ConfigureReplicationModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
@@ -321,6 +324,9 @@ export const CreateConfigModal = ({
       </YBModal>
     );
   }
+  const isConfigureActionFrozen =
+    currentStep === FormStep.CONFIGURE_BOOTSTRAP &&
+    isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_REPLICATION);
 
   return (
     <YBModalForm
@@ -342,6 +348,7 @@ export const CreateConfigModal = ({
       // Perform validation for select table when user submits.
       validateOnChange={currentStep !== FormStep.SELECT_TABLES}
       validateOnBlur={currentStep !== FormStep.SELECT_TABLES}
+      isButtonDisabled={isConfigureActionFrozen}
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
       submitLabel={submitLabel}

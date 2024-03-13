@@ -21,11 +21,8 @@ import (
 )
 
 func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
-	authAPI, err := ybaAuthClient.NewAuthAPIClient()
-	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	authAPI.GetCustomerUUID()
+	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 	providerListRequest := authAPI.GetListOfProviders()
 	// filter by name and/or by provider code
 	providerName, err := cmd.Flags().GetString("name")

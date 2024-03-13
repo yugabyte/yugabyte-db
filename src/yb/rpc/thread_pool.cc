@@ -15,6 +15,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 
@@ -24,6 +25,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace rpc {
@@ -47,6 +50,16 @@ struct ThreadPoolShare {
 const char* kRpcThreadCategory = "rpc_thread_pool";
 
 const auto kShuttingDownStatus = STATUS(Aborted, "Service is shutting down");
+
+void TaskDone(ThreadPoolTask* task, const Status& status) {
+  // We have to retrieve the subpool pointer from the task before calling Done, because that call
+  // may destroy the task.
+  auto* sub_pool = task->sub_pool();
+  task->Done(status);
+  if (sub_pool) {
+    sub_pool->OnTaskDone(task, status);
+  }
+}
 
 class Worker {
  public:
@@ -100,7 +113,7 @@ class Worker {
       ThreadPoolTask* task = nullptr;
       if (PopTask(&task)) {
         task->Run();
-        task->Done(Status::OK());
+        TaskDone(task, Status::OK());
       }
     }
   }
@@ -173,7 +186,7 @@ class ThreadPool::Impl {
     ++adding_;
     if (closing_) {
       --adding_;
-      task->Done(kShuttingDownStatus);
+      TaskDone(task, kShuttingDownStatus);
       return false;
     }
     bool added = share_.task_queue.push(task);
@@ -246,7 +259,7 @@ class ThreadPool::Impl {
     }
     ThreadPoolTask* task = nullptr;
     while (share_.task_queue.pop(task)) {
-      task->Done(kShuttingDownStatus);
+      TaskDone(task, kShuttingDownStatus);
     }
   }
 
@@ -309,6 +322,51 @@ bool ThreadPool::Owns(Thread* thread) {
 
 bool ThreadPool::OwnsThisThread() {
   return Owns(Thread::current_thread());
+}
+
+// ------------------------------------------------------------------------------------------------
+// ThreadSubPoolBase
+// ------------------------------------------------------------------------------------------------
+
+void ThreadSubPoolBase::Shutdown() {
+  closing_ = true;
+  // We expected shutdown to happen rarely, so just use busy wait here.
+  BusyWait();
+}
+
+void ThreadSubPoolBase::BusyWait() {
+  while (!IsIdle()) {
+    std::this_thread::sleep_for(1ms);
+  }
+}
+
+bool ThreadSubPoolBase::IsIdle() {
+  // Use sequential consistency for safety. This is only used during shutdown.
+  return active_tasks_ == 0;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ThreadSubPool
+// ------------------------------------------------------------------------------------------------
+
+ThreadSubPool::ThreadSubPool(ThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {
+}
+
+ThreadSubPool::~ThreadSubPool() {
+}
+
+bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
+  if (closing_.load(std::memory_order_acquire)) {
+    task->Done(STATUS(Aborted, "Thread sub-pool closing"));
+    return false;
+  }
+  active_tasks_.fetch_add(1, std::memory_order_acq_rel);
+  task->set_sub_pool(this);
+  return thread_pool_.Enqueue(task);
+}
+
+void ThreadSubPool::OnTaskDone(ThreadPoolTask* task, const Status& status) {
+  active_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 }
 
 } // namespace rpc
