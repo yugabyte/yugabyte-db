@@ -918,7 +918,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_bitmapscan,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
