@@ -2146,12 +2146,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
 
     LOG(INFO) << "Perform some table rewrite operations on the table";
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-    // Set the ddl_rollback_enabled GUC var so that we can perform an
+    // Set the yb_ddl_rollback_enabled GUC var so that we can perform an
     // ADD COLUMN ... PRIMARY KEY operation.
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = ON"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = ON"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ADD COLUMN newcol INT PRIMARY KEY DEFAULT 2", table_name));
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = OFF"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = OFF"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ALTER COLUMN value TYPE int USING length(value)", table_name));
     // Verify that we can't insert duplicate values into the pkey column (newcol).

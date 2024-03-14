@@ -85,7 +85,7 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, false,
                     "returning to the client. ");
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
@@ -642,7 +642,7 @@ Status PgClientSession::DropTable(
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
-        yb_table_id, &indexed_table, !FLAGS_ysql_ddl_rollback_enabled /* wait */,
+        yb_table_id, &indexed_table, !FLAGS_ysql_yb_ddl_rollback_enabled /* wait */,
         metadata, context->GetClientDeadline()));
     indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
     table_cache_.Invalidate(indexed_table.table_id());
@@ -650,7 +650,7 @@ Status PgClientSession::DropTable(
     return Status::OK();
   }
 
-  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_ddl_rollback_enabled, metadata,
+  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_yb_ddl_rollback_enabled, metadata,
         context->GetClientDeadline()));
   table_cache_.Invalidate(yb_table_id);
   return Status::OK();
@@ -1002,7 +1002,7 @@ Status PgClientSession::FinishTransaction(
   // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
   // any operations postponed to the end of transaction. Report the status of the transaction and
   // wait for the post-processing by YB-Master to end.
-  if (FLAGS_ysql_ddl_rollback_enabled && has_docdb_schema_changes && metadata) {
+  if (FLAGS_ysql_yb_ddl_rollback_enabled && has_docdb_schema_changes && metadata) {
     if (FLAGS_report_ysql_ddl_txn_status_to_master) {
       // If we failed to report the status of this DDL transaction, we can just log and ignore it,
       // as the poller in the YB-Master will figure out the status of this transaction using the
