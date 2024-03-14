@@ -57,7 +57,7 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 
@@ -268,8 +268,8 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
     options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
     // TODO (#19975): Enable read committed isolation
@@ -674,7 +674,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, kAddCol, {"key", "value"}));
 
   // Disable DDL rollback.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
 
   // Verify that best effort rollback works when ysql_ddl_rollback is disabled.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kAddCol));
@@ -685,7 +685,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, kAddCol, {"key", "value"}));
 
   // Restart the cluster with DDL rollback disabled.
-  SetFlagOnAllProcessesWithRollingRestart("--ysql_ddl_rollback_enabled=false");
+  SetFlagOnAllProcessesWithRollingRestart("--ysql_yb_ddl_rollback_enabled=false");
   // Verify that rollback did not occur even after the restart.
   client = ASSERT_RESULT(cluster_->CreateClient());
   VerifyTableExists(client.get(), kDatabase, kDropTable, 10);
@@ -700,7 +700,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(conn.Execute(AddColumnStmt(kAddCol, "value2")));
 
   // Re-enable DDL rollback properly with restart.
-  SetFlagOnAllProcessesWithRollingRestart("--ysql_ddl_rollback_enabled=true");
+  SetFlagOnAllProcessesWithRollingRestart("--ysql_yb_ddl_rollback_enabled=true");
 
   client = ASSERT_RESULT(cluster_->CreateClient());
   conn = ASSERT_RESULT(Connect());
@@ -1381,8 +1381,8 @@ class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=3,ysql_transaction_ddl=3");
     options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
   }
@@ -1460,7 +1460,7 @@ TEST_F(PgLibPqMatviewTest, MatviewTest) {
 
 YB_STRONGLY_TYPED_BOOL(EnableDDLAtomicity);
 
-// TODO(deepthi): Remove the tests for txn GC after 'ysql_ddl_rollback_enabled' is set to true
+// TODO(deepthi): Remove the tests for txn GC after 'ysql_yb_ddl_rollback_enabled' is set to true
 // by default.
 class PgLibPqTableRewrite:
   public PgDdlAtomicitySanityTest,
@@ -1469,15 +1469,15 @@ class PgLibPqTableRewrite:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
+      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
     options->extra_tserver_flags.push_back("--ysql_enable_reindex=true");
     if (!GetParam()) {
       options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=10000");
       // Disable the current version of DDL rollback so that we can test the
       // transaction GC framework.
-      options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=false");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=false");
     } else {
-      options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     }
   }
  protected:
@@ -1591,8 +1591,8 @@ TEST_P(PgLibPqTableRewrite,
 class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_ddl_rollback_enabled";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_rollback_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
     pgwrapper::PgMiniTestBase::SetUp();

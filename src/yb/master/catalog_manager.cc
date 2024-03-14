@@ -4216,14 +4216,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TransactionMetadata txn;
   bool schedule_ysql_txn_verifier = false;
   if (req.has_transaction() &&
-      (FLAGS_enable_transactional_ddl_gc || req.ysql_ddl_rollback_enabled())) {
+      (FLAGS_enable_transactional_ddl_gc || req.ysql_yb_ddl_rollback_enabled())) {
     table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
         CopyFrom(req.transaction());
     txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
     RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
 
     // Set the YsqlTxnVerifierState.
-    if (req.ysql_ddl_rollback_enabled()) {
+    if (req.ysql_yb_ddl_rollback_enabled()) {
       table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
         set_contains_create_table_op(true);
       schedule_ysql_txn_verifier = true;
@@ -6250,7 +6250,7 @@ Status CatalogManager::DeleteTable(
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  if (req->ysql_ddl_rollback_enabled()) {
+  if (req->ysql_yb_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
   }
@@ -6280,7 +6280,7 @@ Status CatalogManager::DeleteTable(
     // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
     // deletion when the transaction commits. Thus set the response fields required by the client
     // right away.
-    if (is_pg_table && req->ysql_ddl_rollback_enabled()) {
+    if (is_pg_table && req->ysql_yb_ddl_rollback_enabled()) {
       auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
           indexed_table->namespace_id()));
       auto* resp_indexed_table = resp->mutable_indexed_table();
@@ -6292,7 +6292,7 @@ Status CatalogManager::DeleteTable(
   }
 
   // Check whether DDL rollback is enabled.
-  if (req->ysql_ddl_rollback_enabled() && req->has_transaction() &&
+  if (req->ysql_yb_ddl_rollback_enabled() && req->has_transaction() &&
       table->GetTableType() == PGSQL_TABLE_TYPE) {
     bool ysql_txn_verifier_state_present = false;
     auto l = table->LockForWrite();
@@ -6945,7 +6945,7 @@ Status ApplyAlterSteps(server::Clock* clock,
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-        if (req->ysql_ddl_rollback_enabled() &&
+        if (req->ysql_yb_ddl_rollback_enabled() &&
             VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
           RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
           ddl_log_entries->emplace_back(
@@ -7060,7 +7060,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  if (req->ysql_ddl_rollback_enabled()) {
+  if (req->ysql_yb_ddl_rollback_enabled()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
   }
@@ -7070,7 +7070,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // If the table is already undergoing an alter operation, return failure.
-  if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
+  if (req->ysql_yb_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
       auto txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(l->pb.transaction()));
       auto req_txn_meta = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
@@ -7245,7 +7245,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   bool schedule_ysql_txn_verifier = false;
   // DDL rollback is not applicable for the alter change that sets wal_retention_secs.
   if (!req->has_wal_retention_secs()) {
-    if (!req->ysql_ddl_rollback_enabled()) {
+    if (!req->ysql_yb_ddl_rollback_enabled()) {
       // If DDL rollback is no longer enabled, make sure that there is no transaction
       // verification state present.
       if (l->has_ysql_ddl_txn_verifier_state()) {
@@ -8749,7 +8749,7 @@ Status CatalogManager::CreateTablegroup(
   }
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
-    ctreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
+    ctreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
   }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
@@ -8817,7 +8817,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
     }
 
     if (!tablegroup->IsEmpty()) {
-      if (!req->has_ysql_ddl_rollback_enabled()) {
+      if (!req->has_ysql_yb_ddl_rollback_enabled()) {
         return SetupError(
             resp->mutable_error(),
             MasterErrorPB::INVALID_REQUEST,
@@ -8868,7 +8868,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.mutable_table()->set_table_id(parent_table_id);
   dtreq.set_is_index_table(false);
   dtreq.mutable_transaction()->CopyFrom(req->transaction());
-  dtreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
+  dtreq.set_ysql_yb_ddl_rollback_enabled(req->ysql_yb_ddl_rollback_enabled());
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.
