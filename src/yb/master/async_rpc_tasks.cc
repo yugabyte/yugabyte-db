@@ -1705,9 +1705,9 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
   if (resp_.has_error()) {
     const Status s = StatusFromPB(resp_.error().status());
     const TabletServerErrorPB::Code code = resp_.error().code();
-    LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
-                             << ") failed for tablet " << tablet_id() << " with error code "
-                             << TabletServerErrorPB::Code_Name(code) << ": " << s;
+    LOG_WITH_PREFIX(INFO) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
+                          << ") failed for tablet " << tablet_id() << " with error code "
+                          << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (!ShouldRetrySplitTabletRPC(s) ||
         (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
