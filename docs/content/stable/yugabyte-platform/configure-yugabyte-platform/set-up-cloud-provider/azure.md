@@ -140,9 +140,9 @@ To add your own machine images to the catalog:
 
 1. Provide a name for the Linux version. User will see this name when creating universes using this provider.
 
-1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [SSH Key Pairs](#ssh-key-pairs).
+1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery).
 
-1. Provide the SSH user and port to use to access the machine image OS.
+1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
 
 1. Click **Add Linux Version**.
 
@@ -150,10 +150,14 @@ To edit custom Linux versions, remove Linux versions, and set a version as the d
 
 ### SSH Key Pairs
 
-To be able to provision cloud instances with YugabyteDB, YBA requires SSH access. The following are two ways to provide SSH access:
+To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.
+
+Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+
+The following are two ways to manage SSH key pairs:
 
 - Enable YBA to create and manage Key Pairs. In this mode, YBA creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content.
 
 ### Advanced
 

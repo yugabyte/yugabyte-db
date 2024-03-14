@@ -135,7 +135,7 @@ To add your own machine images to the catalog:
 
 1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
 
-1. Provide the SSH user and port to use to access the machine image OS.
+1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
 
 1. Click **Add Linux Version**.
 
@@ -143,7 +143,11 @@ To edit custom Linux versions, remove Linux versions, and set a version as the d
 
 ### SSH Key Pairs
 
-To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access. The following are two ways to provide SSH access:
+To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access.
+
+Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+
+You can manage SSH key pairs in the following ways:
 
 - Enable YBA to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YBA creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user. This information must be the same across all the regions you provision.
