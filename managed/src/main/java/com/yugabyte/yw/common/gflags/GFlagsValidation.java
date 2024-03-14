@@ -71,7 +71,7 @@ public class GFlagsValidation {
 
   public static final String TSERVER_GFLAG_FILE_NAME = "tserver_flags.xml";
 
-  private static final String GLIBC_VERSION_FIELD_NAME = "glibc_version";
+  private static final String GLIBC_VERSION_FIELD_NAME = "glibc_v";
 
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
@@ -427,7 +427,7 @@ public class GFlagsValidation {
     JsonNode jsonNode = objectMapper.readTree(file);
     if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
       String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
-      return Optional.of(Double.parseDouble(glibc.split("_")[1]));
+      return Optional.of(Double.parseDouble(glibc));
     } else {
       return Optional.empty();
     }

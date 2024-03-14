@@ -14,7 +14,8 @@ public class GraphAnomaly {
 
   public enum GraphAnomalyType {
     INCREASE,
-    UNEVEN_DISTRIBUTION
+    UNEVEN_DISTRIBUTION,
+    EXCEED_THRESHOLD
   }
 
   public GraphAnomaly addLabelsMap(Map<String, String> labels) {

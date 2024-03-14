@@ -15,13 +15,28 @@ class ApiService {
   // }
 
   // Fetches list of anomalies
-  fetchAnamolies = (universeUuid: string) => {
+  fetchAnamolies = (universeUuid: string, startTime?: Date | null, endTime?: Date | null) => {
     const requestURL = `${ROOT_URL}/anomalies`;
+    const params: any = {
+      universe_uuid: universeUuid
+    }
+    if (startTime) {
+      params.startTime = startTime;
+    }
+    if (endTime) {
+      params.endTime = endTime;
+    }
     return axios.get<Anomaly[]>(requestURL, {
-      params: {
-        universe_uuid: universeUuid,
-        mocked: true
-      }}).then((res) => res.data);
+      params: params}).then((res) => res.data);
+  };
+
+  fetchAnamoliesById = (universeUuid: string, anomalyUuid: string) => {
+    const requestURL = `${ROOT_URL}/anomalies/${anomalyUuid}`;
+    const params = {
+      universe_uuid: universeUuid
+    }
+    return axios.get<Anomaly>(requestURL, {
+      params: params}).then((res) => res.data);
   };
 
   // Fetches graphs and supporting data for troubleshooting 
@@ -29,8 +44,8 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/graphs`;
     return axios.post<GraphResponse[]>(requestUrl, data, {
       params: {
-        universe_uuid: universeUuid,
-        mocked: true
+        universe_uuid: universeUuid
+        // mocked: true
       }
     }).then((resp) => resp.data);
   };

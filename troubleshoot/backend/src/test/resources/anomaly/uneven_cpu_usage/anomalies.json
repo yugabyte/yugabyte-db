@@ -96,7 +96,8 @@
     "startTime": "2024-01-06T15:10:00Z",
     "endTime": "2024-01-06T16:20:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-06T18:05:00Z"
+    "graphEndTime": "2024-01-06T18:05:00Z",
+    "graphStepSeconds": 144
   },
   {
     "uuid": null,
@@ -191,6 +192,7 @@
     "startTime": "2024-01-06T17:20:00Z",
     "endTime": "2024-01-06T18:00:00Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
-    "graphEndTime": "2024-01-06T19:00:00Z"
+    "graphEndTime": "2024-01-06T19:00:00Z",
+    "graphStepSeconds": 144
   }
 ]

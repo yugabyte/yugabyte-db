@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.ArgumentMatchers.eq;
@@ -111,6 +112,7 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -443,6 +445,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
+    waitForTaskPaused(taskUuid, commissioner);
+  }
+
+  public static void waitForTaskPaused(UUID taskUuid, Commissioner commissioner)
+      throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
       if (!commissioner.isTaskRunning(taskUuid)) {
@@ -464,12 +471,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
   }
 
-  private void setPausePosition(int pausePosition) {
+  public static void setPausePosition(int pausePosition) {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.put(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY, String.valueOf(pausePosition));
   }
 
-  private void clearAbortOrPausePositions() {
+  public static void clearAbortOrPausePositions() {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
@@ -663,6 +670,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       throw new RuntimeException(e);
     } finally {
       clearAbortOrPausePositions();
+    }
+  }
+
+  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+    try {
+      when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
+          .thenReturn(new AreNodesSafeToTakeDownResponse(null));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 

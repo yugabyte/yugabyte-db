@@ -36,6 +36,9 @@ create index trgm_idx on test_trgm using gist (t gist_trgm_ops);
 
 create index trgm_idx on test_trgm using gin (t gin_trgm_ops);
 set enable_seqscan=off;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+set yb_test_ybgin_disable_cost_factor = 0.5;
 
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
 select t,similarity(t,'gwertyu0988') as sml from test_trgm where t % 'gwertyu0988' order by sml desc, t;
@@ -49,6 +52,9 @@ insert into test2 values ('  z foo bar');
 insert into test2 values ('/123/-45/');
 create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+set yb_test_ybgin_disable_cost_factor = 0.5;
 explain (costs off)
   select * from test2 where t like '%BCD%';
 explain (costs off)

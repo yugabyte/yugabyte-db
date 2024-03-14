@@ -36,10 +36,13 @@ public class UnevenQueryDetector extends UnevenDistributionDetector {
 
   @Override
   protected Anomaly.AnomalyBuilder fillAnomaly(
-      Anomaly.AnomalyBuilder builder, String addectedNodesStr, GraphAnomaly graphAnomaly) {
+      Anomaly.AnomalyBuilder builder,
+      AnomalyDetectionContext context,
+      String affectedNodesStr,
+      GraphAnomaly graphAnomaly) {
     String summary =
         "Node(s) "
-            + addectedNodesStr
+            + affectedNodesStr
             + " processes significantly more reads/writes"
             + " than average of the other nodes.";
     builder.summary(summary);

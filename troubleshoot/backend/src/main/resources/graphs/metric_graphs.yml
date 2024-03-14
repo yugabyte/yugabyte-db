@@ -232,3 +232,61 @@ lsm_rocksdb_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+
+disk_io_time:
+  metric: "node_disk_io_time_seconds_total"
+  function: "rate|avg"
+  operator: "* 100"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: "node_disk_io_time_weighted_seconds_total"
+  function: "rate|avg"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+lsm_rocksdb_compaction_tasks:
+  metric: "compaction_tasks"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "state_type"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction tasks"
+    xaxis:
+      type: "date"

@@ -95,7 +95,7 @@ var addInstanceTypesCmd = &cobra.Command{
 				ProviderUuid:     providerUUID,
 			},
 			InstanceTypeDetails: &ybaclient.InstanceTypeDetails{
-				Tenancy:           tenancy,
+				Tenancy:           util.GetStringPointer(tenancy),
 				VolumeDetailsList: buildVolumeDetails(volume),
 			},
 			MemSizeGB: util.GetFloat64Pointer(memSize),
@@ -153,14 +153,13 @@ func init() {
 
 }
 
-func buildVolumeDetails(volumeStrings []string) (
-	res []ybaclient.VolumeDetails,
-) {
+func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 	if len(volumeStrings) == 0 {
 		logrus.Fatalln(
 			formatter.Colorize("Atleast one volume is required per instance type.",
 				formatter.RedColor))
 	}
+	res := make([]ybaclient.VolumeDetails, 0)
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
 		for _, volumeInfo := range strings.Split(volumeString, ",") {
@@ -209,5 +208,5 @@ func buildVolumeDetails(volumeStrings []string) (
 		}
 		res = append(res, r)
 	}
-	return res
+	return &res
 }

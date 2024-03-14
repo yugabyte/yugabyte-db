@@ -467,11 +467,12 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     // Set WAL retention here instead of during stream creation as we are processing smaller batches
     // of tables during the checkpoint phase whereas we create all streams in one batch to reduce
     // master IOs.
-    RETURN_NOT_OK(catalog_manager_.SetWalRetentionForTable(table_id, /*rpc=*/nullptr, epoch));
-
     auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
     SCHECK(
         table_info->LockForRead()->visible_to_client(), NotFound, "Table does not exist", table_id);
+
+    RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
+
     bootstrap_req.add_table_ids(table_info->id());
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
 

@@ -1592,9 +1592,9 @@
         "region": "Region",
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
-        "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
-        "sshPort": "SSH Port",
+        "sshUser": "SSH User (Optional)",
+        "sshUserPlaceholder": "e.g. ubuntu",
+        "sshPort": "SSH Port (Optional)",
         "sshPortPlaceholder": "e.g. 22",
         "menuActions": {
           "edit": "Edit",
@@ -1722,6 +1722,23 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
       }
     }
   }
