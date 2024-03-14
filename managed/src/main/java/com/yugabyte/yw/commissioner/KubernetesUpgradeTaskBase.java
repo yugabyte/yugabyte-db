@@ -245,7 +245,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -270,7 +270,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.TSERVER,
           softwareVersion,
-          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           false, // master change is false since it has already been upgraded.
@@ -314,7 +314,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             null,
             ServerType.TSERVER,
             softwareVersion,
-            getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+            getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
             universeOverrides,
             azOverrides,
             false, // master change is false since it has already been upgraded.

@@ -393,7 +393,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           createWaitForServerReady(
                   node,
                   processType,
-                  getOrCreateExecutionContext().getWaitForServerTimeout().toMillis())
+                  getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis())
               .setSubTaskGroupType(subGroupType);
           // If there are no universe keys on the universe, it will have no effect.
           if (processType == ServerType.MASTER
