@@ -3139,7 +3139,7 @@ SELECT agtype_to_int4_array(NULL);
 --
 --Invalid Map Key (should fail)
 SELECT agtype_build_map('[0]'::agtype, null);
-ERROR:  key value must be scalar, not array, composite, or json
+ERROR:  agtype_build_map_as_agtype_value only supports scalar arguments
 --
 -- Test agtype object/array access operators object.property, object["property"], and array[element]
 -- Note: At this point, object.property and object["property"] are equivalent.
@@ -3908,8 +3908,50 @@ ERROR:  smallint out of range
 SELECT ag_catalog.agtype_volatile_wrapper(-32768::int2);
 ERROR:  smallint out of range
 --
+-- test that age_tostring can handle an UNKNOWNOID type
+--
+SELECT age_tostring('a');
+ age_tostring 
+--------------
+ "a"
+(1 row)
+
+--
+-- test agtype_build_map_as_agtype_value via agtype_build_map
+--
+SELECT * FROM create_graph('agtype_build_map');
+NOTICE:  graph "agtype_build_map" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('agtype_build_map', $$ RETURN ag_catalog.agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71)
+                                         $$) AS (results agtype);
+                   results                   
+---------------------------------------------
+ {"1": "1", "2": 2, "e": 2.71, "3.14": 3.14}
+(1 row)
+
+SELECT agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71);
+                       agtype_build_map                        
+---------------------------------------------------------------
+ {"1": "1", "2": 2, "e": 2.71::numeric, "3.14": 3.14::numeric}
+(1 row)
+
+--
 -- Cleanup
 --
+SELECT drop_graph('agtype_build_map', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table agtype_build_map._ag_label_vertex
+drop cascades to table agtype_build_map._ag_label_edge
+NOTICE:  graph "agtype_build_map" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 DROP TABLE agtype_table;
 --
 -- End of AGTYPE data type regression tests

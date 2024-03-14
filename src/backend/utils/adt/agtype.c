@@ -174,6 +174,7 @@ static int extract_variadic_args_min(FunctionCallInfo fcinfo,
                                      int min_num_args);
 static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo);
 agtype_value *agtype_composite_to_agtype_value_binary(agtype *a);
+static agtype_value *tostring_helper(Datum arg, Oid type, char *msghdr);
 
 /* global storage of  OID for agtype and _agtype */
 static Oid g_AGTYPEOID = InvalidOid;
@@ -2377,6 +2378,7 @@ static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
                                    NULL);
 
+    /* iterate through the arguments and build the object */
     for (i = 0; i < nargs; i += 2)
     {
         /* process key */
@@ -2387,7 +2389,25 @@ static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
                      errmsg("argument %d: key must not be null", i + 1)));
         }
 
-        add_agtype(args[i], false, &result, types[i], true);
+        /*
+         * If the key is agtype, we need to extract it as an agtype string and
+         * push the value.
+         */
+        if (types[i] == AGTYPEOID)
+        {
+            agtype_value *agtv = NULL;
+
+            agtv = tostring_helper(args[i], types[i],
+                                   "agtype_build_map_as_agtype_value");
+            result.res = push_agtype_value(&result.parse_state, WAGT_KEY, agtv);
+
+            /* free the agtype_value from tostring_helper */
+            pfree(agtv);
+        }
+        else
+        {
+            add_agtype(args[i], false, &result, types[i], true);
+        }
 
         /* process value */
         add_agtype(args[i + 1], nulls[i + 1], &result, types[i + 1], false);
@@ -6734,16 +6754,12 @@ PG_FUNCTION_INFO_V1(age_tostring);
 Datum age_tostring(PG_FUNCTION_ARGS)
 {
     int nargs;
-    Datum *args;
     Datum arg;
-    bool *nulls;
-    Oid *types;
-    agtype_value agtv_result;
-    char *string = NULL;
-    Oid type;
+    Oid type = InvalidOid;
+    agtype *agt = NULL;
+    agtype_value *agtv = NULL;
 
-    /* extract argument values */
-    nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
+    nargs = PG_NARGS();
 
     /* check number of args */
     if (nargs > 1)
@@ -6753,19 +6769,70 @@ Datum age_tostring(PG_FUNCTION_ARGS)
     }
 
     /* check for null */
-    if (nargs < 0 || nulls[0])
+    if (nargs < 1 || PG_ARGISNULL(0))
     {
         PG_RETURN_NULL();
+    }
+
+    /* get the argument and type */
+    arg = PG_GETARG_DATUM(0);
+    type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+    /* verify that if the type is UNKNOWNOID it can be converted */
+    if (type == UNKNOWNOID && !get_fn_expr_arg_stable(fcinfo->flinfo, 0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toString() UNKNOWNOID and not stable")));
     }
 
     /*
      * toString() supports integer, float, numeric, text, cstring, boolean,
      * regtype or the agtypes: integer, float, numeric, string, boolean input
      */
-    arg = args[0];
-    type = types[0];
+    agtv = tostring_helper(arg, type, "toString()");
 
-    if (type != AGTYPEOID)
+    /* if we get a NULL back we need to return NULL */
+    if (agtv == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
+    /* convert to agtype and free the agtype_value */
+    agt = agtype_value_to_agtype(agtv);
+    pfree(agtv);
+
+    PG_RETURN_POINTER(agt);
+}
+
+/*
+ * Helper function to take any valid type and convert it to an agtype string.
+ * Returns NULL for NULL output.
+ */
+static agtype_value *tostring_helper(Datum arg, Oid type, char *msghdr)
+{
+    agtype_value *agtv_result = NULL;
+    char *string = NULL;
+
+    agtv_result = palloc0(sizeof(agtype_value));
+
+    /*
+     * toString() supports: unknown, integer, float, numeric, text, cstring,
+     * boolean, regtype or the agtypes: integer, float, numeric, string, and
+     * boolean input.
+     */
+
+    /*
+     * If the type is UNKNOWNOID convert it to a cstring. Prior to passing an
+     * UNKNOWNOID it should be verified to be stable.
+     */
+    if (type == UNKNOWNOID)
+    {
+        char *str = DatumGetPointer(arg);
+
+        string = pnstrdup(str, strlen(str));
+    }
+    /* if it is not an AGTYPEOID */
+    else if (type != AGTYPEOID)
     {
         if (type == INT2OID)
         {
@@ -6812,11 +6879,12 @@ Datum age_tostring(PG_FUNCTION_ARGS)
         else
         {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toString() unsupported argument type %d",
-                                   type)));
+                            errmsg("%s unsupported argument type %d",
+                                   msghdr, type)));
         }
     }
-    else
+    /* if it is an AGTYPEOID */
+    else if (type == AGTYPEOID)
     {
         agtype *agt_arg;
         agtype_value *agtv_value;
@@ -6827,14 +6895,15 @@ Datum age_tostring(PG_FUNCTION_ARGS)
         if (!AGT_ROOT_IS_SCALAR(agt_arg))
         {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toString() only supports scalar arguments")));
+                            errmsg("%s only supports scalar arguments",
+                                   msghdr)));
         }
 
         agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
         if (agtv_value->type == AGTV_NULL)
         {
-            PG_RETURN_NULL();
+            return NULL;
         }
         else if (agtv_value->type == AGTV_INTEGER)
         {
@@ -6863,17 +6932,24 @@ Datum age_tostring(PG_FUNCTION_ARGS)
         else
         {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("toString() unsupported argument agtype %d",
-                                   agtv_value->type)));
+                            errmsg("%s unsupported argument agtype %d",
+                                   msghdr, agtv_value->type)));
         }
+    }
+    /* it is an unknown type */
+    else
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("%s unknown argument agtype %d",
+                                   msghdr, type)));
     }
 
     /* build the result */
-    agtv_result.type = AGTV_STRING;
-    agtv_result.val.string.val = string;
-    agtv_result.val.string.len = strlen(string);
+    agtv_result->type = AGTV_STRING;
+    agtv_result->val.string.val = string;
+    agtv_result->val.string.len = strlen(string);
 
-    PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
+    return agtv_result;
 }
 
 PG_FUNCTION_INFO_V1(age_tostringlist);

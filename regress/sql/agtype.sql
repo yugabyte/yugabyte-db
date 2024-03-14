@@ -1098,9 +1098,25 @@ SELECT ag_catalog.agtype_volatile_wrapper(-32767::int2);
 -- These should fail
 SELECT ag_catalog.agtype_volatile_wrapper(32768::int2);
 SELECT ag_catalog.agtype_volatile_wrapper(-32768::int2);
+
+--
+-- test that age_tostring can handle an UNKNOWNOID type
+--
+SELECT age_tostring('a');
+
+--
+-- test agtype_build_map_as_agtype_value via agtype_build_map
+--
+SELECT * FROM create_graph('agtype_build_map');
+SELECT * FROM cypher('agtype_build_map', $$ RETURN ag_catalog.agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71)
+                                         $$) AS (results agtype);
+SELECT agtype_build_map('1', '1', 2, 2, 3.14, 3.14, 'e', 2.71);
+
 --
 -- Cleanup
 --
+SELECT drop_graph('agtype_build_map', true);
+
 DROP TABLE agtype_table;
 
 --

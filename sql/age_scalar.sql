@@ -149,7 +149,7 @@ RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.age_tostring(variadic "any")
+CREATE FUNCTION ag_catalog.age_tostring("any")
     RETURNS agtype
     LANGUAGE c
     IMMUTABLE
