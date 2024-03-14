@@ -17,6 +17,8 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface.VPCType;
@@ -182,10 +184,15 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
 
   private void validateAMI(
       Provider provider, Region region, SetMultimap<String, String> validationErrorsMap) {
-    String imageId = region.getYbImage();
-    String fieldDetails = "REGION." + region.getCode() + ".IMAGE";
-    try {
-      if (!StringUtils.isEmpty(imageId)) {
+    List<ImageBundle> imageBundles = provider.getImageBundles();
+    for (ImageBundle imageBundle : imageBundles) {
+      BundleInfo bundleInfo = imageBundle.getDetails().getRegions().get(region.getCode());
+      if (bundleInfo == null || StringUtils.isEmpty(bundleInfo.getYbImage())) {
+        continue;
+      }
+      String imageId = bundleInfo.getYbImage();
+      String fieldDetails = "REGION." + region.getCode() + ".IMAGE";
+      try {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);
         List<String> errorList = new ArrayList<>();
         String arch = image.getArchitecture().toLowerCase();
@@ -210,12 +217,12 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         if (errorList.size() != 0) {
           validationErrorsMap.putAll(fieldDetails, errorList);
         }
-      }
-    } catch (PlatformServiceException e) {
-      if (e.getHttpStatus() == BAD_REQUEST) {
-        validationErrorsMap.put(fieldDetails, e.getMessage());
-      } else {
-        throw e;
+      } catch (PlatformServiceException e) {
+        if (e.getHttpStatus() == BAD_REQUEST) {
+          validationErrorsMap.put(fieldDetails, e.getMessage());
+        } else {
+          throw e;
+        }
       }
     }
   }
