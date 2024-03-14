@@ -714,5 +714,11 @@ std::string Master::GetCertificateDetails() {
   return secure_context_.get()->GetCertificateDetails();
 }
 
+void Master::WriteServerMetaCacheAsJson(JsonWriter *writer) {
+  writer->StartObject();
+  tserver::DbServerBase::WriteMainMetaCacheAsJson(writer);
+  writer->EndObject();
+}
+
 } // namespace master
 } // namespace yb

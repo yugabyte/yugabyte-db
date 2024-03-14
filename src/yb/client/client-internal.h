@@ -581,6 +581,8 @@ class YBClient::Data {
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 
+  std::string client_name_;
+
  private:
   Status FlushTablesHelper(YBClient* client,
                            const CoarseTimePoint deadline,
