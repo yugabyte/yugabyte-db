@@ -2698,6 +2698,34 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_walsender_poll_sleep_duration_nonempty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " non-empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_poll_sleep_duration_empty_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which Walsender waits before"
+						 " fetching the next batch of changes from the CDC"
+						 " service in case the last received response was"
+						 " empty."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_walsender_poll_sleep_duration_empty_ms,
+		1 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
 		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
 		 NULL
