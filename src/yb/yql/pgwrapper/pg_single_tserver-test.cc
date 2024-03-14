@@ -103,7 +103,8 @@ class PgSingleTServerTest : public PgMiniTestBase {
       auto tp = peer->tablet()->transaction_participant();
       if (tp) {
         const auto count_intents_result = tp->TEST_CountIntents();
-        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+        const auto count_intents =
+            count_intents_result.ok() ? count_intents_result->num_intents : 0;
         LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
       }
     }

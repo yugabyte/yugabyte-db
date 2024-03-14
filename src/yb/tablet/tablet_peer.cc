@@ -127,6 +127,8 @@ DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
+DECLARE_bool(cdc_immediate_transaction_cleanup);
+
 DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
@@ -1231,6 +1233,9 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
       txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        tablet_->CleanupIntentFiles();
+      }
     }
   }
   return Status::OK();
