@@ -15,6 +15,7 @@ require (
 	github.com/yugabyte/platform-go-client v0.0.0-20240205163216-2f5415a7239d
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/term v0.13.0
+	gopkg.in/yaml.v2 v2.4.0
 	gotest.tools/v3 v3.5.0
 )
 
@@ -22,7 +23,6 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
@@ -30,6 +30,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.45.24
+	github.com/briandowns/spinner v1.23.0
 	github.com/cpuguy83/go-md2man/v2 v2.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect

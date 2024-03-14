@@ -225,7 +225,7 @@ func init() {
 
 	createAzureProviderCmd.Flags().String("network-subscription-id", "",
 		"Azure Network Subscription ID.")
-	createAzureProviderCmd.Flags().String("az-network-rg", "", "Azure Network Resource Group.")
+	createAzureProviderCmd.Flags().String("network-rg", "", "Azure Network Resource Group.")
 
 	createAzureProviderCmd.Flags().String("hosted-zone-id", "",
 		"[Optional] Hosted Zone ID corresponging to Private DNS Zone.")
