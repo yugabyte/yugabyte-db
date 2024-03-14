@@ -340,6 +340,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
   void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
 
+  void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
+
  protected:
   virtual Status RegisterServices();
 
