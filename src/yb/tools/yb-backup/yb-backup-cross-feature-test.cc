@@ -1640,8 +1640,8 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     LibPqTestBase::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+        "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
   }
 
@@ -1896,7 +1896,7 @@ TEST_P(YBBackupTestWithTableRewrite,
 TEST_P(YBBackupTestWithTableRewrite,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAndRestoreAfterFailedRewrite)) {
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
   SetUpTestData(true /* failedRewrite */);
 
   // Verify that the orphaned DocDB tables created still exist.

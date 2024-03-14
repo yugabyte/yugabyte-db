@@ -90,7 +90,7 @@ DEFINE_NON_RUNTIME_int64(
 
 DECLARE_bool(ysql_enable_packed_row);
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 namespace yb {
 namespace cdc {
@@ -2735,7 +2735,7 @@ Status GetChangesForCDCSDK(
             }
 
             bool has_columns_marked_for_deletion = false;
-            if (FLAGS_ysql_ddl_rollback_enabled) {
+            if (FLAGS_ysql_yb_ddl_rollback_enabled) {
               for (auto column : current_schema.columns()) {
                 if (column.marked_for_deletion()) {
                   has_columns_marked_for_deletion = true;

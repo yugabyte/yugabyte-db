@@ -14,7 +14,7 @@
 
 using std::string;
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 
 namespace yb {
 namespace pgwrapper {
@@ -24,8 +24,8 @@ const std::string table = "testtable";
 class PgDropColumnSanityTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+      "--allowed_preview_flags_csv=ysql_yb_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
     options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
   }
