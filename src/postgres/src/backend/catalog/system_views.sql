@@ -1230,6 +1230,20 @@ LANGUAGE INTERNAL
 STRICT STABLE PARALLEL SAFE
 AS 'jsonb_path_query_first_tz';
 
+CREATE OR REPLACE FUNCTION
+  yb_start_diagnostics (queryid int8)
+RETURNS boolean
+LANGUAGE INTERNAL
+STABLE PARALLEL SAFE
+AS 'yb_start_diagnostics';
+
+CREATE OR REPLACE FUNCTION
+  yb_finish_diagnostics (queryid int8)
+RETURNS text
+LANGUAGE INTERNAL
+STABLE PARALLEL SAFE
+AS 'yb_finish_diagnostics';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather

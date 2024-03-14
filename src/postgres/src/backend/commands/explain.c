@@ -851,6 +851,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 			 ParamListInfo params, QueryEnvironment *queryEnv,
 			 DestReceiver *dest)
 {
+	//FILE* fptr = fopen("/Users/shubhankarvshastri/test1.txt","a");
+	//fprintf(fptr, "querystring: %s\n" , queryString);
+	
+	
 	ExplainState *es = NewExplainState();
 	TupOutputState *tstate;
 	List	   *rewritten;
@@ -904,12 +908,22 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 								opt->defname, p),
 						 parser_errposition(pstate, opt->location)));
 		}
+		else if(strcmp(opt->defname, "diagnostics") == 0)
+		es->diagnostics = defGetBoolean(opt);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("unrecognized EXPLAIN option \"%s\"",
 							opt->defname),
 					 parser_errposition(pstate, opt->location)));
+	}
+
+	if (es->diagnostics && es->analyze)
+	{
+		//fprintf(fptr, "es->diagnostics\n" );
+		//yb_generatre_diagnostics(es,query)
+		//yb_start_diagnostics(queryid);
+		//yb_finish_diagnostics();
 	}
 
 	if (es->analyze)
@@ -1007,6 +1021,9 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 				ExplainSeparatePlans(es);
 		}
 	}
+
+	// fprintf(fptr, "QueryId: %lu\n", es->pstmt->queryId);
+	// 	fclose(fptr);
 
 	/* emit closing boilerplate */
 	ExplainEndOutput(es);

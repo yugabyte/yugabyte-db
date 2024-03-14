@@ -90,6 +90,13 @@
 
 #include "common/pg_yb_common.h"
 
+#include "commands/explain.h"
+
+// #include "nodes/parsenodes.h"
+// #include "catalog/pg_class.h"
+// #include "catalog/pg_namespace.h"
+// #include "utils/rel.h"
+#include "utils/lsyscache.h"
 
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
@@ -425,6 +432,15 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	Size *query_offset, int encoding, Counters *counters,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
+
+//this may work without extern.
+extern void
+bundlePgss(int flag, int64 queryId, const char *query, double total_time,
+		   int64 rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result);
+
+
+void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result);
+void fetchSchemaDetails(int flag ,List *rtable, MyValue *result);
 /*
  * Module load callback
  */
@@ -556,6 +572,18 @@ _PG_init(void)
 	 */
 	RequestAddinShmemSpace(pgss_memsize());
 	RequestNamedLWLockTranche("pg_stat_statements", 1);
+
+	// //These can also be done in _PG_init of postgres.c
+	// if(map == NULL)
+	// 	create_shared_hashtable();
+
+	// if(sharedBundleStruct == NULL)
+	// 	InitSharedStruct();
+
+
+	bundleptr = &bundlePgss;
+	explainptr = &bundleExplain;
+	schemaptr = &fetchSchemaDetails;
 
 	/*
 	 * Install hooks.
@@ -1259,6 +1287,21 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 				   0,
 				   NULL,
 				   &jstate);
+
+
+	if(map == NULL)
+		create_shared_hashtable();
+
+	if(sharedBundleStruct == NULL)
+		InitSharedStruct();
+
+
+	// if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+	// 	MyValue* result = lookup_in_shared_hashtable(map, query->queryId);
+	// 	if(result){
+	// 		fetchSchemaDetails(1,query,result);
+	// 	}
+	// }
 }
 
 /*
@@ -1293,6 +1336,9 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
+	// FILE* fptr = fopen("/Users/shubhankarvshastri/test.txt","a");
+	// fprintf(fptr,"inside pgss with queryid %lu",queryDesc->plannedstmt->queryId);
+	// fclose(fptr);
 }
 
 /*
@@ -1357,6 +1403,15 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		 * levels of hook all do this.)
 		 */
 		InstrEndLoop(queryDesc->totaltime);
+
+		//trying to print explain plan have extra check for SharedBundleStruct itself as NULL
+		if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, queryDesc->plannedstmt->queryId);
+			if(result){
+				bundleExplain(1 , queryDesc , result);
+				fetchSchemaDetails(1,queryDesc->plannedstmt->rtable,result);
+			}
+		}
 
 		pgss_store(queryDesc->sourceText,
 				   queryId,
@@ -1715,7 +1770,15 @@ pgss_store(const char *query, uint64 queryId,
 		e->counters.usage += USAGE_EXEC(total_time);
 
 		SpinLockRelease(&e->mutex);
+
+		if(sharedBundleStruct && sharedBundleStruct->debuggingBundle){
+			MyValue* result = lookup_in_shared_hashtable(map, queryId);
+			if(result){
+				bundlePgss(1, queryId, query,total_time, rows, bufusage,key.userid,key.dbid,result);
+			}
+		}
 	}
+
 
 done:
 	LWLockRelease(pgss->lock);
@@ -3786,4 +3849,260 @@ yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 static void yb_hdr_reset(hdr_histogram *h)
 {
 	memset(h, 0, sizeof(hdr_histogram) + (sizeof(count_t) * h->counts_len));
+}
+
+
+
+char* quotedString(const char* str)
+{
+	char* result = (char*)malloc(strlen(str) + 3);
+	strcpy(result, "\"");
+	strcat(result, str);
+	strcat(result, "\"");
+	return result;
+}
+
+
+extern void
+bundlePgss(int flag, int64 queryId, const char *query, double total_time,
+		   int64 rows, const BufferUsage *bufusage, Oid userid, Oid dbid,MyValue *result)
+{
+	if (flag == 0)
+	{ // stop bundle and print everything
+		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
+		strcpy(pgss_log_path, result->log_path);
+		strcat(pgss_log_path, "pgss.csv");
+		FILE *fptr = fopen(pgss_log_path, "w");
+		fprintf(fptr, "userid,dbid,queryid,query,calls,total_time,min_time,"
+					  "max_time,mean_time,stddev_time,rows,shared_blks_hit,"
+					  "shared_blks_read,shared_blks_dirtied,shared_blks_"
+					  "written,local_blks_hit,local_blks_read,local_blks_"
+					  "dirtied,local_blks_written,temp_blks_read,temp_blks_"
+					  "written,blk_read_time,blk_write_time\n");
+
+		fprintf(fptr,"%d,%d,%ld,%s,%ld,%f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%f,%f\n",
+				result->userid, result->dbid, (int64)result->queryid,quotedString(result->query),
+				result->calls, result->total_time,
+				result->min_time, result->max_time,
+				result->mean_time,result->sum_var_time,
+				result->rows,
+				result->shared_blks_hit,
+				result->shared_blks_read,
+				result->shared_blks_dirtied,
+				result->shared_blks_written,
+				result->local_blks_hit,
+				result->local_blks_read,
+				result->local_blks_dirtied,
+				result->local_blks_written,
+				result->temp_blks_read,
+				result->temp_blks_written,
+				result->blk_read_time,
+				result->blk_write_time);
+
+		fclose(fptr);
+
+	}
+	else
+	{ // within bundle
+
+		result->dbid = dbid;
+		result->userid = userid;
+		result->queryid = queryId;
+		strcpy(result->query,query);
+		result->calls += 1;
+		result->total_time += total_time;
+
+		if(result->calls == 1)
+		{
+			result->min_time = total_time;
+			result->max_time = total_time;
+			result->mean_time = total_time;
+		}
+		else
+		{
+			double old_mean = result->mean_time;
+			result->mean_time += (total_time - old_mean) / result->calls;
+			result->sum_var_time += (total_time - old_mean) * (total_time - result->mean_time);
+			if(result->min_time > total_time)
+				result->min_time = total_time;
+			if(result->max_time < total_time)
+				result->max_time = total_time;
+		}
+
+		result->rows += rows;
+		result->shared_blks_hit += bufusage->shared_blks_hit;
+		result->shared_blks_read += bufusage->shared_blks_read;
+		result->shared_blks_dirtied += bufusage->shared_blks_dirtied;
+		result->shared_blks_written += bufusage->shared_blks_written;
+		result->local_blks_hit += bufusage->local_blks_hit;
+		result->local_blks_read += bufusage->local_blks_read;
+		result->local_blks_dirtied += bufusage->local_blks_dirtied;
+		result->local_blks_written += bufusage->local_blks_written;
+		result->temp_blks_read += bufusage->temp_blks_read;
+		result->temp_blks_written += bufusage->temp_blks_written;
+		result->blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
+		result->blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+		result->usage += USAGE_EXEC(total_time);
+		result->yb_slow_executions = 0;
+		result->encoding = 0;
+		// result->yb_hdr_histogram = myEntry.yb_hdr_histogram;
+	}
+}
+
+
+void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
+	int randomNumber = rand() % 100 + 1;
+	static bool printedonce = 0;
+	if(flag == 0){
+		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
+		strcpy(pgss_log_path, result->log_path);
+		strcat(pgss_log_path, "explain.txt");
+		FILE *fptr = fopen(pgss_log_path, "w");
+		fprintf(fptr, "QUERY PLAN:\n%s" ,result->explain_str);
+		fclose(fptr);
+	}
+	else if(randomNumber == 1 || !printedonce) {
+		ExplainState *es = NewExplainState();
+		printedonce = true;
+		es->analyze = true;
+
+		es->verbose = true;
+		es->buffers = true;
+		es->timing = true;
+		es->summary = true;
+		es->format =EXPLAIN_FORMAT_TEXT;
+		es->rpc = false;
+
+		ExplainBeginOutput(es);
+		ExplainQueryText(es, queryDesc);
+		ExplainPrintPlan(es, queryDesc);
+		if (es->costs)
+			ExplainPrintJITSummary(es, queryDesc);
+		ExplainEndOutput(es);
+
+			/* Remove last line break */
+		if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+			es->str->data[--es->str->len] = '\0';
+
+
+		if(strlen(result->explain_str) + strlen(es->str->data) >=1024) return;
+
+		int len = strlen(result->explain_str);
+		result->explain_str[len] = '\n';
+		result->explain_str[len+1] = '\0';
+		strcat(result->explain_str, es->str->data);
+	}
+}
+
+
+void fetchSchemaDetails(int flag ,List *rtable,MyValue *result)
+{
+	// List* rtable = querydesc->plannedstmt->rtable;
+	if(flag == 0){
+		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
+		strcpy(pgss_log_path, result->log_path);
+		strcat(pgss_log_path, "schema.txt");
+		FILE *fptr = fopen(pgss_log_path, "w");
+		fprintf(fptr,"%s",result->schema_str);
+		fclose(fptr);
+	}
+	else if(strlen(result->schema_str) == 0){
+		ListCell   *lc;
+		foreach(lc,rtable)
+		{
+			RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
+			switch (rte->rtekind)
+			{
+				case RTE_RELATION:
+					{
+						Oid relid = rte->relid;
+						Relation rel = relation_open(relid, AccessShareLock);
+						char *schemaName = get_namespace_name(get_rel_namespace(relid));
+						char *tableName = get_rel_name(relid);
+						TupleDesc tupdesc = RelationGetDescr(rel);
+						int numCols = tupdesc->natts;
+						for (int i = 0; i < numCols; i++) {
+							Form_pg_attribute attr = &tupdesc->attrs[i];
+							char *colName = NameStr(attr->attname);
+							Oid colType = attr->atttypid;
+							char *colTypeName = format_type_be(colType);
+							sprintf(result->schema_str,"%s Schema: %s, Table: %s, Column: %s, Type: %s \n", result->schema_str,schemaName, tableName, colName, colTypeName);
+						}
+						// Get index information
+						List *indexList = RelationGetIndexList(rel);
+						ListCell *lc;
+						foreach(lc, indexList) 
+						{
+							Oid indexOid = lfirst_oid(lc);
+							char *indexName = get_rel_name(indexOid);
+							sprintf(result->schema_str,"%s Schema: %s, Table: %s, Index: %s\n", result->schema_str,schemaName, tableName, indexName);
+						}
+						relation_close(rel, AccessShareLock);
+					}
+				break;
+
+				case RTE_SUBQUERY:
+					{
+						Query *subquery = rte->subquery;
+						// Recursively fetch schema details for the subquery
+						fetchSchemaDetails(1,subquery->rtable,result);
+					}
+				break;
+
+
+				case RTE_JOIN:
+					{
+						JoinExpr *joinexpr = (JoinExpr *)rte->joinaliasvars;
+						Query *q = (Query *) joinexpr->larg;
+						switch (joinexpr->jointype) 
+						{
+							case JOIN_INNER:
+								// Handle inner join
+
+								fetchSchemaDetails(1,q->rtable,result);
+								fetchSchemaDetails(1,q->rtable,result);
+							break;
+							case JOIN_LEFT:
+								// Handle left join
+							break;
+							case JOIN_FULL:
+								// Handle full join
+							break;
+							case JOIN_RIGHT:
+								// Handle right join
+							break;
+							case JOIN_SEMI:
+								// Handle semi join
+							break;
+							case JOIN_ANTI:
+								// Handle anti join
+							break;
+							default:
+								// Handle other join types
+							break;
+						}
+					}
+				break;
+
+				case RTE_FUNCTION:
+					{
+						ListCell *lc;
+						foreach(lc, rte->functions)
+						{
+							FuncExpr *funcexpr = (FuncExpr *) lfirst(lc);
+							Oid funcid = funcexpr->funcid; // OID of the function
+							char *funcName = get_func_name(funcid); // Name of the function
+							sprintf(result->schema_str,"%s Function: %s \n",result->schema_str, funcName);
+						}
+					}
+				break;
+
+
+				// Handle other RTE kinds as needed
+				default:
+					// Handle other RTE kinds if necessary
+					break;
+			}
+		}
+	}
 }

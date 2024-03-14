@@ -43,6 +43,8 @@
 
 #include "yb/server/default-path-handlers.h"
 
+#include <dirent.h>
+#include <squeasel.h>
 #include <sys/stat.h>
 
 #include <fstream>
@@ -684,7 +686,115 @@ void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* r
 #endif
 }
 
+std::string getQueryDiagnosticsFolderPath() {
+    // Get the value of the HOME (or equivalent) environment variable
+    const char* homeDir = std::getenv("HOME");
+    if (homeDir == nullptr) {
+        std::cerr << "Error: HOME environment variable not set.\n";
+        return "";
+    }
+
+    // Construct the full path to the query-diagnostics folder
+    std::string queryDiagnosticsPath = std::string(homeDir) + "/yugabyte-data/node-1/disk-1/query-diagnostics/a.txt";
+
+    return queryDiagnosticsPath;
+}
+
+void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCallbackRegistry::WebResponse* resp) {
+    // if (req.parsed_args.find("query_id") == req.parsed_args.end()) {
+    //     resp->output << "<html><body><h1>Error: Query ID not provided</h1></body></html>";
+    //     resp->code = 400;
+    //     return;
+    // }
+    // std::string query_id = req.parsed_args.at("query_id");
+    // std::string query_diagnostics_path = "/Users/shubhankarvshastri/yugabyte-data/node-1/disk-1/query-diagnostics/"+query_id;
+
+    // std::string tar_file_path = "/Users/shubhankarvshastri/yugabyte-data/node-1/disk-1/" + query_id + ".tar";
+    // // Change directory to the query diagnostics folder
+    // if (chdir(query_diagnostics_path.c_str()) != 0) {
+    //     resp->output << "<html><body><h1>Error: Failed to access query diagnostics folder</h1></body></html>";
+    //     resp->code = 500; 
+    //     return;
+    // }
+    // // std::string tar_file_download= "/media/" + query_id + ".tar";
+
+    // // Create the tar file using the system command
+    // std::string tar_command = "tar -cf " + tar_file_path + " " + query_id;
+    // int result = system(tar_command.c_str());
+    // if (result != 0) {
+    //     resp->output << "<html><body><h1>Error: Failed to create tar file</h1></body></html>";
+    //     resp->code = 500; // Internal Server Error
+    //     return;
+    // }
+
+    // // Read the contents of the tar file
+    // std::ifstream tar_file(tar_file_path, std::ios::binary);
+    // if (!tar_file.is_open()) {
+    //     resp->output << "<html><body><h1>Error: Failed to open tar file</h1></body></html>";
+    //     resp->code = 500; // Internal Server Error
+    //     return;
+    // }
+
+
+    // // // Set the response headers to indicate a tar file download
+    // // resp->output << "HTTP/1.1 200 OK\r\n";
+    // // resp->output << "Content-Type: application/x-tar\r\n";
+    // // std::string tar_file_name = "query_diagnostics_" + query_id + ".tar";
+    // // resp->output << "Content-Disposition: attachment; filename=\"" << tar_file_name << "\"\r\n\r\n";
+
+    // //Create HTML content with a link to the tar file
+    // resp->output << "<html><body>";
+    // resp->output << "<h1>Click the link below to download the tar file:</h1>";
+    // resp->output << "<a href=\"file://" << tar_file_path << " \" target = \"_blank\" download=\"query.tar\" >Download</a>";
+    // resp->output << "</body></html>";
+
+    // // Copy the contents of the tar file to the response output stream
+    // //resp->output << tar_file.rdbuf();
+    // tar_file.close();
+    // resp->code = 200;
+
+    string initialpath;
+    GetFullLogFilename(google::INFO, &initialpath);
+    string toRemove = "/yb-data/tserver/logs/yb-tserver.INFO";
+    std::string folderpath = initialpath;
+    size_t pos = folderpath.find(toRemove);
+    if (pos != std::string::npos) {
+        folderpath.erase(pos, toRemove.length());
+    }
+    folderpath = folderpath + "/query-diagnostics/";
+
+  
+    std::string query_diagnostics_path = folderpath;
+    std::string query_id = req.parsed_args.find("query_id")->second;
+    std::string timestamp = req.parsed_args.find("timestamp")->second;
+
+    if(query_id.empty() || timestamp.empty()) {
+        resp->output << "<html><body><h1>Error: Query ID or Timestamp not provided</h1></body></html>";
+        resp->code = 400; // Bad Request
+        return;
+    }
+
+
+    std::string query_directory_path = query_diagnostics_path + query_id + "/" + timestamp;
+    std::string new_query_directory_path = query_diagnostics_path + query_id + "/" + query_id + "_" + timestamp;
+    std::filesystem::rename(query_directory_path, new_query_directory_path);
+    std::string tar_file_path = query_diagnostics_path + query_id + "_" + timestamp + ".tar";
+    //std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
+    std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + query_id + "_" + timestamp;
+
+    int result = system(tar_command.c_str());
+    if (result != 0) {
+        resp->output << "<html><body><h1>Error: Failed to create tar file</h1></body></html>";
+        resp->code = 500; // Internal Server Error
+        return;
+    }
+    std::filesystem::rename(new_query_directory_path, query_directory_path);
+    resp->code = 200;
+}
+
+
 void AddDefaultPathHandlers(Webserver* webserver) {
+  webserver->RegisterPathHandler("/query-diagnostics", "Query Diagnostics", QueryDiagnosticsHandler, true, false);
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
   webserver->RegisterPathHandler(
       "/varz", "Flags", std::bind(&FlagsHandler, _1, _2, webserver), true, false);
