@@ -20,6 +20,7 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
+#include "executor/ybcModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -1264,6 +1265,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			dir = NoMovementScanDirection;
 		else
 			dir = ForwardScanDirection;
+
+		/* Figure out if the query can be run as a single row txn */
+		queryDesc->estate->yb_es_is_single_row_modify_txn =
+			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
 		/* Refresh the session stats before the start of the query */
 		if (es->rpc)
