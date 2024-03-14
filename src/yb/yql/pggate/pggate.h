@@ -337,6 +337,8 @@ class PgApiImpl {
 
   Status AlterTableDropColumn(PgStatement *handle, const char *name);
 
+  Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
+
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                const char *newname);
 

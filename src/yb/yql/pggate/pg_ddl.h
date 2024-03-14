@@ -261,6 +261,8 @@ class PgAlterTable : public PgDdl {
 
   Status SetTableId(const PgObjectId& table_id);
 
+  Status SetReplicaIdentity(const char identity_type);
+
   Status Exec();
 
   virtual ~PgAlterTable();

@@ -54,7 +54,7 @@ public interface CloudAPI {
    * @param config The credentials info.
    * @return true if credentials are valid otherwise return false.
    */
-  boolean isValidCreds(Provider provider, String region);
+  boolean isValidCreds(Provider provider);
 
   /**
    * Check whether cloud provider's credentials are valid to do KMS operations.
@@ -71,8 +71,6 @@ public interface CloudAPI {
       Map<AvailabilityZone, Set<NodeID>> azToNodesMap,
       List<Integer> ports,
       NLBHealthCheckConfiguration healthCheckConfig);
-
-  void validateInstanceTemplate(Provider provider, String instanceTemplate);
 
   // Helper function to extract Resource name from resource URL
   // It only works for URls that end with the resource Name.

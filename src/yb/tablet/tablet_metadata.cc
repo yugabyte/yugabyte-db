@@ -558,6 +558,16 @@ Result<TableInfo*> KvStoreInfo::FindMatchingTable(
         local_table->table_name);
     return nullptr;
   }
+
+  // Sanity check: the same table should have same TableInfo in both tables and colocation_to_table.
+  auto tables_it = tables.find(local_table->table_id);
+  RSTATUS_DCHECK(
+      tables_it != tables.end(), NotFound,
+      Format("Table $0 not found in tables map", local_table->table_id));
+  RSTATUS_DCHECK(
+      tables_it->second.get() == table_it->second.get(), Corruption,
+      Format("Table $0 has different TableInfos in tables and colocation_to_table: $1 vs $2",
+             local_table->table_id, tables_it->second, table_it->second));
   return table_it->second.get();
 }
 
@@ -1760,10 +1770,11 @@ Status RaftGroupMetadata::OldSchemaGC(
       }
       auto new_value = std::make_shared<TableInfo>(
           *it->second, schema_version);
-      it->second = new_value;
+      RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",
-                    it->second->table_name, it->second->table_id, it->second->schema_version);
+                    it->second->table_name, it->second->table_id, it->second->schema_version)
+          << ", new_value address: " << it->second.get();
       need_flush = true;
     }
   }
@@ -2166,7 +2177,28 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
                       << " to Schema version " << new_table_info->schema_version
                       << " from \n" << AsString(it->second)
                       << " to \n" << AsString(new_table_info);
-  it->second.swap(new_table_info);
+  return SetTableInfoUnlocked(it, std::move(new_table_info));
+}
+
+Status RaftGroupMetadata::SetTableInfoUnlocked(
+    const TableInfoMap::iterator& it, const TableInfoPtr& new_table_info) {
+  it->second = new_table_info;
+  if (it->second->schema().has_colocation_id()) {
+    const auto colocation_id = it->second->schema().colocation_id();
+    auto table_it = kv_store_.colocation_to_table.find(colocation_id);
+    RSTATUS_DCHECK(table_it != kv_store_.colocation_to_table.end(), NotFound,
+        Format("Could not find table $0 (colocation_id=$1) in colocation_to_table map",
+        new_table_info->table_id, colocation_id));
+    RSTATUS_DCHECK(
+        table_it->second->schema().has_colocation_id(), Corruption,
+        Format("Table $0 expected to have colocation id", new_table_info->table_id));
+    RSTATUS_DCHECK(
+        table_it->second->schema().colocation_id() == colocation_id,
+        Corruption,
+        Format("Table $0 colocation id mismatch: $1 vs $2", new_table_info->table_id,
+               colocation_id, table_it->second->schema().colocation_id()));
+    table_it->second = new_table_info;
+  }
   return Status::OK();
 }
 

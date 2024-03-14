@@ -285,6 +285,30 @@ Result<bool> PgDdlAtomicityTestBase::CheckIfSchemaMatches(client::YBClient* clie
   return true;
 }
 
+Status PgDdlAtomicityTestBase::VerifyReplicaIdentityMatches(
+    client::YBClient* client, const string& database_name, const string& table_name,
+    PgReplicaIdentity expected_replica_identity) {
+  return LoggedWaitFor(
+      [&] {
+        return CheckIfReplicaIdentityMatches(
+            client, database_name, table_name, expected_replica_identity);
+      },
+      MonoDelta::FromSeconds(60), "Wait for replica identity to match");
+}
+
+Result<bool> PgDdlAtomicityTestBase::CheckIfReplicaIdentityMatches(
+    client::YBClient* client, const string& database_name, const string& table_name,
+    PgReplicaIdentity expected_replica_identity) {
+  const auto table_id = VERIFY_RESULT(GetTableIdByTableName(client, database_name, table_name));
+
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  RETURN_NOT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  RETURN_NOT_OK(sync.Wait());
+  PgReplicaIdentity replica_identity = table_info->schema.table_properties().replica_identity();
+  return (expected_replica_identity == replica_identity);
+}
+
 Status PgDdlAtomicityTestBase::VerifyTableRows(PGConn* conn,
                                                const vector<string>& tables,
                                                const int expected_rows) {

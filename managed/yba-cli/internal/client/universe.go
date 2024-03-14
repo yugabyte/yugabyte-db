@@ -35,15 +35,19 @@ func (a *AuthAPIClient) CreateAllClusters() (
 
 // UpgradeSoftware upgrades the universe YugabyteDB version
 func (a *AuthAPIClient) UpgradeSoftware(uUUID string) (
-	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest,
-) {
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest) {
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpgradeGFlags upgrades the universe gflags
+func (a *AuthAPIClient) UpgradeGFlags(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeGFlagsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // RestartUniverse for restart operation
 func (a *AuthAPIClient) RestartUniverse(uUUID string) (
-	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest,
-) {
+	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest) {
 	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 

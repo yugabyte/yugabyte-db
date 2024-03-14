@@ -124,7 +124,7 @@ class TableCache {
   yb::Result<TableReaderWithHandle> GetTableReader(
       const EnvOptions& toptions, const InternalKeyComparatorPtr& internal_comparator,
       const FileDescriptor& fd, QueryId query_id, bool no_io, HistogramImpl* file_read_hist,
-      bool skip_filters);
+      bool skip_filters, Statistics* statistics = nullptr);
 
   // Find table reader
   // @param skip_filters Disables loading/accessing the filter block
@@ -134,7 +134,8 @@ class TableCache {
                    const QueryId query_id,
                    const bool no_io = false, bool record_read_stats = true,
                    HistogramImpl* file_read_hist = nullptr,
-                   bool skip_filters = false);
+                   bool skip_filters = false,
+                   Statistics* statistics = nullptr);
 
   // Get TableReader from a cache handle.
   TableReader* GetTableReaderFromHandle(Cache::Handle* handle);

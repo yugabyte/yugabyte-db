@@ -81,7 +81,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
@@ -245,10 +245,11 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Status CloneAndWait(
-      const std::string& schedule_id, const std::string& target_namespace_name,
+      const std::string& source_namespace, const std::string& target_namespace_name,
       const MonoDelta& timeout, auto... other_clone_args) {
     auto out = VERIFY_RESULT(CallJsonAdmin(
-        "clone_from_snapshot_schedule", schedule_id, target_namespace_name, other_clone_args...));
+        "clone_namespace", source_namespace, target_namespace_name,
+        other_clone_args...));
     std::string source_namespace_id = VERIFY_RESULT(
         Get(out, "source_namespace_id")).get().GetString();
     std::string seq_no = VERIFY_RESULT(Get(out, "seq_no")).get().GetString();
@@ -862,7 +863,8 @@ TEST_F(YbAdminSnapshotScheduleTest, EditIntervalLargerThanRetention) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
   auto session = client_->NewSession(60s);
   constexpr int rows_per_iter = 5;
 
@@ -906,7 +908,8 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
   ASSERT_OK(CloneAndWait(
-      schedule_id, target_namespace_name, 30s /* timeout */, restore_time.ToFormattedString()));
+      kSourceNamespace, target_namespace_name, 30s /* timeout */,
+      restore_time.ToFormattedString()));
   auto target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   auto target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), rows_per_iter);
@@ -915,14 +918,14 @@ TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
   auto secs = (ASSERT_RESULT(WallClock()->Now()).time_point - restore_time.ToInt64()) / 1000000;
   target_namespace_name = "minus_interval_namespace";
   ASSERT_OK(CloneAndWait(
-      schedule_id, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
+      kSourceNamespace, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), rows_per_iter);
 
   // No timestamp format (clone as of now). Should have both sets of rows.
   target_namespace_name = "no_timestamp_namespace";
-  ASSERT_OK(CloneAndWait(schedule_id, target_namespace_name, 30s /* timeout */));
+  ASSERT_OK(CloneAndWait(kSourceNamespace, target_namespace_name, 30s /* timeout */));
   target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
   target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
   ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);

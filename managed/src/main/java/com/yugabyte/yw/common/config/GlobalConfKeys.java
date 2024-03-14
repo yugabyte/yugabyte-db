@@ -1320,4 +1320,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGcpProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.gcp_provider_validation",
+          ScopeType.GLOBAL,
+          "GCP provider validation",
+          "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

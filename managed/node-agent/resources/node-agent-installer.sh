@@ -55,6 +55,14 @@ popd () {
   command popd > /dev/null
 }
 
+run_as_super_user() {
+  if [ $(id -u) = 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
 export_path() {
   if [[ ":$PATH:" != *":$1:"* ]]; then
     PATH="$1${PATH:+":$PATH"}"
@@ -135,8 +143,8 @@ uninstall_node_agent() {
   local RUNNING=""
   RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
   if [ -n "$RUNNING" ]; then
-    sudo systemctl stop yb-node-agent
-    sudo systemctl disable yb-node-agent
+    run_as_super_user systemctl stop yb-node-agent
+    run_as_super_user systemctl disable yb-node-agent
   fi
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
@@ -213,7 +221,9 @@ setup_symlink() {
 check_sudo_access() {
   SUDO_ACCESS="false"
   set +e
-  if sudo -n pwd >/dev/null 2>&1; then
+  if [ $(id -u) = 0 ]; then
+    SUDO_ACCESS="true"
+  elif sudo -n pwd >/dev/null 2>&1; then
     SUDO_ACCESS="true"
   fi
   if [ "$OS" = "Linux" ]; then
@@ -225,10 +235,10 @@ check_sudo_access() {
 modify_firewall() {
   set +e
   if command -v firewall-cmd >/dev/null 2>&1; then
-    is_running=$(sudo firewall-cmd --state 2> /dev/null)
+    is_running=$(run_as_super_user firewall-cmd --state 2> /dev/null)
     if [ "$is_running" = "running" ]; then
-        sudo firewall-cmd --add-port=${NODE_PORT}/tcp --permanent \
-        && sudo systemctl restart firewalld
+        run_as_super_user firewall-cmd --add-port=${NODE_PORT}/tcp --permanent
+        run_as_super_user systemctl restart firewalld
     fi
   fi
   set -e
@@ -241,27 +251,27 @@ modify_selinux() {
       # The changes made with chcon are temporary in the sense that the context of the file
       # altered with chcon goes back to default when restorecon is run.
       # It should not even try to reach out to the repo.
-      sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
+      run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
     else
       if command -v yum >/dev/null 2>&1; then
-        sudo yum install -y policycoreutils-python-utils
+        run_as_super_user yum install -y policycoreutils-python-utils
       elif command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -y
-        sudo apt-get install -y semanage-utils
+        run_as_super_user apt-get update -y
+        run_as_super_user apt-get install -y semanage-utils
       fi
     fi
   fi
   # Check if semanage was installed in the previous steps.
   if command -v semanage >/dev/null 2>&1; then
-    sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
+    run_as_super_user semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+      run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
     fi
-    sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+    run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+      run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
-    sudo restorecon -ir "$NODE_AGENT_HOME"
+    run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
   fi
   set -e
 }
@@ -272,7 +282,7 @@ install_systemd_service() {
   fi
   modify_firewall
   echo "* Installing Node Agent Systemd Service"
-  sudo tee "$SYSTEMD_PATH/$SERVICE_NAME"  <<-EOF
+  run_as_super_user tee "$SYSTEMD_PATH/$SERVICE_NAME"  <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
@@ -291,10 +301,10 @@ install_systemd_service() {
   WantedBy=multi-user.target
 EOF
   echo "* Starting the systemd service"
-  sudo systemctl daemon-reload
+  run_as_super_user systemctl daemon-reload
   #To enable the node-agent service on reboot.
-  sudo systemctl enable yb-node-agent
-  sudo systemctl restart yb-node-agent
+  run_as_super_user systemctl enable yb-node-agent
+  run_as_super_user systemctl restart yb-node-agent
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"
@@ -314,6 +324,8 @@ Options:
     Yugabyte Anywhere URL.
   -t, --api_token (REQUIRED with install command)
     Api token to download the build files.
+  -ip, --node_ip (Required for uninstall command)
+    Server IP.
   -p, --node_port (OPTIONAL with install command)
     Server port.
   --user (REQUIRED only for install_service command)
@@ -421,8 +433,8 @@ main() {
         set +e
         RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
         if [ -n "$RUNNING" ]; then
-          sudo systemctl stop yb-node-agent
-          sudo systemctl disable yb-node-agent
+          run_as_super_user systemctl stop yb-node-agent
+          run_as_super_user systemctl disable yb-node-agent
         fi
         set -e
       fi

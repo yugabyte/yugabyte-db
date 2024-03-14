@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -43,6 +44,7 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class RollbackUpgradeTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -52,6 +54,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
@@ -59,12 +62,14 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -75,14 +80,16 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
@@ -103,6 +110,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setup() throws Exception {
     rollbackUpgrade.setTaskUUID(UUID.randomUUID());
+    setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     setLeaderlessTabletsMock();
@@ -144,6 +152,21 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
 
       for (int nodeIdx : nodeOrder) {
         String nodeName = String.format("host-n%d", nodeIdx);
+        int pos = position;
+        for (TaskType type : taskSequence) {
+          log.debug("exp {} {} - {}", nodeName, pos++, type);
+        }
+        pos = position;
+        for (TaskType type : taskSequence) {
+          List<TaskInfo> tasks = subTasksByPosition.get(pos);
+          TaskInfo task = tasks.get(0);
+          String curNodeName = "???";
+          if (task.getDetails().get("nodeName") != null) {
+            curNodeName = task.getDetails().get("nodeName").asText();
+          }
+          TaskType taskType = task.getTaskType();
+          log.debug("act {} {} - {}", curNodeName, pos++, taskType);
+        }
         for (TaskType type : taskSequence) {
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
@@ -291,6 +314,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
@@ -298,12 +322,12 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
+    position = assertSequence(subTasksByPosition, MASTER, position, true, false);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     position = assertSequence(subTasksByPosition, MASTER, position, true, true);
-    position = assertSequence(subTasksByPosition, MASTER, position, true, false);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(105, position);
+    assertEquals(124, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -339,9 +363,9 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
+    position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     position = assertSequence(subTasksByPosition, MASTER, position, false, true);
-    position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
     assertEquals(20, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -365,13 +389,16 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     mockDBServerVersion(
         "2.21.0.0-b2", masterTserverNodesCount - 1, "2.21.0.0-b1", masterTserverNodesCount + 1);
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(29)).nodeCommand(any(), any());
+    // 4 download + 4x3 (stop/config/start tserver) + 3x3 (stop/config/start master)
+    // + 1x2 (stop inactive master + config)
+    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);

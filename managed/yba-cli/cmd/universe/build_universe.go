@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -474,48 +475,13 @@ func buildClusters(
 	if err != nil {
 		return nil, err
 	}
-	masterGFlags := make(map[string]interface{}, 0)
-	if len(masterGFlagsString) != 0 {
-		for _, masterGFlagPair := range strings.Split(masterGFlagsString, ",") {
-			kvp := strings.Split(masterGFlagPair, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in master gflag.",
-						formatter.RedColor))
-			}
-			masterGFlags[kvp[0]] = kvp[1]
-		}
-	}
+	masterGFlags := upgrade.FetchMasterGFlags(masterGFlagsString)
 
-	tserverGFlagsList := make([]map[string]interface{}, 0)
 	tserverGFlagsStringList, err := cmd.Flags().GetStringArray("tserver-gflags")
 	if err != nil {
 		return nil, err
 	}
-	for _, tserverGFlagsString := range tserverGFlagsStringList {
-		tserverGFlags := make(map[string]interface{}, 0)
-		for _, tserverGFlagPair := range strings.Split(tserverGFlagsString, ",") {
-			kvp := strings.Split(tserverGFlagPair, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in tserver gflag.",
-						formatter.RedColor))
-			}
-			tserverGFlags[kvp[0]] = kvp[1]
-		}
-		tserverGFlagsList = append(tserverGFlagsList, tserverGFlags)
-	}
-	if len(tserverGFlagsList) == 0 {
-		for i := 0; i < noOfClusters; i++ {
-			tserverGFlagsList = append(tserverGFlagsList, make(map[string]interface{}, 0))
-		}
-	}
-	tserverGFlagsListLen := len(tserverGFlagsList)
-	if tserverGFlagsListLen < noOfClusters {
-		for i := 0; i < noOfClusters-tserverGFlagsListLen; i++ {
-			tserverGFlagsList = append(tserverGFlagsList, tserverGFlagsList[0])
-		}
-	}
+	tserverGFlagsList := upgrade.FetchTServerGFlags(tserverGFlagsStringList, noOfClusters)
 
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
@@ -564,8 +530,8 @@ func buildClusters(
 				PreferredRegion:   util.GetStringPointer(preferredRegions[i]),
 				AwsArnString:      util.GetStringPointer(awsARNString),
 
-				MasterGFlags:      util.StringMap(masterGFlags),
-				TserverGFlags:     util.StringMap(tserverGFlagsList[i]),
+				MasterGFlags:      util.StringtoStringMap(masterGFlags),
+				TserverGFlags:     util.StringtoStringMap(tserverGFlagsList[i]),
 				UniverseOverrides: util.GetStringPointer(k8sUniverseOverrides),
 				AzOverrides:       util.StringtoStringMap(k8sAZOverridesMap),
 			},
