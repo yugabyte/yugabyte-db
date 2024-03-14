@@ -1363,6 +1363,18 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
+##### yb_bnl_batch_size
+
+Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Default: 1024
+
+##### yb_enable_batchednl
+
+Enable or disable the query planner's use of Batched Nested Loop Join.
+
+Default: true
+
 ##### yb_fetch_size_limit
 
 Maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
@@ -1380,6 +1392,12 @@ Maximum number of rows returned in one response when the query layer fetches row
 See also the [--ysql_yb_fetch_row_limit](#ysql_yb_fetch_row_limit) flag. If the flag is set, this parameter takes precedence.
 
 Default: 1024
+
+##### yb_use_hash_splitting_by_default
+
+When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or Index to be stored in ascending order.
+
+Default: true
 
 ## Advanced flags
 
