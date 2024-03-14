@@ -426,7 +426,10 @@ bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
 
     if (ContainsKey(tags, FlagTag::kPreview) && (flag.current_value != flag.default_value)) {
       if (!ContainsKey(allowed_flags, flag.name)) {
-        (*err_msg) = Format("Preview flag '$0' not found in the allow list", flag.name);
+        (*err_msg) = Format(
+            "Flag '$0' protects a feature that is currently in preview. In order for it to be "
+            "modified '$0' must be set in '--allowed_preview_flags_csv'",
+            flag.name);
         return false;
       }
     }
