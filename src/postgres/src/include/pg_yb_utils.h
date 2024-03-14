@@ -630,7 +630,7 @@ extern bool yb_test_table_rewrite_keep_old_table;
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
-extern bool ddl_rollback_enabled;
+extern bool yb_ddl_rollback_enabled;
 
 extern bool yb_use_hash_splitting_by_default;
 
