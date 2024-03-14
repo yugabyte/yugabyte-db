@@ -1,0 +1,163 @@
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/data/data.csv'
+LOAD 'pg_hint_plan';
+SET search_path TO public;
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+SET pg_hint_plan.enable_hint TO on;
+CREATE EXTENSION file_fdw;
+CREATE SERVER file_server FOREIGN DATA WRAPPER file_fdw;
+CREATE USER MAPPING FOR PUBLIC SERVER file_server;
+CREATE FOREIGN TABLE ft1 (id int, val int) SERVER file_server OPTIONS (format 'csv', filename :'filename');
+-- foreign table test
+SELECT * FROM ft1;
+ id | val 
+----+-----
+  1 |   1
+  2 |   2
+  3 |   3
+  4 |   4
+  5 |   5
+  6 |   6
+  7 |   7
+  8 |   8
+  9 |   9
+ 10 |  10
+(10 rows)
+
+\t
+\o results/ut-fdw.tmpout
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+\o
+\! sql/maskout2.sh results/ut-fdw.tmpout
+ Nested Loop
+   Join Filter: (ft_1.id = t1.c1)
+   ->  Nested Loop
+         Join Filter: (ft_1.id = ft_2.id)
+         ->  Foreign Scan on ft1 ft_1
+               Foreign File:  (snip..)
+         ->  Foreign Scan on ft1 ft_2
+               Foreign File:  (snip..)
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = ft_2.id)
+
+----
+---- No. S-1-5 object type for the hint
+----
+-- No. S-1-5-6
+\o results/ut-fdw.tmpout
+/*+SeqScan(t1)SeqScan(ft_1)SeqScan(ft_2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+SeqScan(ft_1)
+SeqScan(ft_2)
+duplication hint:
+error hint:
+
+\o
+\! sql/maskout2.sh results/ut-fdw.tmpout;
+ Nested Loop
+   Join Filter: (t1.c1 = ft_2.id)
+   ->  Hash Join
+         Hash Cond: (t1.c1 = ft_1.id)
+         ->  Seq Scan on t1
+         ->  Hash
+               ->  Foreign Scan on ft1 ft_1
+                     Foreign File:  (snip..)
+   ->  Foreign Scan on ft1 ft_2
+         Foreign File:  (snip..)
+
+----
+---- No. J-1-6 object type for the hint
+----
+-- No. J-1-6-6
+\o results/ut-fdw.tmpout
+/*+MergeJoin(ft_1 ft_2)Leading(ft_1 ft_2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(ft_1 ft_2)
+Leading(ft_1 ft_2 t1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sql/maskout2.sh results/ut-fdw.tmpout;
+ Nested Loop
+   Join Filter: (ft_1.id = t1.c1)
+   ->  Merge Join
+         Merge Cond: (ft_1.id = ft_2.id)
+         ->  Sort
+               Sort Key: ft_1.id
+               ->  Foreign Scan on ft1 ft_1
+                     Foreign File:  (snip..)
+         ->  Sort
+               Sort Key: ft_2.id
+               ->  Foreign Scan on ft1 ft_2
+                     Foreign File:  (snip..)
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = ft_2.id)
+
+----
+---- No. L-1-6 object type for the hint
+----
+-- No. L-1-6-6
+\o results/ut-fdw.tmpout
+/*+Leading(ft_1 ft_2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(ft_1 ft_2 t1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sql/maskout2.sh results/ut-fdw.tmpout;
+ Nested Loop
+   Join Filter: (ft_1.id = t1.c1)
+   ->  Nested Loop
+         Join Filter: (ft_1.id = ft_2.id)
+         ->  Foreign Scan on ft1 ft_1
+               Foreign File:  (snip..)
+         ->  Foreign Scan on ft1 ft_2
+               Foreign File:  (snip..)
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = ft_2.id)
+
+----
+---- No. R-1-6 object type for the hint
+----
+-- No. R-1-6-6
+\o results/ut-fdw.tmpout
+/*+Rows(ft_1 ft_2 #1)Leading(ft_1 ft_2 t1)*/
+EXPLAIN SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(ft_1 ft_2 t1)
+Rows(ft_1 ft_2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sql/maskout.sh results/ut-fdw.tmpout | sql/maskout2.sh
+ Nested Loop  (cost=xxx..xxx rows=1 width=xxx)
+   Join Filter: (ft_1.id = t1.c1)
+   ->  Nested Loop  (cost=xxx..xxx rows=1 width=xxx)
+         Join Filter: (ft_1.id = ft_2.id)
+         ->  Foreign Scan on ft1 ft_1  (cost=xxx..xxx rows=1 width=xxx)
+               Foreign File:  (snip..)
+               Foreign File Size: 42 b
+         ->  Foreign Scan on ft1 ft_2  (cost=xxx..xxx rows=1 width=xxx)
+               Foreign File:  (snip..)
+               Foreign File Size: 42 b
+   ->  Index Scan using t1_i1 on t1  (cost=xxx..xxx rows=1 width=xxx)
+         Index Cond: (c1 = ft_2.id)
+
+\! rm results/ut-fdw.tmpout

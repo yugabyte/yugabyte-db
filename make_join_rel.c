@@ -12,8 +12,8 @@
  *     make_join_rel()
  *     populate_joinrel_with_paths()
  *
- * Portions Copyright (c) 2013-2020, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -126,7 +126,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	joinrel = build_join_rel(root, joinrelids, rel1, rel2, sjinfo,
 							 &restrictlist);
 
-	/* !!! START: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
+	/* !!! START: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
 	{
 		RowsHint   *rows_hint = NULL;
 		int			i;
@@ -162,7 +162,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 				/*
 				 * If the rows_hint's target relids is not a subset of both of
 				 * component rels and is a subset of this joinrel, ths hint's
-				 * targets spread over both component rels. This means that
+				 * targets spread over both component rels. This menas that
 				 * this hint has been never applied so far and this joinrel is
 				 * the first (and only) chance to fire in current join tree.
 				 * Only the multiplication hint has the cumulative nature so we
@@ -176,7 +176,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		{
 			/*
 			 * If a hint just for me is found, no other adjust method is
-			 * useless, but this cannot be more than twice becuase this joinrel
+			 * useles, but this cannot be more than twice becuase this joinrel
 			 * is already adjusted by this hint.
 			 */
 			if (justforme->base.state == HINT_STATE_NOTUSED)
@@ -196,13 +196,13 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 				 */
 				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
 										   restrictlist);
-				
+
 				joinrel->rows = adjust_rows(joinrel->rows, domultiply);
 			}
-			
+
 		}
 	}
-	/* !!! END: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
+	/* !!! END: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
 
 	/*
 	 * If we've already proven this join is empty, we needn't consider any

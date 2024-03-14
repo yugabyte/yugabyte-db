@@ -829,3 +829,10 @@ EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1
 \o
 \! sql/maskout.sh results/ut-J.tmpout
 \! rm results/ut-J.tmpout
+
+-- Memoize
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id = t3.id;
+/*+ nomemoize(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id = t3.id;  -- doesn't work
+/*+ nomemoize(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val and t2.id = t3.id;

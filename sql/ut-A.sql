@@ -515,7 +515,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 ----
 ---- Don't test postgresql itself.
 -- No. A-8-1-1
--- SET ROLE super_user;
+-- SET ROLE regress_super_user;
 -- SET pg_hint_plan.debug_print TO off;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
@@ -534,7 +534,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- SHOW pg_hint_plan.parse_messages;
 -- 
 -- -- No. A-8-1-2
--- SET ROLE normal_user;
+-- SET ROLE regress_normal_user;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
 -- SHOW pg_hint_plan.parse_messages;
@@ -683,7 +683,7 @@ SET client_min_messages TO error;
 SET pg_hint_plan.parse_messages TO error;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
-SET client_min_messages TO fatal;
+SET client_min_messages TO error;
 /*+Set*/SELECT 1;
 
 -- No. A-8-4-11
@@ -1241,20 +1241,25 @@ CREATE INDEX ON s1.tpc(a);
 PREPARE p1 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ IndexScan(tpc) */PREPARE p2 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ SeqScan(tpc) */PREPARE p3(int) AS SELECT * FROM s1.tpc WHERE a = $1;
-EXPLAIN EXECUTE p1;
-EXPLAIN EXECUTE p2;
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p1;
+EXPLAIN (COSTS false) EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p3(500);
 -- The DROP invalidates the plan caches
 DROP TABLE s1.tpc;
-EXPLAIN EXECUTE p1;
-EXPLAIN EXECUTE p2;
-EXPLAIN EXECUTE p3(500);
 CREATE TABLE s1.tpc AS SELECT a FROM generate_series(0, 999) a;
 CREATE INDEX ON s1.tpc(a);
-EXPLAIN EXECUTE p1;
-EXPLAIN EXECUTE p2;
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p1;
+EXPLAIN (COSTS false) EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p3(500);
 DEALLOCATE p1;
 DEALLOCATE p2;
 DEALLOCATE p3;
 DROP TABLE s1.tpc;
+
+--No.14-1-2 PREPARE query with array parameters
+PREPARE test_query(numeric[]) AS
+  /*+ MergeJoin(t1 t2) */ WITH test AS
+    (SELECT 1 AS x)
+  SELECT t1.* FROM test t1, test t2
+    WHERE t1.x = ANY($1) AND t1.x = t2.x;
+EXPLAIN (COSTS false) EXECUTE test_query(array[1,2,3]);

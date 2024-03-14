@@ -1616,7 +1616,7 @@ DETAIL:  Nested block comments are not supported.
 ----
 ---- Don't test postgresql itself.
 -- No. A-8-1-1
--- SET ROLE super_user;
+-- SET ROLE regress_super_user;
 -- SET pg_hint_plan.debug_print TO off;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
@@ -1635,7 +1635,7 @@ DETAIL:  Nested block comments are not supported.
 -- SHOW pg_hint_plan.parse_messages;
 -- 
 -- -- No. A-8-1-2
--- SET ROLE normal_user;
+-- SET ROLE regress_normal_user;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
 -- SHOW pg_hint_plan.parse_messages;
@@ -2014,7 +2014,7 @@ SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 ERROR:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
-SET client_min_messages TO fatal;
+SET client_min_messages TO error;
 /*+Set*/SELECT 1;
 ERROR:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
@@ -3239,10 +3239,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3256,13 +3257,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3273,7 +3277,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
@@ -3294,10 +3298,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3311,13 +3316,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3328,7 +3336,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -3368,10 +3376,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3385,13 +3394,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3402,7 +3414,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
@@ -3423,10 +3435,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3440,13 +3453,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3457,7 +3473,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 EXPLAIN (COSTS false) EXECUTE p1;
              QUERY PLAN             
@@ -3486,10 +3502,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3503,13 +3520,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3520,7 +3540,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 EXPLAIN (COSTS false) EXECUTE p2;
@@ -3572,10 +3592,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3589,13 +3610,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3606,7 +3630,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 -- No. A-12-1-4
 -- No. A-12-2-4
@@ -3624,10 +3648,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3641,13 +3666,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3658,7 +3686,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 SET pg_hint_plan.parse_messages TO error;
 EXPLAIN (COSTS false) EXECUTE p2;
@@ -3688,10 +3716,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3705,13 +3734,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3722,7 +3754,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 DEALLOCATE p1;
 SET pg_hint_plan.parse_messages TO LOG;
@@ -3767,10 +3799,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3784,13 +3817,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3801,7 +3837,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -3838,10 +3874,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3855,13 +3892,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3872,7 +3912,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          
@@ -3911,10 +3951,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -3928,13 +3969,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -3945,7 +3989,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 BEGIN;
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
@@ -3985,10 +4029,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4002,13 +4047,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -4019,7 +4067,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          
@@ -4059,10 +4107,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4076,13 +4125,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -4093,7 +4145,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -4134,10 +4186,11 @@ SELECT name, setting FROM settings;
  constraint_exclusion           | partition
  cursor_tuple_fraction          | 0.1
  default_statistics_target      | 100
- force_parallel_mode            | off
  from_collapse_limit            | 8
- jit                            | off
+ jit                            | on
  join_collapse_limit            | 8
+ plan_cache_mode                | auto
+ recursive_worktable_factor     | 10
  cpu_index_tuple_cost           | 0.005
  cpu_operator_cost              | 0.0025
  cpu_tuple_cost                 | 0.01
@@ -4151,13 +4204,16 @@ SELECT name, setting FROM settings;
  parallel_tuple_cost            | 0.1
  random_page_cost               | 4
  seq_page_cost                  | 1
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | off
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | off
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -4168,7 +4224,7 @@ SELECT name, setting FROM settings;
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(45 rows)
+(49 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
           QUERY PLAN          
@@ -4716,14 +4772,14 @@ CREATE INDEX ON s1.tpc(a);
 PREPARE p1 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ IndexScan(tpc) */PREPARE p2 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ SeqScan(tpc) */PREPARE p3(int) AS SELECT * FROM s1.tpc WHERE a = $1;
-EXPLAIN EXECUTE p1;
-                      QUERY PLAN                      
-------------------------------------------------------
- Seq Scan on tpc  (cost=0.00..17.50 rows=333 width=4)
+EXPLAIN (COSTS false) EXECUTE p1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on tpc
    Filter: (a < 999)
 (2 rows)
 
-EXPLAIN EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p2;
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(tpc)
@@ -4731,13 +4787,13 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using tpc_a_idx on tpc  (cost=0.28..34.10 rows=333 width=4)
+            QUERY PLAN             
+-----------------------------------
+ Index Scan using tpc_a_idx on tpc
    Index Cond: (a < 999)
 (2 rows)
 
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p3(500);
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(tpc)
@@ -4745,30 +4801,24 @@ not used hint:
 duplication hint:
 error hint:
 
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on tpc  (cost=0.00..17.50 rows=5 width=4)
+     QUERY PLAN      
+---------------------
+ Seq Scan on tpc
    Filter: (a = 500)
 (2 rows)
 
 -- The DROP invalidates the plan caches
 DROP TABLE s1.tpc;
-EXPLAIN EXECUTE p1;
-ERROR:  relation "s1.tpc" does not exist
-EXPLAIN EXECUTE p2;
-ERROR:  relation "s1.tpc" does not exist
-EXPLAIN EXECUTE p3(500);
-ERROR:  relation "s1.tpc" does not exist
 CREATE TABLE s1.tpc AS SELECT a FROM generate_series(0, 999) a;
 CREATE INDEX ON s1.tpc(a);
-EXPLAIN EXECUTE p1;
-                      QUERY PLAN                      
-------------------------------------------------------
- Seq Scan on tpc  (cost=0.00..17.50 rows=333 width=4)
+EXPLAIN (COSTS false) EXECUTE p1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on tpc
    Filter: (a < 999)
 (2 rows)
 
-EXPLAIN EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p2;
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(tpc)
@@ -4776,13 +4826,13 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Index Scan using tpc_a_idx on tpc  (cost=0.28..34.10 rows=333 width=4)
+            QUERY PLAN             
+-----------------------------------
+ Index Scan using tpc_a_idx on tpc
    Index Cond: (a < 999)
 (2 rows)
 
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p3(500);
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(tpc)
@@ -4790,9 +4840,9 @@ not used hint:
 duplication hint:
 error hint:
 
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on tpc  (cost=0.00..17.50 rows=5 width=4)
+     QUERY PLAN      
+---------------------
+ Seq Scan on tpc
    Filter: (a = 500)
 (2 rows)
 
@@ -4800,3 +4850,32 @@ DEALLOCATE p1;
 DEALLOCATE p2;
 DEALLOCATE p3;
 DROP TABLE s1.tpc;
+--No.14-1-2 PREPARE query with array parameters
+PREPARE test_query(numeric[]) AS
+  /*+ MergeJoin(t1 t2) */ WITH test AS
+    (SELECT 1 AS x)
+  SELECT t1.* FROM test t1, test t2
+    WHERE t1.x = ANY($1) AND t1.x = t2.x;
+EXPLAIN (COSTS false) EXECUTE test_query(array[1,2,3]);
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.x = t2.x)
+   CTE test
+     ->  Result
+   ->  Sort
+         Sort Key: t1.x
+         ->  CTE Scan on test t1
+               Filter: ((x)::numeric = ANY ('{1,2,3}'::numeric[]))
+   ->  Sort
+         Sort Key: t2.x
+         ->  CTE Scan on test t2
+(11 rows)
+

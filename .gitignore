@@ -1,9 +1,11 @@
 # Global excludes across all subdirectories
 *.o
 *.so
+*.bc
 tags
 regression.*
 *.tar.gz
+*~
 
 # Generated subdirectories
 /.deps/
@@ -11,3 +13,7 @@ regression.*
 /results/
 /tmp_check/
 /RPMS/
+
+# Documentation artifacts
+docs/_build
+docs/locale/**/*.mo

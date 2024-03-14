@@ -63,7 +63,7 @@ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 ----
 
 -- No. G-2-2-1
-SET ROLE super_user;
+SET ROLE regress_super_user;
 /*+Set(block_size 16384)*/
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
@@ -86,8 +86,8 @@ RESET ROLE;
 
 -- No. G-2-2-6
 GRANT ALL ON SCHEMA s1 TO PUBLIC;
-GRANT SELECT ON ALL TABLES IN SCHEMA s1 TO normal_user;
-SET ROLE normal_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA s1 TO regress_normal_user;
+SET ROLE regress_normal_user;
 /*+Set(log_min_messages WARNING)*/
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
@@ -96,7 +96,7 @@ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 RESET ROLE;
-REVOKE SELECT ON ALL TABLES IN SCHEMA s1 FROM normal_user;
+REVOKE SELECT ON ALL TABLES IN SCHEMA s1 FROM regress_normal_user;
 REVOKE ALL ON SCHEMA s1 FROM PUBLIC;
 
 ----
