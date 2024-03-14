@@ -63,6 +63,7 @@ public class QueryLatencyDetector extends AnomalyDetectorBase {
             .setEnd(context.getEndTime())
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
+            .setReplaceNaN(false)
             .setFilters(
                 ImmutableMap.of(
                     GraphFilter.universeUuid,
