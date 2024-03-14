@@ -1,6 +1,6 @@
 -- Tests for nlssort
 \set ECHO none
-  name
+  name  
 --------
  brown
  Purple
@@ -8,7 +8,7 @@
  yellow
 (4 rows)
 
-  name
+  name  
 --------
  Purple
  brown
@@ -16,19 +16,19 @@
  yellow
 (4 rows)
 
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
 ERROR:  failed to set the requested LC_COLLATE value [invalid]
 CONTEXT:  SQL function "nlssort" statement 1
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
-  name
+  name  
 --------
  Purple
  brown
@@ -36,12 +36,12 @@ CONTEXT:  SQL function "nlssort" statement 1
  yellow
 (4 rows)
 
- set_nls_sort
+ set_nls_sort 
 --------------
-
+ 
 (1 row)
 
-  name
+  name  
 --------
  brown
  Purple
@@ -49,11 +49,12 @@ CONTEXT:  SQL function "nlssort" statement 1
  yellow
 (4 rows)
 
-  name
+  name  
 --------
  brown
  Purple
  red
  yellow
-
+ 
 (5 rows)
+
