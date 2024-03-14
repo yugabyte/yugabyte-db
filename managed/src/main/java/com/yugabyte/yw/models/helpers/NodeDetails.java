@@ -300,6 +300,8 @@ public class NodeDetails {
     clone.nodeUuid = this.nodeUuid;
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
+    clone.sshUserOverride = this.sshUserOverride;
+    clone.sshPortOverride = this.sshPortOverride;
     clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
     clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
     clone.dedicatedTo = this.dedicatedTo;
