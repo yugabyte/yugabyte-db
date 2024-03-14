@@ -483,6 +483,7 @@ analyze prtx1;
 analyze prtx2;
 
 set enable_indexscan = off;
+set enable_bitmapscan = on;
 
 explain (costs off)
 select * from prtx1
@@ -507,3 +508,4 @@ where not exists (select 1 from prtx2
   and a<20 and c=91;
 
 reset enable_indexscan;
+reset enable_bitmapscan;
