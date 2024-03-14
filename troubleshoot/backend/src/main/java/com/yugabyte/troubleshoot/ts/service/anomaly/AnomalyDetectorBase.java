@@ -84,6 +84,7 @@ public abstract class AnomalyDetectorBase implements AnomalyDetector {
             .setEnd(context.getEndTime())
             .setStepSeconds(context.getStepSeconds())
             .setSettings(settings)
+            .setReplaceNaN(false)
             .setFilters(
                 ImmutableMap.of(
                     GraphFilter.universeUuid,

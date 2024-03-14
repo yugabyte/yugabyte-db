@@ -160,9 +160,8 @@ public class GraphAnomalyDetectionService {
       Double value = graphPoint.getY();
       Double baseline = beselineGraph.getPoints().get(i).getY();
       if (value.isNaN() || value.isInfinite()) {
-        // For simplicity, we assume this value as 0 -
-        // as that's how we show that on the graph typically;
-        value = 0.0;
+        // NaN mens we don't know the value - so we just ignore this data point and move on.
+        continue;
       }
       Long timestamp = graphPoint.getX();
       if (currentWindow.isEmpty()) {
