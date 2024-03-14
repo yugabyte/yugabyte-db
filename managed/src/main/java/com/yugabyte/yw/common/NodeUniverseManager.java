@@ -570,6 +570,37 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
+   * Try to run a simple command like ls on the remote node to see if it is responsive. If
+   * unresponsive for more than `timeoutSecs`, return false.
+   *
+   * @param node
+   * @param universe
+   * @param timeoutSecs
+   * @return
+   */
+  public boolean isNodeReachable(NodeDetails node, Universe universe, long timeoutSecs) {
+    List<String> params = new ArrayList<>();
+    params.add("check_file_exists");
+    params.add("master/logs");
+
+    ShellProcessContext context =
+        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSecs).build();
+
+    ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params, context);
+
+    if (!scriptOutput.isSuccess()) {
+      log.warn(
+          "Node '{}' is unreachable for '{}' sec, or threw an error: '{}'.",
+          node.getNodeName(),
+          timeoutSecs,
+          scriptOutput.getMessage());
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  /**
    * Gets a list of all the absolute file paths at a given remote directory
    *
    * @param node
