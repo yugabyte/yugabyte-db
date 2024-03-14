@@ -164,6 +164,7 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   uint64_t GetSharedAuthKey() const;
+  const unsigned char *GetLocalTserverUuid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,

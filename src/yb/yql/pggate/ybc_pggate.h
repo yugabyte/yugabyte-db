@@ -74,6 +74,9 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
+// Return UUID of the local tserver
+const unsigned char* YBCGetLocalTserverUuid();
+
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 

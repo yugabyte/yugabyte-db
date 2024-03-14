@@ -1,3 +1,10 @@
+-- This test's output has temporary tables' schema names that contain the
+-- tserver uuid, which can lead to unstable results.
+-- Use replace_temp_schema_name to change the schema name to pg_temp_x so that
+-- the result is stable.
+select current_setting('data_directory') || '/describe.out' as desc_output_file
+\gset
+\set replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'pg_temp_x\', \'g\')'
 SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 
 -- Test views on temporary tables.
@@ -171,16 +178,25 @@ SELECT * from main_view order by a, b;
 \set QUIET true
 
 -- Describe view should list triggers
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 -- Test dropping view triggers
 DROP TRIGGER instead_of_insert_trig ON main_view;
 DROP TRIGGER instead_of_delete_trig ON main_view;
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 -- Test alter (rename) triggers
 ALTER TRIGGER after_ins_stmt_trig ON main_view RENAME TO after_ins_stmt_trig_new_name;
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 DROP VIEW main_view;
 DROP TABLE main_table;

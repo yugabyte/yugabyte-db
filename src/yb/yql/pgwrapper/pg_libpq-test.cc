@@ -3976,6 +3976,37 @@ TEST_F(PgLibPqTest, DropSequenceTest) {
   ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
 }
 
+// Test to verify backends with the same backend id do not operate on the
+// same temporary table namespace.
+TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
+  const std::string kTableName = "foo";
+  const std::string kTableName2 = "foo2";
+  auto* ts1 = cluster_->tserver_daemons()[0];
+  auto* ts2 = cluster_->tserver_daemons()[1];
+  auto conn1 = ASSERT_RESULT(PGConnBuilder({
+        .host = ts1->bind_host(),
+        .port = ts1->pgsql_rpc_port(),
+      }).Connect());
+  auto conn2 = ASSERT_RESULT(PGConnBuilder({
+        .host = ts2->bind_host(),
+        .port = ts2->pgsql_rpc_port(),
+      }).Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName2));
+  ASSERT_OK(conn2.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (4), (5), (6)", kTableName2));
+
+  ASSERT_OK(conn2.ExecuteFormat("DROP TABLE $0", kTableName));
+  auto rows = ASSERT_RESULT((conn1.FetchFormat("SELECT * FROM $0", kTableName)));
+  for (int i = 0; i < 3; ++i)
+    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(rows.get(), i, 0)), i + 1);
+  conn2.Reset();
+  rows = ASSERT_RESULT((conn1.FetchFormat("SELECT * FROM $0", kTableName2)));
+  for (int i = 0; i < 3; ++i)
+    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(rows.get(), i, 0)), i + 4);
+}
+
 class PgBackendsSessionExpireTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

@@ -1517,6 +1517,10 @@ uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
 
+const unsigned char* YBCGetLocalTserverUuid() {
+  return pgapi->GetLocalTserverUuid();
+}
+
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   // clang-format off
   static YBCPgGFlagsAccessor accessor = {

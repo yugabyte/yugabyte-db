@@ -1877,6 +1877,10 @@ uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
 
+const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
+  return tserver_shared_object_->tserver_uuid();
+}
+
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
