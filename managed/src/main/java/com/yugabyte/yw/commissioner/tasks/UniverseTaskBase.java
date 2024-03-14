@@ -398,7 +398,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final UUID universeUuid;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
-    private final Duration waitForServerTimeout;
+    private final Duration waitForServerReadyTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
@@ -416,7 +416,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
 
-      waitForServerTimeout =
+      waitForServerReadyTimeout =
           confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
     }
 
@@ -432,8 +432,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return followerLagCheckEnabled;
     }
 
-    public Duration getWaitForServerTimeout() {
-      return waitForServerTimeout;
+    public Duration getWaitForServerReadyTimeout() {
+      return waitForServerReadyTimeout;
     }
 
     public void lockUniverse(UUID universeUUID) {
@@ -2087,17 +2087,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param node node for which the check needs to be executed.
    * @param serverType server process type on the node to the check.
-   * @param sleepTimeMs sleep time to wait until server is ready
    * @return SubTaskGroup
    */
-  public SubTaskGroup createWaitForServerReady(
-      NodeDetails node, ServerType serverType, long sleepTimeMs) {
+  public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServerReady");
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.nodeName = node.nodeName;
     params.serverType = serverType;
-    params.waitTimeMs = sleepTimeMs;
+    params.waitTimeMs = getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis();
     WaitForServerReady task = createTask(WaitForServerReady.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -3987,8 +3985,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
       if (sleepTimeFunction != null) {
-        createWaitForServerReady(node, processType, sleepTimeFunction.apply(processType))
-            .setSubTaskGroupType(subGroupType);
+        createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       }
       if (wasStopped && processType == ServerType.TSERVER) {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);

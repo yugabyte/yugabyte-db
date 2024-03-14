@@ -795,14 +795,15 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        createWaitForServerReady(node, serverType, waitTime)
+        createWaitForServerReady(node, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         if (addDelayAfterStartup) {
           createSleepAfterStartupTask(
               taskParams().getUniverseUUID(),
               Collections.singletonList(serverType),
-              KubernetesCommandExecutor.getPodCommandDateKey(podName, commandType));
+              KubernetesCommandExecutor.getPodCommandDateKey(podName, commandType),
+              waitTime);
         }
 
         // If there are no universe keys on the universe, it will have no effect.

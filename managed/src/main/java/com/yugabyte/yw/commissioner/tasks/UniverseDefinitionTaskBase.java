@@ -2823,6 +2823,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .mapToInt(this::getSleepTimeForProcess)
             .max()
             .orElse(-1);
+    return createSleepAfterStartupTask(universeUUID, processTypes, dateKey, sleepTime);
+  }
+
+  protected SubTaskGroup createSleepAfterStartupTask(
+      UUID universeUUID, Collection<ServerType> processTypes, String dateKey, long sleepTime) {
     if (sleepTime <= 0) {
       log.debug("Skipping wait for processes {}", processTypes);
       return null;
