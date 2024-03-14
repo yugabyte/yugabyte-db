@@ -919,6 +919,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ArrayNode regionsList = Json.newArray();
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
+    ArrayNode imageBundlesList = Json.newArray();
+    ObjectNode ybImage = Json.newObject().put("ybImage", "image_id");
+    ObjectNode regions = Json.newObject().set("us-west-2", ybImage);
+    ObjectNode details = Json.newObject().put("arch", "x86_64").set("regions", regions);
+    ObjectNode imageBundle = Json.newObject().put("name", "").set("details", details);
+    imageBundlesList.add(imageBundle);
+    bodyJson.set("imageBundles", imageBundlesList);
     Image image = new Image();
     image.setArchitecture("random_arch");
     image.setRootDeviceType("random_device_type");
