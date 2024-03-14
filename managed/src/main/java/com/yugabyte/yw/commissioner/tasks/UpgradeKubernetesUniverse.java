@@ -249,7 +249,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           ybSoftwareVersion,
-          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           masterChanged,
