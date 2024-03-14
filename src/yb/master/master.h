@@ -212,6 +212,8 @@ class Master : public tserver::DbServerBase {
 
   std::string GetCertificateDetails() override;
 
+  void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
+
  protected:
   Status RegisterServices();
 
