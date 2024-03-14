@@ -29,6 +29,7 @@ func (h *HelperContainer) RunYBAdminFuture(params []string, future chan YBAdminF
         future <- ybAdminFuture
         return
     }
+    h.logger.Infof("Executing yb-admin with params: %v", params)
     cmd := exec.Command(path, params...)
     var out bytes.Buffer
     var stderr bytes.Buffer
