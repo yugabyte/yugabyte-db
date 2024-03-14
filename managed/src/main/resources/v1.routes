@@ -458,6 +458,7 @@ GET    /customers/:cUUID/providers/:pUUID/nodes/list                           c
 POST   /customers/:cUUID/zones/:azUUID/nodes                                   com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/providers/:pUUID/instances/:instanceIP                com.yugabyte.yw.controllers.NodeInstanceController.deleteInstance(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String, request: Request)
 POST   /customers/:cUUID/providers/:pUUID/instances/:instanceIP                com.yugabyte.yw.controllers.NodeInstanceController.detachedNodeAction(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String, request: Request)
+PUT    /customers/:cUUID/providers/:pUUID/instances/:instanceIP/state          com.yugabyte.yw.controllers.NodeInstanceController.updateState(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String, request: Request)
 PUT    /customers/:cUUID/universes/:universeUUID/nodes/:nodeName               com.yugabyte.yw.controllers.NodeInstanceController.nodeAction(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String, request: Request)
 POST   /customers/:cUUID/zones/:azUUID/nodes/validate                          com.yugabyte.yw.controllers.NodeInstanceController.validate(cUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 
@@ -518,7 +519,7 @@ GET    /settings/ha/config/:cUUID/instance/local                               c
 
 # HA API for inter-node communication
 GET    /settings/ha/internal/config                                            com.yugabyte.yw.controllers.InternalHAController.getHAConfigByClusterKey(request: Request)
-PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: Long, request: Request)
+PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: Long, promote: java.lang.Boolean ?= false, request: Request)
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: Long, request: Request)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups(request: Request)
 

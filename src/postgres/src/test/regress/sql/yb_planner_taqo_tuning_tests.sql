@@ -1,6 +1,7 @@
 CREATE DATABASE taqo_tuning_tests with colocation = true;
 \c taqo_tuning_tests
 SET statement_timeout = '7200s';
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
 -- CREATE QUERIES
 CREATE TABLE t_range_100k (id INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
 CREATE INDEX tr100kv1 ON t_range_100k (v1 ASC);

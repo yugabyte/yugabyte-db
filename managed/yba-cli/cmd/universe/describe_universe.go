@@ -89,6 +89,6 @@ var describeUniverseCmd = &cobra.Command{
 func init() {
 	describeUniverseCmd.Flags().SortFlags = false
 	describeUniverseCmd.Flags().StringP("name", "n", "",
-		"[Required] The name of the universe to be created.")
+		"[Required] The name of the universe to be described.")
 	describeUniverseCmd.MarkFlagRequired("name")
 }

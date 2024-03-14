@@ -110,6 +110,13 @@ Status PgCreateTable::Exec(
     set_table_properties = true;
   }
   if (set_table_properties) {
+    if (req_.schema_name() == "pg_catalog") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::NOTHING);
+    } else if (req_.schema_name() == "information_schema") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::DEFAULT);
+    } else {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::CHANGE);
+    }
     schema_builder_.SetTableProperties(table_properties);
   }
   if (!req_.schema_name().empty()) {

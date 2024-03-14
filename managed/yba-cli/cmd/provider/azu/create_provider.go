@@ -43,9 +43,74 @@ var createAzureProviderCmd = &cobra.Command{
 		}
 
 		providerCode := util.AzureProviderType
-		config, err := buildAzureConfig(cmd)
+
+		var azureCreds util.AzureCredentials
+		var azureCloudInfo ybaclient.AzureCloudInfo
+
+		azureCreds.ClientID, err = cmd.Flags().GetString("client-id")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(azureCreds.ClientID) == 0 {
+
+			azureCreds, err = util.AzureCredentialsFromEnv()
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			azureCloudInfo.SetAzuClientId(azureCreds.ClientID)
+			azureCloudInfo.SetAzuClientSecret(azureCreds.ClientSecret)
+			azureCloudInfo.SetAzuSubscriptionId(azureCreds.SubscriptionID)
+			azureCloudInfo.SetAzuTenantId(azureCreds.TenantID)
+			azureCloudInfo.SetAzuRG(azureCreds.ResourceGroup)
+		} else {
+			azureCloudInfo.SetAzuClientId(azureCreds.ClientID)
+
+			azureCreds.ClientSecret, err = cmd.Flags().GetString("client-secret")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			azureCloudInfo.SetAzuClientSecret(azureCreds.ClientSecret)
+
+			azureCreds.SubscriptionID, err = cmd.Flags().GetString("subscription-id")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			azureCloudInfo.SetAzuSubscriptionId(azureCreds.SubscriptionID)
+
+			azureCreds.TenantID, err = cmd.Flags().GetString("tenant-id")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			azureCloudInfo.SetAzuTenantId(azureCreds.TenantID)
+
+			azureCreds.ResourceGroup, err = cmd.Flags().GetString("rg")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			azureCloudInfo.SetAzuRG(azureCreds.ResourceGroup)
+		}
+		hostedZoneID, err := cmd.Flags().GetString("hosted-zone-id")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(hostedZoneID) > 0 {
+			azureCloudInfo.SetAzuHostedZoneId(hostedZoneID)
+		}
+
+		networkSubscriptionID, err := cmd.Flags().GetString("network-subscription-id")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(networkSubscriptionID) > 0 {
+			azureCloudInfo.SetAzuNetworkSubscriptionId(networkSubscriptionID)
+		}
+
+		networkRG, err := cmd.Flags().GetString("network-rg")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if len(networkRG) > 0 {
+			azureCloudInfo.SetAzuNetworkRG(networkRG)
 		}
 
 		airgapInstall, err := cmd.Flags().GetBool("airgap-install")
@@ -59,6 +124,11 @@ var createAzureProviderCmd = &cobra.Command{
 		}
 
 		sshPort, err := cmd.Flags().GetInt("ssh-port")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -82,6 +152,15 @@ var createAzureProviderCmd = &cobra.Command{
 			sshFileContent = string(sshFileContentByte)
 		}
 
+		allAccessKeys := make([]ybaclient.AccessKey, 0)
+		accessKey := ybaclient.AccessKey{
+			KeyInfo: ybaclient.KeyInfo{
+				KeyPairName:          util.GetStringPointer(keyPairName),
+				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+			},
+		}
+		allAccessKeys = append(allAccessKeys, accessKey)
+
 		regions, err := cmd.Flags().GetStringArray("region")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -93,15 +172,19 @@ var createAzureProviderCmd = &cobra.Command{
 		}
 
 		requestBody := ybaclient.Provider{
-			Code:                 util.GetStringPointer(providerCode),
-			Config:               util.StringMap(config),
-			Name:                 util.GetStringPointer(providerName),
-			AirGapInstall:        util.GetBoolPointer(airgapInstall),
-			SshPort:              util.GetInt32Pointer(int32(sshPort)),
-			SshUser:              util.GetStringPointer(sshUser),
-			KeyPairName:          util.GetStringPointer(keyPairName),
-			SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
-			Regions:              buildAzureRegions(regions, zones),
+			Code:          util.GetStringPointer(providerCode),
+			AllAccessKeys: &allAccessKeys,
+			Name:          util.GetStringPointer(providerName),
+			Regions:       buildAzureRegions(regions, zones),
+			Details: &ybaclient.ProviderDetails{
+				AirGapInstall: util.GetBoolPointer(airgapInstall),
+				SshPort:       util.GetInt32Pointer(int32(sshPort)),
+				SshUser:       util.GetStringPointer(sshUser),
+				NtpServers:    util.StringSliceFromString(ntpServers),
+				CloudInfo: &ybaclient.CloudInfo{
+					Azu: &azureCloudInfo,
+				},
+			},
 		}
 
 		rCreate, response, err := authAPI.CreateProvider().
@@ -142,7 +225,7 @@ func init() {
 
 	createAzureProviderCmd.Flags().String("network-subscription-id", "",
 		"Azure Network Subscription ID.")
-	createAzureProviderCmd.Flags().String("network-rg", "", "Azure Resource Group.")
+	createAzureProviderCmd.Flags().String("az-network-rg", "", "Azure Network Resource Group.")
 
 	createAzureProviderCmd.Flags().String("hosted-zone-id", "",
 		"[Optional] Hosted Zone ID corresponging to Private DNS Zone.")
@@ -175,6 +258,7 @@ func init() {
 		"[Optional] SSH Port to access the YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
+			"If left empty, "+
 			"YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.")
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-file-path", "",
 		"[Optional] Provide custom key pair file path to access YugabyteDB nodes. "+
@@ -187,81 +271,9 @@ func init() {
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+
 			" lacking access to the public internet for package downloads, "+
 			"defaults to false.")
-}
-
-func buildAzureConfig(cmd *cobra.Command) (map[string]interface{}, error) {
-	config := make(map[string]interface{})
-
-	var err error
-
-	var azureCreds util.AzureCredentials
-
-	azureCreds.ClientID, err = cmd.Flags().GetString("client-id")
-	if err != nil {
-		return nil, err
-	}
-	if len(azureCreds.ClientID) == 0 {
-
-		azureCreds, err = util.AzureCredentialsFromEnv()
-		if err != nil {
-			return nil, err
-		}
-		config[util.AzureClientIDEnv] = azureCreds.ClientID
-		config[util.AzureClientSecretEnv] = azureCreds.ClientSecret
-		config[util.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
-		config[util.AzureTenantIDEnv] = azureCreds.TenantID
-		config[util.AzureRGEnv] = azureCreds.ResourceGroup
-	} else {
-		config[util.AzureClientIDEnv] = azureCreds.ClientID
-
-		azureCreds.ClientSecret, err = cmd.Flags().GetString("client-secret")
-		if err != nil {
-			return nil, err
-		}
-		config[util.AzureClientSecretEnv] = azureCreds.ClientSecret
-
-		azureCreds.SubscriptionID, err = cmd.Flags().GetString("subscription-id")
-		if err != nil {
-			return nil, err
-		}
-		config[util.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
-
-		azureCreds.TenantID, err = cmd.Flags().GetString("tenant-id")
-		if err != nil {
-			return nil, err
-		}
-		config[util.AzureTenantIDEnv] = azureCreds.TenantID
-		azureCreds.ResourceGroup, err = cmd.Flags().GetString("rg")
-		if err != nil {
-			return nil, err
-		}
-		config[util.AzureRGEnv] = azureCreds.ResourceGroup
-	}
-	hostedZoneID, err := cmd.Flags().GetString("hosted-zone-id")
-	if err != nil {
-		return nil, err
-	}
-	if len(hostedZoneID) > 0 {
-		config["HOSTED_ZONE_ID"] = hostedZoneID
-	}
-
-	networkSubscriptionID, err := cmd.Flags().GetString("network-subscription-id")
-	if err != nil {
-		return nil, err
-	}
-	if len(networkSubscriptionID) > 0 {
-		config["AZURE_NETWORK_SUBSCRIPTION_ID"] = networkSubscriptionID
-	}
-
-	networkRG, err := cmd.Flags().GetString("network-rg")
-	if err != nil {
-		return nil, err
-	}
-	if len(networkRG) > 0 {
-		config["AZURE_NETWORK_RG"] = networkRG
-	}
-
-	return config, nil
+	createAzureProviderCmd.Flags().StringArray("ntp-servers", []string{},
+		"[Optional] List of NTP Servers. Can be provided as separate flags or "+
+			"as comma-separated values.")
 }
 
 func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Region) {
@@ -322,12 +334,18 @@ func buildAzureRegions(regionStrings, zoneStrings []string) (res []ybaclient.Reg
 
 		zones := buildAzureZones(zoneStrings, region["name"])
 		r := ybaclient.Region{
-			Code:            util.GetStringPointer(region["name"]),
-			Name:            util.GetStringPointer(region["name"]),
-			SecurityGroupId: util.GetStringPointer(region["sg-id"]),
-			VnetName:        util.GetStringPointer(region["vnet"]),
-			YbImage:         util.GetStringPointer(region["yb-image"]),
-			Zones:           zones,
+			Code: util.GetStringPointer(region["name"]),
+			Name: util.GetStringPointer(region["name"]),
+			Details: &ybaclient.RegionDetails{
+				CloudInfo: &ybaclient.RegionCloudInfo{
+					Azu: &ybaclient.AzureRegionCloudInfo{
+						SecurityGroupId: util.GetStringPointer(region["sg-id"]),
+						Vnet:            util.GetStringPointer(region["vnet"]),
+						YbImage:         util.GetStringPointer(region["yb-image"]),
+					},
+				},
+			},
+			Zones: zones,
 		}
 		res = append(res, r)
 	}

@@ -1064,6 +1064,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> destroyServerCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_ops.destroy_server_timeout",
+          ScopeType.GLOBAL,
+          "Node destroy command timeout",
+          "Timeout for node destroy command before failing.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -1302,6 +1310,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Azure provider validation",
           "Enable Azure Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> haShutdownLevel =
+      new ConfKeyInfo<>(
+          "yb.ha.shutdown_level",
+          ScopeType.GLOBAL,
+          "HA Shutdown Level",
+          "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGcpProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.gcp_provider_validation",
+          ScopeType.GLOBAL,
+          "GCP provider validation",
+          "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

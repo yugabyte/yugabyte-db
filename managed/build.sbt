@@ -231,6 +231,9 @@ libraryDependencies ++= Seq(
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
   "org.hsqldb" % "hsqldb" % "2.7.1",
+  "org.mapstruct" %"mapstruct" % "1.5.5.Final",
+  "org.mapstruct" %"mapstruct-processor" % "1.5.5.Final",
+  "org.projectlombok" %"lombok-mapstruct-binding" % "0.2.0",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -694,33 +697,73 @@ compileGoGenV2Client := {
 lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
 compileYbaCliBinary := {
   var status = 0
-  var output = Seq.empty[String]
+  var completeFileList = Seq.empty[String]
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  val processLogger = ProcessLogger(
-    line => output :+= line,
-    line => println(s"Error: $line")
-  )
+  
+  val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
+  completeFileList = fileList1
+  status = status1
 
-  val process = Process("make package", new File(baseDirectory.value + "/yba-cli/"))
-  status = process.!(processLogger)
-  if (status == 0) {
-    val fileListIndex = output.indexWhere(_.startsWith("List of files in"))
-    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
-  } else {
-    fileList = Seq.empty[String]
-  }
-  (status, fileList)
+  val (status2, fileList2) = makeYbaCliPackage("linux", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList2
+  status = status max status2
+
+  val (status3, fileList3) = makeYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList3
+  status = status max status3
+
+  val (status4, fileList4) = makeYbaCliPackage("darwin", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList4
+  status = status max status4
+
+
+  (status, completeFileList)
 }
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
+def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (Int, Seq[String]) = {
+
+  var status = 0
+  var output = Seq.empty[String]
+  var fileList = Seq.empty[String]
+
+  val processLogger = ProcessLogger(
+    line => output :+= line,
+    line => println(s"Error: $line")
+  )
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
+  status = process.!(processLogger)
+  if (status == 0) {
+    val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
+    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
+  } else {
+    fileList = Seq.empty[String]
+  }
+
+  (status, fileList)
+}
+
 // Clean the YBA CLI binary
 lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
 cleanYbaCliBinary := {
-   ybLog("Cleaning YBA CLI go binary.")
-  val status = Process("make clean", new File(baseDirectory.value + "/yba-cli/")).!
+  ybLog("Cleaning YBA CLI go binary.")
+
+  var status = cleanYbaCliPackage("linux", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("linux", "arm64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "arm64", baseDirectory.value)
+
+  status
+}
+
+def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
+  
   status
 }
 
@@ -808,16 +851,19 @@ Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
 Universal / mappings ++= {
-  val (status, cliFiles) = compileYbaCliBinary.value
+  val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
-    val targetFolderOpt: Option[String] = Some("bin")
-    val filesWithRelativePaths: Seq[(File, String)] = cliFiles.map { filePath =>
-      val targetPath = "bin/" + Paths.get(filePath).getFileName.toString
-      (file(filePath), targetPath)
+    cliFolders.flatMap { folderPath =>
+      val folder = file(folderPath)
+      if (folder.isDirectory) {
+        val targetPath = s"yba-cli/${folder.getName}"
+        val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
+        folderMappings
+      } else {
+        println(s"Warning: $folderPath is not a directory and will not be included in the package.")
+        Nil
+      }
     }
-
-    ybLog("Added YBA CLI files to package.")
-    filesWithRelativePaths
   } else {
     ybLog("Error generating YBA CLI binary.")
     Seq.empty
@@ -843,7 +889,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.81-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.82-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b6"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 

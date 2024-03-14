@@ -68,6 +68,8 @@
 namespace yb {
 namespace tablet {
 
+using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
@@ -244,7 +246,7 @@ struct KvStoreInfo {
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
-  std::unordered_map<TableId, TableInfoPtr> tables;
+  TableInfoMap tables;
 
   // Mapping form colocation id to table info.
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
@@ -730,6 +732,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
+
+  Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
+                              const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,

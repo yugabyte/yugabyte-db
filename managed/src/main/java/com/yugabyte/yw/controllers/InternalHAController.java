@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -42,6 +44,8 @@ import play.mvc.With;
 public class InternalHAController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(InternalHAController.class);
+
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   private final PlatformReplicationManager replicationManager;
   private final ValidatingFormFactory formFactory;
@@ -189,7 +193,7 @@ public class InternalHAController extends Controller {
     }
   }
 
-  public Result demoteLocalLeader(long timestamp, Http.Request request) {
+  public Result demoteLocalLeader(long timestamp, boolean promote, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config =
           HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
@@ -233,6 +237,11 @@ public class InternalHAController extends Controller {
               .toString();
 
       localInstance.get().setYbaVersion(version);
+
+      // Only restart YBA when demote comes from promote call, not from periodic sync
+      if (promote && runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 1) {
+        Util.shutdownYbaProcess(5);
+      }
 
       return PlatformResults.withData(localInstance);
     } catch (Exception e) {
