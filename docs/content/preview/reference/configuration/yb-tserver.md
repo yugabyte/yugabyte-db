@@ -688,6 +688,26 @@ For details on the expected behaviour when used with the sequence cache clause, 
 
 Default: `100`
 
+##### --ysql_yb_fetch_size_limit
+
+Specifies the maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `--ysql_fetch_row_limit` should be set to 0.
+
+If both `--ysql_fetch_row_limit` and `--ysql_fetch_row_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_size_limit](#yb_fetch_size_limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 0
+
+##### --ysql_yb_fetch_row_limit
+
+Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+If both `--ysql_fetch_row_limit` and `--ysql_fetch_row_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [yb_fetch_row_limit](#yb_fetch_row_limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 0
+
 ##### --ysql_log_statement
 
 Specifies the types of YSQL statements that should be logged.
@@ -890,7 +910,6 @@ Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores
 Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
-
 
 ## Network compression flags
 
@@ -1255,6 +1274,8 @@ Default: `true`
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
+### Modify configuration parameters
+
 You can modify these parameters in the following ways:
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
@@ -1307,6 +1328,8 @@ You can modify these parameters in the following ways:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
+### YSQL configuration parameters
+
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
 ##### log_line_prefix
@@ -1339,6 +1362,24 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+##### yb_fetch_size_limit
+
+Maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+
+If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [--ysql_yb_fetch_size_limit](#ysql_yb_fetch_size_limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 0
+
+##### yb_fetch_row_limit
+
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+See also the [--ysql_yb_fetch_row_limit](#ysql_yb_fetch_row_limit) flag. If the flag is set, this parameter takes precedence.
+
+Default: 1024
 
 ## Advanced flags
 
