@@ -98,7 +98,7 @@ export const XClusterConfigCard = ({
         ) : (
           <div className={styles.configMetricsContainer}>
             <div className={clsx(styles.configMetric, styles.maxAcceptableLag)}>
-              <div className={styles.label}>Max acceptable lag</div>
+              <div className={styles.label}>Lowest Replication Lag Alert Threshold</div>
               <div className={styles.value}>
                 <MaxAcceptableLag currentUniverseUUID={currentUniverseUUID} />
               </div>
