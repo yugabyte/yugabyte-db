@@ -1,0 +1,150 @@
+\set ECHO all
+/* Register alerts */
+SELECT dbms_alert.register('a1');
+ register
+----------
+
+(1 row)
+
+SELECT dbms_alert.register('a2');
+ register
+----------
+
+(1 row)
+
+SELECT dbms_alert.register('tds');
+ register
+----------
+
+(1 row)
+
+/* Test: multisession waitone */
+SELECT dbms_alert.waitone('a1',20);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Test: multisession waitany */
+SELECT dbms_alert.waitany(10);
+ waitany
+---------
+ (,,1)
+(1 row)
+
+/* Test defered_signal */
+/* This indicated that the transaction has begun */
+SELECT dbms_alert.waitone('tds',10);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* The signal will not be received because the transaction is running */
+SELECT dbms_alert.waitone('tds',2);
+ waitone
+---------
+ (,1)
+(1 row)
+
+SELECT dbms_alert.signal('b1','Transaction still running');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+SELECT dbms_alert.signal('b1','Transaction committed');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+/* Since the transaction has commited, the signal will be received */
+SELECT dbms_alert.waitone('tds',10);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Signal session A to send msg1 for a3 */
+SELECT dbms_alert.signal('b2','to check unregistered alert wait');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+/* Test: wait for unregistered alert which is signaled*/
+SELECT dbms_alert.waitone('a3',2);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Test: Register after alert is signaled and wait */
+SELECT dbms_alert.register('a4');
+ register
+----------
+
+(1 row)
+
+SELECT dbms_alert.waitone('a4',2);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Test: remove one */
+SELECT dbms_alert.remove('a1');
+ remove
+--------
+
+(1 row)
+
+/* Signal session A to send msg2 for a1 */
+SELECT dbms_alert.signal('b3','remove(a1) called');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+/* Test: wait for removed alert */
+SELECT dbms_alert.waitone('a1',2);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Signal session A to send msg1 for a4 */
+SELECT dbms_alert.signal('b4','to check unremoved alert');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+/* Test: Check if unremoved alert is received */
+SELECT dbms_alert.waitone('a4',10);
+ waitone
+---------
+ (,1)
+(1 row)
+
+/* Test removeall */
+SELECT dbms_alert.removeall();
+ removeall
+-----------
+
+(1 row)
+
+/* Signal session A to send msg2 for a2 */
+SELECT dbms_alert.signal('b5','removeall called');
+ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+LINE 1: CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON o...
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1709. React with thumbs up to raise its priority
+QUERY:  CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()
+/* Test: Use waitany to see if any alert is received */
+SELECT dbms_alert.waitany(2);
+ waitany
+---------
+ (,,1)
+(1 row)
