@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-The following error messages are common to all YugabytDB components.
+The following error messages are common to all YugabyteDB components.
 
 ## Skipping add replicas
 
