@@ -2904,5 +2904,9 @@ Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
   return std::move(resp.service_info());
 }
 
+void YBClient::ClearAllMetaCachesOnServer() {
+  data_->meta_cache_->ClearAll();
+}
+
 }  // namespace client
 }  // namespace yb

@@ -89,6 +89,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
 
   virtual std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const = 0;
+
+  virtual void ClearAllMetaCachesOnServer() = 0;
 };
 
 } // namespace tserver
