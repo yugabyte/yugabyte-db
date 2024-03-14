@@ -116,7 +116,7 @@ CREATE INDEX ON orders (warehouse)
 ```
 
 {{< warning title="Syncing table and index">}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index will **NOT** be backfilled. It will be the responsibility of the user to re-insert the data again to be reflected in the index.
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically. It will be the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) which will trigger the backfill after a small delay of about a minute. This delay is controlled by the gflag: `index_backfill_upperbound_for_user_enforced_txn_duration_ms`.
 {{< /warning >}}
 
 ### PARTITION KEY
