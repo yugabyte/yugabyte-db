@@ -65,7 +65,7 @@ To create an AWS provider:
 
 1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create.png)
+    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-220.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
@@ -106,11 +106,6 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 ### Regions
 
 You can customize your network, including the virtual network, as follows:
-
-- **AMI Type**. Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration, as follows:
-  - Default x86
-  - Default AArch64
-  - Custom
 
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
@@ -190,7 +185,6 @@ To configure a region using your own custom VPCs, click **Add Region** and do th
 1. Select the **Region**.
 1. Specify the **VPC ID** of the VPC to use for the region.
 1. Specify the **Security Group ID** to use for the region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-1. If you chose to use a custom AMI, specify the **Custom AMI ID**.
 
 For each availability zone in which you wish to be able to deploy in the region, do the following:
 
