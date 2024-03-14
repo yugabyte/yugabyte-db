@@ -1,0 +1,91 @@
+-- Tests for package DBMS_RANDOM
+SELECT dbms_random.initialize(8);
+ initialize 
+------------
+ 
+(1 row)
+
+SELECT dbms_random.normal()::numeric(10, 8);
+   normal    
+-------------
+ -0.37787769
+(1 row)
+
+SELECT dbms_random.normal()::numeric(10, 8);
+   normal   
+------------
+ 0.80499804
+(1 row)
+
+SELECT dbms_random.seed(8);
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.random();
+   random   
+------------
+ -632387854
+(1 row)
+
+SELECT dbms_random.seed('test');
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.string('U',5);
+ string 
+--------
+ IGXBB
+(1 row)
+
+SELECT dbms_random.string('P',2);
+ string 
+--------
+ R`
+(1 row)
+
+SELECT dbms_random.string('x',4);
+ string 
+--------
+ P1CB
+(1 row)
+
+SELECT dbms_random.string('a',2);
+ string 
+--------
+ yV
+(1 row)
+
+SELECT dbms_random.string('l',3);
+ string 
+--------
+ ccw
+(1 row)
+
+SELECT dbms_random.seed(5);
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.value()::numeric(10, 8);
+   value    
+------------
+ 0.27474560
+(1 row)
+
+SELECT dbms_random.value(10,15)::numeric(10, 8);
+    value    
+-------------
+ 10.23233882
+(1 row)
+
+SELECT dbms_random.terminate();
+ terminate 
+-----------
+ 
+(1 row)
+

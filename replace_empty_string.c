@@ -67,8 +67,7 @@ heap_modify_tuple_by_cols(HeapTuple tuple,
 	newTuple->t_self = tuple->t_self;
 	HEAPTUPLE_COPY_YBITEM(tuple, newTuple);
 	newTuple->t_tableOid = tuple->t_tableOid;
-#ifdef YB_TODO
-	/* OID is now a regular column */
+#ifdef YB_TODO /* OID is now a regular column */
 	if (tupleDesc->tdhasoid)
 		HeapTupleSetOid(newTuple, HeapTupleGetOid(tuple));
 #endif
