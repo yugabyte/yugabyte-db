@@ -22,7 +22,11 @@ import {
   REPLICATION_LAG_GRAPH_EMPTY_METRIC,
   TimeRangeType
 } from '../constants';
-import { getMaxNodeLagMetric, getMetricTimeRange } from '../ReplicationUtils';
+import {
+  getMaxNodeLagMetric,
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
+} from '../ReplicationUtils';
 
 import { MetricTimeRangeOption, Metrics, XClusterTable } from '../XClusterTypes';
 
@@ -95,11 +99,7 @@ export const TableLagGraph: FC<Props> = ({
   const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = Math.min(
-    ...alertConfigQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
-  );
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
 
   if (tableMetricsQuery.isError) {
     return <YBErrorIndicator />;
@@ -124,7 +124,7 @@ export const TableLagGraph: FC<Props> = ({
       graphMetric.tserver_async_replication_lag_micros.data = [
         trace,
         {
-          name: 'Max Acceptable Lag',
+          name: 'Lowest Replication Lag Alert Threshold',
           instanceName: trace.instanceName,
           type: 'scatter',
           line: {
