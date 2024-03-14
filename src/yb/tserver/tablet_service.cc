@@ -3194,6 +3194,13 @@ void TabletServiceImpl::GetTabletKeyRanges(
       });
 }
 
+void TabletServiceImpl::ClearAllMetaCachesOnServer(
+    const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  server_->ClearAllMetaCachesOnServer();
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {

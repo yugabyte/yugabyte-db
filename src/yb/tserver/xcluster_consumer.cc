@@ -866,6 +866,13 @@ Status XClusterConsumer::ReportNewAutoFlagConfigVersion(
       replication_group_id, new_version);
 }
 
+void XClusterConsumer::ClearAllClientMetaCaches() const {
+  std::lock_guard write_lock_pollers(pollers_map_mutex_);
+  for (auto& [group_id, xcluster_client] : remote_clients_) {
+    xcluster_client->client->ClearAllMetaCachesOnServer();
+  }
+}
+
 std::vector<std::shared_ptr<client::YBClient>> XClusterConsumer::GetYbClientsList() const {
   SharedLock read_lock(pollers_map_mutex_);
   std::vector<std::shared_ptr<client::YBClient>> result;
