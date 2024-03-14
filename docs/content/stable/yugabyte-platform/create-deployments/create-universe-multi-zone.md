@@ -34,7 +34,7 @@ For specific scenarios such as creating large numbers of tables, high rates of D
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 ## Create a universe
 
@@ -42,13 +42,15 @@ To create a universe:
 
 1. Navigate to **Dashboard** or **Universes**, and click **Create Universe**.
 
-1. Enter the universe details. Refer to the following sections.
+1. Enter the universe details. Refer to [Universe settings](#universe-settings).
 
 1. To add a read replica, click **Configure Read Replica**. Refer to [Create a read replica cluster](../read-replicas/).
 
 1. Click **Create** when you are done and wait for the configuration to complete.
 
 ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1-gcp.png)
+
+## Universe settings
 
 ### Cloud Configuration
 
