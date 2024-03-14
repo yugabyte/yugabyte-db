@@ -22,6 +22,7 @@ static void AppendJumble(pgssJumbleState *jstate,
 			 const unsigned char *item, Size size);
 static void JumbleQuery(pgssJumbleState *jstate, Query *query);
 static void JumbleRangeTable(pgssJumbleState *jstate, List *rtable);
+static void JumbleExpr(pgssJumbleState *jstate, Node *node);
 static void RecordConstLocation(pgssJumbleState *jstate, int location);
 static char *generate_normalized_query(pgssJumbleState *jstate, const char *query,
 						  int query_loc, int *query_len_p, int encoding);
@@ -262,6 +263,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) expr->aggfilter);
 			}
 			break;
+		case T_ArrayRef:
 		case T_SubscriptingRef:
 			{
 				ArrayRef   *aref = (ArrayRef *) node;

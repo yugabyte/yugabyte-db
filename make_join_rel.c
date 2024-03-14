@@ -208,7 +208,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	 * If we've already proven this join is empty, we needn't consider any
 	 * more paths for it.
 	 */
-	if (IS_DUMMY_REL(joinrel))
+	if (is_dummy_rel(joinrel))
 	{
 		bms_free(joinrelids);
 		return joinrel;
@@ -257,7 +257,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 	switch (sjinfo->jointype)
 	{
 		case JOIN_INNER:
-			if (IS_DUMMY_REL(rel1) || IS_DUMMY_REL(rel2) ||
+			if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 				restriction_is_constant_false(restrictlist, joinrel, false))
 			{
 				mark_dummy_rel(joinrel);
@@ -271,7 +271,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 								 restrictlist);
 			break;
 		case JOIN_LEFT:
-			if (IS_DUMMY_REL(rel1) ||
+			if (is_dummy_rel(rel1) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);
@@ -288,7 +288,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 								 restrictlist);
 			break;
 		case JOIN_FULL:
-			if ((IS_DUMMY_REL(rel1) && IS_DUMMY_REL(rel2)) ||
+			if ((is_dummy_rel(rel1) && is_dummy_rel(rel2)) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);
@@ -324,7 +324,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			if (bms_is_subset(sjinfo->min_lefthand, rel1->relids) &&
 				bms_is_subset(sjinfo->min_righthand, rel2->relids))
 			{
-				if (IS_DUMMY_REL(rel1) || IS_DUMMY_REL(rel2) ||
+				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
 					mark_dummy_rel(joinrel);
@@ -347,7 +347,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 				create_unique_path(root, rel2, rel2->cheapest_total_path,
 								   sjinfo) != NULL)
 			{
-				if (IS_DUMMY_REL(rel1) || IS_DUMMY_REL(rel2) ||
+				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 					restriction_is_constant_false(restrictlist, joinrel, false))
 				{
 					mark_dummy_rel(joinrel);
@@ -362,7 +362,7 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			}
 			break;
 		case JOIN_ANTI:
-			if (IS_DUMMY_REL(rel1) ||
+			if (is_dummy_rel(rel1) ||
 				restriction_is_constant_false(restrictlist, joinrel, true))
 			{
 				mark_dummy_rel(joinrel);

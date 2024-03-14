@@ -1,0 +1,77 @@
+SET search_path TO public;
+-- query type 1
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+-- query type 2
+EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (val < 10)
+         ->  Bitmap Index Scan on t1_val
+               Index Cond: (val < 10)
+   ->  Materialize
+         ->  Seq Scan on t4
+(7 rows)
+
+-- query type 3
+EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t3.id = t4.id)
+   ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+               Filter: (ctid = '(1,1)'::tid)
+(7 rows)
+
+-- query type 4
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(5 rows)
+
+-- query type 5
+EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+           QUERY PLAN           
+--------------------------------
+ Hash Join
+   Hash Cond: (t1.val = t3.val)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t3
+(5 rows)
+
+-- query type 6
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Merge Join
+         Merge Cond: (t1.id = t4.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
+(12 rows)
+

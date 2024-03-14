@@ -958,7 +958,7 @@ mark_dummy_rel(RelOptInfo *rel)
 	MemoryContext oldcontext;
 
 	/* Already marked? */
-	if (IS_DUMMY_REL(rel))
+	if (is_dummy_rel(rel))
 		return;
 
 	/* No, so choose correct context to make the dummy path in */

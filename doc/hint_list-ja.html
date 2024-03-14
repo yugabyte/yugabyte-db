@@ -1,0 +1,113 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD html 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Appendix A. ヒント句一覧</title>
+<!-- Uncoment after the tool has been hosted somewhere.
+<link rel="home" title="pg_hint_plan" href="index.html">
+-->
+<link rel="stylesheet" type="text/css" href="style.css">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+<h1 id="pg_hint_plan">pg_hint_plan 1.3 付録</h1>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">Appendix A. ヒント句一覧</a>
+</div>
+<hr>
+
+<h2 id="hint-list">Appendix A. ヒント句一覧</h2>
+<p>pg_hint_planで指定できるヒント句は以下の通りです。</p>
+<table>
+<thead>
+<tr>
+<tr><th>グループ</th><th>ヒント句の書式</th><th>説明</th></tr>
+</tr>
+</thead>
+<tbody>
+<tr><td rowspan="11" nowrap>スキャン方式</td>
+  <td nowrap>SeqScan(テーブル)</td>
+  <td>指定したテーブルについて、Seq Scanを選択します。</td></tr>
+<tr><td nowrap>TidScan(テーブル)</td>
+  <td>指定したテーブルについて、Tid Scanを選択します。検索条件にctidを指定した場合にのみ有効です。</td></tr>
+<tr><td nowrap>IndexScan(テーブル[ インデックス...])</td>
+  <td>指定したテーブルについて、Index Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。<br>
+継承関係の親テーブルとそのテーブルのインデックスを指定した場合は、子テーブルに対してそのインデックスと同様の定義のインデックスを選択します。</td></tr>
+<tr><td nowrap>IndexOnlyScan(テーブル[ インデックス...])</td>
+  <td>指定したテーブルについて、Index Only ScanとIndex Scanのうちコストが最小となるスキャン方式を選択します。インデックスも指定した場合は、指定したインデックスの中でIndex Only ScanとIndex Scanのうちコストが最小となるスキャン方式を選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。また、これらの場合以外にも、インデックスが持つ値だけでなくテーブルの値も必要な場合はIndex Scanを選択します。<br>
+継承関係の親テーブルとそのテーブルのインデックスを指定した場合は、子テーブルに対してそのインデックスと同様の定義のインデックスを選択します。
+PostgreSQL 9.2以降で動作します。</td></tr>
+<tr><td nowrap>BitmapScan(テーブル[ インデックス...])</td>
+  <td>指定したテーブルについて、Bitmap Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるインデックスを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。<br>
+継承関係の親テーブルとそのテーブルのインデックスを指定した場合は、子テーブルに対してそのインデックスと同様の定義のインデックスを選択します。</td></tr>
+<tr><td nowrap>IndexScanRegexp(テーブル[ POSIX正規表現...])</br>IndexOnlyScanRegexp(テーブル[ POSIX正規表現...])</br>BitmapScanRegexp(テーブル[ POSIX正規表現...])</td>
+  <td>テーブルのみを指定した場合のスキャン方式の選択基準は、Regexpの付かないスキャン方式のヒントと同じです。<a href="http://www.postgresql.jp/document/current/html/functions-matching.html#FUNCTIONS-POSIX-REGEXP">POSIX正規表現</a>も指定した場合は、指定したPOSIX正規表現パターンに一致するインデックスの中でコストが最小となるスキャン方式を選択します。指定したテーブルが継承テーブルの場合は、子テーブルについても同じ基準で、使用するインデックスとスキャン方式を選択します。IndexOnlyScanRegexpヒントはPostgreSQL 9.2以降で動作します。</td></tr>
+<tr><td nowrap>NoSeqScan(テーブル)</td>
+  <td>指定したテーブルについて、Seq Scan以外でコストが最小となるスキャン方式を選択します。ただし、他のスキャン方式を選択できない場合は、Seq Scanを選択します。</td></tr>
+<tr><td nowrap>NoTidScan(テーブル)</td>
+  <td>指定したテーブルについて、Tid Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
+<tr><td nowrap>NoIndexScan(テーブル)</td>
+  <td>指定したテーブルについて、Index ScanとIndex Only Scanを除いたスキャン方式の中でコストが最小となるスキャン方式を選択します。</td></tr>
+<tr><td nowrap>NoIndexOnlyScan(テーブル)</td>
+  <td>指定したテーブルについて、Index Only Scan以外でコストが最小となるスキャン方式を選択します。PostgreSQL 9.2以降で動作します。</td></tr>
+<tr><td nowrap>NoBitmapScan(テーブル)</td>
+  <td>指定したテーブルについて、Bitmap Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
+
+<tr><td rowspan="6" nowrap>結合方式</td>
+  <td nowrap>NestLoop(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にNested Loopを選択します。</td></tr>
+<tr><td nowrap>HashJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にHash Joinを選択します。</td></tr>
+<tr><td nowrap>MergeJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にMerge Joinを選択します。</td></tr>
+<tr><td nowrap>NoNestLoop(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にNested Loop以外の結合方式を選択します。</td></tr>
+<tr><td nowrap>NoHashJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にHash Join以外の結合方式を選択します。</td></tr>
+<tr><td nowrap>NoMergeJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にMerge Join以外の結合方式を選択します。</td></tr>
+
+<tr><td rowspan="2">結合順序</td>
+  <td nowrap>Leading(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブルを指定した順番通りに結合します。</td></tr>
+<tr><td nowrap>Leading((テーブル集合<Sup>注1</Sup> テーブル集合<Sup>注1</Sup>))</td>
+  <td>1つ目に指定したテーブル集合を外部表として、2つ目に指定したテーブル集合を内部表として結合します。書式中のテーブル集合はテーブルもしくは別のテーブル集合です。</td></tr>
+
+<tr><td>見積もり件数補正</td>
+  <td nowrap>Rows(テーブル テーブル[ テーブル...] 件数補正)</td>
+  <td>指定したテーブル間の結合結果の見積もり件数を補正します。件数補正として指定できるのは以下の4パターンです。
+      <p><dl>
+        <dt>#件数</dt><dd>指定した件数で本来の見積もり件を上書きします。</dd>
+        <dt>+件数</dt><dd>指定した件数を本来の見積もり件数に加算します。</dd>
+        <dt>-件数</dt><dd>指定した件数を本来の見積もり件数から減算します。</dd>
+        <dt>*倍率</dt><dd>本来の見積もり件数を指定した倍率に補正します。「*2」とすると見積もり件数が2倍になり、「*0.01」とすると見積もり件数が1/100になります。</dd>
+      </dl></p>
+なお、件数や倍率には、strtod()が解釈できる書式で数値を指定してください。
+</td></tr>
+
+<tr><td>パラレル実行の制御</td>
+  <td nowrap>Parallel(テーブル ワーカ数 [強制度])</td>
+  <td>パラレル実行を強制あるいは禁止します。ワーカ数が0の場合はパラレル実行を禁止します。強制度はワーカ数の適用方法を指定するもので "hard" または "soft" を指定します。デフォルト値である"soft"の場合は max_parallel_workers_per_gather のみを変更してあとはプランナに任せます。そして"hard" の場合は指定したワーカ数を強制します。</td>
+
+</td></tr>
+
+<tr><td>GUCパラメータ</td>
+  <td nowrap>Set(GUCパラメータ 値)</td>
+  <td>そのクエリの実行計画を作成している間だけ、指定したGUCパラメータを指定した値に変更します。</td></tr>
+</tbody>
+</table></p>
+<dt>
+<Sup>注1</Sup>テーブル集合とは、以下のような記述を指しています。</dt>
+<dd>テーブル集合 = {テーブル|(テーブル集合 テーブル集合)}</dd>
+
+
+<hr>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">Appendix A. ヒント句一覧</a>
+</div>
+
+<p class="footer">Copyright (c) 2012-2020, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+</body>
+</html>
