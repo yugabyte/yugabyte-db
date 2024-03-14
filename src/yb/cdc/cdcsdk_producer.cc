@@ -329,7 +329,7 @@ void MakeNewProtoRecord(
     const docdb::IntentKeyValueForCDC& intent, const OpId& op_id, const RowMessage& row_message,
     const Schema& schema, size_t col_count, CDCSDKProtoRecordPB* proto_record,
     GetChangesResponsePB* resp, IntraTxnWriteId* write_id, std::string* reverse_index_key,
-    const uint64_t& commit_time) {
+    const uint64_t& commit_time, const std::string& primary_key) {
   CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
   SetCDCSDKOpId(
       op_id.term, op_id.index, intent.write_id, intent.reverse_index_key, cdc_sdk_op_id_pb);
@@ -349,6 +349,10 @@ void MakeNewProtoRecord(
     } else {
       LOG(WARNING) << "Failed to get commit hybrid time for intent key: " << intent.key_buf.c_str();
     }
+  }
+
+  if (!record_to_be_added->row_message().has_primary_key()) {
+    record_to_be_added->mutable_row_message()->set_primary_key(primary_key);
   }
 
   *write_id = intent.write_id;
@@ -844,7 +848,7 @@ Status PopulateCDCSDKIntentRecord(
 
           MakeNewProtoRecord(
               prev_intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
-              reverse_index_key, commit_time);
+              reverse_index_key, commit_time, prev_key.ToBuffer());
         }
       }
 
@@ -1014,7 +1018,7 @@ Status PopulateCDCSDKIntentRecord(
         }
         MakeNewProtoRecord(
             intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
-            reverse_index_key, commit_time);
+            reverse_index_key, commit_time, primary_key.ToBuffer());
         col_count = schema.num_columns();
       } else if (row_message->op() == RowMessage_Op_UPDATE) {
         prev_intent = intent;
@@ -1058,7 +1062,7 @@ Status PopulateCDCSDKIntentRecord(
         }
         MakeNewProtoRecord(
             intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
-            reverse_index_key, commit_time);
+            reverse_index_key, commit_time, primary_key.ToBuffer());
       }
     }
   }
@@ -1103,7 +1107,7 @@ Status PopulateCDCSDKIntentRecord(
     }
     MakeNewProtoRecord(
         prev_intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
-        reverse_index_key, commit_time);
+        reverse_index_key, commit_time, prev_key.ToBuffer());
   }
 
   return Status::OK();
@@ -1302,6 +1306,7 @@ Status PopulateCDCSDKWriteRecord(
       row_message->set_pgschema_name(schema.SchemaName());
       row_message->set_table(table_name);
       row_message->set_table_id(table_id);
+      row_message->set_primary_key(primary_key.ToBuffer());
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
       is_packed_row_record = false;
