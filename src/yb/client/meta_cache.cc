@@ -2279,6 +2279,15 @@ std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFutur
   });
 }
 
+void MetaCache::ClearAll() {
+  std::lock_guard lock(mutex_);
+  ts_cache_.clear();
+  tables_.clear();
+  tablets_by_id_.clear();
+  tablet_lookups_by_id_.clear();
+  deleted_tablets_.clear();
+}
+
 LookupDataGroup::~LookupDataGroup() {
   std::vector<LookupData*> leftovers;
   while (auto* d = lookups.Pop()) {

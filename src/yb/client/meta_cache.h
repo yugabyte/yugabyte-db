@@ -590,6 +590,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
+  void ClearAll();
+
  private:
   friend class LookupRpc;
   friend class LookupByKeyRpc;

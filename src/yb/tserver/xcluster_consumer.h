@@ -127,6 +127,8 @@ class XClusterConsumer : public XClusterConsumerIf {
   Status ReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
 
+  void ClearAllClientMetaCaches() const override;
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
