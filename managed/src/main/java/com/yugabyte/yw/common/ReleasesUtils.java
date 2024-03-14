@@ -71,6 +71,9 @@ public class ReleasesUtils {
     String sha256 = null;
     try {
       sha256 = Util.computeFileChecksum(releaseFilePath, "SHA256");
+      if (!sha256.toLowerCase().startsWith("sha256:")) {
+        sha256 = String.format("sha256:%s", sha256);
+      }
     } catch (Exception e) {
       log.error("could not compute sha256", e);
     }
