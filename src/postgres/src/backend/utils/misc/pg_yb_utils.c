@@ -93,6 +93,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
@@ -105,6 +106,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+// #include "commands/extension.c"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -4525,6 +4527,7 @@ bundlePgssPtr bundleptr;
 bundleExplainPtr explainptr;
 bundleSchemaPtr schemaptr;
 SharedStruct *sharedBundleStruct = NULL;
+// ashSqlPtr csvToSqlptr;
 HTAB *map = NULL;
 typedef struct {
     int64 key;
@@ -4639,7 +4642,7 @@ char* getPath(int64 queryid, const char* timeStr)
 		ereport(ERROR, (errmsg("Error :  %s", strerror(errno))));
 		return NULL;
 	}
-	char* result = malloc(strlen(dir) + 1);
+	char* result = palloc(strlen(dir) + 1);
 	strcpy(result, dir);
 	return result;
 }
@@ -4719,7 +4722,7 @@ yb_start_diagnostics(PG_FUNCTION_ARGS) //allows geneartion of bundle for a speci
 	0,0,0,
 	0,0,0,
 	0,0,0,
-	0,"",""};
+	0,"",false,""};
 	
 	char *log_path_ptr = getPath(queryid,timeStr);
 	if(log_path_ptr == NULL) {
@@ -4748,7 +4751,7 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	MyValue* result = lookup_in_shared_hashtable(map, queryid);
 	if(!result){
 		ereport(LOG, (errmsg("Bundle has not been started for this query id")));
-		PG_RETURN_BOOL(false);
+		PG_RETURN_TEXT_P("LOG: Bundle has not been started for this query id");
 	}
 	
 	// if(!sharedBundleStruct->debuggingBundle){
@@ -4772,8 +4775,14 @@ yb_finish_diagnostics(PG_FUNCTION_ARGS) //stops the bundle and prints all detail
 	if(sharedBundleStruct->totalBundleStarted == 0){
 		sharedBundleStruct->debuggingBundle = false;
 	}
+	result->explain_printonce = false;
+
+	if(queryid == 0){
+		PG_RETURN_TEXT_P("NO QUERIES RUN IN THE DURATION");
+	}
 
 	char returnStr[100];
 	sprintf(returnStr, "/query-diagnostics?query_id=%ld&timestamp=%s", result->queryid, my_timestamptz_to_str(result->start_time));
 	PG_RETURN_TEXT_P(cstring_to_text(returnStr));
 }
+

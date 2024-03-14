@@ -1143,7 +1143,7 @@ typedef struct MyValue
 	double		usage;			/* usage factor */
 	//for explain
 	char        explain_str[8024];
-
+	bool 		explain_printonce;
 	//for schema
 	char        schema_str[1024];
 	// Query 		*schema_query;
@@ -1162,6 +1162,9 @@ extern bundleExplainPtr explainptr;
 
 typedef void (*bundleSchemaPtr)(int flag , List *rtable,MyValue *result);
 extern bundleSchemaPtr schemaptr;
+
+// typedef void (*ashSqlPtr)(int flag , List *rtable,MyValue *result);
+// extern ashSqlPtr csvToSqlptr;
 
 extern HTAB *map;
 extern SharedStruct *sharedBundleStruct;

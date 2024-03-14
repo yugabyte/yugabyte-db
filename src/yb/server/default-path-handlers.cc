@@ -668,47 +668,14 @@ void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* r
 
 void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCallbackRegistry::WebResponse* resp) {
 
-    // if (req.parsed_args.find("query_id") == req.parsed_args.end()) {
-    //     DIR* dir = opendir(query_diagnostics_path.c_str());
-    //     if (dir == NULL) {
-    //         resp->output << "<html><body><h1>Error: Failed to open query diagnostics directory</h1></body></html>";
-    //         resp->code = 500; // Internal Server Error
-    //         return;
-    //     }
-
-    //     resp->output << "<html><body><h1>Select Query ID</h1>";
-    //     struct dirent* entry;
-    //     while ((entry = readdir(dir)) != NULL) {
-    //         if (entry->d_type == DT_DIR) {
-    //             resp->output << "<form action=\"/query-diagnostics\" method=\"get\">"
-    //                          << "<input type=\"hidden\" name=\"query_id\" value=\"" << entry->d_name << "\">"
-    //                          << "<input type=\"submit\" value=\"" << entry->d_name << "\">"
-    //                          << "</form>";
-    //         }
-    //     }
-    //     closedir(dir);
-    //     resp->output << "</body></html>";
-    //     resp->code = 200;
-    //     return;
-    // }
-
-
-
-    // std::string query_id = req.parsed_args.at("query_id");
-    // // Change directory to the query diagnostics folder
-    // if (chdir(query_diagnostics_path.c_str()) != 0) {
-    //     resp->output << "<html><body><h1>Error: Failed to access query diagnostics folder</h1></body></html>";
-    //     resp->code = 500; 
-    //     return;
-    // }
-    // // Create the tar file using the system command
-    // std::string tar_file_path = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/" + query_id + ".tar";
-    // std::string tar_command = "tar -cf " + tar_file_path + " -- " + query_id;
-
-
     std::string query_diagnostics_path = "/Users/ishanchhangani/yugabyte-data/node-1/disk-1/query-diagnostics/";
     std::string query_id = req.parsed_args.find("query_id")->second;
     std::string timestamp = req.parsed_args.find("timestamp")->second;
+
+        FILE* fptr = fopen("/Users/ishanchhangani/test.txt","a");
+        fprintf(fptr, "%s\n%s" , query_id.c_str(), timestamp.c_str());
+        fclose(fptr);
+
 
     if(query_id.empty() || timestamp.empty()) {
         resp->output << "<html><body><h1>Error: Query ID or Timestamp not provided</h1></body></html>";
@@ -716,21 +683,24 @@ void QueryDiagnosticsHandler(const WebCallbackRegistry::WebRequest& req, WebCall
         return;
     }
 
-
     std::string query_directory_path = query_diagnostics_path + query_id + "/" + timestamp;
-    std::string new_query_directory_path = query_diagnostics_path + query_id + "/" + query_id + "_" + timestamp;
-    std::filesystem::rename(query_directory_path, new_query_directory_path);
     std::string tar_file_path = query_diagnostics_path + query_id + "_" + timestamp + ".tar";
-    // std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
-    std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + query_id + "_" + timestamp;
+    std::string tar_command = "tar -cf " + tar_file_path + " -C " + query_diagnostics_path + query_id + " " + timestamp;
+
+        FILE* fptr1 = fopen("/Users/ishanchhangani/test.txt","a");
+        fprintf(fptr1, "tar_file_path: %s \n query_directory_path: %s \n " ,tar_file_path.c_str(), query_directory_path.c_str());
+        fclose(fptr1);
 
     int result = system(tar_command.c_str());
     if (result != 0) {
         resp->output << "<html><body><h1>Error: Failed to create tar file</h1></body></html>";
         resp->code = 500; // Internal Server Error
+        FILE* fptr1 = fopen("/Users/ishanchhangani/test.txt","a");
+        fprintf(fptr1, "Got error\n");
+        fclose(fptr1);
         return;
     }
-    std::filesystem::rename(new_query_directory_path, query_directory_path);
+    // std::filesystem::rename(new_query_directory_path, query_directory_path);
     resp->code = 200;
 }
 

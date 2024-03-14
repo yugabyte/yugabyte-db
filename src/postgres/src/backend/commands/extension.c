@@ -959,7 +959,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	PG_CATCH();
 	{
 		creating_extension = false;
-		CurrentExtensionObject = InvalidOid;
+		CurrentExtensionObject = InvalidOid;	
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

@@ -3954,7 +3954,6 @@ bundlePgss(int flag, int64 queryId, const char *query, double total_time,
 
 void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
 	int randomNumber = rand() % 100 + 1;
-	static bool printedonce = 0;
 	if(flag == 0){
 		char* pgss_log_path = (char*)malloc(strlen(result->log_path) + 30);
 		strcpy(pgss_log_path, result->log_path);
@@ -3963,9 +3962,9 @@ void bundleExplain(int flag ,QueryDesc *queryDesc,MyValue *result){
 		fprintf(fptr, "QUERY PLAN:\n%s" ,result->explain_str);
 		fclose(fptr);
 	}
-	else if(randomNumber == 1 || !printedonce) {
+	else if(randomNumber == 1 || !result->explain_printonce) {
 		ExplainState *es = NewExplainState();
-		printedonce = true;
+		result->explain_printonce = true;
 		es->analyze = true;
 		
 		es->verbose = true;
