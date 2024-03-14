@@ -2286,8 +2286,9 @@ AS IMPLICIT;
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    -- TODO Uncomment this and remove error when supported.
-    -- ALTER FUNCTION varchar2(varchar2, integer, boolean) SUPPORT varchar2_transform;
+    /* YB TODO: Uncomment this and remove error when supported.
+    ALTER FUNCTION varchar2(varchar2, integer, boolean) SUPPORT varchar2_transform;
+    */
     RAISE EXCEPTION 'Should not get here; Feature not supported';
   ELSE
     UPDATE pg_proc SET protransform= 'varchar2_transform'::regproc::oid WHERE proname='varchar2';
@@ -2507,8 +2508,9 @@ AS IMPLICIT;
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    -- TODO Uncomment this and remove error when supported.
-    -- ALTER FUNCTION nvarchar2(nvarchar2, integer, boolean) SUPPORT nvarchar2_transform;
+    /* YB TODO: Uncomment this and remove error when supported.
+    ALTER FUNCTION nvarchar2(nvarchar2, integer, boolean) SUPPORT nvarchar2_transform;
+    */
     RAISE EXCEPTION 'Should not get here; Feature not supported';
   ELSE
     UPDATE pg_proc SET protransform= 'nvarchar2_transform'::regproc::oid WHERE proname='nvarchar2';

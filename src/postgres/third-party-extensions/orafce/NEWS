@@ -1,0 +1,72 @@
+Orafce News - History of user-visible changes
+Copyright (C) 2008-2016  Orafce Global Development Group
+
+Version 3.14.0 - 22. Dec 2020
+* conversion function unistr
+* bugfix - allows binary upgrade
+
+Version 3.13.4 - 31. May 2020
+* enable utl_file on MS
+
+Version 3.12.0 - 18. May 2020
+* trigger functions oracle.replace_empty_strings and oracle.replace_null_strings
+& remove support for 9.4
+
+Version 3.11.0 - 30. Mar 2020
+* named paths in utl_file package
+
+Version 3.9.0 - 14. Feb 2020
+* minor enhancing user_constraints view
+
+Version 3.8.0 - 22. May 2019
+* PostgreSQL 12 support
+
+Version 3.7.0 - 7. Dec 2018
+* possibility to better emulate || operator for varchar2 and nvarchar2 types
+* few bugfixes
+* only PostgreSQL 9.4 and newer are supported
+* support for PostgreSQL 11, current master branch (future PostgreSQL 12) is supported too
+
+Version 3.6.0
+* some Oracle views - user_tab_columns, user_tables, user_objects, ...
+* support Oracle bad used lpad and nvl functions
+
+Version 3.5.0
+* fix of important issue - missing IMMUTABLE flag for functions ltrim, btrim, rtrim, lpad, rpad
+
+Version 3.4.0 - 2017-03-14
+* new aggregate function wm_concat
+* PostgreSQL 9.6, 10 are supported well
+
+Version 3.2.0 - 2016-01-xx
+* remove support for 8.3, 8.4, 9.0, 9.1 (only 9.2 and higher are supported)
+* new functions: sysdate, sessiontimezone, dbtimezone
+
+Version 3.1 - 2015-07-11
+* remove support for 8.2
+* add support for 9.5
+* change the releasion number system
+* new functions: to_single_byte, to_multi_byte, nanvl, length,
+  ltrim, btrim, rtrim, lpad, rpad
+
+Version 3.0.10 - 1. Jan 2015
+* fix compilation issue in new code for Pg <= 9.1
+
+Version 3.0.9 - 27. Dec 2014
+* new Varchar2 and Nvarchar2 types
+* enhanced oracle.substr function
+* fix PGXN related issues in process
+
+Version 3.0.7 - 27. Jul 2014
+* PostgreSQL 9.4 compilation
+* new datatype and related functions: oracle.date
+
+Version 3.0.6 - 8. Sep 2013
+
+* PostgreSQL 9.3 compilation
+* some cleaning, fixes, much more regress tests
+
+Version 3.0.5 - X Dec 2012
+
+* PostgreSQL 9.1/9.2 compilation
+* ... TODO ...
