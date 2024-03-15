@@ -185,13 +185,13 @@ Backup storage overages
 
 ## Data transfer costs
 
-Data Transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount in a billing cycle.
+Data transfer accounts for the volume of data going into, out of, and between the nodes in a cluster, which is summed up to a cumulative amount in a billing cycle.
 
 Yugabyte meters and bills data transfer using the following three dimensions.
 
 ### Same region
 
-This accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
+This dimension accounts for all regional traffic of the cluster. This includes all cross availability zone inter-node traffic, which YugabyteDB automatically manages, and egress cost to a client in the same region as the cluster.
 
 Single-node ([fault tolerance](../../cloud-basics/create-clusters/#cluster-settings) of NONE) and three-node (fault tolerance of Node Level) with single availability zone (AZ) topologies will have much lower usage than clusters with three nodes (fault tolerance of Availability Zone) deployed across multiple AZs.
 
@@ -205,7 +205,7 @@ The free allowance for same region transfers is 1000 GB per month for every 1 vC
 
 ### Cross region
 
-This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC networking](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
+This dimension accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC networking](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
 
 {{< tip title="Rate card" >}}
 
@@ -263,10 +263,10 @@ While active, disk and backup storage are covered by the free allowance, and the
 When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
 
 Disk storage (Paused) = disk storage x hourly rate
-: 200gb x 0.000138888889 = $0.0277777778/hour
+: 200 GB x 0.000138888889 = $0.0277777778/hour
 
 Backup storage (Paused) = backup storage x hourly rate
-: 400gb x 0.00003472222222 = $0.0138888889/hour
+: 400 GB x 0.00003472222222 = $0.0138888889/hour
 
 **Paused cluster hourly rate** = $0.0416666667/hour
 
