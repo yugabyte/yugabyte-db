@@ -107,28 +107,26 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE 
 (5 rows)
 
 explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-                           QUERY PLAN
------------------------------------------------------------------
- Merge Left Join
-   Merge Cond: ((((p1.a - 1)) = p5.a) AND (((p1.b - 1)) = p5.b))
-   ->  Sort
-         Sort Key: ((p1.a - 1)), ((p1.b - 1))
+                         QUERY PLAN
+------------------------------------------------------------
+ Hash Right Join
+   Hash Cond: ((p5.a = (p1.a - 1)) AND (p5.b = (p1.b - 1)))
+   ->  Seq Scan on p5
+   ->  Hash
          ->  Seq Scan on p1
                Storage Filter: (a <= 30)
-   ->  Index Scan using p5_pkey on p5
-(7 rows)
+(6 rows)
 
 /*+NoYbBatchedNL(p1 p5)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-                           QUERY PLAN
------------------------------------------------------------------
- Merge Left Join
-   Merge Cond: ((((p1.a - 1)) = p5.a) AND (((p1.b - 1)) = p5.b))
-   ->  Sort
-         Sort Key: ((p1.a - 1)), ((p1.b - 1))
+                         QUERY PLAN
+------------------------------------------------------------
+ Hash Right Join
+   Hash Cond: ((p5.a = (p1.a - 1)) AND (p5.b = (p1.b - 1)))
+   ->  Seq Scan on p5
+   ->  Hash
          ->  Seq Scan on p1
                Storage Filter: (a <= 30)
-   ->  Index Scan using p5_pkey on p5
-(7 rows)
+(6 rows)
 
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                                                QUERY PLAN
@@ -556,8 +554,8 @@ explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order b
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
-                  QUERY PLAN
------------------------------------------------
+             QUERY PLAN
+-------------------------------------
  Hash Right Join
    Hash Cond: (p2.c1 = p1.c1)
    ->  Nested Loop
@@ -565,15 +563,15 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
          ->  Materialize
                ->  Seq Scan on q3 p3
    ->  Hash
-         ->  Index Scan using q1_pkey on q1 p1
+         ->  Seq Scan on q1 p1
 (8 rows)
 
 -- this should not be a batched NL join as it contains an unbatchable clause
 -- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
 -- present
 explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
-                  QUERY PLAN
------------------------------------------------
+             QUERY PLAN
+-------------------------------------
  Hash Right Join
    Hash Cond: (p2.c1 = p1.c1)
    Join Filter: (p3.a <= p1.c1)
@@ -582,7 +580,7 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
          ->  Materialize
                ->  Seq Scan on q3 p3
    ->  Hash
-         ->  Index Scan using q1_pkey on q1 p1
+         ->  Seq Scan on q1 p1
 (9 rows)
 
 DROP TABLE q1;
