@@ -28,7 +28,8 @@ import {
   getSharedXClusterConfigs,
   tableSort,
   hasLinkedXClusterConfig,
-  isTableToggleable
+  isTableToggleable,
+  formatUuidForXCluster
 } from '../../ReplicationUtils';
 import {
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
@@ -63,7 +64,11 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { IndexTableReplicationCandidate, XClusterTableType } from '../../XClusterTypes';
+import {
+  IndexTableReplicationCandidate,
+  TableReplicationCandidate,
+  XClusterTableType
+} from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 import {
   EligibilityDetails,
@@ -303,23 +308,29 @@ export const TableSelect = (props: TableSelectProps) => {
 
   const toggleTableGroup = (
     isSelected: boolean,
-    mainTableReplicationCandidates: MainTableReplicationCandidate[]
+    tableReplicationCandidates: TableReplicationCandidate[]
   ) => {
     if (isSelected) {
       const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
-      mainTableReplicationCandidates.forEach((mainTableReplicationCandidate) => {
-        currentSelectedTableUuids.add(getTableUuid(mainTableReplicationCandidate));
-        mainTableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+      tableReplicationCandidates.forEach((tableReplicationCandidate) => {
+        currentSelectedTableUuids.add(getTableUuid(tableReplicationCandidate));
+
+        if (tableReplicationCandidate.isIndexTable && tableReplicationCandidate.mainTableUUID) {
+          currentSelectedTableUuids.add(
+            formatUuidForXCluster(tableReplicationCandidate.mainTableUUID)
+          );
+        }
+        tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
           currentSelectedTableUuids.add(indexTableId)
         );
       });
       setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
       const removedTableUuids = new Set();
-      mainTableReplicationCandidates.forEach((mainTableReplicationCandidate) => {
-        removedTableUuids.add(getTableUuid(mainTableReplicationCandidate));
-        mainTableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
+      tableReplicationCandidates.forEach((tableReplicationCandidate) => {
+        removedTableUuids.add(getTableUuid(tableReplicationCandidate));
+        tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
           removedTableUuids.add(indexTableId)
         );
       });
@@ -329,16 +340,16 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   };
 
-  const handleTableGroupToggle = (isSelected: boolean, rows: MainTableReplicationCandidate[]) => {
+  const handleTableGroupToggle = (isSelected: boolean, rows: TableReplicationCandidate[]) => {
     toggleTableGroup(isSelected, rows);
     return true;
   };
 
   const handleTableToggle = (
-    xClusterTableCandidate: MainTableReplicationCandidate,
+    tableReplicationCandidate: TableReplicationCandidate,
     isSelected: boolean
   ) => {
-    toggleTableGroup(isSelected, [xClusterTableCandidate]);
+    toggleTableGroup(isSelected, [tableReplicationCandidate]);
   };
 
   const toggleNamespaceGroup = (isSelected: boolean, namespaceItems: NamespaceItem[]) => {
