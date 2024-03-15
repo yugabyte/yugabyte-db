@@ -150,6 +150,10 @@ static inline void od_client_free(od_client_t *client)
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
 	}
+	if (client->vars.vars) {
+		free(client->vars.vars);
+		client->vars.vars = NULL;
+	}
 	free(client);
 }
 
