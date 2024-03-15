@@ -3976,10 +3976,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     return Status::OK();
   }
 
-  Status CDCSDKYsqlTest::XreplValidateSplitCandidateTable(const TableId& table_id) {
+  Status CDCSDKYsqlTest::XReplValidateSplitCandidateTable(const TableId& table_id) {
     auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-    auto table = cm.GetTableInfo(table_id);
-    return cm.XreplValidateSplitCandidateTable(*table);
+    return cm.XReplValidateSplitCandidateTable(table_id);
   }
 
   void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(

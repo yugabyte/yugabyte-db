@@ -666,14 +666,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DeleteXReplStatesForIndexTables(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
-  Status DeleteCDCStreamsMetadataForTables(const std::unordered_set<TableId>& table_ids)
-      EXCLUDES(mutex_);
+  Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
   // Add new table metadata to all CDCSDK streams of required namespace.
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
       EXCLUDES(mutex_);
 
-  Status XreplValidateSplitCandidateTable(const TableInfo& table) const override;
+  Status XReplValidateSplitCandidateTable(const TableId& table_id) const override;
 
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
@@ -1498,29 +1497,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
 
-  // Find all the CDC streams that have been marked as DELETED.
-  Status FindCDCStreamsMarkedAsDeleting(std::vector<CDCStreamInfoPtr>* streams);
-
   // Find all the CDC streams that have been marked as provided state.
-  Status FindCDCStreamsMarkedForMetadataDeletion(
-      std::vector<CDCStreamInfoPtr>* streams, SysCDCStreamEntryPB::State state);
+  Result<std::vector<CDCStreamInfoPtr>> FindXReplStreamsMarkedForDeletion(
+      SysCDCStreamEntryPB::State deletion_state);
 
-  // Delete specified CDC streams.
-  Status CleanUpDeletedCDCStreams(
-      const LeaderEpoch& epoch, const std::vector<CDCStreamInfoPtr>& streams);
+  Status CleanUpDeletedXReplStreams(const LeaderEpoch& epoch);
 
   void GetValidTabletsAndDroppedTablesForStream(
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
-  // Delete specified CDC streams metadata.
-  Status CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfoPtr>& streams);
+  Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch);
 
   using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
-  Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
+  Status CleanUpCDCSDKMetadataFromSystemCatalog(
+      const StreamTablesMap& drop_stream_tablelist, const LeaderEpoch& epoch);
 
-  Status CleanUpCDCSDKStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
+  Status CleanUpXReplStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
 
   Status UpdateCDCStreams(
       const std::vector<xrepl::StreamId>& stream_ids,
@@ -1574,7 +1568,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
   Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
 
-  std::unordered_set<xrepl::StreamId> GetAllXreplStreamIds() const EXCLUDES(mutex_);
+  std::unordered_set<xrepl::StreamId> GetAllXReplStreamIds() const EXCLUDES(mutex_);
 
   void NotifyAutoFlagsConfigChanged();
 
@@ -1594,14 +1588,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateCdcStateTableIfNotFound(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  // Create a new Xrepl stream, start mutation and add it to cdc_stream_map_.
+  // Create a new XRepl stream, start mutation and add it to cdc_stream_map_.
   // Caller is responsible for writing the stream to sys_catalog followed by CommitMutation.
-  // or calling ReleaseAbandonedXreplStream to release the unused stream.
+  // or calling ReleaseAbandonedXReplStream to release the unused stream.
   Result<scoped_refptr<CDCStreamInfo>> InitNewXReplStream() EXCLUDES(mutex_);
   void ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
 
   Status SetXReplWalRetentionForTable(const TableInfoPtr& table, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
+
+  Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2133,18 +2129,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 
-  bool IsXClusterEnabled(const TableInfo& table_info) const EXCLUDES(mutex_);
+  // Is this table part of xCluster or CDCSDK?
+  bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsXClusterEnabledUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTablePartOfXCluster(const TableId& table_id) const EXCLUDES(mutex_);
 
-  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const EXCLUDES(mutex_);
+  bool IsTablePartOfXClusterUnlocked(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfBootstrappingCdcStreamUnlocked(const TableInfo& table_info) const
-      REQUIRES_SHARED(mutex_);
-
-  bool IsTableXClusterProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
-
-  bool IsTablePartOfCDCSDK(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTablePartOfCDCSDK(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema) const;
 
@@ -2266,15 +2258,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
-  // can be deleted and cdc_state metadata can also be cleaned up. retained_by_xcluster_ is a
+  // can be deleted and cdc_state metadata can also be cleaned up. retained_by_cdcsdk_ is a
   // subset of hidden_tablets_.
   struct HiddenReplicationParentTabletInfo {
     TableId table_id_;
     std::string parent_tablet_id_;
     std::array<TabletId, kNumSplitParts> split_tablets_;
   };
-  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_xcluster_
-      GUARDED_BY(mutex_);
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
       GUARDED_BY(mutex_);
 
@@ -2491,7 +2481,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::string& split_partition_key, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
-  Status XreplValidateSplitCandidateTableUnlocked(const TableInfo& table) const
+  Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
 
   Status ValidateSplitCandidate(
@@ -2791,12 +2781,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void RecoverXreplStreamId(const xrepl::StreamId& stream_id)
       EXCLUDES(xrepl_stream_ids_in_use_mutex_);
 
-  Result<xrepl::StreamId> CreateNewXClusterStream(
-      const TableId& table_id, bool transactional,
-      const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB>& options,
-      const std::optional<SysCDCStreamEntryPB::State>& initial_state, rpc::RpcContext* rpc,
-      const LeaderEpoch& epoch);
-
   Status CreateNewCDCStreamForNamespace(
       const CreateCDCStreamRequestPB& req,
       CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
@@ -2818,8 +2802,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
 
-  Status BackfillMetadataForCDC(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
-
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
   Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);
@@ -2836,19 +2818,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
-  Status MarkCDCStreamsForMetadataCleanup(
-      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State state);
+  Status DropXReplStreams(
+      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State delete_state);
 
   // This method returns all tables in the namespace suitable for CDCSDK.
   std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id) REQUIRES(mutex_);
 
   // Find CDC streams for a table.
-  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableUnlocked(
+  std::vector<CDCStreamInfoPtr> GetXReplStreamsForTable(
       const TableId& table_id, const cdc::CDCRequestSource cdc_request_source) const
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
-  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTablesToDeleteMetadata(
+  std::vector<CDCStreamInfoPtr> FindCDCSDKStreamsToDeleteMetadata(
       const std::unordered_set<TableId>& table_ids) const REQUIRES_SHARED(mutex_);
 
   Result<std::optional<CDCStreamInfoPtr>> GetStreamIfValidForDelete(
@@ -2989,10 +2971,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       CoarseTimePoint deadline,
       bool* const bootstrap_required);
 
-  // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
-  std::unordered_set<xrepl::StreamId> GetXClusterStreamsForProducerTable(
-      const TableId& table_id) const;
-
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
   Status CreateTransactionAwareSnapshot(
@@ -3040,10 +3018,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void ProcessXReplParentTabletDeletionPeriodically();
 
-  Status DoProcessXClusterTabletDeletion();
   Status DoProcessCDCSDKTabletDeletion();
 
-  void LoadXReplRetainedTablets(
+  void RecordCDCSDKHiddenTablets(
       const std::vector<TabletInfoPtr>& tablets, const TabletDeleteRetainerInfo& delete_retainer)
       REQUIRES(mutex_);
 
@@ -3090,21 +3067,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status LoadUniverseReplication() REQUIRES(mutex_);
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
-  // Check if this tablet is being kept for xcluster replication or cdcsdk.
-  bool RetainedByXRepl(const TabletId& tablet_id) EXCLUDES(mutex_);
+  bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
 
-  void XReplPopulateTabletDeleteRetainerInfo(
-      const TableInfo& table_info, const TabletInfos& tablets_to_check,
-      TabletDeleteRetainerInfo& delete_retainer) const REQUIRES_SHARED(mutex_);
+  void CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
+      REQUIRES_SHARED(mutex_);
 
   using SysCatalogPostLoadTasks = std::vector<std::pair<std::function<void()>, std::string>>;
   void StartPostLoadTasks(SysCatalogPostLoadTasks&& post_load_tasks);
 
   void StartWriteTableToSysCatalogTasks(TableIdSet&& tables_to_persist);
 
-  bool IsTableXClusterConsumerUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTableXClusterConsumerUnlocked(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
+  Status DropXClusterStreamsOfTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
   // For a table that is currently in PREPARING state, if all its tablets have transitioned to
   // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
@@ -3120,7 +3096,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
-  bool IsTableXClusterConsumer(const TableInfo& table_info) const EXCLUDES(mutex_);
+  bool IsTableXClusterConsumer(const TableId& table_id) const EXCLUDES(mutex_);
 
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
@@ -3162,9 +3138,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // ShouldRetainHiddenTablet control the workflow of hiding tablets on drop and eventually deleting
   // them.
   // Any manager that needs to retain deleted tablets as hidden must hook into these methods.
-  Result<TabletDeleteRetainerInfo> GetTabletDeleteRetainerInfo(
-      const TableInfo& table_info, const TabletInfos& tablets_to_check,
-      const SnapshotSchedulesToObjectIdsMap* schedules_to_tables_map = nullptr) EXCLUDES(mutex_);
+  Result<TabletDeleteRetainerInfo> GetDeleteRetainerInfoForTabletDrop(const TabletInfo& tablet_info)
+      EXCLUDES(mutex_);
+  Result<TabletDeleteRetainerInfo> GetDeleteRetainerInfoForTableDrop(
+      const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map)
+      EXCLUDES(mutex_);
 
   void MarkTabletAsHidden(
       SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
@@ -3245,6 +3223,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // CDC Stream map: xrepl::StreamId -> CDCStreamInfo.
   typedef std::unordered_map<xrepl::StreamId, CDCStreamInfoPtr> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
+  bool xrepl_maps_loaded_ GUARDED_BY(mutex_) = false;
 
   std::mutex xrepl_stream_ids_in_use_mutex_;
   std::unordered_set<xrepl::StreamId> xrepl_stream_ids_in_use_
@@ -3256,10 +3235,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // 'FindAllTablesMissingInCDCSDKStream'.
   std::unordered_map<NamespaceId, std::unordered_set<TableId>>
       namespace_to_cdcsdk_unprocessed_table_map_ GUARDED_BY(cdcsdk_unprocessed_table_mutex_);
-
-  // Map of tables -> set of cdc streams they are producers for.
-  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
-      xcluster_producer_tables_to_stream_map_ GUARDED_BY(mutex_);
 
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamIds>
