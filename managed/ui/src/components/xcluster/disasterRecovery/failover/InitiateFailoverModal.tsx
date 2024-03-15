@@ -172,8 +172,8 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   if (targetUniverseQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={t('faliedToFetchTargetuniverse', {
-          keyPrefix: 'clusterDetail.xCluster.error',
+        customErrorMessage={t('failedToFetchTargetuniverse', {
+          keyPrefix: 'queryError.error',
           universeUuid: drConfig.drReplicaUniverseUuid
         })}
       />
@@ -216,7 +216,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   return (
     <YBModal
-      title={t('title')}
+      title={t('title', { drReplicaName: targetUniverseName })}
       submitLabel={t('submitButton')}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}

@@ -477,6 +477,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Sets the given flag on all tablet servers.
   Status SetFlagOnTServers(const std::string& flag, const std::string& value);
 
+  // Adds the given flag to the extra flags on all tablet servers. A restart is required
+  // to get any effect of that change.
+  void AddExtraFlagOnTServers(const std::string& flag, const std::string& value);
+
+  // Removes the given flag from the extra flags on all tablet servers. A restart is required
+  // to get any effect of that change.
+  void RemoveExtraFlagOnTServers(const std::string& flag);
+
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
   uint16_t AllocateFreePort();
@@ -523,6 +531,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a pointer to the flags used for tserver.  Modifying these flags will only
   // take effect on new tserver creation.
   std::vector<std::string>* mutable_extra_tserver_flags() { return &opts_.extra_tserver_flags; }
+
+  // Wait for LB to become idle.
+  // LB related tests should call this function before performing test logic to stabilize tests.
+  Status WaitForLoadBalancerToBecomeIdle(
+      const std::unique_ptr<yb::client::YBClient>& client, MonoDelta timeout);
 
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
@@ -771,6 +784,12 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);
   Result<HybridTime> GetServerTime();
+
+  // Add a flag to the extra flags. A restart is required to get any effect of that change.
+  void AddExtraFlag(const std::string& flag, const std::string& value);
+
+  // Remove a flag from the extra flags. A restart is required to get any effect of that change.
+  size_t RemoveExtraFlag(const std::string& flag);
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;

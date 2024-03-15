@@ -17,20 +17,22 @@
 #include <string>
 #include <boost/circular_buffer.hpp>
 
-#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 struct XClusterPollerStats {
   explicit XClusterPollerStats(const std::string& replication_group_id);
   explicit XClusterPollerStats(
-      const cdc::ProducerTabletInfo& producer_info, const cdc::ConsumerTabletInfo& consumer_info);
+      const xcluster::ProducerTabletInfo& producer_info,
+      const xcluster::ConsumerTabletInfo& consumer_info);
 
-  cdc::ReplicationGroupId replication_group_id;
+  xcluster::ReplicationGroupId replication_group_id;
   std::string stream_id_str;
   TabletId producer_tablet_id;
   TableId consumer_table_id;

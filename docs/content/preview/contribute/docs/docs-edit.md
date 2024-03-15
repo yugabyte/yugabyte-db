@@ -3,7 +3,6 @@ title: Edit the YugabyteDB docs
 headerTitle: Edit the docs
 linkTitle: Edit the docs
 description: Get set up and edit the YugabyteDB docs locally
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-edit

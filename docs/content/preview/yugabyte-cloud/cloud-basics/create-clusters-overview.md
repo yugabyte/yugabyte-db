@@ -3,7 +3,6 @@ title: Plan your cluster
 linkTitle: Plan your cluster
 description: Plan a cluster in YugabyteDB Managed.
 headcontent: Before deploying a production cluster, consider the following factors
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-overview
@@ -12,19 +11,19 @@ menu:
 type: docs
 ---
 
-## Best practices
+## Summary of best practices
 
 The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
-| [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs, with a replication factor of 3. |
-| [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
+| [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs. |
+| [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Production** release track. |
 | [Staging cluster](#staging-cluster) | Use a staging cluster to test application compatibility with database updates before upgrading your production cluster. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
-| [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
+| [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. Deploy clusters in a VPC and configure either peering or a private link. Refer to [VPC network](../cloud-vpcs/). After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [Connect to clusters](../../cloud-connect/). |
 
 ## In depth
 
@@ -39,7 +38,7 @@ Single-region clusters are available in the following topologies and fault toler
 - **Single availability zone**. Resilient to node outages.
 - **Multiple availability zones**. Resilient to node and availability zone outages.
 
-Cloud providers design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+Cloud providers design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone outage as well as high availability.
 
 Single-region clusters are not resilient to region-level outages.
 
@@ -94,23 +93,46 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-The _fault tolerance_ determines how resilient the cluster is to node, zone, and region failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
+YugabyteDB achieves resilience by replicating data across fault domains using the [RAFT consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-- **Region Level**. Includes 3 nodes spread across multiple regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
+The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
 
-- **Availability Zone Level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
+YugabyteDB Managed provides the following configurations for fault tolerance.
 
-- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone or region outages.
+| Fault tolerance | Resilient to | Minimum number of nodes | Scale in increments of |
+| :-------------- | :----------- | :---------------------: | :--------------------: |
+| **Node**        | 1 Node outage    | 3 | 1 |
+|                 | 2 Node outages   | 5 | 1 |
+|                 | 3 Node outages   | 7 | 1 |
+| **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
+| **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
+|                 | 2 Region outages | 5 across 5 regions | 5 |
+|                 | 3 Region outages | 7 across 7 regions | 7 |
 
-Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
-
-- For Region Level, you can add or remove nodes in increments of 1 per region; all regions have the same number of nodes.
-- For Availability Zone Level, you can add or remove nodes in increments of 3.
-- For Node Level, you can add or remove nodes in increments of 1.
+You can't change the cluster fault tolerance after the cluster is created.
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster.
+
+#### Region
+
+- YugabyteDB can continue to do reads and writes even in case of a cloud region outage.
+- Minimum of 3 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
+- Add or remove nodes in increments of 1 per region; all regions have the same number of nodes. For example, for a fault tolerance of 2 regions, you must scale in increments of 5 (one node per region).
+
+#### Availability Zone
+
+- YugabyteDB can continue to do reads and writes even in case of a cloud availability zone outage.
+- Minimum of 3 nodes across 3 availability zones for a fault tolerance of 1 zone.
+- Because cloud providers typically provide only 3-4 availability zones per region, availability zone fault tolerance is limited to 1 zone outage (anything more requires more zones than are available in any typical region).
+- Add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+
+#### Node
+
+- YugabyteDB can continue to do reads and writes even in case of node outage, but this configuration is not resilient to cloud availability zone or region outages.
+- Minimum of 3 nodes deployed in a single availability zone.
+- Add or remove nodes in increments of 1.
 
 ### Sizing
 
@@ -127,13 +149,15 @@ YugabyteDB Managed clusters support 15 simultaneous connections per vCPU. So a c
 | 6x4 | 360 |
 | 6x8 | 720 |
 
+For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is recommended.
+
 During an update, one node is always offline. When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. You can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
 
-YugabyteDB Managed supports both vertical and horizontal scaling. Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
+If your configuration doesn't match your performance requirements, you can [scale your cluster](../../cloud-clusters/configure-clusters/#scale-and-configure-clusters) after it is created. Depending on your performance requirements, you can increase the number of vCPUs per node (scale up, also referred to as vertical scaling), as well as the total number of nodes (scale out, also referred to as horizontal scaling). You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
-If your configuration doesn't match your performance requirements, you can change these values after the cluster is created (increasing or decreasing vCPUs and increasing storage, and adding or removing nodes). Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
+YugabyteDB recommends vertical scaling until nodes have 16vCPUs, and horizontal scaling once nodes have 16 vCPUs. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 vCPUs rather than adding a fourth node. For a 3-node cluster with 16 vCPUs per node, scale out by adding a 4th node.
 
-For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is recommended.
+Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 ### YugabyteDB version
 

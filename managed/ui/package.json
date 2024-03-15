@@ -8,7 +8,7 @@
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
     "build": "npm run cleanup && CI=false REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) craco build && npm run fetch-map",
-    "build:ci": "CI=true GENERATE_SOURCEMAP=false craco build",
+    "build:ci": "CI=true GENERATE_SOURCEMAP=false REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) craco build && npm run fetch-map",
     "build-and-copy": "npm run build:ci && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
     "eject": "react-scripts eject",

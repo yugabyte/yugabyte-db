@@ -232,7 +232,7 @@ get_ephemeral_drives() {
         echo "$device_path is already mounted on $mount_path"
       else
         echo "Mounting $device_path on $mount_path"
-        ( set -x; mount $mount_path )
+        ( set -x; mount $device_path $mount_path )
       fi
       # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
       # there's a better way to set the permissions in fstab itself. But couldn't find one that

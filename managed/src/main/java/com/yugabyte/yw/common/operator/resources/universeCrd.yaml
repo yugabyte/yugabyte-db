@@ -14,6 +14,9 @@ spec:
         properties:
           spec:
             type: object
+            x-kubernetes-validations:
+              - message: replicationFactor <= numNodes
+                rule: self.replicationFactor <= self.numNodes
             properties:
               universeName:
                 type: string
@@ -29,35 +32,93 @@ spec:
                   rule: self == oldSelf
               instanceType:
                 type: string
+              masterK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
+              tserverK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
               assignPublicIP:
                 type: boolean
-              masterGFlags:
+              gFlags:
                 type: object
-                additionalProperties:
-                  type: string
-              tserverGFlags:
-                type: object
-                additionalProperties:
-                  type: string
-                  x-kubernetes-preserve-unknown-fields: true
+                properties:
+                  tserverGFlags:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  masterGFlags:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  perAZ:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        tserverGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        masterGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+
               useTimeSync:
                 type: boolean
               enableYSQL:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYSQL cannot be changed
+                  rule: self == oldSelf
               enableYEDIS:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYEDIS cannot be changed
+                  rule: self == oldSelf
               enableNodeToNodeEncrypt:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableNodeToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               enableClientToNodeEncrypt:
                 type: boolean
-              enableVolumeEncryption:
-                type: boolean
+                x-kubernetes-validations:
+                - message: enableClientToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               ybSoftwareVersion:
                 type: string
               providerName:
                 type: string
+                x-kubernetes-validations:
+                - message: providerName cannot be changed
+                  rule: self == oldSelf
               zoneFilter:
                 type: array
+                x-kubernetes-validations:
+                - message: zoneFilter cannot be changed
+                  rule: self == oldSelf
                 items:
                   type: string
               enableYSQLAuth:
@@ -105,6 +166,10 @@ spec:
                   rule: self == oldSelf
               enableExposingService:
                 type: string
+                enum:
+                - EXPOSED
+                - NONE
+                - UNEXPOSED
                 x-kubernetes-validations:
                 - message:   enableExposingService cannot be changed once set.
                   rule: self == oldSelf
@@ -112,11 +177,6 @@ spec:
                 type: string
                 x-kubernetes-validations:
                   - message:   AccessKeycode cannot be changed once set.
-                    rule: self == oldSelf
-              replicationFactor:
-                type: integer
-                x-kubernetes-validations:
-                  - message:   replication Factor cannot be changed once set.
                     rule: self == oldSelf
               deviceInfo:
                 properties:
@@ -126,12 +186,24 @@ spec:
                     type: integer
                   diskIops:
                     type: integer
+                    x-kubernetes-validations:
+                      - message:   DiskIops cannot be changed once set.
+                        rule: self == oldSelf
                   throughput:
                     type: integer
+                    x-kubernetes-validations:
+                    - message:   thoughput cannot be changed once set.
+                      rule: self == oldSelf
                   storageClass:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StorageClass cannot be changed once set.
+                        rule: self == oldSelf
                   mountPoints:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   mountPoints cannot be changed once set.
+                        rule: self == oldSelf
                   storageType:
                     enum:
                     - IO1
@@ -146,6 +218,9 @@ spec:
                     - iopsProvisioning
                     - throughputProvisioning
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StroageType cannot be changed once set.
+                        rule: self == oldSelf
                 type: object
               kubernetesOverrides:
                 type: object
@@ -153,29 +228,6 @@ spec:
                 # Helm chart can have a bunch more properties.
                 additionalProperties: true
                 properties:
-                  storage:
-                    type: object
-                    properties:
-                      ephemeral:
-                        type: boolean
-                      master:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
-                      tserver:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
                   resource:
                     type: object
                     properties:
@@ -528,10 +580,6 @@ spec:
                                           type: array
                                           items:
                                             type: string
-
-
-
-
                           nodeAffinity:
                             description: Node affinity settings
                             type: object
@@ -1257,7 +1305,7 @@ spec:
           status:
             type: object
             properties:
-              universeStatus:
+              universeState:
                 type: string
               sqlEndpoints:
                 type: array
@@ -1269,9 +1317,35 @@ spec:
                   type: string
               resourceUUID:
                 type: string
+              actions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    action_type:
+                      type: string
+                    message:
+                      type: string
+                    taskUUID:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - queued
+                      - running
+                      - failed
 
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: State
+      type: string
+      description: The state of the universe
+      jsonPath: .status.universeState
+    - name: Software Version
+      type: string
+      description: The Software version of the Universe
+      jsonPath: .spec.ybSoftwareVersion
   names:
     kind: YBUniverse
     plural: ybuniverses

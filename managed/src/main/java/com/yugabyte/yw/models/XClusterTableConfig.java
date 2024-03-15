@@ -11,17 +11,17 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -106,17 +106,16 @@ public class XClusterTableConfig extends Model {
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   private Status status;
 
+  // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Validated("Validated"),
-    Running("Running"),
+    Failed("Failed"),
+    Error("Error"), // Not stored in YBA DB.
+    Warning("Warning"), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
     Updating("Updating"),
     Bootstrapping("Bootstrapping"),
-    Failed("Failed"),
-
-    // The following statuses will not be stored in the YBA DB.
-    Error("Error"),
-    Warning("Warning"),
-    UnableToFetch("UnableToFetch");
+    Validated("Validated"),
+    Running("Running");
 
     private final String status;
 

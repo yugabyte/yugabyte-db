@@ -97,6 +97,9 @@ const mapDispatchToProps = (dispatch) => {
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
     },
+    showLinuxSoftwareUpgradeModal : () => {
+      dispatch(openDialog('linuxVersionUpgradeModal'));
+    },
     showSoftwareUpgradesNewModal: () => {
       dispatch(openDialog('softwareUpgradesNewModal'));
     },

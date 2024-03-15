@@ -52,6 +52,12 @@ type: indexpage
     </a>
   </li>
 
+   <li>
+    <a href="rust/rust-postgres-reference/" class="orange">
+      <i class="icon-rust"></i>
+      Rust
+    </a>
+  </li>
 </ul>
 
 ### Additional drivers

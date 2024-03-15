@@ -60,7 +60,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1052,7 +1052,7 @@ public class PlacementInfoUtil {
     if (numNodes > 0 && numNodes < replicationFactor) {
       String errMsg =
           String.format(
-              "Number of nodes %d cannot be less than the replication " + " factor %d.",
+              "Number of nodes %d cannot be less than the replication factor %d.",
               numNodes, replicationFactor);
       LOG.error(errMsg);
       throw new UnsupportedOperationException(errMsg);
@@ -1260,6 +1260,7 @@ public class PlacementInfoUtil {
       NodeDetails currentNode = nodeIter.next();
       if (currentNode.isInPlacement(clusterUUID)
           && currentNode.azUuid.equals(targetAZUuid)
+          && currentNode.state == NodeState.ToBeAdded
           && !currentNode.isMaster) {
         nodeIter.remove();
 
@@ -2002,7 +2003,7 @@ public class PlacementInfoUtil {
     while (numTotalMasters > 0) {
       if (zones.isEmpty()) {
         throw new IllegalStateException(
-            "No zones left to place masters. " + "Not enough tserver nodes selected");
+            "No zones left to place masters. Not enough tserver nodes selected");
       }
       PlacementAZ az = zones.remove();
       az.replicationFactor++;

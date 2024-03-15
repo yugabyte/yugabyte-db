@@ -41,6 +41,9 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       preTaskActions(universe);
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
 
       // Set all the in-memory node names first.
       setNodeNames(universe);

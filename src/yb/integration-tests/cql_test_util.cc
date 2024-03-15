@@ -363,7 +363,12 @@ Result<CassandraSession> CassandraSession::Create(CassCluster* cluster) {
   return result;
 }
 
-Status CassandraSession::Execute(const CassandraStatement& statement) {
+Status CassandraSession::Execute(const CassandraStatement& statement, uint32_t timeout_ms) {
+  if (timeout_ms > 0) {
+    LOG(INFO) << "Set custom request timeout (ms): " << timeout_ms;
+    cass_statement_set_request_timeout(statement.cass_statement_.get(), timeout_ms);
+  }
+
   CassandraFuture future(cass_session_execute(
       cass_session_.get(), statement.cass_statement_.get()));
   return future.Wait();
@@ -390,9 +395,9 @@ CassandraFuture CassandraSession::ExecuteGetFuture(const string& query) {
   return ExecuteGetFuture(CassandraStatement(query));
 }
 
-Status CassandraSession::ExecuteQuery(const string& query) {
+Status CassandraSession::ExecuteQuery(const string& query, uint32_t timeout_ms) {
   LOG(INFO) << "Execute query: " << query;
-  return Execute(CassandraStatement(query));
+  return Execute(CassandraStatement(query), timeout_ms);
 }
 
 Result<CassandraResult> CassandraSession::ExecuteWithResult(const string& query) {

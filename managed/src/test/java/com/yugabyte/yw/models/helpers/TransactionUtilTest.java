@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import jakarta.persistence.PersistenceException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,7 +28,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.persistence.PersistenceException;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
@@ -55,7 +55,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testTransactionRollback() {
-    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
     taskInfo.setDetails(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
@@ -79,7 +79,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testTransactionCommit() {
-    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
     taskInfo.setDetails(mapper.createObjectNode());
     taskInfo.setOwner("test");
     taskInfo.setTaskState(State.Created);
@@ -126,7 +126,7 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
   public void testTransaction() {
     List<TaskInfo> tasks = new ArrayList<>();
     for (int i = 0; i < 5; i++) {
-      TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+      TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
       taskInfo.setDetails(mapper.createObjectNode());
       taskInfo.setOwner("test" + i);
       taskInfo.setTaskState(State.Created);

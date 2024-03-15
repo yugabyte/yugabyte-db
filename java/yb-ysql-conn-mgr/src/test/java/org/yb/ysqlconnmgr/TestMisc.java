@@ -18,12 +18,18 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.*;
+import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestMisc extends BaseYsqlConnMgr {
+  private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
+      "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
+      "unix domain socket";
+
   @Test
   public void testCreateIndex() throws Exception {
     try (Connection connection = getConnectionBuilder()
@@ -60,6 +66,57 @@ public class TestMisc extends BaseYsqlConnMgr {
     {
       LOG.error("Unable to create database", e);
       fail();
+    }
+  }
+
+  @Test
+  public void testLargePacket() throws Exception {
+    String CREATE_TABLE_SQL = "CREATE TABLE IF NOT EXISTS my_table"
+        + " (ID serial PRIMARY KEY, name TEXT NOT NULL, age INT)";
+
+    StringBuilder insertQuery = new StringBuilder(
+        "INSERT INTO my_table (name, age) VALUES ");
+
+    for (int i = 1; i <= 1000; ++i) {
+      insertQuery.append("('Person', ").append(20 + i).append(")");
+      if (i < 1000) {
+        insertQuery.append(",");
+      }
+    }
+
+    try (Connection connection =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                  .withAutoCommit(AutoCommit.DISABLED)
+                                  .withUser("yugabyte")
+                                  .withPassword("yugabyte")
+                                  .withPreferQueryMode("simple")
+                                  .connect();
+        Statement stmt = connection.createStatement()) {
+
+      stmt.execute(String.format(CREATE_TABLE_SQL));
+
+      // Insert query hangs if ysql conn mgr is unable to process large packet.
+      int rowsAffected = stmt.executeUpdate(insertQuery.toString());
+      assertEquals(1000, rowsAffected);
+    } catch (Exception e) {
+      LOG.error("Unable to execute large queries ", e);
+      fail();
+    }
+  }
+
+  // Tcp client can't set itself as a Ysql Connection Manager.
+  @Test
+  public void testNegSetYsqlConnMgr() throws Exception {
+    Properties props = new Properties();
+    props.put("options", String.format("-c %s=%s -c %s=%s",
+        "yb_use_tserver_key_auth", "true",
+        "yb_is_client_ysqlconnmgr", "true"));
+
+    try (Connection conn = getConnectionBuilder().connect(props)) {
+      fail("Did not expected the connection to be successfully established");
+    } catch (Exception e) {
+      assertEquals("Got wrong error message",
+          e.getMessage(), ERROR_YBTSERVERKEY_AUTH_EXPECTED);
     }
   }
 }

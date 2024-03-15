@@ -1,9 +1,9 @@
 ---
 title: OIDC authentication using Azure AD in YugabyteDB Anywhere
-headerTitle: OIDC authentication with Azure AD
+headerTitle: OIDC authentication with Microsoft Entra
 linkTitle: OIDC with Azure AD
-description: Configuring YugabyteDB Anywhere to use OIDC with Azure AD.
-headcontent: Use Azure AD accounts for database access
+description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
+headcontent: Use Microsoft Entra accounts for database access
 menu:
   preview_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access with Azure AD (AAD) and Entra ID as the Identity Provider (IdP).
+This section describes how to configure a YugabyteDB Anywhere universe to use OIDC-based authentication for YugabyteDB YSQL database access using Microsoft Entra (Azure AAD) as the Identity Provider (IdP).
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -140,11 +140,11 @@ To enable some features of the OIDC functionality in Yugabyte Anywhere, you need
 
 #### Enable OIDC authentication
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a superuser. You need your Azure application client ID, client secret, and tenant ID.
+To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your Azure application client ID, client secret, and tenant ID.
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > User Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
 
 1. Enter the client ID and client secret for the application you registered.
 
@@ -255,7 +255,7 @@ After OIDC-based authentication is configured, an administrator can manage users
 
   This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing in to YBA.
 
-  For information on how to add YBA users, see [Create, modify, and delete users](../../../security/authorization-platform/#create-modify-and-delete-users).
+  For information on how to add YBA users, see [Create, modify, and delete users](../../../administer-yugabyte-platform/anywhere-rbac/#create-modify-and-delete-users).
 
 ## Using your JWT
 

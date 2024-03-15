@@ -16,6 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/docdb/wait_queue.h"
 #include "yb/server/server_fwd.h"
+#include "yb/tserver/tserver_service.fwd.h"
 
 namespace yb {
 namespace docdb {
@@ -37,13 +38,15 @@ class LocalWaitingTxnRegistry : public WaitingTxnRegistry {
   // registered wait-for relationship.
   std::unique_ptr<docdb::ScopedWaitingTxnRegistration> Create() override;
 
-  Status RegisterWaitingFor(
-      const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
-      const TabletId& status_tablet_id, docdb::ScopedWaitingTxnRegistration* wrapper);
-
   // Triggers a report of all wait-for relationships tracked by this instance to each waiting
   // transaction's coordinator.
   void SendWaitForGraph();
+
+  // Populates old single shard waiting transactions and their metadata (involved tablet,
+  // start time) based on the arguments in the request. Used by pg_client_service to determine
+  // which transactions to display in pg_locks/yb_lock_status.
+  Status GetOldSingleShardWaiters(const tserver::GetOldSingleShardWaitersRequestPB& req,
+                                  tserver::GetOldSingleShardWaitersResponsePB* resp);
 
   void StartShutdown();
 

@@ -75,3 +75,18 @@
     mode: 0755
     state: link
     force: yes
+
+- name: Install OpenTelemetry collector | Check logs cleanup script exists
+  stat:
+    path: "{{ yb_home_dir }}/bin/zip_purge_yb_logs.sh"
+  register: logs_cleanup_script
+
+- name: Install OpenTelemetry collector | Update logs purge script to not zip logs as long as possible
+  template:
+    src: "roles/configure-cluster-server/templates/zip_purge_yb_logs.sh.j2"
+    dest: "{{ yb_home_dir }}/bin/zip_purge_yb_logs.sh"
+    force: yes
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  when: logs_cleanup_script.stat.exists

@@ -4,7 +4,6 @@ headerTitle: TLS and authentication
 linkTitle: TLS and authentication
 description: Use authentication in conjunction with TLS encryption.
 headcontent: Use authentication in conjunction with TLS encryption
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.16:
     identifier: tls-authentication

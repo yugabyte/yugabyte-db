@@ -4,7 +4,6 @@ headerTitle: Enable server-to-server encryption
 linkTitle: Enable server-to-server encryption
 description: Enable server-to-server encryption (using TLS) for intranode communication.
 headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
-image: /images/section_icons/secure/tls-encryption/server-to-server.png
 menu:
   v2.16:
     identifier: server-to-server

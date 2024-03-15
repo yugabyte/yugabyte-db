@@ -601,7 +601,6 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	/* fetch */
-	YbItemPointerSetInvalid(&scan->xs_heaptid);
 	if (scan->yb_aggrefs)
 	{
 		/*
@@ -619,19 +618,18 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	{
 		if (true)				/* TODO(jason): don't assume a match. */
 		{
-			YbItemPointerYbctid(&scan->xs_heaptid) = HEAPTUPLE_YBCTID(tup);
 			scan->xs_hitup = tup;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 
 			/* TODO(jason): don't assume that recheck is needed. */
 			scan->xs_recheck = true;
-			break;
+			return true;
 		}
 
 		heap_freetuple(tup);
 	}
 
-	return YbItemPointerYbctid(&scan->xs_heaptid) != 0;
+	return false;
 }
 
 /*

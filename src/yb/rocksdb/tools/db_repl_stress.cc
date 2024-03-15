@@ -106,11 +106,12 @@ static void ReplicationThreadBody(void* arg) {
   }
 }
 
-DEFINE_UNKNOWN_uint64(num_inserts, 1000, "the num of inserts the first thread should"
+DEFINE_NON_RUNTIME_uint64(num_inserts, 1000,
+    "the num of inserts the first thread should"
     " perform.");
-DEFINE_UNKNOWN_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
-DEFINE_UNKNOWN_uint64(wal_size_limit_MB, 10, "the wal size limit for the run"
-    "(in MB)");
+DEFINE_NON_RUNTIME_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
+DEFINE_NON_RUNTIME_uint64(wal_size_limit_MB, 10,
+    "the wal size limit for the run (in MB)");
 
 int db_repl_stress(int argc, const char** argv) {
   SetUsageMessage(

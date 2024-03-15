@@ -32,11 +32,13 @@ public class RuntimeConfigCache {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   private RuntimeConfigChangeNotifier runtimeConfigChangeNotifier;
+  // Add any key that needs to be cached below. Other keys will not be cached.
   private Set<String> cachedGlobalKeys =
       Set.of(
           GlobalConfKeys.useNewRbacAuthz.getKey(),
           GlobalConfKeys.ybaApiStrictMode.getKey(),
-          GlobalConfKeys.ybaApiSafeMode.getKey());
+          GlobalConfKeys.ybaApiSafeMode.getKey(),
+          GlobalConfKeys.blockOperatorApiResources.getKey());
 
   @Inject
   public RuntimeConfigCache(RuntimeConfigChangeNotifier runtimeConfigChangeNotifier) {
@@ -63,6 +65,9 @@ public class RuntimeConfigCache {
 
   // Get preferably from the cache. If not present, then fetch from the DB.
   public boolean getBoolean(String key) {
+    if (!cachedGlobalKeys.contains(key)) {
+      throw new RuntimeException(key + " is not cached with RuntimeConfigCache");
+    }
     return cache.getOrElseUpdate(
         key,
         () -> {

@@ -8,6 +8,7 @@
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
+import { useToggle } from 'react-use';
 import { array, object, string } from 'yup';
 import { useQuery } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -24,7 +25,7 @@ import {
   YBImageType
 } from '../../constants';
 import { RegionOperation } from './constants';
-import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
+import { YBButton, YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import {
   ReactSelectOption,
   YBReactSelectField
@@ -34,6 +35,11 @@ import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../uti
 import { api, regionMetadataQueryKey } from '../../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { RegionMetadataResponse } from '../../types';
+import { RegionAmiIdForm } from '../../components/linuxVersionCatalog/RegionAmiIdForm';
+import { IsOsPatchingEnabled } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import { ImageBundle, ImageBundleType } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { keys, values } from 'lodash';
 
 interface ConfigureRegionModalProps extends YBModalProps {
   configuredRegions: CloudVendorRegionField[];
@@ -48,6 +54,9 @@ interface ConfigureRegionModalProps extends YBModalProps {
   ybImageType?: YBImageType;
   regionSelection?: CloudVendorRegionField;
   vpcSetupType?: VPCSetupType;
+
+  imageBundles?: ImageBundle[];
+  onImageBundleSubmit?: (images: ImageBundle[]) => void;
 }
 
 type ZoneCode = { value: string; label: string; isDisabled: boolean };
@@ -65,6 +74,7 @@ export interface ConfigureRegionFormValues {
   sharedSubnet?: string;
   vnet?: string;
   ybImage?: string;
+  imageBundles?: ImageBundle[];
 }
 export type CloudVendorRegionField = Omit<ConfigureRegionFormValues, 'regionData' | 'zones'> & {
   code: string;
@@ -99,6 +109,8 @@ export const ConfigureRegionModal = ({
   regionSelection,
   vpcSetupType,
   ybImageType,
+  imageBundles,
+  onImageBundleSubmit,
   ...modalProps
 }: ConfigureRegionModalProps) => {
   const regionMetadataQuery = useQuery(
@@ -106,8 +118,10 @@ export const ConfigureRegionModal = ({
     () => api.fetchRegionMetadata(providerCode),
     { refetchOnMount: false, refetchOnWindowFocus: false }
   );
-  const classes = useStyles();
 
+  const osPatchingEnabled = IsOsPatchingEnabled();
+
+  const classes = useStyles();
   const fieldLabel = {
     region: 'Region',
     vnet: providerCode === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID',
@@ -117,8 +131,8 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AWS
         ? 'AMI ID'
         : providerCode === ProviderCode.AZU
-        ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
-        : 'Custom Machine Image ID (Optional)',
+          ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
+          : 'Custom Machine Image ID (Optional)',
     sharedSubnet: 'Shared Subnet',
     instanceTemplate: 'Instance Template (Optional)'
   };
@@ -129,8 +143,9 @@ export const ConfigureRegionModal = ({
     securityGroupId: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
     sharedSubnet: providerCode === ProviderCode.GCP,
     vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
-    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
-    zones: providerCode !== ProviderCode.GCP
+    ybImage: !osPatchingEnabled && (providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI),
+    zones: providerCode !== ProviderCode.GCP,
+    imageBundles: false
   };
   const validationSchema = object().shape({
     regionData: object().required(`${fieldLabel.region} is required.`),
@@ -163,10 +178,14 @@ export const ConfigureRegionModal = ({
   });
   const formMethods = useForm<ConfigureRegionFormValues>({
     defaultValues: regionMetadataQuery.data
-      ? getDefaultFormValue(regionSelection, regionMetadataQuery.data)
-      : {},
+      ? getDefaultFormValue(regionSelection, regionMetadataQuery.data, imageBundles ?? [])
+      : {
+        imageBundles
+      },
     resolver: yupResolver(validationSchema)
   });
+
+  const [showRegionAmiForm, toggleShowRegionAmiForm] = useToggle(false);
 
   if (regionMetadataQuery.isLoading || regionMetadataQuery.isIdle) {
     return <YBLoading />;
@@ -180,7 +199,7 @@ export const ConfigureRegionModal = ({
   ) {
     // react-hook-form caches the defaultValues on first render.
     // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
-    formMethods.reset(getDefaultFormValue(regionSelection, regionMetadataQuery.data));
+    formMethods.reset(getDefaultFormValue(regionSelection, regionMetadataQuery.data, imageBundles ?? []));
   }
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
@@ -190,6 +209,12 @@ export const ConfigureRegionModal = ({
       !configuredRegionCodes.includes(regionOption.value.code)
   );
 
+  const shouldShowAmiEditForm = osPatchingEnabled &&
+    providerCode === CloudType.aws
+    && !showRegionAmiForm
+    && Array.isArray(imageBundles) &&
+    imageBundles.filter((i: ImageBundle) => i.metadata.type === ImageBundleType.CUSTOM).length > 0;
+
   const onSubmit: SubmitHandler<ConfigureRegionFormValues> = (formValues) => {
     if (shouldExposeField.zones && formValues.zones.length <= 0) {
       formMethods.setError('zones', {
@@ -198,6 +223,36 @@ export const ConfigureRegionModal = ({
       });
       return;
     }
+
+    if (shouldShowAmiEditForm) {
+      //show the region AMi form
+      toggleShowRegionAmiForm(true);
+      return;
+    }
+    if (osPatchingEnabled) {
+      // save AMI form values
+      
+      let hasError = false;
+
+      formValues.imageBundles?.forEach((img, i) => {
+
+        if (img.metadata.type === ImageBundleType.CUSTOM) {
+
+          keys(img.details.regions).forEach((region, j) => {
+            const val = img.details.regions[region];
+            if (!val.ybImage) {
+              formMethods.setError(`imageBundles.${i}.details.regions.${region}.ybImage`, {
+                message: 'Region Ami ID is required'
+              });
+              hasError = true;
+            }
+          });
+        };
+      });
+      if (hasError) return;
+      onImageBundleSubmit?.(formValues.imageBundles!);
+    }
+
     const { regionData, zones, ...region } = formValues;
     const newRegion = {
       ...region,
@@ -235,17 +290,23 @@ export const ConfigureRegionModal = ({
   const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
   const isRegionInUse = inUseZones.size > 0;
   const isRegionFieldDisabled = isFormDisabled || isRegionInUse;
+
+  const getSubmitLabel = () => {
+    if (regionOperation === RegionOperation.VIEW) {
+      return undefined;
+    }
+    if (osPatchingEnabled) {
+      return shouldShowAmiEditForm ? 'Next: Add Region AMI ID' : 'Done';
+    }
+    return `${RegionOperationLabel[regionOperation]} Region`;
+  };
+
   return (
     <FormProvider {...formMethods}>
       <YBModal
         title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel={
-          regionOperation !== RegionOperation.VIEW
-            ? `${RegionOperationLabel[regionOperation]} Region`
-            : undefined
-        }
-        cancelLabel="Cancel"
+        submitLabel={getSubmitLabel()}
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
         submitTestId="ConfigureRegionModal-SubmitButton"
@@ -253,100 +314,128 @@ export const ConfigureRegionModal = ({
         buttonProps={{
           primary: { disabled: isFormDisabled }
         }}
+        footerAccessory={
+          showRegionAmiForm ? (
+            <YBButton
+              variant='secondary'
+              data-testid="ConfigureRegionModal-CancelButton"
+              onClick={() => toggleShowRegionAmiForm(false)}
+            >
+              Back
+            </YBButton>
+          ) : (
+            <YBButton
+              variant='secondary'
+              onClick={onClose}
+              data-testid="ConfigureRegionModal-CancelButton"
+            >
+              Cancel
+            </YBButton>
+          )
+        }
         {...modalProps}
       >
-        {shouldExposeField.regionData && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.region}</div>
-            <YBReactSelectField
-              control={formMethods.control}
-              name="regionData"
-              options={regionOptions}
-              onChange={onRegionChange}
-              isDisabled={isRegionFieldDisabled}
-            />
-          </div>
-        )}
-        {shouldExposeField.vnet && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.vnet}</div>
-            <YBInputField
-              control={formMethods.control}
-              name="vnet"
-              placeholder="Enter..."
-              disabled={isRegionFieldDisabled}
-              fullWidth
-            />
-          </div>
-        )}
-        {shouldExposeField.securityGroupId && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.securityGroupId}</div>
-            <YBInputField
-              control={formMethods.control}
-              name="securityGroupId"
-              placeholder="Enter..."
-              disabled={isRegionFieldDisabled}
-              fullWidth
-            />
-          </div>
-        )}
-        {shouldExposeField.ybImage && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.ybImage}</div>
-            <YBInputField
-              control={formMethods.control}
-              name="ybImage"
-              placeholder="Enter..."
-              disabled={
-                isFormDisabled ||
-                isRegionFieldDisabled ||
-                (providerCode === ProviderCode.AWS &&
-                  regionOperation === RegionOperation.EDIT_EXISTING)
-              }
-              fullWidth
-            />
-          </div>
-        )}
-        {shouldExposeField.sharedSubnet && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.sharedSubnet}</div>
-            <YBInputField
-              control={formMethods.control}
-              name="sharedSubnet"
-              placeholder="Enter..."
-              disabled={isRegionFieldDisabled}
-              fullWidth
-            />
-          </div>
-        )}
-        {shouldExposeField.instanceTemplate && (
-          <div className={classes.formField}>
-            <div>{fieldLabel.instanceTemplate}</div>
-            <YBInputField
-              control={formMethods.control}
-              name="instanceTemplate"
-              placeholder="Enter..."
-              disabled={isRegionFieldDisabled}
-              fullWidth
-            />
-          </div>
-        )}
-        {shouldExposeField.zones && (
-          <div>
-            <ConfigureAvailabilityZoneField
-              className={classes.manageAvailabilityZoneField}
-              zoneCodeOptions={selectedRegion?.value?.zoneOptions}
-              isFormDisabled={isFormDisabled}
-              inUseZones={inUseZones}
-            />
-            {formMethods.formState.errors.zones?.message && (
-              <FormHelperText error={true}>
-                {formMethods.formState.errors.zones?.message}
-              </FormHelperText>
-            )}
-          </div>
-        )}
+        {
+          showRegionAmiForm ? (
+            <RegionAmiIdForm providerType={providerCode} />
+          ) : (
+            <>
+              {shouldExposeField.regionData && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.region}</div>
+                  <YBReactSelectField
+                    control={formMethods.control}
+                    name="regionData"
+                    options={regionOptions}
+                    onChange={onRegionChange}
+                    isDisabled={isRegionFieldDisabled}
+                  />
+                </div>
+              )}
+              {shouldExposeField.vnet && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.vnet}</div>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="vnet"
+                    placeholder="Enter..."
+                    disabled={isRegionFieldDisabled}
+                    fullWidth
+                  />
+                </div>
+              )}
+              {shouldExposeField.securityGroupId && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.securityGroupId}</div>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="securityGroupId"
+                    placeholder="Enter..."
+                    disabled={isRegionFieldDisabled}
+                    fullWidth
+                  />
+                </div>
+              )}
+              {shouldExposeField.ybImage && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.ybImage}</div>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="ybImage"
+                    placeholder="Enter..."
+                    disabled={
+                      isFormDisabled ||
+                      isRegionFieldDisabled ||
+                      (providerCode === ProviderCode.AWS &&
+                        regionOperation === RegionOperation.EDIT_EXISTING)
+                    }
+                    fullWidth
+                  />
+                </div>
+              )}
+              {shouldExposeField.sharedSubnet && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.sharedSubnet}</div>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="sharedSubnet"
+                    placeholder="Enter..."
+                    disabled={isRegionFieldDisabled}
+                    fullWidth
+                  />
+                </div>
+              )}
+              {shouldExposeField.instanceTemplate && (
+                <div className={classes.formField}>
+                  <div>{fieldLabel.instanceTemplate}</div>
+                  <YBInputField
+                    control={formMethods.control}
+                    name="instanceTemplate"
+                    placeholder="Enter..."
+                    disabled={isRegionFieldDisabled}
+                    fullWidth
+                  />
+                </div>
+              )}
+              {shouldExposeField.zones && (
+                <div>
+                  <ConfigureAvailabilityZoneField
+                    className={classes.manageAvailabilityZoneField}
+                    zoneCodeOptions={selectedRegion?.value?.zoneOptions}
+                    isFormDisabled={isFormDisabled}
+                    inUseZones={inUseZones}
+                  />
+                  {formMethods.formState.errors.zones?.message && (
+                    <FormHelperText error={true}>
+                      {formMethods.formState.errors.zones?.message}
+                    </FormHelperText>
+                  )}
+                </div>
+              )}
+            </>
+          )
+        }
+
       </YBModal>
     </FormProvider>
   );
@@ -354,11 +443,13 @@ export const ConfigureRegionModal = ({
 
 const getDefaultFormValue = (
   regionSelection: CloudVendorRegionField | undefined,
-  regionMetadataResponse: RegionMetadataResponse
+  regionMetadataResponse: RegionMetadataResponse,
+  imageBundles: ImageBundle[]
 ): Partial<ConfigureRegionFormValues> => {
   if (regionSelection === undefined) {
     return {
-      zones: [] as Zones
+      zones: [] as Zones,
+      imageBundles
     };
   }
   const { name, code, zones, ...currentRegion } = regionSelection;
@@ -368,6 +459,7 @@ const getDefaultFormValue = (
     zones: zones.map((zone) => ({
       code: { value: zone.code, label: zone.code, isDisabled: false },
       subnet: zone.subnet
-    }))
+    })),
+    imageBundles
   };
 };

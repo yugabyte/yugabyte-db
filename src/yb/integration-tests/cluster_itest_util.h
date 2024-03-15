@@ -68,6 +68,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 

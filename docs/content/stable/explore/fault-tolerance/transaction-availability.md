@@ -44,7 +44,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
     ```
 
     {{< note title="Note" >}}
-The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way either with or without tablespaces.
+The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabyteDB handles transaction failures in the same way either with or without tablespaces.
     {{< /note >}}
 
 1. Create a table in the tablespace using the following command:

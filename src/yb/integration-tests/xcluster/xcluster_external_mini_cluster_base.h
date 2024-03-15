@@ -45,7 +45,7 @@ class XClusterExternalMiniClusterBase : public YBTest {
   virtual Status SetupClustersAndReplicationGroup();
 
   Status SetupReplication(
-      cdc::ReplicationGroupId replication_group_id = kReplicationGroupId,
+      xcluster::ReplicationGroupId replication_group_id = kReplicationGroupId,
       std::vector<std::shared_ptr<client::YBTable>> source_tables = {});
 
   Status VerifyReplicationError(

@@ -279,9 +279,10 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.1.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.19.1.0, "
-              + "Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.1.0.</b></p>"
+              + "Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead.",
+      value = "Fetch failed subtasks - deprecated",
       responseContainer = "Map",
       response = Object.class)
   @Deprecated
@@ -379,7 +380,7 @@ public class CustomerTaskController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     // Validate if task belongs to the user or not
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    boolean isSuccess = commissioner.abortTask(taskUUID);
+    boolean isSuccess = commissioner.abortTask(taskUUID, false);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }

@@ -4,9 +4,9 @@ import { ButtonGroup, Button } from 'react-bootstrap';
 import {
   MIN_OUTLIER_NUM_NODES,
   MAX_OUTLIER_NUM_NODES,
-  MAX_OUTLIER_NUM_TABLES,
-  SplitType
+  MAX_OUTLIER_NUM_TABLES
 } from '../../metrics/constants';
+import { SplitType } from '../dtos';
 import { YBControlledNumericInput } from '../../common/forms/fields';
 import treeIcon from '../../metrics/images/tree-icon.svg';
 import './OutlierSelector.scss';

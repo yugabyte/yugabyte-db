@@ -84,10 +84,11 @@ public class CreateBackupSchedule extends UniverseTaskBase {
       }
     }
     createPreflightValidateBackupTask(
-        taskParams.storageConfigUUID,
-        taskParams.customerUUID,
-        taskParams.getUniverseUUID(),
-        ybcBackup);
+            taskParams.storageConfigUUID,
+            taskParams.customerUUID,
+            taskParams.getUniverseUUID(),
+            ybcBackup)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
     Schedule schedule =
         Schedule.create(

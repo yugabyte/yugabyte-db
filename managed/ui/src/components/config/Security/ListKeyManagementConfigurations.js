@@ -10,7 +10,7 @@ import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { isRbacEnabled, userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 
@@ -69,7 +69,7 @@ export class ListKeyManagementConfigurations extends Component {
         </RbacValidator>
 
         <RbacValidator
-          customValidateFunction={(userPermissions) => find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined}
+          customValidateFunction={() => userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)}
           isControl
           overrideStyle={{ display: 'block' }}
         >

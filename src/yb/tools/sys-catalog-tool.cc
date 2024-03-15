@@ -269,7 +269,7 @@ class StatusException : public std::exception {
 // 2. Add new case into CallVisitor() function.
 // 3. Update the static assert below. E.g.,
 //        static_assert(master::SysRowEntryType_MAX == SysRowEntryType::XCLUSTER_SAFE_TIME,
-static_assert(master::SysRowEntryType_MAX == SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP,
+static_assert(master::SysRowEntryType_MAX == SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP,
               "Extend Desc<> specializations by new SysRowEntryType values");
 
 template<typename PB, bool unknown = false>
@@ -318,6 +318,9 @@ template<> struct Desc<SysRowEntryType::XCLUSTER_CONFIG> :
                   UsePB<master::SysXClusterConfigEntryPB> {};
 template<> struct Desc<SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP> :
                   UsePB<master::SysUniverseReplicationBootstrapEntryPB> {};
+template <>
+struct Desc<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>
+    : UsePB<master::SysXClusterOutboundReplicationGroupEntryPB> {};
 
 Status IsValid_SysRowEntryType(int entry_type) {
   SCHECK_FORMAT(master::SysRowEntryType_IsValid(entry_type),
@@ -372,6 +375,8 @@ Status CallVisitor(int8_t entry_type, Visitor* v, Args... args) {
       return v->template Visit<SysRowEntryType::XCLUSTER_CONFIG>(args...);
     case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP:
       return v->template Visit<SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP>(args...);
+    case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP:
+      return v->template Visit<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>(args...);
     // The compilation error is expected if an enum value is not handled above:
     //     sys-catalog.cc: error: enumeration value '...' not handled in switch
     //         switch (static_cast<SysRowEntryType>(entry_type)) {

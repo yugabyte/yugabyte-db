@@ -20,12 +20,14 @@
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
-#include "yb/util/logging.h"
+
+#include "yb/ash/wait_state.h"
 
 #include "yb/docdb/lock_batch.h"
 
 #include "yb/dockv/intent.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
@@ -254,6 +256,7 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
     std::unique_lock<std::mutex> lock(mutex);
     old_value = num_holding.load(std::memory_order_acquire);
     if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
+      SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
       if (deadline != CoarseTimePoint::max()) {
         // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
         // detection since this eventually succeeds (in which case thread gets to queue) or times

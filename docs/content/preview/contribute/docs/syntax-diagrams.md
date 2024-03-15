@@ -3,7 +3,6 @@ title: Edit syntax diagrams
 headerTitle: Edit syntax diagrams
 linkTitle: Syntax diagrams
 description: Edit syntax diagrams
-image: /images/section_icons/index/quick_start.png
 headcontent: How to edit syntax diagrams
 menu:
   preview:

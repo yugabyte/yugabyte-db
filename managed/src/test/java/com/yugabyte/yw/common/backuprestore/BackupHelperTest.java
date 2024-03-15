@@ -356,7 +356,9 @@ public class BackupHelperTest extends FakeDBApplication {
     when(mockConfigService.getOrBadRequest(
             eq(testCustomer.getUuid()), eq(testStorageConfigS3.getConfigUUID())))
         .thenCallRealMethod();
-    doNothing().when(mockAWSUtil).validateStorageConfigOnDefaultLocationsList(any(), any());
+    doNothing()
+        .when(mockAWSUtil)
+        .validateStorageConfigOnDefaultLocationsList(any(), any(), anyBoolean());
     doReturn(false)
         .when(mockAWSUtil)
         .checkFileExists(
@@ -425,7 +427,9 @@ public class BackupHelperTest extends FakeDBApplication {
     when(mockConfigService.getOrBadRequest(
             eq(testCustomer.getUuid()), eq(testStorageConfigNFS.getConfigUUID())))
         .thenCallRealMethod();
-    doNothing().when(mockNfsUtil).validateStorageConfigOnDefaultLocationsList(any(), any());
+    doNothing()
+        .when(mockNfsUtil)
+        .validateStorageConfigOnDefaultLocationsList(any(), any(), anyBoolean());
     doReturn(false)
         .when(mockNfsUtil)
         .checkFileExists(

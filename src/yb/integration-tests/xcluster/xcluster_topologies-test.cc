@@ -344,7 +344,7 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
 
   for (size_t i = 0; i < producer_clusters_.size(); ++i) {
     MiniCluster* producer_cluster_mini_cluster = producer_clusters_[i]->mini_cluster_.get();
-    const cdc::ReplicationGroupId replication_group_id(Format("$0$1", kReplicationGroupId, i));
+    const xcluster::ReplicationGroupId replication_group_id(Format("$0$1", kReplicationGroupId, i));
     master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
     master::GetUniverseReplicationResponsePB verify_resp;
     if (i == 0) {

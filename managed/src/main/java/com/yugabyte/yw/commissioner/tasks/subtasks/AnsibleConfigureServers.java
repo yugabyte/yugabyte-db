@@ -96,6 +96,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     public AuditLogConfig auditLogConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
+    public boolean overrideNodePorts = false;
   }
 
   @Override

@@ -351,26 +351,6 @@ static void StatusHandler(const Webserver::WebRequest& req, Webserver::WebRespon
   (*output) << "{}";
 }
 
-// Registered to handle "/memz", and prints out memory allocation statistics.
-static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
-  Tags tags(as_text);
-
-  (*output) << tags.pre_tag;
-#ifndef YB_TCMALLOC_ENABLED
-  (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
-#else
-  auto tmp = TcMallocStats();
-  if (!as_text) {
-    tmp = EscapeForHtmlToString(tmp);
-  }
-  // Replace new lines with <br> for html.
-  replace_all(tmp, "\n", tags.line_break);
-  (*output) << tmp << tags.end_pre_tag;
-#endif
-}
-
 static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
                                   std::stringstream *output,
                                   int max_depth,
@@ -558,12 +538,42 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
   if (prometheus_opts) {
     ParseMetricOptions(req, prometheus_opts);
 
-    prometheus_opts->priority_regex_string = FindWithDefault(
-        req.parsed_args, "priority_regex", ".*");
-
     if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
       prometheus_opts->export_help_and_type =
           ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
+    }
+
+    prometheus_opts->version = FindWithDefault(req.parsed_args, "version",
+        kFilterVersionOne);
+
+    if (prometheus_opts->version == kFilterVersionTwo) {
+      // Set it to accept all metrics, because we ignore metrics URL parameter when using v2.
+      prometheus_opts->general_metrics_allowlist = std::nullopt;
+
+      auto FindHandlingAllOrNone = [&](
+          const std::string& arg, const std::string& default_value) -> std::string {
+        std::string regex_string = FindWithDefault(req.parsed_args, arg, default_value);
+        if (regex_string == "ALL") {
+          return ".*";
+        } else if (regex_string == "NONE") {
+          return "";
+        }
+        return regex_string;
+      };
+
+      prometheus_opts->table_allowlist_string = FindHandlingAllOrNone("table_allowlist", "ALL");
+
+      prometheus_opts->table_blocklist_string = FindHandlingAllOrNone("table_blocklist", "NONE");
+
+      prometheus_opts->server_allowlist_string = FindHandlingAllOrNone("server_allowlist", "ALL");
+
+      prometheus_opts->server_blocklist_string = FindHandlingAllOrNone("server_blocklist", "NONE");
+    } else {
+      prometheus_opts->priority_regex_string = FindWithDefault(
+          req.parsed_args, "priority_regex", ".*");
+      LOG_IF(WARNING, prometheus_opts->version != kFilterVersionOne)
+          << "Prometheus endpoint URL parameter version=" << prometheus_opts->version
+          << " is not recognized. Only v1 or v2 can be accepted.";
     }
   }
 
@@ -634,6 +644,26 @@ static void HandleGetVersionInfo(
 }
 
 } // anonymous namespace
+
+// Registered to handle "/memz", and prints out memory allocation statistics.
+void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
+  Tags tags(as_text);
+
+  (*output) << tags.pre_tag;
+#ifndef YB_TCMALLOC_ENABLED
+  (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
+#else
+  auto tmp = TcMallocStats();
+  if (!as_text) {
+    tmp = EscapeForHtmlToString(tmp);
+  }
+  // Replace new lines with <br> for html.
+  replace_all(tmp, "\n", tags.line_break);
+  (*output) << tmp << tags.end_pre_tag;
+#endif
+}
 
 void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);

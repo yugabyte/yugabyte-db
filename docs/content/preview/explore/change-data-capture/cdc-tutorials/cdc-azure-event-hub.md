@@ -64,7 +64,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
 1. Add data and tables to YugabyteDB. After this is done, [create the CDC Stream ID using the yb-admin command](../../../../integrations/cdc/debezium/#create-a-database-stream-id).
 
-1. [Download Apache Kafka](https://downloads.apache.org/kafka/3.3.2/kafka_2.12-3.3.2.tgz).
+1. [Download Apache Kafka](https://downloads.apache.org/kafka/).
 
 1. Configure your event hub to connect and receive data from the Debezium Connector for Yugabyte. You can create an Azure Event Hub configuration file that will be saved locally on the machine, for example you can save the configuration file as `eventhub.config` in the Kafka `bin` directory. For more details on creating your configuration file, refer to the sample available in the [Kafka Connect for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) documentation.
 

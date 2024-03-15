@@ -4,7 +4,6 @@ linkTitle: Introduction
 description: Tune queries in YugabyteDB
 aliases:
 headerTitle: Tune queries in YugabyteDB
-image: /images/section_icons/index/develop.png
 menu:
   preview:
     identifier: query-tuning-intro

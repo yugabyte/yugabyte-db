@@ -62,8 +62,13 @@ static void auth_failed(Port *port, int status, const char *logdetail, bool lock
 static char *recv_password_packet(Port *port);
 static void set_authn_id(Port *port, const char *id);
 
+/*
+ * GH #19781: FATAL or ERROR packet leads to a broken physical connection. Therefore,
+ * in auth passthrough, instead of FATAL/ERROR packet, WARNING packet along with
+ * FatalForLogicalConnection packet is used.
+ */
 static int YbAuthFailedErrorLevel(const bool auth_passthrough) {
-	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? ERROR : FATAL;
+	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? WARNING : FATAL;
 }
 
 /*----------------------------------------------------------------
@@ -359,6 +364,9 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	else
 		logdetail = cdetail;
 
+	if (port->yb_is_auth_passthrough_req)
+		YbSendFatalForLogicalConnectionPacket();
+
 	ereport(YbAuthFailedErrorLevel(port->yb_is_auth_passthrough_req),
 			(errcode(errcode_return),
 			 (yb_role_is_locked_out ? errmsg("role \"%s\" is locked. Contact"
@@ -426,7 +434,19 @@ ClientAuthentication(Port *port)
 	int			status = STATUS_ERROR;
 	const char *logdetail = NULL;
 
-	bool 		auth_passthrough = port->yb_is_auth_passthrough_req;
+	bool 		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
+
+	if (yb_auth_passthrough)
+	{
+		/* Auth Passthrough can be enabled only for Ysql Connection Manager */
+		Assert(YbIsClientYsqlConnMgr());
+
+		/*
+		 * Connections from Ysql Connection Manager will never be of type
+		 * replication.
+		 */
+		Assert(am_walsender == false);
+	}
 
 	/*
 	 * Get the authentication method to use for this frontend/database
@@ -445,9 +465,14 @@ ClientAuthentication(Port *port)
 	 */
 	if (port->hba->clientcert != clientCertOff)
 	{
-		if (YbIsClientYsqlConnMgr() && auth_passthrough == true)
+		if (YbIsClientYsqlConnMgr() && yb_auth_passthrough == true)
 		{
-			ereport(ERROR,
+			/*
+			 * Ysql Connection Manager does not know what is the
+			 * authentication type of a client, if authentication type is cert,
+			 * a FATAL packet is sent back to the Ysql Connection Manager.
+			 */
+			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("Cert authentication is not supported")));
 			return;
@@ -457,10 +482,9 @@ ClientAuthentication(Port *port)
 		/* If we haven't loaded a root certificate store, fail */
 		if (!secure_loaded_verify_locations())
 		{
-			ereport(YbAuthFailedErrorLevel(auth_passthrough),
+			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("client certificates can only be checked if a root certificate store is available")));
-			return;
 		}
 
 
@@ -472,10 +496,9 @@ ClientAuthentication(Port *port)
 		 */
 		if (!port->peer_cert_valid)
 		{
-			ereport(YbAuthFailedErrorLevel(auth_passthrough),
+			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("connection requires a valid client certificate")));
-			return;
 		}
 	}
 
@@ -516,17 +539,19 @@ ClientAuthentication(Port *port)
 
 				if (am_walsender && !am_db_walsender)
 				{
-					ereport(YbAuthFailedErrorLevel(auth_passthrough),
+					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
 							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
 									encryption_state)));
-					return;
 				}
 				else
 				{
-					ereport(YbAuthFailedErrorLevel(auth_passthrough),
+					if (yb_auth_passthrough)
+						YbSendFatalForLogicalConnectionPacket();
+
+					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
 							 errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s",
@@ -589,18 +614,20 @@ ClientAuthentication(Port *port)
 
 				if (am_walsender && !am_db_walsender)
 				{
-					ereport(YbAuthFailedErrorLevel(auth_passthrough),
+					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
 							 errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
 									encryption_state),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
-					return;
 				}
 				else
 				{
-					ereport(YbAuthFailedErrorLevel(auth_passthrough),
+					if (yb_auth_passthrough)
+						YbSendFatalForLogicalConnectionPacket();
+
+					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
 							 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
@@ -671,6 +698,14 @@ ClientAuthentication(Port *port)
 		case uaYbTserverKey:
 #ifdef HAVE_UNIX_SOCKETS
 			Assert(IsYugaByteEnabled());
+
+			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+			{
+				YbSendFatalForLogicalConnectionPacket();
+				elog(WARNING, "YbTserverKey authentication is not supported "
+							  " in auth passthrough");
+			}
+
 			status = CheckYbTserverKeyAuth(port, &logdetail);
 #else
 			Assert(false);
@@ -764,7 +799,7 @@ ClientAuthentication(Port *port)
 				YbResetFailedAttemptsIfAllowed(roleid);
 			sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 
-			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+			if (YbIsClientYsqlConnMgr() && yb_auth_passthrough)
 				YbCreateClientId();
 		}
 		else
@@ -782,7 +817,7 @@ ClientAuthentication(Port *port)
 	{
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 
-		if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+		if (YbIsClientYsqlConnMgr() && yb_auth_passthrough)
 			YbCreateClientId();
 	}
 	else

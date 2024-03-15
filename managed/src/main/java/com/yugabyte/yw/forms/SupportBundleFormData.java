@@ -30,4 +30,14 @@ public class SupportBundleFormData {
       value = "List of components to be included in the support bundle",
       required = true)
   public EnumSet<ComponentType> components;
+
+  @ApiModelProperty(
+      value = "Max number of the most recent cores to collect (if any)",
+      required = false)
+  public int maxNumRecentCores = 1;
+
+  @ApiModelProperty(
+      value = "Max size in bytes of the recent collected cores (if any)",
+      required = false)
+  public long maxCoreFileSize = 25000000000L;
 }

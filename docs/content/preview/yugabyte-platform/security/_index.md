@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
-weight: 650
+weight: 660
 type: indexpage
 ---
 
@@ -58,19 +58,7 @@ type: indexpage
         <div class="title">Authorization</div>
       </div>
       <div class="body">
-        Manage YugabyteDB Anywhere users and roles.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-kms-config/aws-kms/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
-        <div class="title">Create a KMS configuration</div>
-      </div>
-      <div class="body">
-        Use key management system.
+        Manage universe users and roles.
       </div>
     </a>
   </div>
@@ -100,13 +88,13 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="network-security/">
+    <a class="section-link icon-offset" href="create-kms-config/aws-kms/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/index/secure.png" aria-hidden="true" />
-        <div class="title">Network security</div>
+        <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
+        <div class="title">Create a KMS configuration</div>
       </div>
       <div class="body">
-        Restrict machine and port access to run in trusted network environments.
+        Configure a key management service with a customer managed key to use for encryption at rest.
       </div>
     </a>
   </div>

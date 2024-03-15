@@ -25,7 +25,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseModifyBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -115,6 +114,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     resizeNode.setUserTaskUUID(UUID.randomUUID());
     defaultUniverse =
         Universe.saveDetails(
@@ -146,10 +146,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-
-    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
-        mockClient,
-        ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3", "1.1.1.1", "1.1.1.2", "1.1.1.3"));
   }
 
   @Override
@@ -1656,6 +1652,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   private TaskInfo submitTask(ResizeNodeParams requestParams) {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     return submitTask(requestParams, TaskType.ResizeNode, commissioner, -1);
   }
 

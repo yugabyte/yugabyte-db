@@ -10,7 +10,6 @@
 
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 
-#include "yb/client/auto_flags_manager.h"
 #include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"

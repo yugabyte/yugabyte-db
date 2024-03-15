@@ -2,7 +2,6 @@
 title: Savepoints
 linkTitle: Savepoints
 description: Savepoints in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.18:
     identifier: advanced-features-savepoints

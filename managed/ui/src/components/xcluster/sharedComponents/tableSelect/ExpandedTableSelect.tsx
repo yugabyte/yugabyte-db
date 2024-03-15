@@ -12,6 +12,7 @@ import { XClusterConfigAction, XClusterTableEligibility } from '../../constants'
 import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
 import { TableEligibilityPill } from './TableEligibilityPill';
 import { SortOrder } from '../../../../redesign/helpers/constants';
+import { getTableName, isColocatedParentTable } from '../../../../utils/tableUtils';
 
 import { NamespaceItem, XClusterTableCandidate, XClusterTableType } from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
@@ -125,10 +126,11 @@ export const ExpandedTableSelect = ({
   );
 };
 
-const formatTableName = (tableName: string, xClusterTable: XClusterTableCandidate) => {
+const formatTableName = (_: string, xClusterTable: XClusterTableCandidate) => {
+  const { eligibilityDetails, ...table } = xClusterTable;
   return (
     <div className={styles.tableNameContainer}>
-      <div className={styles.tableName}>{tableName}</div>
+      <div className={styles.tableName}>{getTableName(xClusterTable)}</div>
       {shouldShowTableEligibilityPill(xClusterTable) && (
         <TableEligibilityPill eligibilityDetails={xClusterTable.eligibilityDetails} />
       )}

@@ -44,11 +44,15 @@ Note: For higher availability, one or more additional YBA instances can be separ
 
 Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
 
-YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
-{{< warning >}}
-You can use YBA Installer only if you are about to perform a new install. Currently, you cannot switch your existing YBA software installed via Replicated to be installed using YBA Installer.
-{{< /warning >}}
+-> To perform a new installation, follow the steps in [Quick start](#quick-start).
+
+-> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
+
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
+
+After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
 ## Prerequisites
 
@@ -214,6 +218,87 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
+## Migrate from Replicated
+
+{{< note >}}
+
+Migrating from Replicated using YBA Installer is [Early Access](/preview/releases/versioning/#feature-availability).
+
+{{</note >}}
+
+{{< warning title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024.
+
+{{< /warning >}}
+
+If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated.
+
+Review the [prerequisites](#prerequisites). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
+
+If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
+
+### Migrate a YBA installation
+
+To migrate your installation from Replicated, do the following:
+
+1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
+
+1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
+
+1. Optionally, configure the migration as follows:
+
+    ```sh
+    $ sudo ./yba-ctl replicated-migrate config
+    ```
+
+    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further. For a list of options, refer to [Configuration options](#configuration-options).
+
+1. Start the migration, passing in your license file:
+
+    ```sh
+    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
+    ```
+
+    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start. After the migration finishes, YBA is installed.
+
+1. Validate YBA is up and running with the correct data, including Prometheus.
+
+    At this point, if you find problems, you can revert to your Replicated installation using the `replicated-migrate rollback` command. Note that any changes made with the new YBA (either using the UI or the API) will not be reflected after the rollback.
+
+    In particular, do not configure HA until running the `finish` command (next step) on all instances.
+
+1. If the new YBA installation is correct, finish the migration as follows:
+
+    ```sh
+    $ sudo ./yba-ctl replicated-migrate finish
+    ```
+
+    This uninstalls Replicated and makes the new YBA instance permanent.
+
+### Migration and high availability
+
+If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
+
+If Replicated is using HTTPS, migrate as follows:
+
+1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
+1. Migrate and finish the standby instances.
+
+Failovers are only possible only after you finish the migration on both the primary and standby.
+
+If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
+
+1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
+1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
+1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
+1. Migrate and finish the standby instances.
+1. [Configure HA on the updated instances](../../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
+
+Failovers are possible again after the completion of this step.
+
 ## Manage a YBA installation
 
 ### Reconfigure
@@ -256,7 +341,11 @@ Services:
 
 ### Upgrade
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer). Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state. When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
+To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer).
+
+Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
+
+When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
 $ sudo ./yba-ctl upgrade

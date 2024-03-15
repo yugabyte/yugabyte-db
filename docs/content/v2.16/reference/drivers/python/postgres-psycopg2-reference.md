@@ -3,7 +3,6 @@ title: Python Drivers
 linkTitle: Python Drivers
 description: Python Drivers for YSQL
 headcontent: Python Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.16:
     name: Python Drivers

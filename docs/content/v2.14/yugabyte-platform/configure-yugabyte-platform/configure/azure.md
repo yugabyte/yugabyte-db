@@ -3,7 +3,6 @@ title: Configure Azure
 headerTitle: Overview
 linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on Azure
-image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring YugabyteDB Anywhere on Azure
 menu:
   v2.14_yugabyte-platform:

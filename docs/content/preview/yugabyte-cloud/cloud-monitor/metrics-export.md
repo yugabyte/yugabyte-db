@@ -84,7 +84,7 @@ To create an export configuration, do the following:
 1. Enter your organization name. This is displayed in the URL when you connect to your Grafana Cloud Portal (for example, `https://grafana.com/orgs/<organization-name>`).
 1. Enter your Grafana [Access policy token](#grafana).
 1. Enter your Grafana instance ID and zone. Obtain these by navigating to the Cloud portal, selecting your stack, and on the Grafana tile, clicking **Details**. They are displayed under **Instance Details**.
-1. Optionally, click **Download** to download the Grafana dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19815-yugabytedb-managed-clusters/) page.
+1. Optionally, click **Download** to download the Grafana dashboard template. You can [import this JSON format template](https://grafana.com/docs/grafana-cloud/visualizations/dashboards/manage-dashboards/#export-and-import-dashboards) into your Grafana account and use it as a starting point for visualizing your cluster data in Grafana. The dashboard is also available from the [Grafana Dashboards](https://grafana.com/grafana/dashboards/19887-yugabytedb-managed-clusters/) page.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 

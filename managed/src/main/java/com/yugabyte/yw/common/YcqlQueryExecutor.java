@@ -43,10 +43,11 @@ public class YcqlQueryExecutor {
     // --use_cassandra_authentication=true
     // This is always true if the universe was created via cloud.
     RunQueryFormData ycqlQuery = new RunQueryFormData();
-    ycqlQuery.query =
+    ycqlQuery.setQuery(
         String.format(
             "CREATE ROLE '%s' WITH SUPERUSER=true AND LOGIN=true AND PASSWORD='%s'",
-            Util.escapeSingleQuotesOnly(data.username), Util.escapeSingleQuotesOnly(data.password));
+            Util.escapeSingleQuotesOnly(data.username),
+            Util.escapeSingleQuotesOnly(data.password)));
     JsonNode ycqlResponse =
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlAdminPassword);
     LOG.info("Creating YCQL user, result: " + ycqlResponse.toString());
@@ -79,11 +80,11 @@ public class YcqlQueryExecutor {
     // --use_cassandra_authentication=true
     // This is always true if the universe was created via cloud.
     RunQueryFormData ycqlQuery = new RunQueryFormData();
-    ycqlQuery.query =
+    ycqlQuery.setQuery(
         String.format(
             "ALTER ROLE '%s' WITH PASSWORD='%s'",
             Util.escapeSingleQuotesOnly(data.ycqlAdminUsername),
-            Util.escapeSingleQuotesOnly(data.ycqlAdminPassword));
+            Util.escapeSingleQuotesOnly(data.ycqlAdminPassword)));
     JsonNode ycqlResponse =
         executeQuery(universe, ycqlQuery, true, data.ycqlAdminUsername, data.ycqlCurrAdminPassword);
     LOG.info("Updating YCQL user, result: " + ycqlResponse.toString());
@@ -181,7 +182,7 @@ public class YcqlQueryExecutor {
     }
 
     try {
-      ResultSet rs = cc.session.execute(queryParams.query);
+      ResultSet rs = cc.session.execute(queryParams.getQuery());
       if (rs.iterator().hasNext()) {
         List<Map<String, Object>> rows = resultSetToMap(rs);
         response.set("result", toJson(rows));
@@ -189,10 +190,10 @@ public class YcqlQueryExecutor {
         // For commands without a result we return only executed command identifier
         // (SELECT/UPDATE/...). We can't return query itself to avoid logging of
         // sensitive data.
-        response.put("queryType", getQueryType(queryParams.query));
+        response.put("queryType", getQueryType(queryParams.getQuery()));
       }
     } catch (Exception e) {
-      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
+      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.getQuery()));
     } finally {
       if (cc != null) {
         cc.close();

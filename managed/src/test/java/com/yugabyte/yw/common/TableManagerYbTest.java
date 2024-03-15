@@ -220,6 +220,7 @@ public class TableManagerYbTest extends FakeDBApplication {
     if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
+      cmd.add("--useTserver");
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());

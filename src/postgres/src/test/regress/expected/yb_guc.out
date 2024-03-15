@@ -8,9 +8,17 @@ set yb_transaction_priority_lower_bound = -1;
 ERROR:  -1 is outside the valid range for parameter "yb_transaction_priority_lower_bound" (0 .. 1)
 -- Valid values.
 set yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_lower_bound = 0;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_lower_bound = 0.3;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_upper_bound = 0.7;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 -- Lower bound should be less or equal to upper bound.
 -- Invalid values.
 set yb_transaction_priority_upper_bound = 0.2;
@@ -21,9 +29,17 @@ ERROR:  invalid value for parameter "yb_transaction_priority_lower_bound": 0.8
 DETAIL:  must be less than or equal to yb_transaction_priority_upper_bound (0.700000).
 -- Valid values.
 set yb_transaction_priority_upper_bound = 0.3;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_upper_bound = 0.6;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_lower_bound = 0.6;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 -- Test yb_fetch_row_limit
 set yb_fetch_row_limit = 100;
 show yb_fetch_row_limit;
@@ -160,7 +176,11 @@ EXPLAIN SELECT j FROM test_scan;
 -- yb_transaction_priority_upper_bound to be the same, which forces
 -- yb_transaction_priority to be equal to those two.
 set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_upper_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
 show yb_transaction_priority;
@@ -175,8 +195,12 @@ set yb_transaction_priority = 0.3; -- ERROR
 ERROR:  parameter "yb_transaction_priority" cannot be changed
 -- High priority transaction
 set yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_upper_bound = 0.4;
-BEGIN TRANSACTION;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
  i | j
 ---+---
@@ -192,8 +216,12 @@ show yb_transaction_priority;
 COMMIT;
 -- Highest priority transaction
 set yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 set yb_transaction_priority_lower_bound = 1;
-BEGIN TRANSACTION;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
  i | j
 ---+---

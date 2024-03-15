@@ -13,7 +13,9 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -51,6 +53,29 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     };
 
     builder.addCommonTServerFlags(additionalTserverFlags);
+  }
+
+  boolean verifySessionParameterValue(Statement stmt, String name, String value) throws Exception {
+    String query = String.format("show %s", name);
+    LOG.info(String.format("Exectuting query `%s`", query) );
+
+    ResultSet resultSet = stmt.executeQuery(query);
+
+    assertNotNull(resultSet);
+
+    if (!resultSet.next()) {
+      LOG.error("Got empty result for SHOW query");
+      return false;
+    }
+
+    if (!resultSet.getString(1).toLowerCase().equals(value.toLowerCase())) {
+      LOG.error(
+          "Expected value " + value + " is not same as the query result "
+           + resultSet.getString(1));
+      return false;
+    }
+
+    return true;
   }
 
   @Test
@@ -123,24 +148,16 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
             Statement statement = connection.createStatement()) {
 
           for (int i = 0; i < 10; i++) {
-            long expected_value = THREAD_ID * 10 + i;
-            statement.execute(String.format("SET search_path = %d", expected_value));
+            String expected_value = Long.toString(THREAD_ID * 10 + i);
+            statement.execute(String.format("SET search_path = %s", expected_value));
 
             if (THREAD_ID % 2 == 0)
               connection.commit();
 
-            // Verify the session parameter value.
-            ResultSet resultSet = statement.executeQuery("SHOW search_path");
-            if (resultSet.next()) {
-              int result = resultSet.getInt(1);
-              if (result != expected_value) {
+            if (!verifySessionParameterValue(statement, "search_path",
+               expected_value)){
                 gotException = true;
                 return;
-              }
-            } else {
-              LOG.error("Got empty result set after exectuing `SHOW search_path`");
-              gotException = true;
-              return;
             }
 
             if (THREAD_ID % 2 == 0)
@@ -169,6 +186,33 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
       LOG.error("Ran out of retries");
       gotException = true;
+    }
+  }
+
+  // GH Issue: #19556
+  // Test the "SET LOCAL" query.
+  @Test
+  public void testSetLocalStmt() throws Exception {
+    try (
+        Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+        Statement stmt = conn.createStatement()) {
+
+      stmt.execute("SET search_path=1");
+
+      assertTrue("Mismatch in the expected value of the session parameter",
+          verifySessionParameterValue(stmt, "search_path", "1"));
+
+      stmt.execute("BEGIN");
+      stmt.execute("SET LOCAL search_path=2");
+      assertTrue("Mismatch in the expected value of the session parameter "
+          + "for LOCAL keyword" ,
+          verifySessionParameterValue(stmt, "search_path", "2"));
+
+      stmt.execute("COMMIT");
+      assertTrue("Mismatch in the expected value of the session parameter "
+          + "for LOCAL keyword" ,
+          verifySessionParameterValue(stmt, "search_path", "1"));
     }
   }
 }

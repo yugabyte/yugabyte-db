@@ -37,7 +37,7 @@ public class CertReloadTaskCreator implements IUpgradeSubTask {
       List<NodeDetails> masterNodes) {
 
     if (taskExecutor == null || masterNodes == null || masterNodes.isEmpty()) {
-      throw new IllegalArgumentException("TaskGroup or MasterNodes )" + "cannot be empty");
+      throw new IllegalArgumentException("TaskGroup or MasterNodes cannot be empty");
     }
     this.universeUuid = universeId;
     this.userTaskUuid = userTaskId;

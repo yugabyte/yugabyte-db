@@ -1,12 +1,20 @@
 <div class="td-content">
-	<div class="main-heading-with-version heading-without-image">
+  {{- if .Site.Params.search_banner -}}
+    {{ partial "search-banner.html" . }}
+  {{- end -}}
+  <div class="main-heading-with-version {{- if not .Params.image }} heading-without-image{{- end }}">
+    {{ if .Page.Params.image }}
+      <div class="heading-image">
+        <img alt="{{ .Title }}" title="{{ .Title }}" src="{{ .Params.image }}" />
+      </div>
+    {{ end }}
     <div class="heading-content">
       <div>
         <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ partial "badges.html" . }}</h1>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
     </div>
-	</div>
+  </div>
 
   {{ partial "contribute_list" . }}
 	<header class="article-meta">

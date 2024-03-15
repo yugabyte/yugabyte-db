@@ -3,11 +3,11 @@ package com.yugabyte.yw.models;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.Entity;
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
 
 @Entity
 @Embeddable

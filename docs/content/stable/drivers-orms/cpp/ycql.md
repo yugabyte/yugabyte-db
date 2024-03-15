@@ -3,7 +3,6 @@ title: Connect apps using C++ Driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C++ application using YugabyteDB C++ driver for YCQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: cpp-ycql-driver

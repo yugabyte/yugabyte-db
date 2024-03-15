@@ -22,7 +22,7 @@ Single-region dedicated clusters support multi-node and highly available deploym
 
 Single-region dedicated clusters include the following features:
 
-- Multi node clusters with [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3, and availability zone- and node-level fault tolerance.
+- Multi-node clusters with availability zone- and node-level fault tolerance.
 - No limit on cluster size - choose any cluster size based on your use case.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
@@ -57,11 +57,13 @@ Select **Single-Region Deployment** and set the following options.
 
 ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
 
-Fault tolerance determines how resilient the cluster is to node and cloud zone failures. Choose one of the following:
+[Fault tolerance](../../create-clusters-overview/#fault-tolerance) determines how resilient the cluster is to node and zone outages (planned or unplanned). Choose one of the following:
 
-- **Availability Zone Level**: Minimum of 3 nodes spread across multiple availability zones with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-- **Node Level**: Minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
-- **None**: Single node, with no replication or resiliency. Recommended for development and testing only.
+| Fault tolerance | Description | Scaling |
+| :--- | :--- | :--- |
+| **Zone** | Resilient to a single zone outage. Minimum of 3 nodes spread across 3 availability zones. This configuration provides the maximum protection for a data center outage. Recommended for production deployments. | Nodes are scaled in increments of 3 (each zone has the same number of nodes). |
+| **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone outages. | Nodes are scaled in increments of 1. |
+| **None** | Minimum of 1 node, with no replication or resiliency. Recommended for development and testing only. | Nodes are scaled in increments of 1. |
 
 You can't change the Fault tolerance of a cluster after it's created.
 

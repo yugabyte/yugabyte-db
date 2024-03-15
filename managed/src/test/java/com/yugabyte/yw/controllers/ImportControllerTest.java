@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Capability;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
@@ -253,6 +254,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertBadRequest(result, "Node actions cannot be performed on universe");
 
     // Delete should succeed.
+    TestHelper.updateUniverseVersion(universe, "2.16.0.0-b1");
     result = doRequestWithAuthToken("DELETE", universeUrl, authToken);
     assertOk(result);
     json = Json.parse(contentAsString(result));

@@ -15,7 +15,6 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.time.Duration;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
@@ -59,7 +58,8 @@ public class PlatformExecutorFactory {
     return "yb." + poolName + confKey;
   }
 
-  public ExecutorService createExecutor(String configPoolName, ThreadFactory namedThreadFactory) {
+  public ThreadPoolExecutor createExecutor(
+      String configPoolName, ThreadFactory namedThreadFactory) {
     return createExecutor(
         configPoolName,
         ybCorePoolSize(configPoolName),
@@ -69,19 +69,19 @@ public class PlatformExecutorFactory {
         namedThreadFactory);
   }
 
-  public ExecutorService createExecutor(
+  public ThreadPoolExecutor createExecutor(
       String poolName, int corePoolSize, int maxPoolSize, ThreadFactory namedThreadFactory) {
     return createExecutor(
         poolName, corePoolSize, maxPoolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
-  public ExecutorService createFixedExecutor(
+  public ThreadPoolExecutor createFixedExecutor(
       String poolName, int poolSize, ThreadFactory namedThreadFactory) {
     return createExecutor(
         poolName, poolSize, poolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
-  public ExecutorService createExecutor(
+  public ThreadPoolExecutor createExecutor(
       String poolName,
       int corePoolSize,
       int maxPoolSize,

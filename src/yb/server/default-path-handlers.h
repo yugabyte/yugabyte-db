@@ -43,6 +43,8 @@
 
 #pragma once
 
+#include "yb/server/webserver.h"
+
 namespace yb {
 
 class MetricRegistry;
@@ -56,6 +58,9 @@ class RpcServerBase;
 // Adds a set of default path handlers to the webserver to display
 // logs and configuration flags.
 void AddDefaultPathHandlers(Webserver* webserver);
+
+// Prints out memory allocation statistics.
+void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
 // Adds an endpoint to get metrics in JSON format.
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics);

@@ -39,6 +39,13 @@ scrape_configs:
      - files:
        - '/opt/yugabyte/prometheus/targets/node-agent.*.json'
 
+ - job_name: 'otel-collector'
+   scrape_timeout: 10s
+   metrics_path: "/metrics"
+   file_sd_configs:
+     - files:
+         - '/opt/yugabyte/swamper_targets/otel.*.json'
+
  - job_name: "node"
    file_sd_configs:
      - files:

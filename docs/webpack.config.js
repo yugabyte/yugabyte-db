@@ -6,6 +6,7 @@ module.exports = {
   entry: {
     site: './index.js',
     search: './algolia-search.js',
+    searchBanner: './search-banner.js',
   },
   output: {
     path: path.join(__dirname, 'static/js'),

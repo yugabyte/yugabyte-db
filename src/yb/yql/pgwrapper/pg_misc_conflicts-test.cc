@@ -27,8 +27,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_int32(ysql_max_read_restart_attempts);
-DECLARE_int32(ysql_max_write_restart_attempts);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -49,8 +48,7 @@ class PgMiscConflictsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_read_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
   }
 

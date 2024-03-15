@@ -22,11 +22,10 @@ import { ENTITY_NOT_AVAILABLE, calculateDuration } from '../common/BackupUtils';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { api } from '../../../redesign/helpers/api';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { IRestore } from '../common/IRestore';
+import { IRestore, Restore_States } from '../common/IRestore';
 import { RestoreContextMethods, RestoreDetailsContext } from './RestoreContext';
 import { TableType } from '../../../redesign/helpers/dtos';
 import ArrowRight from '../components/restore/icons/RightArrowCircled.svg';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useToggle } from 'react-use';
 import clsx from 'clsx';
 
@@ -244,7 +243,12 @@ export const RestoreDetails = () => {
                 {t('restoreStatus')}
               </Typography>
               <div>
-                <StatusBadge statusType={(selectedRestore.state as unknown) as Badge_Types} />
+                <StatusBadge
+                  statusType={(selectedRestore.state as unknown) as Badge_Types}
+                  customLabel={
+                    selectedRestore.state === Restore_States.FAILED ? t('restoreFailed') : undefined
+                  }
+                />
               </div>
             </div>
             <div>

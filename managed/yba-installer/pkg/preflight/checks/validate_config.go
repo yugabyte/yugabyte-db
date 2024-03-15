@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var ValidateInstallerConfig = &validateConfigCheck{"validate-config", false}
+var ValidateInstallerConfig = &validateConfigCheck{"validate-config", true}
 var ValidateLocaleConfig = &validateLocaleConfig{"validate-locale-config", true}
 
 type validateConfigCheck struct {

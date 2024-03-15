@@ -9,9 +9,11 @@
 
 import { FC } from 'react';
 import clsx from 'clsx';
+import { find } from 'lodash';
 import { makeStyles } from '@material-ui/core';
+import { RbacBindings } from '../users/components/UserUtils';
 import { Role } from '../roles';
-import { Action, Resource } from '../permission';
+import { Action, ActionType, Resource, ResourceType } from '../permission';
 
 const useStyles = makeStyles((theme) => ({
   roleType: {
@@ -79,3 +81,10 @@ export const permissionOrderByRelevance = [
   Action.SUPER_ADMIN_ACTIONS,
   Action.DELETE
 ];
+
+export const userhavePermInRoleBindings = (resourceType: ResourceType, action: ActionType) => {
+  const userRoleBindings: RbacBindings[] = (window as any).user_role_bindings;
+  return userRoleBindings.some((roleBinding) => {
+    return find(roleBinding.role.permissionDetails.permissionList, { action, resourceType }) !== undefined;
+  });
+};

@@ -58,7 +58,7 @@ func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxp
         User:     helpers.DbYsqlUser,
         Password: helpers.DbPassword,
         Host:     host,
-        Port:     helpers.PORT,
+        Port:     helpers.YsqlPort,
         Database: dbName,
     }
 

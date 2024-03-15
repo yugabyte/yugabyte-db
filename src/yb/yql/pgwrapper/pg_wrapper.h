@@ -74,15 +74,10 @@ class PgWrapper : public ProcessWrapper {
   Status ReloadConfig() override;
   Status UpdateAndReloadConfig() override;
 
-  // Calls initdb if the data directory does not exist. This is intended to use during tablet server
-  // initialization.
+  // Calls initdb if the data directory does not exist, or if the tablet server is transitioning
+  // from one major PG version to another. (The data directory's version must match the PG major
+  // version.) This function is intended to be used during tablet server initialization.
   Status InitDbLocalOnlyIfNeeded();
-
-  // Calls PostgreSQL's initdb program for initial database initialization.
-  // yb_enabled - whether initdb should be talking to YugaByte cluster, or just initialize a
-  //              PostgreSQL data directory. The former is only done once from outside of the YB
-  //              cluster, and the latter is done on every tablet server startup.
-  Status InitDb(bool yb_enabled);
 
   // Run initdb in a mode that sets up the required metadata in the YB cluster. This is done
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
@@ -92,6 +87,15 @@ class PgWrapper : public ProcessWrapper {
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
  private:
+  // Calls PostgreSQL's initdb program for initial database initialization.
+  // versioned_data_dir - if set, just do local initdb to initialize a PostgreSQL data directory.
+  //                      This is only done once from outside of the YB cluster. If empty, the
+  //                      actual initdb process is run, talking to a Yugabyte cluster.
+  Status InitDb(const std::string& versioned_data_dir = "");
+
+  // Creates a directory name "<conf_.data_dir>_<version>".
+  std::string MakeVersionedDataDir(int32_t version);
+
   static std::string GetPostgresExecutablePath();
   static std::string GetPostgresSuppressionsPath();
   static std::string GetPostgresLibPath();

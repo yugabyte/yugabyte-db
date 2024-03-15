@@ -29,24 +29,31 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 
+METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
 METRIC_DECLARE_event_stats(load_balancer_duration);
+METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
+METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(load_balancer_drive_aware);
-DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(load_balancer_max_concurrent_moves);
+DECLARE_int32(replication_factor);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(TEST_load_balancer_wait_ms);
 DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
 DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
-DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 
 using namespace std::literals;
@@ -238,6 +245,20 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
   int num_tablets() override {
     return 4;
   }
+
+  Status AddTserverToBlacklist(size_t idx, bool leader_blacklist) {
+    HostPort ts_hostport(mini_cluster()->mini_tablet_server(idx)->bound_rpc_addr());
+    RETURN_NOT_OK(
+        yb_admin_client_->ChangeBlacklist({ts_hostport}, true /* add */, leader_blacklist));
+    return Status::OK();
+  }
+
+  Status RemoveTserverFromBlacklist(size_t idx, bool leader_blacklist) {
+    HostPort ts_hostport(mini_cluster()->mini_tablet_server(idx)->bound_rpc_addr());
+    RETURN_NOT_OK(
+        yb_admin_client_->ChangeBlacklist({ts_hostport}, false /* add */, leader_blacklist));
+    return Status::OK();
+  }
 };
 
 class LoadBalancerMiniClusterRf3Test : public LoadBalancerMiniClusterTest {
@@ -269,6 +290,122 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   ASSERT_OK(WaitFor([&] {
     return stats->MeanValue() == 0;
   }, 10s, "load_balancer_duration value resets"));
+}
+
+TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
+  const int ts_idx = 0;
+  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
+  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto tablets_in_wrong_placement =
+      cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(METRIC_tablets_in_wrong_placement);
+  ASSERT_EQ(tablets_in_wrong_placement->value(), 0);
+
+  // Prevent moves so we can reliably read the metric and get a non-zero value.
+  FLAGS_load_balancer_max_concurrent_adds = 0;
+
+  unsigned int peers_on_ts = 0;
+  auto ts_uuid = mini_cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
+  for (const auto& peer : ListTabletPeers(mini_cluster(), ListPeersFilter::kAll)) {
+    if (peer->permanent_uuid() == ts_uuid) {
+      ++peers_on_ts;
+    }
+  }
+  ASSERT_GT(peers_on_ts, 0);
+
+  ASSERT_EQ(tablets_in_wrong_placement->value(), 0);
+
+  // Blacklist first tserver.
+  ASSERT_OK(AddTserverToBlacklist(ts_idx, false /* leader_blacklist */));
+  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
+  ASSERT_EQ(tablets_in_wrong_placement->value(), peers_on_ts);
+
+  // Change placement info to make first tserver invalid.
+  // The invalid and blacklisted tablets should not be double-counted.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
+  ASSERT_EQ(tablets_in_wrong_placement->value(), peers_on_ts);
+
+  // Unblacklist first tserver.
+  // The tablets are still invalid, so the metric should not change.
+  ASSERT_OK(RemoveTserverFromBlacklist(ts_idx, false /* leader_blacklist */));
+  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
+  ASSERT_EQ(tablets_in_wrong_placement->value(), peers_on_ts);
+
+  // Change placement info to make first tserver valid again.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+  ASSERT_OK(WaitFor([&] {
+    return tablets_in_wrong_placement->value() == 0;
+  }, 5s, "Wait for tablets_in_wrong_placement to be 0"));
+}
+
+TEST_F(LoadBalancerMiniClusterTest, BlacklistedLeadersMetric) {
+  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
+  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto blacklisted_leaders =
+      cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(METRIC_blacklisted_leaders);
+  ASSERT_EQ(blacklisted_leaders->value(), 0);
+
+  // Prevent leader moves so we can reliably read the metric and get a non-zero value.
+  FLAGS_load_balancer_max_concurrent_moves = 0;
+
+  // Leader blacklist first tserver.
+  ASSERT_OK(AddTserverToBlacklist(0 /* idx */, true /* leader_blacklist */));
+  ASSERT_OK(WaitFor([&] {
+    return blacklisted_leaders->value() > 0;
+  }, 5s, "Wait for blacklisted_leaders to reflect blacklisted leader"));
+}
+
+TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
+  const auto kNumTablets = static_cast<uint32_t>(num_tablets());
+  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
+  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto load_difference_metric = cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(
+      METRIC_total_table_load_difference);
+
+  ASSERT_EQ(load_difference_metric->value(), 0);
+
+  // Prevent moves temporarily so we can reliably read the metric and get a non-zero value.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_adds) = 0;
+
+  // Add a new node and wait for load difference to equal kNumTablets (each existing node has
+  // kNumTablets tablets, and the new node has 0).
+  auto new_ts_index = mini_cluster()->num_tablet_servers();
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(new_ts_index + 1));
+  ASSERT_OK(WaitFor([&] {
+    return load_difference_metric->value() == kNumTablets;
+  }, 5s, "load_difference reflects new node"));
+
+  // Enable moves and verify that load_difference monotonically decreases to 0.
+  auto load_difference_low_water_mark = load_difference_metric->value();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_adds) = 1;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto load_difference = load_difference_metric->value();
+    if (load_difference > load_difference_low_water_mark) {
+      return STATUS_FORMAT(
+          IllegalState, "load_difference unexpectedly increased from $0 to $1",
+          load_difference_low_water_mark, load_difference);
+    }
+    load_difference_low_water_mark = load_difference;
+    return load_difference == 0 && VERIFY_RESULT(client_->IsLoadBalancerIdle());
+  }, 30s, "Wait for tablet moves after adding ts-3"));
+
+  // Blacklist first tserver.
+  // The replicas should move off the blacklisted tserver and load_difference should increase to
+  // kNumTablets again.
+  auto load_difference_high_water_mark = load_difference_metric->value();
+  ASSERT_OK(AddTserverToBlacklist(0 /* idx */, false /* leader_blacklist */));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto load_difference = load_difference_metric->value();
+    if (load_difference < load_difference_high_water_mark) {
+      return STATUS_FORMAT(
+          IllegalState, "load_difference unexpectedly decreased from $0 to $1",
+          load_difference_high_water_mark, load_difference);
+    }
+    load_difference_high_water_mark = load_difference;
+    return load_difference == kNumTablets && VERIFY_RESULT(client_->IsLoadBalancerIdle());
+  }, 30s, "Wait for tablet moves after blacklisting ts-0"));
 }
 
 // See issue #6278. This test tests the segfault that used to occur during a rare race condition,

@@ -37,7 +37,8 @@ export const MetricTypesWithOperations = {
     title: 'YCQL',
     metrics: [
       'cql_server_rpc_per_second',
-      'cql_sql_latency', 'cql_server_rpc_p99',
+      'cql_sql_latency',
+      'cql_server_rpc_p99',
       'cql_sql_latency_breakdown',
       'cql_yb_local_vs_remote',
       'cql_yb_latency',
@@ -202,7 +203,8 @@ export const MetricTypesWithOperations = {
       'container_cpu_usage',
       'container_memory_usage',
       'container_volume_stats',
-      'container_volume_usage_percent']
+      'container_volume_usage_percent'
+    ]
   },
   tserver_table: {
     title: 'Tablet Server',
@@ -322,18 +324,7 @@ export const NodeType = {
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
-  OUTLIER_TABLES = "Outlier_Tables"
-}
-
-export enum SplitType {
-  NODE = 'NODE',
-  TABLE = 'TABLE'
-}
-
-export enum NodeAggregation {
-  AVERAGE = 'AVG',
-  MAX = 'MAX',
-  MIN = 'MIN'
+  OUTLIER_TABLES = 'Outlier_Tables'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;

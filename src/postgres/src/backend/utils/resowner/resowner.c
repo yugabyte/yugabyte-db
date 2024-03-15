@@ -34,6 +34,7 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
+#include "utils/yb_inheritscache.h"
 
 /*
  * All resource IDs managed by this code are required to fit into a Datum,
@@ -133,6 +134,7 @@ typedef struct ResourceOwnerData
 	ResourceArray jitarr;		/* JIT contexts */
 	ResourceArray cryptohasharr;	/* cryptohash contexts */
 	ResourceArray hmacarr;		/* HMAC contexts */
+	ResourceArray ybinheritsrefarr; /* YbPgInherits cache references */
 
 	/* We can remember up to MAX_RESOWNER_LOCKS references to local locks. */
 	int			nlocks;			/* number of owned locks */
@@ -183,6 +185,8 @@ static void PrintDSMLeakWarning(dsm_segment *seg);
 static void PrintCryptoHashLeakWarning(Datum handle);
 static void PrintHMACLeakWarning(Datum handle);
 
+
+static void PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry);
 
 /*****************************************************************************
  *	  INTERNAL ROUTINES														 *
@@ -453,6 +457,7 @@ ResourceOwnerCreate(ResourceOwner parent, const char *name)
 	ResourceArrayInit(&(owner->jitarr), PointerGetDatum(NULL));
 	ResourceArrayInit(&(owner->cryptohasharr), PointerGetDatum(NULL));
 	ResourceArrayInit(&(owner->hmacarr), PointerGetDatum(NULL));
+	ResourceArrayInit(&(owner->ybinheritsrefarr), PointerGetDatum(NULL));
 
 	return owner;
 }
@@ -582,6 +587,17 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			if (isCommit)
 				PrintHMACLeakWarning(foundres);
 			pg_hmac_free(context);
+		}
+
+		/* Ditto for ybinheritsrefarr */
+		while (ResourceArrayGetAny(&owner->ybinheritsrefarr, &foundres))
+		{
+			YbPgInheritsCacheEntry entry =
+				(YbPgInheritsCacheEntry) DatumGetPointer(foundres);
+
+			if (isCommit)
+				PrintYbPgInheritsCacheLeakWarning(entry);
+			ReleaseYbPgInheritsCacheEntry(entry);
 		}
 	}
 	else if (phase == RESOURCE_RELEASE_LOCKS)
@@ -753,6 +769,7 @@ ResourceOwnerDelete(ResourceOwner owner)
 	Assert(owner->jitarr.nitems == 0);
 	Assert(owner->cryptohasharr.nitems == 0);
 	Assert(owner->hmacarr.nitems == 0);
+	Assert(owner->ybinheritsrefarr.nitems == 0);
 	Assert(owner->nlocks == 0 || owner->nlocks == MAX_RESOWNER_LOCKS + 1);
 
 	/*
@@ -782,6 +799,7 @@ ResourceOwnerDelete(ResourceOwner owner)
 	ResourceArrayFree(&(owner->jitarr));
 	ResourceArrayFree(&(owner->cryptohasharr));
 	ResourceArrayFree(&(owner->hmacarr));
+	ResourceArrayFree(&(owner->ybinheritsrefarr));
 
 	pfree(owner);
 }
@@ -1130,6 +1148,43 @@ ResourceOwnerForgetRelationRef(ResourceOwner owner, Relation rel)
 }
 
 /*
+ * Make sure there is room for at least one more entry in a ResourceOwner's
+ * YbPgInherits reference array.
+ *
+ * This is separate from actually inserting an entry because if we run out
+ * of memory, it's critical to do so *before* acquiring the resource.
+ */
+void
+ResourceOwnerEnlargeYbPgInheritsRefs(ResourceOwner owner)
+{
+	ResourceArrayEnlarge(&owner->ybinheritsrefarr);
+}
+
+/*
+ * Remember that a YbPgInherits cache reference is owned by a ResourceOwner
+ *
+ * Caller must have previously done ResourceOwnerEnlargeYbPgInheritsRefs()
+ */
+void
+ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
+									 YbPgInheritsCacheEntry entry)
+{
+	ResourceArrayAdd(&owner->ybinheritsrefarr, PointerGetDatum(entry));
+}
+
+/*
+ * Forget that a YbPgInherits cache reference is owned by a ResourceOwner
+ */
+void
+ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
+								   YbPgInheritsCacheEntry entry)
+{
+	if (!ResourceArrayRemove(&owner->ybinheritsrefarr, PointerGetDatum(entry)))
+		elog(ERROR, "YbPgInheritsCache entry %d is not owned by resource owner %s",
+			 entry->parentOid, owner->name);
+}
+
+/*
  * Debugging subroutine
  */
 static void
@@ -1137,6 +1192,13 @@ PrintRelCacheLeakWarning(Relation rel)
 {
 	elog(WARNING, "relcache reference leak: relation \"%s\" not closed",
 		 RelationGetRelationName(rel));
+}
+
+static void
+PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
+{
+	elog(WARNING, "YbPgInheritsCache reference leak: Entry for oid \"%d\" not "
+ 				  "released", entry->parentOid);
 }
 
 /*

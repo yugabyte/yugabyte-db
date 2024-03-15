@@ -6,7 +6,7 @@ services:
 
       log.override.path="{{ baseInstall }}/data/logs"
 
-      play.crypto.secret="${PLATFORM_APP_SECRET}"
+      play.crypto.secret = ${?PLATFORM_APP_SECRET}
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
       play.server.https.keyStore{
           path = "{{ baseInstall }}/data/yba-installer/certs/server.pem"
@@ -99,6 +99,7 @@ services:
         multiTenant = false
         releases.path = "{{ .DataDir }}/releases"
         thirdparty.packagePath = "{{ installVersionDir }}/third-party"
+        ha.prometheus_config_dir = "{{ installRoot }}/prometheus/conf"
         # Interval at which to check the status of every universe. Default: 5 minutes.
         health.check_interval_ms = 300000
         # Interval at which to send a status report email. Default: 12 hours.
@@ -199,7 +200,7 @@ services:
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 
-      {{- if eq (yamlPath "platform.proxy.enable") "true" -}}
+      {{if eq (yamlPath "platform.proxy.enable") "true"}}
       Environment="HTTP_PROXY={{ yamlPath "platform.proxy.http_proxy" }}"
       Environment="HTTPS_PROXY={{ yamlPath "platform.proxy.https_proxy" }}"
       Environment="NO_PROXY={{ yamlPath "platform.proxy.no_proxy"}}"
@@ -208,7 +209,7 @@ services:
       Environment="no_proxy={{ yamlPath "platform.proxy.no_proxy"}}"
       {{end}}
 
-      {{- if eq (yamlPath "postgres.useExisting.enabled") "true"  -}}
+      {{if eq (yamlPath "postgres.useExisting.enabled") "true"}}
       Environment="DB_PASSWORD={{ yamlPath "postgres.useExisting.password" }}"
       Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
       {{end}}

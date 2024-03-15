@@ -3,7 +3,6 @@ title: SQL feature support
 linkTitle: SQL feature support
 description: Summary of YugabyteDB's conformance to the SQL standard
 headcontent: YugabyteDB supports most standard SQL features.
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-feature-support

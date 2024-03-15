@@ -91,9 +91,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   @Inject private PerfAdvisorScheduler perfAdvisorScheduler;
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Get performance recommendation"
-              + " details",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get performance recommendation" + " details",
       response = PerformanceRecommendation.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
@@ -114,9 +113,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. List performance recommendations"
-              + " (paginated)",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List performance recommendations" + " (paginated)",
       response = PerformanceRecommendationPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -151,7 +149,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Hide performance recommendations",
+      notes = "YbaApi Internal.",
+      value = "Hide performance recommendations",
       response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -174,7 +173,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Resolve performance recommendations",
+      notes = "YbaApi Internal.",
+      value = "Resolve performance recommendations",
       response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -197,9 +197,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Delete performance recommendations",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete performance recommendations",
       response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -260,9 +259,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "List performance recommendations state change audit events (paginated)",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List performance recommendations state change audit events (paginated)",
       response = StateChangeAuditInfoPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -296,9 +294,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get universe performance advisor settings",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get universe performance advisor settings",
       response = PerfAdvisorSettingsWithDefaults.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
@@ -343,9 +340,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Update universe performance advisor settings",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update universe performance advisor settings",
       response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -388,9 +384,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Start performance advisor run for universe",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Start performance advisor run for universe",
       response = PerfAdvisorManualRunStatus.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
@@ -417,9 +412,8 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get last performance advisor run details",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get last performance advisor run details",
       response = YBPSuccess.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({

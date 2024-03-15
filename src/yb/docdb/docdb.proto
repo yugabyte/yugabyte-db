@@ -32,6 +32,10 @@ message ApplyExternalTransactionPB {
   optional bytes transaction_id = 1;
   optional SubtxnSetPB aborted_subtransactions = 3;
   optional fixed64 commit_hybrid_time = 2;
+
+  // Defaults to empty string, which is the full key range.
+  optional bytes filter_start_key = 4;
+  optional bytes filter_end_key = 5;
 }
 
 message TableSchemaVersionPB {

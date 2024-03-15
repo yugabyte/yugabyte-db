@@ -35,9 +35,14 @@ import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/Objec
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { Replication } from './pages/Replication';
+import { ReleaseList } from './pages/ReleaseList';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
-import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
+import {
+  clearRbacCreds,
+  getRbacEnabledVal,
+  isRbacEnabled
+} from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -124,7 +129,7 @@ axios.interceptors.response.use(
   (error) => {
     // skip 401 response for "/login" and "/register" endpoints
     //rbac is not loaded yet or it is enabled
-    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+    if (getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
 
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
@@ -280,6 +285,7 @@ export default (store) => {
         <Route path="/profile/:tab" component={Profile} />
         <Route path="/logs" component={YugawareLogs} />
         <Route path="/releases" component={Releases} />
+        <Route path="/releases_list" component={ReleaseList} />
         <Route path="/admin" component={Administration}>
           <Route path="/admin/:tab" component={Administration} />
           <Route path="/admin/:tab/:section" component={Administration} />

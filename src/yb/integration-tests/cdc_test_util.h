@@ -16,9 +16,15 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
 namespace yb {
+namespace xrepl {
+class CDCSDKTabletMetrics;
+class XClusterTabletMetrics;
+}  // namespace xrepl
 namespace cdc {
 
 void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
@@ -38,5 +44,13 @@ void VerifyWalRetentionTime(yb::MiniCluster* cluster,
 
 Status CorrectlyPollingAllTablets(
     MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout);
+
+Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> GetXClusterTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create = cdc::CreateMetricsEntityIfNotFound::kTrue);
+
+Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create = cdc::CreateMetricsEntityIfNotFound::kTrue);
 } // namespace cdc
 } // namespace yb

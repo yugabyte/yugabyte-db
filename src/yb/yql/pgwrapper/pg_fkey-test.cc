@@ -36,8 +36,8 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(enable_wait_queues);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 namespace {
@@ -53,14 +53,14 @@ struct RpcCountMetric {
 };
 
 struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCountMetric, 3> {
-  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity::MetricMap> map)
+  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity> entity)
       : descriptors{
           Descriptor{
-              &delta.read, map, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
+              &delta.read, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
           Descriptor{
-              &delta.write, map, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
+              &delta.write, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
           Descriptor{
-              &delta.perform, map, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
+              &delta.perform, entity, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
   {}
 
   DeltaType delta;
@@ -71,9 +71,9 @@ class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     FLAGS_enable_automatic_tablet_splitting = false;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
-    rpc_count_.emplace(GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
+    rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
   size_t NumTabletServers() override {

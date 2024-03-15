@@ -3,7 +3,6 @@ title: Tablespaces
 linkTitle: Tablespaces
 description: Tablespaces in YSQL
 headcontent: Control the placement of data
-image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: going-beyond-sql-tablespaces

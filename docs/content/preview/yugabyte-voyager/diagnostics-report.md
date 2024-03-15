@@ -1,5 +1,5 @@
 ---
-title: YB Voyager Diagnostics reporting
+title: YB Voyager diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Sending diagnostics information to Yugabyte.
 menu:
@@ -36,9 +36,9 @@ The following is an example of a payload that is collected:
 ```output
 {
     "UUID": "ba4786e8-5923-11ee-8621-06e7faf40beb",
-    "start_time": "2023-09-26 11:21:53",
-    "yb_voyager_version": "1.5.1",
-    "last_updated_time": "2023-09-26 11:29:49",
+    "start_time": "2023-12-14 12:21:53",
+    "yb_voyager_version": "1.6.1",
+    "last_updated_time": "2023-12-14 12:29:49",
     "source_db_type": "oracle",
     "source_db_version": "Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production",
     "issues": "[
@@ -46,7 +46,6 @@ The following is an example of a payload that is collected:
             "objectType": "TABLE",
             "objectName": "sales_data",
             "reason": "insufficient columns in the PRIMARY KEY constraint definition in CREATE TABLE",
-            "sqlStatement": "",
             "filePath": "/home/centos/export-dir/schema/tables/table.sql",
             "suggestion": "Add all Partition columns to Primary Key",
             "GH": "<https://github.com/yugabyte/yb-voyager/issues/578>"

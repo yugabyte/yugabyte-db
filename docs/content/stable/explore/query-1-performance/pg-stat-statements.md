@@ -3,7 +3,6 @@ title: Get query statistics using pg_stat_statements
 linkTitle: Get query statistics
 description: Track planning and execution statistics for all SQL statements executed by a server.
 headerTitle: Get query statistics using pg_stat_statements
-image: /images/section_icons/index/develop.png
 menu:
   stable:
     identifier: pg-stat-statements
@@ -53,6 +52,7 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track` | enum | top | Controls which statements the module tracks. Valid values are `top` (track statements issued directly by clients), `all` (track top-level and nested statements), and `none` (disable statement statistics collection). |
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
+| `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
@@ -142,7 +142,7 @@ Time Span (ms) | Resolution (ms)
 419430.4-838860.8 (6.99-13.98 min) | 52428.8 (~52s)
 838860.8-1677721.6 (13.98-27.96 min) | 104857.6 (~104s)
 
-You can change the number of buckets using the `yb_hdr_bucket_factor` parameter. Valid values are 8, 16 (default), or 32. For example:
+You can change the number of buckets using the `yb_hdr_bucket_factor` parameter in the `postgresql.conf` file. Valid values are 8, 16 (default), or 32. For example:
 
 ```sh
 pg_stat_statements.yb_hdr_bucket_factor = 32
@@ -189,7 +189,7 @@ SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1},
 ```
 
 ```output
- yb_get_percentile 
+ yb_get_percentile
 -------------------
                3.6
 (1 row)
@@ -200,7 +200,7 @@ SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1},
 ```
 
 ```output
- yb_get_percentile 
+ yb_get_percentile
 -------------------
                2.2
 (1 row)
@@ -211,7 +211,7 @@ SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1},
 ```
 
 ```output
- yb_get_percentile 
+ yb_get_percentile
 -------------------
                1.2
 (1 row)
@@ -220,8 +220,8 @@ SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1},
 The following example displays the P99, P95, and P90 latency by augmenting the `pg_stat_statements` output for a specific query:
 
 ```sql
-SELECT query, calls, total_time, min_time, max_time, mean_time, rows, 
-  yb_latency_histogram, 
+SELECT query, calls, total_time, min_time, max_time, mean_time, rows,
+  yb_latency_histogram,
   yb_get_percentile(yb_latency_histogram, 99),
   yb_get_percentile(yb_latency_histogram, 95),
   yb_get_percentile(yb_latency_histogram, 90),

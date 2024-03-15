@@ -3,7 +3,6 @@ title: Date and time formatting functions [YSQL]
 headerTitle: Date and time formatting functions
 linkTitle: Formatting functions
 description: Describes the date and time formatting functions. [YSQL]
-image: /images/section_icons/api/subsection.png
 menu:
   v2.14:
     identifier: date-time-formatting-functions

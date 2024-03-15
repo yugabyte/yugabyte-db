@@ -18,6 +18,7 @@ option java_package = "org.yb.master";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
@@ -107,11 +108,16 @@ message CreateTableRequestPB {
 
   optional bool is_matview = 26;
 
-  optional bytes matview_pg_table_id = 24;
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 24;
 
   repeated StatefulServiceKind hosted_stateful_services = 27;
 
   optional bool ysql_ddl_rollback_enabled = 28 [ default = false ];
+
+  // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
+  optional bytes old_rewrite_table_id = 29;
 }
 
 message CreateTableResponsePB {
@@ -223,6 +229,9 @@ message GetTableSchemaResponsePB {
   optional uint32 wal_retention_secs = 15;
 
   repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 17;
+
+  // If the table is rewritten, this field explicitly stores the PG table id.
+  optional bytes pg_table_id = 18;
 }
 
 message GetTablegroupSchemaRequestPB {
@@ -302,6 +311,33 @@ message GetBackfillJobsResponsePB {
   repeated BackfillJobPB backfill_jobs = 1;
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 2;
+}
+
+message GetBackfillStatusRequestPB {
+  // A list of index tables whose backfill status should be returned. Either table_id or
+  // a pair of table_name and namespace should be specified to identify a table.
+  repeated TableIdentifierPB index_tables = 1;
+}
+
+message IndexStatusPB {
+  enum BackfillStatus {
+    BACKFILL_UNKNOWN = 0; // Unspecified state.
+    BACKFILL_SUCCESS = 1; // Backfill succeeded.
+  }
+
+  optional TableIdentifierPB index_table = 1;
+
+  // Contains an error if it's not possible to get backfill_status and index permissions.
+  optional AppStatusPB error = 2;
+
+  // Backfill status for the specified index table on base of index permissions. Value absence means
+  // either error field is specified, or backfill_status is not present in BackfillStatus enum.
+  optional BackfillStatus backfill_status = 3;
+}
+
+message GetBackfillStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated IndexStatusPB index_status = 2;
 }
 
 // Delete table request (including index table).
@@ -703,6 +739,7 @@ service MasterDdl {
   rpc LaunchBackfillIndexForTable(LaunchBackfillIndexForTableRequestPB)
           returns (LaunchBackfillIndexForTableResponsePB);
   rpc GetBackfillJobs(GetBackfillJobsRequestPB) returns (GetBackfillJobsResponsePB);
+  rpc GetBackfillStatus(GetBackfillStatusRequestPB) returns (GetBackfillStatusResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

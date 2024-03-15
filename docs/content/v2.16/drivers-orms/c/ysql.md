@@ -2,7 +2,6 @@
 title: Connect an application
 linkTitle: Connect an app
 description: C drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.16:
     identifier: libpq-c-driver

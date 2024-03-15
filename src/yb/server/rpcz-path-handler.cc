@@ -70,6 +70,7 @@ void RpczPathHandler(Messenger* messenger,
 
   dump_req.set_include_traces(GetBool(req.parsed_args, "include_traces", false));
   dump_req.set_dump_timed_out(GetBool(req.parsed_args, "timed_out", false));
+  dump_req.set_get_local_calls(true);
 
   WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 

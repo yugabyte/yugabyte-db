@@ -111,7 +111,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 Confirm that the output looks similar to the following with [`--min_num_replicas`](../../../reference/configuration/yb-tserver/#min-num-replicas) set to `1` for each AZ:
 
-```json
+```yaml
 replication_info {
   live_replicas {
     num_replicas: 3

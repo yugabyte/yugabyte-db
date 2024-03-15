@@ -3,7 +3,6 @@ title: Row-level geo-partitioning
 linkTitle: Row-level geo-partitioning
 description: Row-level geo-partitioning in YSQL
 headcontent: Pin data to regions for compliance and lower latencies
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: explore-multi-region-geo-partitioning

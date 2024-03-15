@@ -183,6 +183,10 @@ static const char *const BuiltinTrancheNames[] = {
 	"PgStatsHash",
 	/* LWTRANCHE_PGSTATS_DATA: */
 	"PgStatsData",
+	/* LWTRANCHE_YB_ASH_CIRCULAR_BUFFER */
+	"YbAshCircularBuffer",
+	/* LWTRANCHE_YB_ASH_METADATA: */
+	"YbAshMetadata",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
@@ -1064,7 +1068,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	 */
 	PGPROC *proc = MyProc;
 
-	if (!IsUnderPostmaster && MyProc == NULL)
+	if (!IsUnderPostmaster && proc == NULL)
 	{
 		if (KilledProcToClean == NULL)
 			elog(PANIC, "postmaster cannot wait without a killed process struct");
@@ -1111,6 +1115,15 @@ LWLockDequeueSelf(LWLock *lock)
 {
 	bool		found = false;
 	proclist_mutable_iter iter;
+	PGPROC *proc = MyProc;
+
+	if (proc == NULL)
+	{
+		Assert(!IsUnderPostmaster);
+		if (KilledProcToClean == NULL)
+			elog(PANIC, "postmaster cannot wait without a killed process struct");
+		proc = KilledProcToClean;
+	}
 
 #ifdef LWLOCK_STATS
 	lwlock_stats *lwstats;
@@ -1128,7 +1141,7 @@ LWLockDequeueSelf(LWLock *lock)
 	 */
 	proclist_foreach_modify(iter, &lock->waiters, lwWaitLink)
 	{
-		if (iter.cur == MyProc->pgprocno)
+		if (iter.cur == proc->pgprocno)
 		{
 			found = true;
 			proclist_delete(&lock->waiters, iter.cur, lwWaitLink);
@@ -1147,7 +1160,7 @@ LWLockDequeueSelf(LWLock *lock)
 
 	/* clear waiting state again, nice for debugging */
 	if (found)
-		MyProc->lwWaiting = false;
+		proc->lwWaiting = false;
 	else
 	{
 		int			extraWaits = 0;
@@ -1170,8 +1183,8 @@ LWLockDequeueSelf(LWLock *lock)
 		 */
 		for (;;)
 		{
-			PGSemaphoreLock(MyProc->sem);
-			if (!MyProc->lwWaiting)
+			PGSemaphoreLock(proc->sem);
+			if (!proc->lwWaiting)
 				break;
 			extraWaits++;
 		}
@@ -1180,7 +1193,7 @@ LWLockDequeueSelf(LWLock *lock)
 		 * Fix the process wait semaphore's count for any absorbed wakeups.
 		 */
 		while (extraWaits-- > 0)
-			PGSemaphoreUnlock(MyProc->sem);
+			PGSemaphoreUnlock(proc->sem);
 	}
 
 #ifdef LOCK_DEBUG

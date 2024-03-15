@@ -211,7 +211,7 @@ public User updateUser(@PathVariable Long userId,
 }
 ```
 
-Spring Data JPA repositories provide [named queries](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.at-query) for adding custom queries to repositories and to update the behavior of built-in queries by using the `@Query` annotation in the repository implementation.
+Spring Data JPA repositories provide [named queries](https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html) for adding custom queries to repositories and to update the behavior of built-in queries by using the `@Query` annotation in the repository implementation.
 
 For example:
 

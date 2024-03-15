@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.nullValue;
@@ -14,20 +15,25 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -35,24 +41,30 @@ import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.UUID;
+import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.cdc.CdcConsumer;
+import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListTabletServersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyUniverseTest extends CommissionerBaseTest {
@@ -60,6 +72,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   private CustomerConfig s3StorageConfig;
 
   private MetricService metricService;
+
+  private Users defaultUser;
 
   private Universe defaultUniverse;
 
@@ -96,19 +110,16 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     }
 
     metricService = app.injector().instanceOf(MetricService.class);
-
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = createUniverse(defaultCustomer.getId(), certInfo.getUuid());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
-
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(
-            defaultUniverse.getMasterAddresses(), defaultUniverse.getCertificateNodetoNode()))
-        .thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
           new GFlagsValidation.AutoFlagsPerServer();
@@ -129,6 +140,90 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     } catch (Exception ignored) {
       fail();
     }
+  }
+
+  private UUID submitAndPauseCreateUniverse() {
+    try {
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+      GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+      ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+          new ChangeMasterClusterConfigResponse(1111, "", null);
+      ListTabletServersResponse mockListTabletServersResponse =
+          mock(ListTabletServersResponse.class);
+      when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
+      doAnswer(inv -> Json.newObject())
+          .when(mockYsqlQueryExecutor)
+          .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
+      ShellResponse successResponse = new ShellResponse();
+      successResponse.message = "Command output:\nCREATE TABLE";
+      when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), (any())))
+          .thenReturn(successResponse);
+      when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      mockWaits(mockClient);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+              Cluster primaryCluster = universeDetails.getPrimaryCluster();
+              primaryCluster.userIntent.enableYCQL = true;
+              primaryCluster.userIntent.enableYCQLAuth = true;
+              primaryCluster.userIntent.ycqlPassword = "Admin@123";
+              primaryCluster.userIntent.enableYSQL = true;
+              primaryCluster.userIntent.enableYSQLAuth = true;
+              primaryCluster.userIntent.enableYEDIS = false;
+              primaryCluster.userIntent.ysqlPassword = "Admin@123";
+              for (NodeDetails node : universeDetails.nodeDetailsSet) {
+                // Reset for creation.
+                node.state = NodeDetails.NodeState.ToBeAdded;
+                node.isMaster = false;
+                node.nodeName = null;
+              }
+            });
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.creatingUser = defaultUser;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    try {
+      // Submit the task but let it paused.
+      MDC.put(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY, String.valueOf(1));
+      UUID taskUuid = commissioner.submit(TaskType.CreateUniverse, taskParams);
+      waitForTaskPaused(taskUuid);
+      return taskUuid;
+    } catch (Exception e) {
+      fail();
+    } finally {
+      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+    }
+    return null;
   }
 
   @Test
@@ -302,5 +397,67 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
             .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
             .count());
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));
+  }
+
+  @Test
+  public void testDestroyUniverseForce() {
+    UUID createTaskUuid = submitAndPauseCreateUniverse();
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.isForceDelete = true;
+    taskParams.isDeleteBackups = false;
+    taskParams.isDeleteAssociatedCerts = true;
+    UUID destroyTaskUuid = commissioner.submit(TaskType.DestroyUniverse, taskParams);
+    try {
+      // Wait for the destroy task to start running.
+      waitForTaskRunning(destroyTaskUuid);
+    } catch (InterruptedException e) {
+      fail();
+    } finally {
+      MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+      commissioner.resumeTask(createTaskUuid);
+    }
+    try {
+      waitForTask(createTaskUuid);
+      waitForTask(destroyTaskUuid);
+    } catch (InterruptedException e) {
+      fail();
+    }
+    TaskInfo createTaskInfo = TaskInfo.getOrBadRequest(createTaskUuid);
+    TaskInfo destroyTaskInfo = TaskInfo.getOrBadRequest(destroyTaskUuid);
+    assertEquals(Success, createTaskInfo.getTaskState());
+    assertEquals(Success, destroyTaskInfo.getTaskState());
+  }
+
+  @Test
+  public void testDestroyUniverseForcePreemptive() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.taskOverrideForceUniverseLock.getKey(), "true");
+    UUID createTaskUuid = submitAndPauseCreateUniverse();
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.isForceDelete = true;
+    taskParams.isDeleteBackups = false;
+    taskParams.isDeleteAssociatedCerts = true;
+    UUID destroyTaskUuid = commissioner.submit(TaskType.DestroyUniverse, taskParams);
+    try {
+      // Wait for the destroy task to start running.
+      waitForTaskRunning(destroyTaskUuid);
+    } catch (InterruptedException e) {
+      fail(e.getMessage());
+    }
+    try {
+      waitForTask(createTaskUuid);
+      waitForTask(destroyTaskUuid);
+    } catch (InterruptedException e) {
+      fail(e.getMessage());
+    }
+    TaskInfo createTaskInfo = TaskInfo.getOrBadRequest(createTaskUuid);
+    TaskInfo destroyTaskInfo = TaskInfo.getOrBadRequest(destroyTaskUuid);
+    assertEquals(Aborted, createTaskInfo.getTaskState());
+    assertEquals(Success, destroyTaskInfo.getTaskState());
   }
 }

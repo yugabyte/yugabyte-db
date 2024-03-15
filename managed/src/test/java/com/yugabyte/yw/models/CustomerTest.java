@@ -14,11 +14,11 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import jakarta.persistence.PersistenceException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.PersistenceException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Test;
 import play.libs.Json;
@@ -79,7 +79,7 @@ public class CustomerTest extends FakeDBApplication {
     assertEquals(2, customerList.size());
   }
 
-  @Test(expected = javax.persistence.PersistenceException.class)
+  @Test(expected = jakarta.persistence.PersistenceException.class)
   public void testInvalidCreate() {
     Customer c = Customer.create(null, null);
     c.save();

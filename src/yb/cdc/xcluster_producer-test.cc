@@ -25,6 +25,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
@@ -345,7 +346,7 @@ TEST_F(XClusterProducerTest, ProducerUpgrade) {
   promote_auto_flags_req.set_force(true);
   master::PromoteAutoFlagsResponsePB promote_auto_flags_resp;
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(
+  ASSERT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(
       &promote_auto_flags_req, &promote_auto_flags_resp));
   ASSERT_FALSE(promote_auto_flags_resp.has_error());
   ASSERT_EQ(promote_auto_flags_resp.new_config_version(), config_version + 1);

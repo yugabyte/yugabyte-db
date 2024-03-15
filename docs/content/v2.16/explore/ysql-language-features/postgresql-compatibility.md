@@ -2,7 +2,6 @@
 title: PostgreSQL compatibility
 linkTitle: PostgreSQL compatibility
 description: Summary of YugabyteDB's PostgreSQL compatibility
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: explore-ysql-postgresql-compatibility

@@ -32,6 +32,8 @@
 
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -280,6 +282,7 @@ Status ConsensusMetadata::Flush() {
                         "Invalid config in ConsensusMetadata, cannot flush to disk");
 
   string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
+  SCOPED_WAIT_STATUS(ConsensusMeta_Flush);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                           fs_manager_->encrypted_env(), meta_file_path, pb_,
                           pb_util::OVERWRITE,

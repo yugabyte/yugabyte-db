@@ -16,6 +16,7 @@ User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 # Start
+ExecStartPre={{yb_home_dir}}/bin/clock-sync.sh
 ExecStart={{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tserver/conf/server.conf
 Restart=on-failure
 RestartSec=5

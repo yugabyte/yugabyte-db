@@ -1031,7 +1031,9 @@ index_create(Relation heapRelation,
 					   is_colocated,
 					   tablegroupId,
 					   colocationId,
-					   tableSpaceId);
+					   tableSpaceId,
+					   InvalidOid /* pgTableId */,
+					   InvalidOid /* oldRelfileNodeId */);
 	}
 
 	/*
@@ -3805,7 +3807,8 @@ IndexGetRelation(Oid indexId, bool missing_ok)
  */
 void
 reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
-			  ReindexParams *params)
+			  ReindexParams *params, bool is_yb_table_rewrite,
+			  bool yb_copy_split_options)
 {
 	Relation	iRel,
 				heapRelation;
@@ -3929,8 +3932,12 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	 *
 	 * indisvalid and indisready should be true for best chance of avoiding
 	 * corruption.
+	 *
+	 * NOTE: reindex is permitted internally on public indexes when the indexed
+	 * table is being rewritten.
 	 */
-	if (iRel->rd_index->indisvalid && IsYBRelation(iRel))
+	if (!is_yb_table_rewrite && iRel->rd_index->indisvalid
+		&& IsYBRelation(iRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot reindex public indexes"),
@@ -4017,12 +4024,12 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	/* Suppress use of the target index while rebuilding it */
 	SetReindexProcessing(heapId, indexId);
 
-	if (IsYBRelation(heapRelation))
+	if (IsYugaByteEnabled() && IsSystemRelation(heapRelation))
 		YbTruncate(iRel);
 	else
 	{
 		/* Create a new physical relation for the index */
-		RelationSetNewRelfilenode(iRel, persistence);
+		RelationSetNewRelfilenode(iRel, persistence, yb_copy_split_options);
 	}
 
 	/* Initialize the index and rebuild */
@@ -4168,7 +4175,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  * index rebuild.
  */
 bool
-reindex_relation(Oid relid, int flags, ReindexParams *params)
+reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_rewrite,
+				 bool yb_copy_split_options)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -4239,28 +4247,17 @@ reindex_relation(Oid relid, int flags, ReindexParams *params)
 	{
 		Oid			indexOid = lfirst_oid(indexId);
 
-		if (IsYBRelation(rel) &&
-			rel->rd_rel->relkind == RELKIND_MATVIEW &&
-			(flags & REINDEX_REL_SUPPRESS_INDEX_USE))
-		{
-			/*
-			 * This code path is invoked during REFRESH MATERIALIZED VIEW
-			 * when we swap the target and transient tables. A reindex will
-			 * not work because the indexes' DocDB metadata will still be
-			 * pointing to the old table, which will be dropped.
-			 */
-
-			Relation new_rel = table_open(YbGetStorageRelid(rel), AccessExclusiveLock);
-			AttrMap *new_to_old_attmap = build_attrmap_by_name(RelationGetDescr(new_rel),
-															   RelationGetDescr(rel),
-															   false /* yb_ignore_type_mismatch */);
-			table_close(new_rel, AccessExclusiveLock);
-			YbDropAndRecreateIndex(indexOid, relid, rel, new_to_old_attmap);
-			RemoveReindexPending(indexOid);
-		}
-		else
+		/* TODO(fizaa): add YB prefix to iRel. */
+		Relation iRel = index_open(indexOid, AccessExclusiveLock);
+		/*
+		 * For YB relations, we can ignore the primary key index because
+		 * it is an implicit part of the DocDB table.
+		 */
+		if (!(IsYBRelation(iRel) && iRel->rd_index->indisprimary))
 		{
 			Oid			indexNamespaceId = get_rel_namespace(indexOid);
+
+			index_close(iRel, AccessExclusiveLock);
 
 			/*
 			 * Skip any invalid indexes on a TOAST table.  These can only be
@@ -4279,7 +4276,13 @@ reindex_relation(Oid relid, int flags, ReindexParams *params)
 			}
 
 			reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
-						  persistence, params);
+						  persistence, params, is_yb_table_rewrite,
+						  yb_copy_split_options);
+		}
+		else
+		{
+			index_close(iRel, AccessExclusiveLock);
+			RemoveReindexPending(indexOid);
 		}
 
 		CommandCounterIncrement();
@@ -4316,7 +4319,9 @@ reindex_relation(Oid relid, int flags, ReindexParams *params)
 
 		newparams.options &= ~(REINDEXOPT_MISSING_OK);
 		newparams.tablespaceOid = InvalidOid;
-		result |= reindex_relation(toast_relid, flags, &newparams);
+		result |= reindex_relation(toast_relid, flags, &newparams,
+								   false /* is_yb_table_rewrite */,
+								   yb_copy_split_options);
 	}
 
 	return result;

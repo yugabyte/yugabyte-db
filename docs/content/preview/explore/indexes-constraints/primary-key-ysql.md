@@ -4,7 +4,6 @@ headerTitle: Primary keys
 linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
 headContent: Explore primary keys in YugabyteDB using YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: primary-key-ysql

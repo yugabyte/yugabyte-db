@@ -4,6 +4,8 @@ headerTitle: Transactional xCluster deployment
 linkTitle: Transactional xCluster
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Transactional (active-standby) replication
+aliases:
+  - /preview/deploy/multi-dc/async-replication-transactional/
 menu:
   preview:
     parent: async-replication

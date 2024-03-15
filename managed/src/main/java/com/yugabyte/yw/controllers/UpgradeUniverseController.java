@@ -71,8 +71,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
 
   @Inject GFlagsAuditHandler gFlagsAuditHandler;
 
-  public static final String rollbackSupportRuntimeFlagPath = "yb.upgrade.enable_rollback_support";
-
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
    *
@@ -147,6 +145,50 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that upgrades YugabyteDB DB version in all nodes. Supports rolling and non-rolling upgrade
+   * of the universe. It also support rollback if upgrade is not finalize.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.20.2.0",
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. This is a two step DB software version"
+              + " upgrade, Upgrade DB version and then finalize software which would be same as of"
+              + " upgrade software but additionally support rollback before upgrade finalize. ",
+      value = "Upgrade DB version",
+      nickname = "upgradeDBVersion",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_params",
+          value = "Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.SoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result upgradeDBVersion(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::upgradeDBVersion,
+        SoftwareUpgradeParams.class,
+        Audit.ActionType.UpgradeSoftware,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that finalize YugabyteDB software version upgrade on a universe.
    *
    * @param customerUuid ID of customer
@@ -155,12 +197,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Finalize Upgrade.",
-      notes = "Queues a task to finalize upgrade in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to finalize upgrade in a"
+              + " universe.",
+      value = "Finalize Upgrade",
       nickname = "finalizeUpgrade",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -195,12 +238,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Rollback Upgrade",
-      notes = "Queues a task to rollback upgrade in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to rollback upgrade in a"
+              + " universe.",
+      value = "Rollback Upgrade",
       nickname = "rollbackUpgrade",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -392,8 +436,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      value = "YbaApi Internal. Modify Audit Logging Configuration",
-      notes = "Modifies the audit logging configuration for a universe.",
+      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -621,13 +665,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
-      notes = "Performs pre-checks and provides pre-upgrade info",
+      notes =
+          "WARNING: This is a preview API that could change. Performs pre-checks and provides"
+              + " pre-upgrade info.",
+      value = "Software Upgrade universe pre-check",
       nickname = "softwareUpgradePreCheck",
       response = SoftwareUpgradeInfoResponse.class)
   @ApiImplicitParams(
@@ -661,12 +705,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
-      notes = "Provides pre-finalize software upgrade info",
+      notes =
+          "WARNING: This is a preview API that could change. Provides pre-finalize software upgrade"
+              + " info.",
+      value = "Finalize Software Upgrade info",
       nickname = "preFinalizeSoftwareUpgradeInfo",
       response = FinalizeUpgradeInfoResponse.class)
   @AuthzPath({

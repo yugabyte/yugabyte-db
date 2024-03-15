@@ -15,6 +15,7 @@
 #include <string>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"

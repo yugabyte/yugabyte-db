@@ -304,7 +304,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 */
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
-							   relpersistence, ExclusiveLock);
+							   relpersistence, ExclusiveLock,
+							   false /* yb_copy_split_options */);
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
@@ -333,26 +334,6 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
-		
-		if (YBIsRefreshMatviewFailureInjected())
-		{
-			elog(ERROR, "Injecting error.");
-		}
-	
-		/*
-		 * In YB mode, we must also rename the relation in DocDB.
-		 *
-		 */
-		if (IsYugaByteEnabled()) {
-			YBCPgStatement	handle     = NULL;
-			Oid				databaseId = YBCGetDatabaseOidByRelid(matviewOid);
-			char		   *db_name	   = get_database_name(databaseId);
-			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  OIDNewHeap,
-											  &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, RelationGetRelationName(matviewRel)));
-			HandleYBStatus(YBCPgExecAlterTable(handle));
-		}
 
 		/*
 		 * Inform cumulative stats system about our activity: basically, we
@@ -994,7 +975,8 @@ static void
 refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
-					 RecentXmin, ReadNextMultiXactId(), relpersistence);
+					 RecentXmin, ReadNextMultiXactId(), relpersistence,
+					 false /* yb_copy_split_options */);
 }
 
 /*

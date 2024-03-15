@@ -26,14 +26,15 @@ namespace yb {
 namespace pggate {
 namespace {
 
-Status PatchStatus(const Status& status, const PgObjectIds& relations) {
+Status PatchStatus(const Status& status, PgSession *session, const PgObjectIds& relations) {
   if (PgsqlRequestStatus(status) != PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
     return status;
   }
   auto op_index = OpIndex::ValueFromStatus(status);
   if (op_index && *op_index < relations.size()) {
+    auto table = VERIFY_RESULT(session->LoadTable(relations[*op_index]));
     return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-        .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
+        .CloneAndAddErrorCode(RelationOid(table->pg_table_id()));
   }
   return status;
 }
@@ -41,7 +42,7 @@ Status PatchStatus(const Status& status, const PgObjectIds& relations) {
 } // namespace
 
 PerformFuture::PerformFuture(
-    std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations)
+    PerformResultFuture future, PgSession* session, PgObjectIds&& relations)
     : future_(std::move(future)), session_(session), relations_(std::move(relations)) {
 }
 
@@ -50,24 +51,24 @@ PerformFuture::~PerformFuture() {
     // In case object is valid nobody got the result from it.
     // This is possible in case of error handling. Transaction will be rolled back in this case.
     // We have to be sure that all requests are completed before performing rollback.
-    future_.wait();
+    Wait(future_);
   }
 }
 
 bool PerformFuture::Valid() const {
-  return future_.valid();
+  return pggate::Valid(future_);
 }
 
 bool PerformFuture::Ready() const {
-  return Valid() && future_.wait_for(0ms) == std::future_status::ready;
+  return Valid() && pggate::Ready(future_);
 }
 
 Result<PerformFuture::Data> PerformFuture::Get() {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
-  auto result = future.get();
-  RETURN_NOT_OK(PatchStatus(result.status, relations_));
+  auto result = pggate::Get(&future);
+  RETURN_NOT_OK(PatchStatus(result.status, session_, relations_));
   session_->TrySetCatalogReadPoint(result.catalog_read_time);
   return Data{
       .response = std::move(result.response),

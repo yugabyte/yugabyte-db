@@ -152,6 +152,10 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const Uuid& involved_tablet,
       HybridTime hybrid_time);
 
+  std::pair<dockv::KeyBytes, KeyBuffer> ProcessExternalIntents(
+      const TransactionId& txn_id, SubTransactionId subtransaction_id,
+      const std::vector<ExternalIntent>& intents, const Uuid& involved_tablet);
+
   Status InsertSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,

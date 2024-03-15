@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -211,9 +212,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-    mockGetMasterRegistrationResponses(
-        ImmutableList.of("10.9.22.1", "10.9.22.2", "10.9.22.3", "10.9.22.4", "10.9.22.5"));
-
     setFollowerLagMock();
   }
 
@@ -294,6 +292,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void testExpandSuccess() {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -311,6 +310,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     createOnpremInstance(zone);
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -354,6 +354,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testEditUniverseRetries() {
     Universe universe = defaultUniverse;
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -363,6 +364,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         TaskType.EditUniverse,
         taskParams);
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    setDumpEntitiesMock(universe, "", false);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
     taskParams = performShrink(universe);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -377,6 +381,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void testVolumeSizeValidation() {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    setDumpEntitiesMock(defaultUniverse, "", false);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     PlatformServiceException exception =
         assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
@@ -392,6 +397,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -412,11 +418,18 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
 
     int iter = 1;
+    List<String> newIps = new ArrayList<>();
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
+      if (node.state == NodeDetails.NodeState.ToBeAdded) {
+        newIps.add(node.cloudInfo.private_ip);
+      }
       node.tserverRpcPort = 3333;
       iter++;
     }
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, newIps);
+
     return taskParams;
   }
 

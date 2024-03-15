@@ -52,6 +52,7 @@ extern void YBCDropTablegroup(Oid grpoid);
 /*  Table Functions ----------------------------------------------------------------------------- */
 
 extern void YBCCreateTable(CreateStmt *stmt,
+						   char *relname,
 						   char relkind,
 						   TupleDesc desc,
 						   Oid relationId,
@@ -59,7 +60,8 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid matviewPgTableId);
+						   Oid pgTableId,
+						   Oid oldRelfileNodeId);
 
 extern void YBCDropTable(Relation rel);
 
@@ -77,7 +79,9 @@ extern void YBCCreateIndex(const char *indexName,
 						   bool is_colocated,
 						   Oid tablegroupId,
 						   Oid colocationId,
-						   Oid tablespaceId);
+						   Oid tablespaceId,
+						   Oid pgTableId,
+						   Oid oldRelfileNodeId);
 
 extern void YBCDropIndex(Relation index);
 

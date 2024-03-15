@@ -170,7 +170,7 @@ When prompted to choose the installation type, do one of the following:
 
 - **Online** - If you are performing an online installation, choose the **Online** installation type and click **Continue**. If you are offered a choice of software versions, select the one that meets your requirements.
 
-- **Airgapped** - If you are performing an airgapped installation, choose the **Airgapped** installation type, enter the absolute path to the YugabyteDB Anywhere airgapped install package that you obtained from Yugabyte Suppport, and click **Continue**.
+- **Airgapped** - If you are performing an airgapped installation, choose the **Airgapped** installation type, enter the absolute path to the YugabyteDB Anywhere airgapped install package that you obtained from Yugabyte Support, and click **Continue**.
 
 ## Secure Replicated
 
