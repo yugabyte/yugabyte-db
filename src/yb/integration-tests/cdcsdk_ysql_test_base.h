@@ -661,7 +661,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs,
       bool is_compaction);
 
-  Status XreplValidateSplitCandidateTable(const TableId& table);
+  Status XReplValidateSplitCandidateTable(const TableId& table);
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
