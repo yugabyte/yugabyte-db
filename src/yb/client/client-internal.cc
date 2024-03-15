@@ -690,7 +690,12 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     indexed_table_name->GetFromTableIdentifierPB(resp.indexed_table());
   }
 
-  LOG(INFO) << "Deleted table " << (!table_id.empty() ? table_id : table_name.ToString());
+  if (req.ysql_ddl_rollback_enabled()) {
+    LOG(INFO) << "Marked table " << (!table_id.empty() ? table_id : table_name.ToString())
+              << " for deletion at the end of transaction " << txn->ToString();
+  } else {
+    LOG(INFO) << "Deleted table " << (!table_id.empty() ? table_id : table_name.ToString());
+  }
   return Status::OK();
 }
 
@@ -2882,6 +2887,45 @@ Status YBClient::Data::ReportYsqlDdlTxnStatus(
     return StatusFromPB(resp.error().status());
   }
   return Status::OK();
+}
+
+Status YBClient::Data::IsYsqlDdlVerificationInProgress(
+    const TransactionMetadata& txn,
+    CoarseTimePoint deadline,
+    bool *ddl_verification_in_progress) {
+  master::IsYsqlDdlVerificationDoneRequestPB req;
+  master::IsYsqlDdlVerificationDoneResponsePB resp;
+
+  txn.ToPB(req.mutable_transaction());
+  auto s = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsYsqlDdlVerificationDone",
+      &master::MasterDdlProxy::IsYsqlDdlVerificationDoneAsync);
+
+  // Check DDL verification is paused. This can happen during error injection tests.  If so, no
+  // point continuing to retry.
+  if (resp.has_error()) {
+    if (resp.error().has_status() &&
+        resp.error().status().has_message() &&
+        resp.error().status().message().find("DDL Rollback is paused") != std::string::npos) {
+      *ddl_verification_in_progress = false;
+    }
+    return StatusFromPB(resp.error().status());
+  }
+
+  RETURN_NOT_OK(s);
+
+  *ddl_verification_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForDdlVerificationToFinish(
+    const TransactionMetadata& txn,
+    CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      Format("Waiting on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
+      Format("Timed out on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
+      std::bind(&YBClient::Data::IsYsqlDdlVerificationInProgress, this, txn, _1, _2));
 }
 
 Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {

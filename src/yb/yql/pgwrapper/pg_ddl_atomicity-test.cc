@@ -36,6 +36,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
@@ -45,8 +46,20 @@
 #include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/master.h"
+
+using namespace std::literals;
 using std::string;
 using std::vector;
+using namespace std::literals;
+
+DECLARE_bool(TEST_hang_on_ddl_verification_progress);
+DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 
 namespace yb {
 namespace pgwrapper {
@@ -108,7 +121,7 @@ TEST_F(PgDdlAtomicityTest, TestDatabaseGC) {
   VerifyNamespaceNotExists(client.get(), test_name);
 }
 
-TEST_F(PgDdlAtomicityTest, TestCreateDbFailureAndRestartGC) {
+TEST_F(PgDdlAtomicityTest, TestCreateDbAndRestartGC) {
   NamespaceName test_name = "test_pgsql";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -218,6 +231,38 @@ TEST_F(
   threads.Stop();
 }
 
+TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
+  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
+  // on the mutex. GH issue #15849.
+
+  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
+  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
+
+  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
+  // has something to do.
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
+
+  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
+  // sys_catalog on CatalogManager startup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  // Set pause rollback flag.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  // Give enough time for CheckForAbortedTransactions to start and get stuck.
+  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
+      "--TEST_delay_sys_catalog_reload_secs=10");
+
+  RestartMaster();
+
+  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
+}
+
 // Class for sanity test.
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
@@ -226,8 +271,10 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
       "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
     options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
+    options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=5,ysql_transaction_ddl=5");
   }
 };
 
@@ -254,6 +301,15 @@ TEST_F(PgDdlAtomicitySanityTest, BasicTest) {
 
   // Verify that data is still intact.
   ASSERT_OK(VerifyRowsAfterDdlSuccess(&conn, num_rows));
+}
+
+TEST_F(PgDdlAtomicitySanityTest, BasicTest1) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kCreateTable)));
+  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(kCreateTable)));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "num"}));
+  ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "value", "num"}));
 }
 
 TEST_F(PgDdlAtomicitySanityTest, CreateFailureRollback) {
@@ -676,36 +732,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   // be verified. All future DDL operations will now fail.
   ASSERT_NOK(conn.Execute(RenameColumnStmt(kAddCol)));
   ASSERT_NOK(conn.Execute(DropTableStmt(kAddCol)));
-}
-
-TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
-  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
-  // on the mutex. GH issue #15849.
-
-  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
-  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
-
-  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
-  // has something to do.
-  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
-
-  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
-  // sys_catalog on CatalogManager startup.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
-  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
-
-  ASSERT_EQ(cluster_->master_daemons().size(), 1);
-  // Give enough time for CheckForAbortedTransactions to start and get stuck.
-  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
-      "--TEST_delay_sys_catalog_reload_secs=10");
-
-  RestartMaster();
-
-  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 }
 
 TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
@@ -1258,12 +1284,11 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
     ASSERT_OK(VerifySchema(client.get(), kDatabase, table, {"key", "value", "num"}));
   }
 
-  /*
-   TODO (deepthi): Uncomment the following code after #14679 is fixed.
   // Run different failing DDL operations on the tables.
-  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(add_col_test)));
-  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(drop_table_test)));
-  */
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(kAddCol)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(kDropTable)));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
 
   // Restore to before rollback.
   LOG(INFO) << "Start restoration to timestamp " << hybrid_time_before_rollback;
@@ -1337,7 +1362,7 @@ Status PgDdlAtomicitySnapshotTest::ListSnapshotTest(DdlErrorInjection inject_err
   RETURN_NOT_OK(testListSnapshots(&conn, inject_error, DropTableStmt(kDropTable), snapshot_id,
       ExpectSuccess::kFalse));
   // Wait for the table to be deleted before the next test.
-  client::VerifyTableNotExists(client.get(), kDatabase, kDropTable, 20);
+  client::VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 
   // Verify that an index marked for deletion causes ListSnapshots to fail.
   return testListSnapshots(&conn, inject_error, DropIndexStmt(kDropIndex), snapshot_id,
@@ -1358,6 +1383,8 @@ class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
     options->extra_tserver_flags.push_back(
       "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
     options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=3,ysql_transaction_ddl=3");
+    options->extra_tserver_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=true");
   }
  protected:
   void MatviewTest();
@@ -1427,6 +1454,7 @@ TEST_F(PgLibPqMatviewTest, MatviewTestWithoutPgOptimization) {
 }
 
 TEST_F(PgLibPqMatviewTest, MatviewTest) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("report_ysql_ddl_txn_status_to_master", "true"));
   MatviewTest();
 }
 
@@ -1476,9 +1504,12 @@ class PgLibPqTableRewrite:
       auto num_tables = VERIFY_RESULT(client->ListTables(kTable)).size();
       auto num_indexes = VERIFY_RESULT(client->ListTables(kIndex)).size();
       auto num_matviews = VERIFY_RESULT(client->ListTables(kMaterializedView)).size();
+      LOG(INFO) << "Number of tables: " << num_tables << ", indexes: " << num_indexes
+                << ", materialized views: " << num_matviews;
       return num_tables == 1 && num_indexes == 1 && num_matviews == 1;
     }, MonoDelta::FromSeconds(60), "Verify that we dropped the stale DocDB tables");
   }
+
   const std::string kTable = "test_table";
   const std::string kIndex = "test_idx";
   const std::string kMaterializedView = "test_mv";
@@ -1555,6 +1586,63 @@ TEST_P(PgLibPqTableRewrite,
       kMaterializedView));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", kMaterializedView,
       {"ybrowid", "a_renamed", "b"}));
+}
+
+class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_ddl_rollback_enabled";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rollback_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = true;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail",
+        "PgDdlAtomicitySanityTest::TestWaitForRollbackWithMasterRestart:WaitForFail"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto kDropCol = "drop_col";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT, num real)",
+                               kDropCol));
+
+  TestThreadHolder thread_holder;
+
+  // Fetch the table id before starting the thread.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kDropCol));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_ddl_verification_progress) = true;
+
+  // Start the thread to drop the column.
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn, kDropCol] {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value", kDropCol));
+  });
+
+  // Wait until the alter operation hits the sync point in ysql_ddl_handler.
+  TEST_SYNC_POINT("PgDdlAtomicitySanityTest::TestWaitForRollbackWithMasterRestart:WaitForFail");
+
+  // Restart master to simulate the case where IsYsqlDdlVerificationDone poller in YSQL spans a
+  // master restart.
+  ASSERT_OK(RestartMaster());
+
+  // Allow verification to proceed and wait for thread to finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_ddl_verification_progress) = false;
+  thread_holder.JoinAll();
+
+  // Verify that alter table was successful.
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+
+  const auto& columns = table_info->schema.columns();
+  ASSERT_EQ(columns.size(), 2);
+  ASSERT_EQ(columns[0].name(), "key");
+  ASSERT_EQ(columns[1].name(), "num");
 }
 
 } // namespace pgwrapper

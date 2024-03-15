@@ -20,6 +20,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/status.h"
 
+using namespace std::literals;
+
 namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(DdlErrorInjection);
@@ -226,7 +228,7 @@ class PgDdlAtomicityTestBase : public LibPqTestBase {
 
   const std::string kDatabase = "yugabyte";
   constexpr static std::string_view kDdlVerificationError =
-      "Table is undergoing DDL transaction verification"sv;
+      "TABLE_SCHEMA_CHANGE_IN_PROGRESS"sv;
 };
 
 } // namespace yb::pgwrapper

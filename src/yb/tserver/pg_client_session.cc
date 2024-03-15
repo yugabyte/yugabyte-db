@@ -80,6 +80,10 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
     "Where sequence values are cached for both existing and new sequences. Valid values are "
     "\"connection\" and \"server\"");
 
+DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, false,
+                    "If set, DDL transactions will wait for DDL verification to complete before "
+                    "returning to the client. ");
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -956,7 +960,7 @@ Status PgClientSession::FinishTransaction(
   }
 
   const TransactionMetadata* metadata = nullptr;
-  if (has_docdb_schema_changes && FLAGS_report_ysql_ddl_txn_status_to_master) {
+  if (has_docdb_schema_changes) {
     metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
     LOG_IF(DFATAL, !metadata) << "metadata is required";
   }
@@ -995,12 +999,28 @@ Status PgClientSession::FinishTransaction(
     txn_value->Abort();
   }
 
-  if (metadata) {
-    // If we failed to report the status of this DDL transaction, we can just log and ignore it,
-    // as the poller in the YB-Master will figure out the status of this transaction using the
-    // transaction status tablet and PG catalog.
-    ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                 "Sending ReportYsqlDdlTxnStatus call failed");
+  // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
+  // any operations postponed to the end of transaction. Report the status of the transaction and
+  // wait for the post-processing by YB-Master to end.
+  if (FLAGS_ysql_ddl_rollback_enabled && has_docdb_schema_changes && metadata) {
+    if (FLAGS_report_ysql_ddl_txn_status_to_master) {
+      // If we failed to report the status of this DDL transaction, we can just log and ignore it,
+      // as the poller in the YB-Master will figure out the status of this transaction using the
+      // transaction status tablet and PG catalog.
+      ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
+                  "Sending ReportYsqlDdlTxnStatus call failed");
+    }
+
+    if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {
+      // Wait for DDL verification to end. This may include actions such as a) removing an added
+      // column in case of ADD COLUMN abort b) dropping a column marked for deletion in case of
+      // DROP COLUMN commit. c) removing DELETE marker on a column if DROP COLUMN aborted d) Roll
+      // back changes to table/column names in case of transaction abort. d) dropping a table in
+      // case of DROP TABLE commit. All the above actions take place only after the transaction
+      // is completed.
+      ERROR_NOT_OK(client().WaitForDdlVerificationToFinish(*metadata),
+                  "WaitForDdlVerificationToFinish call failed");
+    }
   }
   return Status::OK();
 }
