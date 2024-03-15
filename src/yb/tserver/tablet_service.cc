@@ -142,9 +142,7 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
-DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
-    "Maximum time in milliseconds to wait for the safe time to advance when trying to "
-    "scan at the given hybrid_time.");
+DEPRECATE_FLAG(int32, max_wait_for_safe_time_ms, "02_2024");
 
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
     "Maximum number of concurrent backfill jobs that is allowed to run.");

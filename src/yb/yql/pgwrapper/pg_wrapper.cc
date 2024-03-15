@@ -55,7 +55,8 @@
 
 DECLARE_bool(enable_ysql_conn_mgr);
 
-DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
+
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");

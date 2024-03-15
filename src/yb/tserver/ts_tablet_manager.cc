@@ -251,11 +251,8 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
 
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
-             "DEPRECATED. Use full_compaction_pool_max_threads.");
-
-DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
-             "DEPRECATED. Use full_compaction_pool_max_queue_size.");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
+DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "The maximum number of threads allowed for full_compaction_pool_. This "
@@ -269,8 +266,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "on a scheduled basis or after they have been split and still contain irrelevant data "
              "from the tablet they were sourced from.");
 
-DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
-             "DEPRECATED. Use auto_compact_check_interval_sec.");
+DEPRECATE_FLAG(int32, scheduled_full_compaction_check_interval_min, "02_2024");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");

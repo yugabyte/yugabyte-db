@@ -126,10 +126,7 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DEFINE_UNKNOWN_bool(tablet_do_dup_key_checks, true,
-            "Whether to check primary keys for duplicate on insertion. "
-            "Use at your own risk!");
-TAG_FLAG(tablet_do_dup_key_checks, unsafe);
+DEPRECATE_FLAG(bool, tablet_do_dup_key_checks, "02_2024");
 
 DEFINE_UNKNOWN_bool(tablet_do_compaction_cleanup_for_intents, true,
             "Whether to clean up intents for aborted transactions in compaction.");
