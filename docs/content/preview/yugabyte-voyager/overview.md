@@ -19,6 +19,18 @@ YugabyteDB Voyager is a powerful open-source data migration engine that accelera
 
 ![Voyager Architecture](/images/migrate/voyager-architecture.png)
 
+For PostgreSQL users looking to transition to a modern, horizontally scalable database solution with built-in resilience, YugabyteDB offers a seamless lift-and-shift approach that ensures compatibility with PostgreSQL syntax and features while providing the scalability benefits of distributed SQL.
+
+YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
+
+YugabyteDB Voyager simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Managed, Anywhere, and the core open-source database.
+
+You can [install](../install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+
+In addition to [offline migration](../migrate/migrate-steps/), the YugabyteDB Voyager also provides [live, non-disruptive migration](../migrate/live-migrate/) from PostgreSQL, along with live migration workflows featuring [fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) capabilities.
+
+Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
+
 You manage the entire lifecycle of a database migration, including cluster preparation for data import, schema migration, and data migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line interface (CLI).
 
 ## Features
