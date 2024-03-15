@@ -39,6 +39,7 @@ Partition-by-region clusters include the following features:
 
 - Multi node clusters with availability zone- or node-level fault tolerance.
 - No limit on cluster size - choose any cluster size based on your use case.
+- Size each region to its load - add extra horsepower in high-traffic regions, and provision lower-traffic regions with fewer nodes.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
