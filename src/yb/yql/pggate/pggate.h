@@ -745,7 +745,9 @@ class PgApiImpl {
 
   uint64_t GetReadTimeSerialNo();
 
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
+  uint64_t GetTxnSerialNo();
+
+  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.

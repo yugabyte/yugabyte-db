@@ -798,3 +798,48 @@ SELECT 1 FROM tenk1_vw_sec WHERE EXISTS (SELECT 1 WHERE unique1 = 0);
 (8 rows)
 
 rollback;
+-- GHI 21320
+CREATE TABLE c (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT c_pkey PRIMARY KEY(pk ASC));
+CREATE TABLE d (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT d_pkey PRIMARY KEY(pk ASC));
+CREATE TABLE dummy (i integer);
+COPY c (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
+COPY d (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
+COPY dummy (i) FROM stdin;
+/*+ Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) */
+EXPLAIN (analyze, timing off, summary off, costs off) SELECT
+FROM
+    D AS table2
+    JOIN C AS table3 ON (
+        table3.col_varchar_nokey = table2.col_varchar_key
+    )
+WHERE
+    table2.col_varchar_nokey <> ANY (
+        SELECT
+            'j'
+        FROM
+            DUMMY
+            UNION
+            ALL
+        SELECT
+            'r'
+        FROM
+            DUMMY
+    );
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Nested Loop (actual rows=59 loops=1)
+   Join Filter: ((table2.col_varchar_key)::text = (table3.col_varchar_nokey)::text)
+   Rows Removed by Join Filter: 1721
+   ->  Nested Loop Semi Join (actual rows=89 loops=1)
+         Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
+         Rows Removed by Join Filter: 23
+         ->  Seq Scan on d table2 (actual rows=100 loops=1)
+         ->  Gather (actual rows=1 loops=100)
+               Workers Planned: 1
+               Workers Launched: 1
+               Single Copy: true
+               ->  Parallel Append (actual rows=2 loops=100)
+                     ->  Seq Scan on dummy (actual rows=1 loops=100)
+                     ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=100)
+   ->  Seq Scan on c table3 (actual rows=20 loops=89)
+(15 rows)

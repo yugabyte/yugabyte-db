@@ -3913,7 +3913,6 @@ yb_init_partition_key_data(void *data)
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
 	ppk->table_relfilenode_oid = InvalidOid;
-	ppk->read_time_serial_no = 0;
 	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
 	ppk->low_offset = 0;
@@ -4283,16 +4282,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		ppk->database_oid = YBCGetDatabaseOid(relation);
 		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
 		ppk->is_forward = is_forward;
-		ppk->read_time_serial_no = YBCPgGetReadTimeSerialNo();
 		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
 	}
 	else
 	{
-		/*
-		 * Parallel worker should propagate shared session details to the local
-		 * execution environment.
-		 */
-		YBCPgForceReadTimeSerialNo(ppk->read_time_serial_no);
 		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
 		return;
 	}
