@@ -251,6 +251,9 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
 
+  // Add a new YB Controller server for the given tablet server
+  Status AddYbControllerServer(const scoped_refptr<ExternalTabletServer>);
+
   void UpdateMasterAddressesOnTserver();
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
@@ -376,7 +379,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::vector<ExternalTabletServer*> tserver_daemons() const;
 
   // Return all YBController servers.
-  std::vector<ExternalYbController*> yb_controller_daemons() const;
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
+    return yb_controller_servers_;
+  }
 
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;

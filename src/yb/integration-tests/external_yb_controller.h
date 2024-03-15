@@ -24,14 +24,18 @@ namespace yb {
 class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
  public:
   ExternalYbController(
-      const std::string& log_dir, const std::string& tmp_dir, const std::string& yb_tserver_address,
-      const std::string& yb_admin, const std::string& yb_ctl, const std::string& ycqlsh,
-      const std::string& ysql_dump, const std::string& ysql_dumpall, const std::string& ysqlsh,
-      uint16_t server_port, uint16_t yb_master_webserver_port, uint16_t yb_tserver_webserver_port,
-      const std::string& server_address, const std::string& exe,
+      const size_t idx, const std::string& log_dir, const std::string& tmp_dir,
+      const std::string& yb_tserver_address, const std::string& yb_admin, const std::string& yb_ctl,
+      const std::string& ycqlsh, const std::string& ysql_dump, const std::string& ysql_dumpall,
+      const std::string& ysqlsh, uint16_t server_port, uint16_t yb_master_webserver_port,
+      uint16_t yb_tserver_webserver_port, const std::string& server_address, const std::string& exe,
       const std::vector<std::string>& extra_flags);
 
   Status Start();
+
+  Status RunBackupCommand(
+      const std::string& backup_dir, const std::string& backup_command, const std::string& ns,
+      const std::string& ns_type, const std::string& temp_dir, const bool use_tablespaces);
 
   // Ping the YB Controller server.
   Status ping();
@@ -55,6 +59,7 @@ class ExternalYbController : public RefCountedThreadSafe<ExternalYbController> {
 
  private:
   std::unique_ptr<Subprocess> process_;
+  const size_t idx_;
   const std::string exe_;
   const std::string log_dir_;
   const std::string tmp_dir_;
