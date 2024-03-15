@@ -690,11 +690,11 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-Specifies the maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `--ysql_fetch_row_limit` should be set to 0.
+Specifies the maximum size (in MB) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `--ysql_yb_fetch_row_limit` should be set to 0.
 
-If both `--ysql_fetch_row_limit` and `--ysql_fetch_row_limit` are set then limit is taken as the lower bound of the two values.
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are set, then limit is taken as the lower bound of the two values.
 
-See also the [yb_fetch_size_limit](#yb_fetch_size_limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 Default: 0
 
@@ -702,9 +702,9 @@ Default: 0
 
 Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
-If both `--ysql_fetch_row_limit` and `--ysql_fetch_row_limit` are set then limit is taken as the lower bound of the two values.
+If both `--ysql_yb_fetch_row_limit` and `--ysql_yb_fetch_size_limit` are set, then limit is taken as the lower bound of the two values.
 
-See also the [yb_fetch_row_limit](#yb_fetch_row_limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+See also the [yb_fetch_row_limit](#yb-fetch-row-limit) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
 
 Default: 0
 
@@ -1365,7 +1365,7 @@ Default: `1GB`
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
@@ -1386,7 +1386,7 @@ Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<badge/tp>}} Enable use of the PostgreSQL selectivity model. This feature is currently in preview.
+{{<badge/tp>}} Enable use of the PostgreSQL selectivity model.
 
 Default: false
 
@@ -1396,7 +1396,7 @@ Maximum size (in MB) of total data returned in one response when the query layer
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
-See also the [--ysql_yb_fetch_size_limit](#ysql_yb_fetch_size_limit) flag. If the flag is set, this parameter takes precedence.
+See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
 
 Default: 0
 
@@ -1404,13 +1404,13 @@ Default: 0
 
 Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
-See also the [--ysql_yb_fetch_row_limit](#ysql_yb_fetch_row_limit) flag. If the flag is set, this parameter takes precedence.
+See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 
 Default: 1024
 
 ##### yb_use_hash_splitting_by_default
 
-When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or Index to be stored in ascending order.
+When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
 
