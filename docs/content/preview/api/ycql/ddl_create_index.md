@@ -116,7 +116,7 @@ CREATE INDEX ON orders (warehouse)
 ```
 
 {{< warning title="Syncing table and index">}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically. It will be the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) which will trigger the backfill after a small delay of about a minute. This delay is controlled by the gflag: `index_backfill_upperbound_for_user_enforced_txn_duration_ms`.
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. <br><br>Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically depending on the setting of the gflag `disable_index_backfill_for_non_txn_tables`. If it is set to `true`, then it will be the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) which will trigger the backfill after a small delay of about a minute. This delay is controlled by the gflag: `index_backfill_upperbound_for_user_enforced_txn_duration_ms`.
 {{< /warning >}}
 
 ### PARTITION KEY
@@ -137,7 +137,7 @@ When using an index without transactions enabled, it is the responsibility of th
 - When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
 {{<warning>}}
-**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+**Caveat**: Row level TTL cannot be set on a table with a secondary index during INSERTS/UPDATES. {{<issue 10992>}}
 {{</warning>}}
 
 ### INCLUDED COLUMNS
