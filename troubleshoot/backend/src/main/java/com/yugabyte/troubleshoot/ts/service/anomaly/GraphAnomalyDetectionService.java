@@ -277,6 +277,15 @@ public class GraphAnomalyDetectionService {
     if (graphData.getInstanceName() != null) {
       additionalLabels.put(GraphFilter.instanceName.name(), graphData.getInstanceName());
     }
+    if (graphData.getNamespaceName() != null) {
+      additionalLabels.put(GraphFilter.dbName.name(), graphData.getNamespaceName());
+    }
+    if (graphData.getTableName() != null) {
+      additionalLabels.put(GraphFilter.tableName.name(), graphData.getTableName());
+    }
+    if (graphData.getTableId() != null) {
+      additionalLabels.put(GraphFilter.tableId.name(), graphData.getTableId());
+    }
     if (graphData.getName() != null) {
       additionalLabels.put(LINE_NAME, graphData.getName());
     }

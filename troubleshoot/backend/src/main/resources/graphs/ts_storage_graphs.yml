@@ -70,6 +70,6 @@ query_rows_avg:
     rows_avg:
       alias: Rows
   layout:
-    title: "Query RPS"
+    title: "Query Rows"
     xaxis:
       type: "date"
