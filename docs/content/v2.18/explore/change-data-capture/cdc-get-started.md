@@ -333,6 +333,18 @@ CDC record for UPDATE (using schema version 1):
 }
 ```
 
+## Colocated tables
+
+YugabyteDB supports streaming of changes from [colocated tables](../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
+
+{{< note title="Note" >}}
+
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, one cannot deploy a new connector for this newly created table.
+
+To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
+
+{{< /note >}}
+
 ## Important configuration settings
 
 You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the YB-TServer reference and [Change data capture flags](../../../reference/configuration/yb-master/#change-data-capture-cdc-flags) section of the YB-Master reference. The following flags are particularly important for configuring CDC:

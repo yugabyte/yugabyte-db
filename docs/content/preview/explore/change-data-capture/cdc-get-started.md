@@ -264,6 +264,10 @@ With before image enabled, the update and delete records look like the following
 
 </td> </tr> </table>
 
+### Before image modes
+
+YugabyteDB support multiple before image modes which can be leveraged by creating a stream ID accordingly.
+
 ## Schema evolution
 
 Table schema is needed for decoding and processing the changes and populating CDC records. Thus, older schemas are retained if CDC streams are lagging. Also, older schemas that are not needed for any of the existing active CDC streams are garbage collected. In addition, if before image is enabled, the schema needed for populating before image is also retained. The YugabyteDB source connector caches schema at the tablet level. This means that for every tablet the connector has a copy of the current schema for the tablet it is polling the changes for. As soon as a DDL command is executed on the source table, the CDC service emits a record with the new schema for all the tablets. The YugabyteDB source connector then reads those records and modifies its cached schema gracefully.
@@ -332,6 +336,18 @@ CDC record for UPDATE (using schema version 1):
     "op": "u"
 }
 ```
+
+## Colocated tables
+
+YugabyteDB supports streaming of changes from [colocated tables](../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
+
+{{< note title="Note" >}}
+
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, one cannot deploy a new connector for this newly created table.
+
+To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
+
+{{< /note >}}
 
 ## Important configuration settings
 
