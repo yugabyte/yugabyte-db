@@ -133,6 +133,11 @@ If running on a virtual machine, execute the following to tune kernel settings :
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
+    ```
+
+1. Setup path for core files as follows:
+
+    ```sh
     sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E
     ```
 
@@ -148,7 +153,6 @@ If running on a virtual machine, execute the following to tune kernel settings :
     ```sh
     sysctl vm.max_map_count
     ```
-
 
 ### Using systemd
 
