@@ -31,7 +31,8 @@ import {
   MetricTimeRange,
   StandardMetricTimeRangeOption,
   XClusterTable,
-  MainTableReplicationCandidate
+  MainTableReplicationCandidate,
+  IndexTableReplicationCandidate
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
@@ -511,7 +512,7 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
 export const isTableToggleable = (
-  table: MainTableReplicationCandidate,
+  table: MainTableReplicationCandidate | IndexTableReplicationCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
   table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||

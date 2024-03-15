@@ -4932,6 +4932,10 @@
     "DrConfigSetTablesForm" : {
       "description" : "dr config set tables form",
       "properties" : {
+        "autoIncludeIndexTables" : {
+          "description" : "Whether or not YBA should also include all index tables from any provided main tables.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
@@ -15164,6 +15168,10 @@
     "XClusterConfigEditFormData" : {
       "description" : "xcluster edit form",
       "properties" : {
+        "autoIncludeIndexTables" : {
+          "description" : "Whether or not YBA should also include all index tables from any provided main tables.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/BootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
