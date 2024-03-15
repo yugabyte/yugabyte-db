@@ -537,4 +537,10 @@ void PgTxnManager::IncTxnSerialNo() {
   ++read_time_serial_no_;
 }
 
+void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  txn_serial_no_ = session_data->txn_serial_no;
+  read_time_serial_no_ = session_data->read_time_serial_no;
+  VLOG_TXN_STATE(2);
+}
+
 }  // namespace yb::pggate

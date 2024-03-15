@@ -928,6 +928,17 @@ TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
   LOG(INFO) << "Starting scan";
   auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(res, kNumRows);
+
+  LOG(INFO) << "Starting transaction";
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series($0, $1) i",
+                               kNumRows + 1, kNumRows * 2));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows * 2);
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
