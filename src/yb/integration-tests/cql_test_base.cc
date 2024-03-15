@@ -139,6 +139,9 @@ Status CqlTestBase<MiniCluster>::StartCluster() {
 
 template <>
 Status CqlTestBase<MiniCluster>::RunBackupCommand(const vector<string>& args) {
+  if (UseYbController()) {
+    return tools::RunYbControllerCommand(cluster_.get(), *tmp_dir_, args);
+  }
   return tools::RunBackupCommand(
       HostPort(), // Not used YSQL host/port.
       cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(), *tmp_dir_, args);

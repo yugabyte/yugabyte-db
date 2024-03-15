@@ -13,6 +13,7 @@
 
 #include "yb/tools/tools_test_utils.h"
 
+#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -21,6 +22,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
+#include "yb/integration-tests/external_yb_controller.h"
 
 using std::string;
 
@@ -101,6 +103,36 @@ Status RunBackupCommand(
   }
 
   return Status::OK();
+}
+
+Status RunYbControllerCommand(
+    MiniClusterBase* cluster, const std::string& tmp_dir, const std::vector<std::string>& args) {
+  string backupDir, ns, ns_type, backup_command;
+  auto yb_controller = cluster->yb_controller_daemons()[0].get();
+  bool use_tablespaces = false;
+  for (size_t idx = 0; idx < args.size(); idx++) {
+    string arg = args[idx];
+    if (arg == "--keyspace") {
+      string keyspace = args[idx + 1];
+      if (keyspace.starts_with("ysql.")) {
+        ns_type = "ysql";
+        ns = keyspace.substr(keyspace.find(".") + 1);
+      } else {
+        ns_type = "ycql";
+        ns = keyspace;
+      }
+    } else if (arg == "--backup_location") {
+      backupDir = args[idx + 1];
+    } else if (arg == "create") {
+      backup_command = "backup";
+    } else if (arg == "restore") {
+      backup_command = arg;
+    } else if (arg == "--use_tablespaces") {
+      use_tablespaces = true;
+    }
+  }
+  return yb_controller->RunBackupCommand(
+      backupDir, backup_command, ns, ns_type, tmp_dir, use_tablespaces);
 }
 
 TmpDirProvider::~TmpDirProvider() {

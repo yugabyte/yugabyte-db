@@ -21,6 +21,8 @@
 
 namespace yb {
 
+class ExternalYbController;
+
 namespace client {
 class YBClientBuilder;
 class YBClient;
@@ -61,6 +63,8 @@ class MiniClusterBase {
     RETURN_NOT_OK(InitStatefulServiceClient(client.get()));
     return client;
   }
+
+  virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
  protected:
   virtual ~MiniClusterBase() = default;

@@ -45,6 +45,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
@@ -220,6 +221,11 @@ class MiniCluster : public MiniClusterBase {
   std::string GetTserverHTTPAddresses() const;
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
+
+  // Return all YBController servers.
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
+    return yb_controllers_;
+  }
 
   tserver::TSTabletManager* GetTabletManager(size_t idx);
 
