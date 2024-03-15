@@ -1733,19 +1733,21 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+    create_change_data_stream ysql.<namespace_name> EXPLICIT <before_image_mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
-* `IMPLICIT`: Checkpointing type on the server.
-* `ALL`: Record type indicating to the server that the stream should send the before image too.
+* `EXPLICIT`: Checkpointing type on the server.
+* *before_image_mode*: Record type indicating the server that the stream should send the before image too.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
+
+For a full list of supported before image modes, see [before image modes](../explore/change-data-capture/cdc-get-started#before-image-modes).
 
 ##### Creating stream in EXPLICIT checkpointing mode
 
