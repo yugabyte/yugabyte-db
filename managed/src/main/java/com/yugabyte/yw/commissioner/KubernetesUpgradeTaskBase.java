@@ -350,7 +350,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          getOrCreateExecutionContext().getWaitForServerTimeout().toMillis(),
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           isMasterChanged,
